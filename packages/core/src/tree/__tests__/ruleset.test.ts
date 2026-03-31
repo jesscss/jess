@@ -92,7 +92,7 @@ describe('Rule', () => {
 
     const preEvald = await node.preEval(context);
     const currentRules = preEvald.enterRules(context);
-    const currentOptions = currentRules.getCurrentOptions(context);
+    const currentOptions = currentRules.options;
 
     expect(currentOptions.rulesVisibility.Mixin).toBe('private');
     expect(currentOptions.rulesVisibility.VarDeclaration).toBe('private');

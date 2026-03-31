@@ -25,7 +25,6 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { replaceNode } from '../util/field-helpers.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -423,32 +422,6 @@ describe('Style import', () => {
       await expect(async () => {
         await node.eval(context);
       }).rejects.toThrowError('"composedVar" is readonly');
-    });
-
-    it('compose readonly checks see state-only declaration replacements', async () => {
-      const composedPath = resolve(process.cwd(), 'composed.jess');
-      context.sourceTrees.set(composedPath, rules([
-        vardecl({ name: 'composedVar', value: any('initial') })
-      ]));
-
-      const placeholder = vardecl({ name: 'otherVar', value: any('placeholder') });
-      const replacement = vardecl({ name: 'composedVar', value: any('modified') });
-      const node = rules([
-        style({
-          path: quoted(any('composed.jess'))
-        }, {
-          type: 'compose',
-          namespace: '*'
-        }),
-        placeholder
-      ]);
-
-      replaceNode(placeholder, replacement, context);
-
-      await expect(async () => {
-        await node.eval(context);
-      }).rejects.toThrowError('"composedVar" is readonly');
-      expect(node.at(1, context)).toBe(placeholder);
     });
 
     it('import type is NOT readonly by default', async () => {

@@ -7,7 +7,6 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
-import type { EvalState } from '../../eval-state.js';
 import type { FlatRulePosition } from '../rules.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -113,15 +112,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (position.renderKey !== undefined) {
       ctx.renderKey = position.renderKey;
     }
-    if (position.subtree) {
-      ctx.pushState(position.subtree);
-    }
     try {
       return fn();
     } finally {
-      if (position.subtree) {
-        ctx.popState();
-      }
       ctx.renderKey = previousRenderKey;
     }
   };

@@ -17,6 +17,8 @@ The target runtime shape is:
 - every node instance starts with `renderKey = CANONICAL`
 - eval only assigns `EVAL` when evaluation returns a different node object
 - canonical child fields stay the canonical value
+- canonical static-field mutation must return or install a derived
+  non-canonical node instead of mutating the canonical node in place
 - alternate child links are field-aligned edges:
   - singular child: `fooEdge?: NodeEdge<T>`
   - list child: `fooEdges?: Array<NodeEdge<T> | undefined>`
@@ -27,6 +29,9 @@ The target runtime shape is:
   - `evaluated: boolean`
 - non-canonical runtime state only exists when it diverges:
   - `stateEdges?: Map<RenderKey, number>`
+- non-canonical nodes are ephemeral placements:
+  replacing one non-canonical node with another does not require retaining the
+  displaced derived node unless an edge still references it
 - path selection uses `RenderKey`
 - traversal uses a cursor: `{ node, renderKey }`
 

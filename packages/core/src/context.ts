@@ -7,7 +7,6 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalState } from './eval-state.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { RenderKey } from './tree/node-base.js';
@@ -465,55 +464,7 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  /**
-   * Root eval state for this evaluation pass.
-   * Lazy — allocated on first access, zero cost if never used.
-   */
-  private _evalState: EvalState | undefined;
-
-  get evalState(): EvalState {
-    return (this._evalState ??= new EvalState());
-  }
-
-  /**
-   * The currently active eval state. Set by pushState/popState during
-   * eval, or by save/restore during registry walks and serialization.
-   * All field reads/writes go through this.
-   */
-  private _activeState: EvalState | undefined;
-
-  get activeState(): EvalState {
-    return this._activeState ?? this.evalState;
-  }
-
-  set activeState(value: EvalState) {
-    this._activeState = value;
-  }
-
-  /** Push a new eval state, saving the current as its parent. */
-  pushState(state: EvalState): void {
-    state.parent = this.activeState;
-    this._activeState = state;
-  }
-
-  /** Pop the current eval state, restoring its parent. */
-  popState(): EvalState | undefined {
-    const popped = this._activeState;
-    this._activeState = popped?.parent;
-    return popped;
-  }
-
-  /** Maps output nodes (mixin/import/loop results) to their call-site EvalState.
-   *  Global lookup — works from any context, any direction. */
-  readonly subtreeMap = new WeakMap<Node, EvalState>();
-  readonly replacementMap = new WeakMap<Node, Node>();
   readonly dependencyMap = new WeakMap<Node, EvalDependency>();
-  readonly changedVars = new Set<Node>();
-
-  /** @deprecated — use activeState directly */
-  resolveField(node: Node, field: string): unknown {
-    return this.activeState.peek(node)?._fields?.get(field);
-  }
 
   _leakyRules: boolean | undefined;
   get leakyRules() {

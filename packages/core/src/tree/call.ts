@@ -149,10 +149,6 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  private _getOptions(_context?: Context): CallOptions | undefined {
-    return this.options;
-  }
-
   private _normalizeFallbackArgSpacing(node: Node): void {
     if (isNode(node, N.Sequence)) {
       node.get('value').forEach((child, childIndex) => {
@@ -203,7 +199,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     const w = options.writer!;
     const mark = w.mark();
     const context = options.context;
-    const { silentFail, markImportant } = this._getOptions(context) ?? {};
+    const { silentFail, markImportant } = this.options ?? {};
     const name = this.get('name', context);
     const args = this.get('args', context);
     const contentNode = this.get('contentNode', context);
@@ -262,7 +258,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     return (async () => {
       let name = this.get('name', context);
       let args = this.get('args', context);
-      const callOptions = this._getOptions(context) ?? {};
+      const callOptions = this.options ?? {};
       let { markImportant } = callOptions;
       const applyDependencyToResult = <T extends Node>(
         result: T,

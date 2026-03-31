@@ -5,11 +5,10 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { EvalState } from '../eval-state.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { getParent, getChildren, markChangedVar, setIndex } from './util/field-helpers.js';
+import { getParent, getChildren, setIndex } from './util/field-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
@@ -284,8 +283,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     // child Ruleset isolation so implicit-reference extends don't contaminate
     // shared selector state.
     /** @removal-target — node-copy-reduction: materialize/clone wrappers.
-     * Import/compose results should carry their EvalState. No wrapper
-     * cloning needed — position patches provide isolation per import. */
+     * Import/compose results should reuse canonical children with per-import
+     * graph ownership instead of wrapper cloning. */
     const materializeConfiguredComposeChildren = type === 'compose' && this.get('withNode', context) != null;
     // Create a lightweight output per import — canonical children, no materialization.
     // Same pattern as mixin output (finalizeMixinInvocationOutput).
@@ -377,10 +376,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
     const finalize = async (finalPath: string) => {
       const previousTreeContext = context.treeContext;
-      let configuredWithCanonicalParents: Map<Node, Node | undefined> | undefined;
-      let dedupedCanonicalParents: Map<Node, Node | undefined> | undefined;
-      let dedupedCanonicalChildren: Node[] | undefined;
-      let dedupedCachedRules: Rules | undefined;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
       const inheritedReferenceMode = context.inReferenceImportScope;
@@ -456,15 +451,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         if (type === 'import' && importOptions!.once !== false && !importOptions!.multiple && !inMultipleImportBranch && evaldRules) {
           rules = evaldRules;
           importOptions!._dedupe = true;
-          dedupedCachedRules = rules;
-          dedupedCanonicalChildren = [...rules.value];
-          dedupedCanonicalParents = new Map(
-            rules.value.map(child => [child, child.parent] as const)
-          );
         }
-
-        // Track whether we pushed an isolated EvalState so the finally block can pop it.
-        let pushedIsolatedState = false;
         if (withValues) {
           // Once configured, cannot be configured again (handled above for compose+cache).
           if (withValues.type === 'set' && evaldRules) {
@@ -480,11 +467,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             withRulesNode = evaluated;
           }
           const withRules = withRulesNode as Rules;
-          if (withValues.type === 'with') {
-            configuredWithCanonicalParents = new Map(
-              rules.value.map(child => [child, child.parent] as const)
-            );
-          }
 
           // Build a name→index map over canonical top-level VarDeclarations for O(1) lookup.
           // This replaces the previous rules.clone(true) + registry approach — we no longer
@@ -521,18 +503,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
               }
             } else {
               newVariables.push(injectedNode);
-            }
-          }
-
-          // Push an isolated EvalState so that adopt() calls inside Rules.push()
-          // route parent writes into the overlay instead of permanently mutating
-          // canonical library nodes.
-          context.pushState(new EvalState());
-          pushedIsolatedState = true;
-          for (const index of replacementAt.keys()) {
-            const candidate = rules.value[index];
-            if (isNode(candidate, N.VarDeclaration)) {
-              markChangedVar(context, candidate as VarDeclaration);
             }
           }
 
@@ -577,10 +547,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
         const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
-          if (!withValues && type !== 'import') {
-            context.pushState(new EvalState());
-            pushedIsolatedState = true;
-          }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
@@ -624,15 +590,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             }
             rules = await rules.eval(context);
           } finally {
-            if (pushedIsolatedState) {
-              const poppedState = context.popState();
-              // Carry the eval state on the output so serialization can push it
-              if (poppedState && poppedState.size > 0) {
-                rules._carriedState = poppedState;
-                context.subtreeMap.set(rules, poppedState);
-              }
-              pushedIsolatedState = false;
-            }
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
@@ -655,9 +612,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           }
         } else {
         // Shallow-clone the cached rules BEFORE evaluation so registries are populated
-        // on the clone, not on the cached evaldRules. EvalState isolation ensures canonical
-        // children's parent pointers are protected; preEval creates fresh clones via maybeClone.
-          context.pushState(new EvalState());
+        // on the clone, not on the cached evaldRules.
           rules = rules.createShallowBodyWrapper(context) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
@@ -668,11 +623,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             }
             rules = await rules.eval(context);
           } finally {
-            const poppedState = context.popState();
-            if (poppedState && poppedState.size > 0) {
-              rules._carriedState = poppedState;
-              context.subtreeMap.set(rules, poppedState);
-            }
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = prevRulesetFrames!;
               context.frames = prevFrames!;
@@ -689,8 +639,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
         }
-        // configuredWithCanonicalParents restore removed — adopt() routes through
-        // EvalState, canonical parents are not mutated.
+        // configuredWithCanonicalParents restore removed — canonical parents are not mutated.
 
         // For import type, register the final Rules as a child root of the parent
         // so extends from the parent can find rulesets in the imported Rules
@@ -729,7 +678,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         return finalRules;
       } finally {
         // dedupedCachedRules/dedupedCanonicalParents restore removed —
-        // eval writes go through EvalState, canonical tree is not mutated.
+        // eval writes stay on derived nodes, canonical tree is not mutated.
         context.treeContext = previousTreeContext;
         if (pushedImportScope) {
           context.popImportScope();

@@ -10,12 +10,11 @@ import { Node } from '../node.js';
 import { JsFunction } from '../js-function.js';
 import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
-import type { VarDeclaration } from '../declaration-var.js';
 import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { getChildren, getDependency, getParent, isPreEvaluated, hasChangedVars, getChangedVars, setParent } from './field-helpers.js';
+import { setParent } from './field-helpers.js';
 
 const { isArray } = Array;
 
@@ -1448,24 +1447,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
       local = false,
       start
     } = options ?? {};
-    const changedVars = this.context && hasChangedVars(this.context)
-      ? getChangedVars(this.context)
-      : undefined;
-    const dependsOnChangedVar = (declaration: Declaration): boolean => {
-      if (!changedVars || changedVars.size === 0) {
-        return true;
-      }
-      const dependency = getDependency(declaration.get('value'), this.context!);
-      if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
-        return false;
-      }
-      for (const changedVar of changedVars) {
-        if (dependency.dependsOn.has(changedVar as VarDeclaration)) {
-          return true;
-        }
-      }
-      return false;
-    };
 
     let newReadonly: boolean | undefined = false;
     let searchChildrenOptions: FindOptions | undefined;

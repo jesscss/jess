@@ -206,14 +206,6 @@ export function setChildAt(
   }
 }
 
-export function replaceNode(
-  node: Node,
-  replacement: Node,
-  ctx: Context
-): void {
-  ctx.replacementMap.set(node, replacement);
-}
-
 export function markScopeDirty(
   _rules: Rules,
   _ctx: Context
@@ -276,16 +268,4 @@ export function isTopLevelVarDeclaration(
   }
   const parent = getParent(node, ctx);
   return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
-}
-
-export function markChangedVar(ctx: Context, node: Node): void {
-  ctx.changedVars.add(node);
-}
-
-export function hasChangedVars(ctx: Context): boolean {
-  return ctx.changedVars.size > 0;
-}
-
-export function getChangedVars(ctx: Context): Set<Node> | undefined {
-  return ctx.changedVars.size > 0 ? ctx.changedVars : undefined;
 }

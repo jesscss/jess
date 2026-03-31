@@ -30,7 +30,7 @@ import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getChildren, getIndex, getParent, getSourceParent, markChangedVar, markScopeDirty, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getChildren, getParent, getSourceParent, markScopeDirty, setChildren, setParent, setSourceParent } from '../util/field-helpers.js';
 import { N } from '../node-type.js';
 import { EVAL } from '../node.js';
 import { addEdgeAt, getParentEdge } from '../util/cursor.js';
@@ -1170,52 +1170,6 @@ describe('Rules', () => {
       expect(getParent(replacement, ctx)).toBe(target);
     });
 
-    it('falls through to canonical declarations when a eval state does not depend on changed vars', () => {
-      const changed = vardecl({ name: 'theme', value: any('red') });
-      const derived = vardecl({ name: 'derived', value: any('pink') });
-      const plain = vardecl({ name: 'plain', value: any('blue') });
-      const root = rules([changed, derived, plain]);
-      const ctx = new Context();
-
-      root.getRegistry('declaration');
-      markChangedVar(ctx, changed as VarDeclaration);
-
-      const derivedOverlay = vardecl({ name: 'derived', value: any('crimson') });
-      const plainOverlay = vardecl({ name: 'plain', value: any('cyan') });
-
-      setDependency(derivedOverlay.get('value'), {
-        dependsOn: new Set([changed as VarDeclaration]),
-        sourceExpr: derivedOverlay.get('value')
-      }, ctx);
-
-      root.register('declaration', derivedOverlay, ctx);
-      root.register('declaration', plainOverlay, ctx);
-
-      expect(root.find('declaration', 'derived', 'VarDeclaration', {
-        context: ctx,
-        searchParents: false
-      })).toBe(derivedOverlay);
-      expect(root.find('declaration', 'plain', 'VarDeclaration', {
-        context: ctx,
-        searchParents: false
-      })).toBe(plain);
-    });
-
-    it('preEval reads declaration replacements from the state child overlay without mutating canonical children', async () => {
-      const original = vardecl({ name: 'foo', value: any('bar') });
-      const replacement = vardecl({ name: 'bar', value: any('baz') });
-      const root = rules([original]);
-      const ctx = new Context();
-      replaceNode(original, replacement, ctx);
-      const preEvald = await root.preEval(ctx);
-
-      expect(preEvald.at(0, ctx)).toBe(replacement);
-      expect(preEvald.at(0, context)).toBe(original);
-      expect(getIndex(replacement, ctx)).toBe(0);
-      expect(replacement.index).toBeUndefined();
-      expect(root.value[0]).toBe(original);
-    });
-
     it('preEval keeps charset replacement parented only in the eval state', async () => {
       const charset = any('@charset "utf-8"', { role: 'charset' });
       const root = rules([charset]);
@@ -1230,30 +1184,6 @@ describe('Rules', () => {
       expect(root.value[0]).toBe(charset);
       expect(ctx.currentCharset).toBe(charset);
     });
-
-    it('setDefined inserts into the state parent scope without needing a canonical parent', async () => {
-      const placeholder = vardecl({ name: 'one', value: any('stale') });
-      const existing = vardecl({ name: 'one', value: any('one') });
-      const setter = vardecl({ name: 'one', value: any('three') }, { setDefined: true });
-      const root = rules([placeholder, setter]);
-      const ctx = new Context();
-      replaceNode(placeholder, existing, ctx);
-      await root.eval(ctx);
-
-      const stateChildren = getChildren(root, ctx);
-      const inserted = stateChildren.find(child => `${child}` === '$one: three');
-      expect(isNode(inserted, N.VarDeclaration)).toBe(true);
-      expect(getParent(inserted as VarDeclaration, ctx)).toBe(root);
-      expect(stateChildren.map(child => `${child}`)).toEqual(expect.arrayContaining([
-        '$one: one',
-        '$one: three',
-        '$one := three'
-      ]));
-      expect(stateChildren).toContain(existing);
-      expect(root.at(0, context)).toBe(placeholder);
-      expect(root.value).toHaveLength(2);
-    });
-
     it('coalesces merged declarations using state-parent scope boundaries', async () => {
       const base = decl({ name: 'color', value: any('red') });
       const merged = decl(
@@ -1310,31 +1240,6 @@ describe('Rules', () => {
       expect(preEvald).toBe(wrapper);
       expect(getParent(wrapper, ctx)).toBe(media);
       expect(wrapper.parent).toBeUndefined();
-    });
-
-    it('eval queue reads state-local child replacements without mutating canonical children', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const original = decl({ name: 'background', value: any('blue') });
-      const replacement = call({
-        name: ref({ key: '.my-mixin' }, { type: 'mixin' })
-      });
-      const targetRules = rules([original]);
-      const root = rules([mixinDef, targetRules]);
-      const ctx = new Context();
-      ctx.root = root;
-
-      replaceNode(original, replacement, ctx);
-      const evald = await targetRules.eval(ctx);
-
-      expect(evald.toTrimmedString({ context: ctx })).toBe('color: red;');
-      expect(evald.toTrimmedString()).toBe('background: blue;');
-      expect(targetRules.at(0, ctx)).not.toBe(original);
-      expect(targetRules.at(0, context)).toBe(original);
     });
 
     it('reorders call-produced declaration-only Rules using the state sourceParent without mutating canonical children', () => {

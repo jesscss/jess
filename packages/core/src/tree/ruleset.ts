@@ -1,4 +1,5 @@
 import {
+  CANONICAL,
   Node,
   F_VISIBLE,
   F_EXTENDED,
@@ -728,10 +729,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.
       if (!rulesetOptions.generated) {
+        if (rules.renderKey === CANONICAL) {
+          const wrappedRules = rules.createShallowBodyWrapper(context);
+          node.rules = wrappedRules;
+          node.adopt(wrappedRules, context);
+          rules = wrappedRules;
+        }
         const nextRulesOptions = {
-          ...rules.getCurrentOptions(context),
+          ...rules.options,
           rulesVisibility: {
-            ...rules.getCurrentOptions(context).rulesVisibility
+            ...rules.options.rulesVisibility
           }
         };
         if (context.leakyRules) {
@@ -741,7 +748,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           nextRulesOptions.rulesVisibility.Mixin = 'private';
           nextRulesOptions.rulesVisibility.VarDeclaration = 'private';
         }
-        rules.setCurrentOptions(nextRulesOptions, context);
+        rules.options = nextRulesOptions;
       }
       const parentRuleset = context.rulesetFrames.at(-1);
       const parentSelector = parentRuleset?.getSelector(parentRuleset._resolveRenderKey(context));

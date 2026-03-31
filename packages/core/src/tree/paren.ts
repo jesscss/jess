@@ -43,12 +43,8 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
     }
   }
 
-  private _getOptions(context?: Context): ParenOptions | undefined {
-    return this.options;
-  }
-
-  private _isEscaped(context?: Context): boolean {
-    return Boolean(this._getOptions(context)?.escaped);
+  private _isEscaped(_context?: Context): boolean {
+    return Boolean(this.options?.escaped);
   }
 
   private _unwrapValue(value: Node, context?: Context): Node {
@@ -67,7 +63,7 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const parenOptions = this._getOptions(options.context);
+    const parenOptions = this.options;
     const escapeChar = parenOptions?.escaped ? '~' : '';
     const delimiter = parenOptions?.delimiter ?? 'paren';
     const open = delimiter === 'square' ? '[' : '(';
@@ -105,7 +101,7 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
         if (this._isEscaped(context) && value instanceof Node) {
           return value;
         }
-        const delimiter = this._getOptions(context)?.delimiter ?? 'paren';
+        const delimiter = this.options?.delimiter ?? 'paren';
         if (delimiter === 'paren') {
           value = this._unwrapValue(value, context);
           if (value instanceof Bool || value instanceof Dimension) {

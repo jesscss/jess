@@ -41,6 +41,12 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - reserve `enter<Field>(...)` for helpers that may wrap/adopt to establish a
   render-owned container
 - if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
+- if a canonical node's static field changes, do not mutate it in place:
+  create or return a derived non-canonical replacement and let eval/edge wiring
+  own that new placement
+- if a node is already non-canonical (`EVAL` or any other non-canonical
+  `RenderKey`), it is ephemeral: mutate or replace it directly and do not keep
+  the displaced derived node alive unless some edge still points to it
 - do not add new generic `childEdges` maps as target architecture
 - when iterating, prefer one narrow component proof over broad suite churn
 

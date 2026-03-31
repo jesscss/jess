@@ -11,7 +11,6 @@ import {
   F_VISIBLE
 } from './node.js';
 import { Context } from '../context.js';
-import type { EvalState } from '../eval-state.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Ruleset } from './ruleset.js';
@@ -66,7 +65,6 @@ export const enum Priority {
 }
 export type RulesVisibility = 'public' | 'optional' | 'private';
 export type FlatRulePosition = {
-  subtree?: EvalState;
   renderKey?: RenderKey;
 };
 
@@ -144,9 +142,6 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
   set options(options: RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   });
-  getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
-    rulesVisibility: Record<string, RulesVisibility>;
-  };
   eval(context: Context): MaybePromise<this>;
 }
 /**
@@ -211,27 +206,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
-    rulesVisibility: Record<string, RulesVisibility>;
-  } {
-    return this._withOwnRenderKey(context, () => this.options);
-  }
-
-  setCurrentOptions(
-    options: RulesOptions & NodeOptions & {
-      rulesVisibility: Record<string, RulesVisibility>;
-    },
-    context?: Context
-  ): void {
-    this._withOwnRenderKey(context, () => {
-      this.options = options;
-    });
-  }
-
-  private _cloneOptionsForContext(context?: Context): (RulesOptions & NodeOptions) | undefined {
-    const options = context
-      ? this.getCurrentOptions(context)
-      : (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
+  private _cloneOptionsForContext(_context?: Context): (RulesOptions & NodeOptions) | undefined {
+    const options = this.options
+      ?? (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
     if (!options) {
       return undefined;
     }
@@ -410,8 +387,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Register a child node into the appropriate registry.
    * Creates the registry lazily on first registration.
    * Wrapper/derived Rules own their registries directly.
-   * Canonical Rules still fall back to state-scoped registries while the
-   * remaining lookup paths are migrated off EvalState.
+   * Canonical Rules still fall back to direct per-node registries until the
+   * remaining lookup paths are fully converged on render-path ownership.
    */
   register(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
@@ -930,17 +907,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
     const ctx = options.context;
     return this._withOwnRenderKey(ctx, () => {
-      // Push this node's subtree (if any) so child nodes resolve
-      // patched fields during serialization.
-      const subtree = this._carriedState as EvalState | undefined
-        ?? ctx?.subtreeMap.get(this);
-      if (ctx && subtree) {
-        ctx.pushState(subtree);
-      }
       this._emitRulesBody(options);
-      if (ctx && subtree) {
-        ctx.popState();
-      }
       return w.getSince(mark);
     });
   }
@@ -950,12 +917,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const finalRules: Node[] = [];
     const iterateRules = (
       rules: Rules,
-      activeSubtree?: EvalState,
       inheritedRenderKey?: RenderKey
     ) => {
-      const subtree = (rules._carriedState as EvalState | undefined)
-        ?? context?.subtreeMap.get(rules)
-        ?? activeSubtree;
       const renderKey = rules.renderKey ?? inheritedRenderKey;
 
       for (let n of rules._getChildren(context)) {
@@ -963,13 +926,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if ((n.options as RulesOptions)?.referenceMode === true) {
             finalRules.push(n);
           } else {
-            iterateRules(n, subtree, renderKey);
+            iterateRules(n, renderKey);
           }
           continue;
         }
         if (!visibleOnly || n.visible || n.fullRender) {
-          if (positionMap && (subtree || renderKey !== CANONICAL)) {
-            positionMap.set(n, { subtree, renderKey });
+          if (positionMap && renderKey !== CANONICAL) {
+            positionMap.set(n, { renderKey });
           }
           finalRules.push(n);
         }
@@ -1023,7 +986,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     if (isNode(node, N.Rules)) {
-      const nodeOptions = (node as Rules).getCurrentOptions(context);
+      const nodeOptions = (node as Rules).options;
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
@@ -1929,7 +1892,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return String(name?.valueOf?.() ?? name);
     };
     const getDeclAssign = (node: Declaration): string => {
-      const options = node.getCurrentOptions(context);
+      const options = node.options;
       return String(options?.normalizedFromAssign ?? '');
     };
     const setDeclValue = (node: Declaration, value: Node): void => {
@@ -2464,7 +2427,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
  * getFunctionFromMixins → callWithContext → returnFunc indirection.
  *
  * The result is already fully evaluated (each candidate's body was
- * evaluated under its own per-call EvalState). Callers must NOT
+ * evaluated before being assembled into the return Rules). Callers must NOT
  * re-evaluate the result.
  */
 export async function evalMixinDirect(

@@ -134,14 +134,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.get('name', context).valueOf().startsWith('--');
   }
 
-  getCurrentOptions(_context?: Context): Opts | undefined {
-    return this.options;
-  }
-
-  setCurrentOptions(nextOptions: Opts | undefined): void {
-    this.options = nextOptions as Opts;
-  }
-
   getCurrentValue(context?: Context): Node {
     return this.get('value', context);
   }
@@ -182,7 +174,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const name = this.get('name', context);
     const value = this.get('value', context);
     const important = this.get('important', context);
-    const declarationOptions = this.getCurrentOptions(context);
+    const declarationOptions = this.options;
     const { assign = ':', setDefined } = declarationOptions ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -251,7 +243,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
       const nextOptions = {
-        ...(node.getCurrentOptions(context) ?? {})
+        ...(node.options ?? {})
       } as Opts;
       let assign = nextOptions.assign;
       const rawAssign = assign as string | undefined;
@@ -324,7 +316,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         nextOptions.normalizedFromAssign = normalizedAssign;
         nextOptions.assign = AssignmentType.Default;
-        node.setCurrentOptions(nextOptions);
+        node.options = nextOptions as Opts;
       }
       const out = node.get('value', context).preEval(context);
       if (isThenable(out)) {
@@ -493,7 +485,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             : finish();
         };
         const normalizeMergedLeadingPlaceholder = () => {
-          const normalizedAssign = node._getOptions(context)?.normalizedFromAssign;
+          const normalizedAssign = node.options?.normalizedFromAssign;
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;

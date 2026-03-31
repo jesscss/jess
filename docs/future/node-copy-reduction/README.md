@@ -10,6 +10,10 @@ The target model is:
 - canonical child fields stay the real canonical value
 - alternate child edges are field-aligned (`fooEdge` / `fooEdges`)
 - `RenderKey` is only the path-selection key
+- canonical static-field mutation must produce a derived non-canonical
+  replacement instead of mutating the canonical node in place
+- non-canonical nodes are ephemeral placements: they may be mutated or replaced
+  directly without preserving the previous derived node
 - traversal is done through a cursor: `{ node, renderKey }`
 - shallow `Rules` wrappers own local declaration/mixin/ruleset registries and
   may share canonical child arrays until they structurally diverge

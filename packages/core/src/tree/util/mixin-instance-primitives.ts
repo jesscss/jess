@@ -1,5 +1,4 @@
 import { Context } from '../../context.js';
-import { EvalState } from '../../eval-state.js';
 import { Node } from '../node-base.js';
 
 import { Bool } from '../bool.js';
@@ -18,7 +17,7 @@ import { CANONICAL, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getChildren, getDependency, getParent, getSourceParent, mergeDependencies, setChildren, setDependency, setParent, setSourceParent } from './field-helpers.js';
+import { getDependency, getParent, getSourceParent, mergeDependencies, setChildren, setDependency, setParent, setSourceParent } from './field-helpers.js';
 import type { Mixin } from '../mixin.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
@@ -165,7 +164,7 @@ export function createMixinParamScope(
 export function populateMixinParamScope(
   scope: Rules,
   params: List<Node>,
-  context: Context
+  _context: Context
 ): void {
   const paramItems = params.get('value');
   for (let i = 0; i < paramItems.length; i++) {
@@ -456,7 +455,6 @@ export async function evaluateMixinGuardCandidate(
     isDefaultValue: boolean
   ): Promise<{ passes: boolean; outerRules: Rules | undefined }> => {
     const prevIsDefault = context.isDefault;
-    context.pushState(new EvalState());
     try {
       const nextScope = seedMixinGuardScope(
         outerRules,
@@ -477,7 +475,6 @@ export async function evaluateMixinGuardCandidate(
       };
     } finally {
       context.isDefault = prevIsDefault;
-      context.popState();
     }
   };
 
@@ -589,7 +586,7 @@ export async function replayWinningMixinDefaultCandidates<TCandidate>(
 export function assembleMixinInvocationOutput(
   outputRules: Rules[],
   restrictMixinOutputLookup: boolean,
-  context: Context
+  _context: Context
 ): Rules {
   outputRules.sort(comparePosition);
 
@@ -875,11 +872,9 @@ export async function evaluateMixinArgs(
  * Evaluate a pattern-match operand in a fresh session scope.
  */
 async function preparePatternOperand(node: Node, context: Context): Promise<Node> {
-  context.pushState(new EvalState());
   try {
     return await node.eval(context);
   } finally {
-    context.popState();
   }
 }
 
@@ -1290,8 +1285,6 @@ export async function dispatchMixinEvalCandidates(
   } = dispatch;
   const pendingDefaultCandidates: PendingMixinDefaultCandidate<any>[] = [];
 
-  context.pushState(new EvalState());
-
   for (const candidate of evalCandidates) {
     if (isNode(candidate, N.Ruleset)) {
       if ((candidate as Ruleset).get('guard') instanceof Nil) {
@@ -1372,8 +1365,6 @@ export async function dispatchMixinEvalCandidates(
       pending.params
     )
   );
-
-  context.popState();
 
   const output = assembleMixinInvocationOutput(
     outputRules,

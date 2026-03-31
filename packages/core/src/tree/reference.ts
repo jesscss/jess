@@ -15,7 +15,6 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { getFunctionFromMixins } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Mixin } from './mixin.js';
 import type { Declaration } from './declaration.js';
@@ -431,10 +430,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           && getLookupParentNode(this, context)?.type === 'Interpolated';
         /**
          * @removal-target — node-copy-reduction: paramVar filtering
-         * With per-call EvalState isolation, mixin param vars live as
-         * field patches on the call's position and are naturally scoped
-         * by the position-aware parent chain. This walk-up check becomes
-         * redundant once per-call positions are fully wired.
+         * Mixin param vars should be naturally scoped by the position-aware
+         * parent chain. This walk-up check becomes redundant once per-call
+         * positions are fully wired.
          */
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
           let cursor: Node | undefined = activeRules;

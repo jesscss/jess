@@ -1,9 +1,8 @@
-import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
+import { NodeTraversalCursor } from './util/collections.js';
 import {
   type TreeContext,
   type Context
 } from '../context.js';
-import { EvalState } from '../eval-state.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
@@ -39,8 +38,6 @@ type AllNodeOptions = {
  */
 export type Primitive = undefined | boolean | string | number;
 export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
-
-const primitives = ['undefined', 'boolean', 'string', 'number'];
 
 export const ABORT: unique symbol = Symbol('ABORT');
 export const REMOVE: unique symbol = Symbol('REMOVE');
@@ -94,7 +91,7 @@ export type Cursor = {
 };
 
 function isContextArg(value: Context | RenderKey | undefined): value is Context {
-  return typeof value === 'object' && value !== null && 'activeState' in value;
+  return typeof value === 'object' && value !== null && 'rulesetFrames' in value;
 }
 
 /**
@@ -261,15 +258,6 @@ export abstract class Node<
 
   /** Will be copied during inherit */
   state = F_DEFAULT;
-
-  /**
-   * Carried EvalState from a mixin/function call. Used during serialization
-   * so child nodes resolve patched fields from their call-site state.
-   * Target: replace with subtree stack management during eval.
-   *
-   * @todo - Remove this.
-   */
-  _carriedState: unknown;
 
   preEvaluated = false;
   evaluated = false;
@@ -675,7 +663,6 @@ export abstract class Node<
       return this._forEachNodeSync(func as (n: Node, idx?: number) => Node, context);
     }
     const entries = this._collectChildEntries();
-    const state = context?.activeState;
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -684,18 +671,7 @@ export abstract class Node<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           if (result !== value) {
-            if (state) {
-              if (typeof key === 'string') {
-                state.get(this).fields.set(key, result);
-              } else {
-                // Array child — replace in the state-overlaid children array
-                const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
-                children[key as number] = result;
-                state.get(this).fields.set('value', children);
-              }
-            } else {
-              collection[key] = result;
-            }
+            collection[key] = result;
             if (result instanceof Node) {
               this.adopt(result);
             }
@@ -704,17 +680,7 @@ export abstract class Node<
         });
       }
       if (out !== value) {
-        if (state) {
-          if (typeof key === 'string') {
-            state.get(this).fields.set(key, out);
-          } else {
-            const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
-            children[key as number] = out as Node;
-            state.get(this).fields.set('value', children);
-          }
-        } else {
-          collection[key] = out as Node;
-        }
+        collection[key] = out as Node;
         this.adopt(out as Node);
         this._invalidateValueOf();
       }
@@ -740,9 +706,8 @@ export abstract class Node<
     return entries;
   }
 
-  private _forEachNodeSync(func: (n: Node, idx?: number) => Node, context?: Context) {
+  private _forEachNodeSync(func: (n: Node, idx?: number) => Node, _context?: Context) {
     const ck = (this.constructor as typeof Node).childKeys;
-    const state = context?.activeState;
 
     if (Array.isArray(ck)) {
       let idx = 0;
@@ -764,11 +729,7 @@ export abstract class Node<
         } else if (field instanceof Node) {
           const result = func(field, idx++);
           if (result !== field) {
-            if (state) {
-              state.get(this).fields.set(key!, result);
-            } else {
-              (this as any)[key!] = result;
-            }
+            (this as any)[key!] = result;
             this.adopt(result);
             this._invalidateValueOf();
           }
@@ -1334,7 +1295,7 @@ export abstract class Node<
    * In almost all Node cases, this should not be overriden,
    * and toTrimmedString() should be overridden instead.
    */
-  toString(options?: PrintOptions, renderKey?: RenderKey): string {
+  toString(options?: PrintOptions, _renderKey?: RenderKey): string {
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
@@ -1375,7 +1336,7 @@ export abstract class Node<
    *
    * @todo - Simplify
    */
-  toTrimmedString(options?: PrintOptions, renderKey?: RenderKey) {
+  toTrimmedString(options?: PrintOptions, _renderKey?: RenderKey) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -1441,7 +1402,7 @@ export abstract class Node<
   }
 
   /** Overridden in index.ts to avoid circularity */
-  operate(b: Node, op: Operator, context: Context): Node {
+  operate(_b: Node, _op: Operator, _context: Context): Node {
     return this;
   }
 
