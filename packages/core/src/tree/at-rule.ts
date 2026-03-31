@@ -626,8 +626,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               node.rules = finalRules;
               tryMergeNestedMedia();
 
-                if (pushedExtendRoot && node.isNestable()) {
-                  context.extendRoots.popExtendRoot();
+              if (pushedExtendRoot && node.isNestable()) {
+                context.extendRoots.popExtendRoot();
                 const layerName = context.extendRoots.takeLayerName(node);
                 const parent = parentExtendRoot ?? context.root ?? undefined;
                 context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, {

@@ -565,24 +565,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
         const prevCharsetEmitted = ctx?.charsetEmitted;
         const prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
-      // @charset must be first
+        // @charset must be first
         if (ctx?.currentCharset && !ctx.charsetEmitted) {
           const charset = ctx.currentCharset;
-        // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
+          // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
           const charsetStr = w.capture(() => charset.toTrimmedString(options));
           w.add(charsetStr, charset);
           w.add('\n');
-        // Do not permanently flip `charsetEmitted` here; restore at end.
+          // Do not permanently flip `charsetEmitted` here; restore at end.
           ctx.charsetEmitted = true;
         }
-      // Less keeps leading comments before hoisted @import output.
-      const isCommentLike = (node: Node): boolean => {
-        const text = String(node.valueOf?.() ?? '').trimStart();
-        if (!text.startsWith('/*')) {
-          return false;
-        }
-        return isNode(node, N.Comment) || isNode(node, N.Any);
-      };
+        // Less keeps leading comments before hoisted @import output.
+        const isCommentLike = (node: Node): boolean => {
+          const text = String(node.valueOf?.() ?? '').trimStart();
+          if (!text.startsWith('/*')) {
+            return false;
+          }
+          return isNode(node, N.Comment) || isNode(node, N.Any);
+        };
         if (ctx?.topImports?.length) {
           for (const node of this._getChildren(ctx)) {
             if (!isCommentLike(node)) {
@@ -598,7 +598,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         }
-      // @import must come after @charset but before other rules
+        // @import must come after @charset but before other rules
         if (ctx?.topImports?.length) {
           for (const importRule of ctx.topImports) {
             const importStr = w.capture(() => importRule.toString(options));
@@ -607,7 +607,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           // Do not permanently clear; restore at end.
         }
-      // Restore global tracking (we only needed it during this print).
+        // Restore global tracking (we only needed it during this print).
         if (ctx) {
           ctx.charsetEmitted = prevCharsetEmitted;
           if (prevTopImports) {

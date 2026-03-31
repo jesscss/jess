@@ -25,7 +25,6 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
   eval(context: Context): Promise<this>;
 }
 
-
 export function getListItem<T extends Node | NodeEdge<Node>>(list: T[], index: number, renderKey?: RenderKey) {
   if (renderKey === undefined) {
     return list[index];
@@ -166,7 +165,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     let newList = this.clone();
     const nextValue = [...ownItems, ...nextItems];
     newList.value = nextValue;
-    
+
     return newList;
   }
 
@@ -228,7 +227,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         nextValue[i] = result as T;
         changed = true;
       }
-      });
+    });
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {

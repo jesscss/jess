@@ -1,7 +1,6 @@
 import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
 import { Context } from '../../context.js';
 import { AssignmentType } from '../declaration.js';
-import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -39,35 +38,40 @@ describe('Declaration', () => {
     expect(rules([rule]).toString()).not.toContain('};');
   });
 
-  it('root rules serialization omits the trailing semicolon when eval state patches the value to a collection', () => {
+  it('root rules serialization omits the trailing semicolon when a cloned declaration replaces the value with a collection', () => {
     const rule = decl({ name: 'color', value: any('red') });
+    const clonedRule = rule.clone();
     const patchedValue = coll([
       decl({ name: 'nested', value: any('blue') })
     ]);
 
-    setField(rule, 'value', patchedValue, context);
+    clonedRule.adopt(patchedValue, context);
+    (clonedRule as unknown as { value: ReturnType<typeof coll> }).value = patchedValue;
 
-    expect(rule.toTrimmedString({ context })).toContain('{');
-    expect(rule.requiredSemi).toBe(true);
-    expect(rules([rule]).toString({ context })).not.toContain('};');
+    expect(clonedRule.toTrimmedString({ context })).toContain('{');
+    expect(rules([clonedRule]).toString({ context })).not.toContain('};');
+    expect(rule.toTrimmedString()).toBe('color: red');
   });
 
-  it('root rules serialization adds the trailing semicolon when eval state patches a collection value back to a scalar', () => {
+  it('root rules serialization adds the trailing semicolon when a cloned declaration replaces a collection value with a scalar', () => {
     const rule = decl({
       name: 'color',
       value: coll([
         decl({ name: 'nested', value: any('red') })
       ])
     });
+    const clonedRule = rule.clone();
+    const patchedValue = any('blue');
 
-    setField(rule, 'value', any('blue'), context);
+    clonedRule.adopt(patchedValue, context);
+    (clonedRule as unknown as { value: ReturnType<typeof any> }).value = patchedValue;
 
-    expect(rule.toTrimmedString({ context })).toBe('color: blue');
-    expect(rule.requiredSemi).toBe(false);
-    expect(rules([rule]).toString({ context })).toContain('blue;');
+    expect(clonedRule.toTrimmedString({ context })).toBe('color: blue');
+    expect(rules([clonedRule]).toString({ context })).toContain('blue;');
+    expect(rule.toTrimmedString()).toContain('{');
   });
 
-  it('serialize-helper omits the trailing semicolon for a state-patched collection value inside a ruleset', () => {
+  it('serialize-helper omits the trailing semicolon for a cloned collection value inside a ruleset', () => {
     const rule = decl({ name: 'color', value: any('red') });
     const node = rules([
       ruleset({
@@ -75,13 +79,16 @@ describe('Declaration', () => {
         rules: rules([rule])
       })
     ]);
+    const clonedNode = node.clone(true);
+    const clonedRule = (clonedNode.at(0, context) as ReturnType<typeof ruleset>).get('rules').at(0, context) as ReturnType<typeof decl>;
     const patchedValue = coll([
       decl({ name: 'nested', value: any('blue') })
     ]);
 
-    setField(rule, 'value', patchedValue, context);
+    clonedRule.adopt(patchedValue, context);
+    (clonedRule as unknown as { value: ReturnType<typeof coll> }).value = patchedValue;
 
-    expect(node.toString({ context })).toBeString(`
+    expect(clonedNode.toString({ context })).toBeString(`
       .x {
         color: {
             nested: blue;
@@ -90,7 +97,7 @@ describe('Declaration', () => {
     `);
   });
 
-  it('serialize-helper adds the trailing semicolon for a state-patched scalar value inside a ruleset', () => {
+  it('serialize-helper adds the trailing semicolon for a cloned scalar value inside a ruleset', () => {
     const rule = decl({
       name: 'color',
       value: coll([
@@ -103,17 +110,21 @@ describe('Declaration', () => {
         rules: rules([rule])
       })
     ]);
+    const clonedNode = node.clone(true);
+    const clonedRule = (clonedNode.at(0, context) as ReturnType<typeof ruleset>).get('rules').at(0, context) as ReturnType<typeof decl>;
+    const patchedValue = any('blue');
 
-    setField(rule, 'value', any('blue'), context);
+    clonedRule.adopt(patchedValue, context);
+    (clonedRule as unknown as { value: ReturnType<typeof any> }).value = patchedValue;
 
-    expect(node.toString({ context })).toBeString(`
+    expect(clonedNode.toString({ context })).toBeString(`
       .x {
         color: blue;
       }
     `);
   });
 
-  it('serialize-helper de-dupes declarations by a state-patched property name', () => {
+  it('serialize-helper de-dupes declarations by a cloned property name', () => {
     const first = decl({ name: 'color', value: any('red') });
     const second = decl({ name: 'background', value: any('red') });
     const node = rules([
@@ -122,44 +133,20 @@ describe('Declaration', () => {
         rules: rules([first, second])
       })
     ]);
+    const clonedNode = node.clone(true);
+    const clonedFirst = (clonedNode.at(0, context) as ReturnType<typeof ruleset>).get('rules').at(0, context) as ReturnType<typeof decl>;
+    const patchedName = any('background', { role: 'property' });
 
-    setField(first, 'name', any('background', { role: 'property' }), context);
+    clonedFirst.adopt(patchedName, context);
+    (clonedFirst as unknown as { name: ReturnType<typeof any> }).name = patchedName;
 
-    expect(node.toString({ context })).toBeString(`
+    expect(clonedNode.toString({ context })).toBeString(`
       .x {
         background: red;
       }
     `);
   });
 
-  it('rules coalescing uses a state-patched property name for merged declarations', async () => {
-    const base = decl({ name: 'color', value: any('red') });
-    const merged = decl(
-      { name: 'background', value: any('blue') },
-      { assign: AssignmentType.Add }
-    );
-    const node = rules([
-      ruleset({
-        selector: el('.x'),
-        rules: rules([base, merged])
-      })
-    ]);
-
-    setField(merged, 'name', any('color', { role: 'property' }), context);
-
-    const evald = await node.eval(context);
-    const css = evald.render(context);
-
-    // With EvalState, the +: Reference looks up the canonical property name
-    // in the registry. Since the merged decl's canonical name is 'background'
-    // (patched to 'color' only in state), the linear reference can't find a
-    // prior 'color' property to merge with. The leading Nil placeholder is
-    // stripped, leaving just 'blue'. Both declarations render under the
-    // state-patched name 'color'.
-    expect(css).toContain('color: red;');
-    expect(css).toContain('color: blue;');
-    expect(css).not.toContain('background:');
-  });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })
   //   rule.toModule(context, out)

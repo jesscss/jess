@@ -265,7 +265,7 @@ export abstract class Node<
    * Carried EvalState from a mixin/function call. Used during serialization
    * so child nodes resolve patched fields from their call-site state.
    * Target: replace with subtree stack management during eval.
-   * 
+   *
    * @todo - Remove this.
    */
   _carriedState: unknown;
@@ -443,7 +443,6 @@ export abstract class Node<
       self._requiredKeySet = undefined;
     }
   }
-
 
   /**
    * Add a flag to the node's state
@@ -1368,7 +1367,7 @@ export abstract class Node<
    * so that the internal spacing of the node serialization is
    * correct. This method just serializes a node without the outer
    * pre/post nodes.
-   * 
+   *
    * @todo - Simplify
    */
   toTrimmedString(options?: PrintOptions, renderKey?: RenderKey) {

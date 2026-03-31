@@ -414,12 +414,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           const targetRules = isNode(resolvedTarget, N.Ruleset)
             ? (resolvedTarget as Ruleset).enterRules(context)
             : (resolvedTarget as Mixin)
-              .get('rules', context)
-              .withRenderOwner(
-                resolvedTarget as Node,
-                (resolvedTarget as Node).renderKey ?? context.renderKey,
-                context
-              );
+                .get('rules', context)
+                .withRenderOwner(
+                  resolvedTarget as Node,
+                  (resolvedTarget as Node).renderKey ?? context.renderKey,
+                  context
+                );
           return [targetRules, valueKey] as [Node, string | string[]];
         }
 
