@@ -13,7 +13,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
-import { getChildren, setParent } from './util/field-helpers.js';
+import { getChildren } from './util/field-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -329,6 +329,44 @@ async function evalScopedRulesForOutput(
   }
 }
 
+async function resolveLoopEntryKey(
+  key: number | string | Node,
+  counter: number,
+  context: Context
+): Promise<Node> {
+  if (typeof key === 'number') {
+    return new Num(key + 1);
+  }
+  if (typeof key === 'string' && key === 'value') {
+    return new Num(counter);
+  }
+  if (isNode(key)) {
+    return await key.eval(context);
+  }
+  return new Any(String(key), { role: 'property' });
+}
+
+async function evaluateForIteration(
+  loopTemplate: Rules,
+  accumulatedNodes: readonly Node[],
+  bindingNames: readonly string[],
+  value: Node,
+  key: number | string | Node,
+  counter: number,
+  context: Context
+): Promise<Node[]> {
+  const priorScope = createPriorIterationScope(accumulatedNodes, loopTemplate, context);
+  const iterationKey = context.nextRenderKey();
+  const loopRules = createLoopIterationRules(loopTemplate, priorScope, iterationKey, context);
+  const resolvedValue = await value.eval(context);
+  const resolvedKey = await resolveLoopEntryKey(key, counter, context);
+  const bindings = createLoopBindings(bindingNames, resolvedValue, resolvedKey, counter);
+  for (const varDecl of bindings) {
+    loopRules.unshift(varDecl);
+  }
+  return evalScopedRulesForOutput(loopRules, context);
+}
+
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
     yield* resolveEntries(await input.get('value', context).eval(context), context);
@@ -519,7 +557,7 @@ export class For extends Node<ForValue, any, ForChildData> {
     makeDirectiveRulesPublic(this.rules);
   }
 
-  override preEval(context: Context): MaybePromise<Node> {
+  override preEval(_context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
       const node = this.clone() as For;
       node.preEvaluated = true;
@@ -541,26 +579,16 @@ export class For extends Node<ForValue, any, ForChildData> {
       let counter = 1;
       const evaluatedIterable = await iterable.eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const priorScope = createPriorIterationScope(accumulatedNodes, loopTemplate, context);
-        const iterationKey = context.nextRenderKey();
-        const loopRules = createLoopIterationRules(loopTemplate, priorScope, iterationKey, context);
-        const resolvedValue = await value.eval(context);
-        let resolvedKey: Node;
-        if (typeof key === 'number') {
-          resolvedKey = new Num(key + 1);
-        } else if (typeof key === 'string' && key === 'value') {
-          resolvedKey = new Num(counter);
-        } else if (isNode(key)) {
-          resolvedKey = await key.eval(context);
-        } else {
-          resolvedKey = new Any(String(key), { role: 'property' });
-        }
-        const bindings = createLoopBindings(bindingNames, resolvedValue, resolvedKey, counter);
-        for (const varDecl of bindings) {
-          loopRules.unshift(varDecl);
-        }
+        const outputNodes = await evaluateForIteration(
+          loopTemplate,
+          accumulatedNodes,
+          bindingNames,
+          value,
+          key,
+          counter,
+          context
+        );
         counter++;
-        const outputNodes = await evalScopedRulesForOutput(loopRules, context);
         for (const outNode of outputNodes) {
           appendControlOutputNode(accumulatedNodes, outNode, context);
         }
