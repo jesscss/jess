@@ -1,4 +1,4 @@
-import { F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
+import { CANONICAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
 import type { Any, AnyRole } from './any.js';
@@ -235,9 +235,15 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     node.sourceNode ??= this;
 
     const name = node.get('name', context);
-    const rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);
+    let rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);
+    if (rules.renderKey === CANONICAL) {
+      const wrappedRules = rules.createShallowBodyWrapper(context);
+      node.rules = wrappedRules;
+      node.adopt(wrappedRules, context);
+      rules = wrappedRules;
+    }
     // Set visibility on the canonical rules options — mixin body visibility
-    // is set once during preEval, same as dev baseline.
+    // is set on the derived mixin body wrapper for this eval path.
     const rulesVisibility = { ...(rules.options.rulesVisibility ?? {}) };
     if (context.leakyRules) {
       rulesVisibility.Mixin = 'public';

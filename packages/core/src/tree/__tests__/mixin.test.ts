@@ -315,7 +315,7 @@ describe('Mixin', () => {
 
       const preEvald = await mixinDef.preEval(localContext);
 
-      const preEvaldRules = (preEvald as Ruleset).enterRules(localContext);
+      const preEvaldRules = preEvald.get('rules');
       expect(preEvaldRules.options.rulesVisibility.Mixin).toBe('private');
       expect(preEvaldRules.options.rulesVisibility.VarDeclaration).toBe('private');
     });

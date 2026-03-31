@@ -34,6 +34,7 @@ export function setParent(
     }
     return;
   }
+  node.parent = parent;
 }
 
 export function isEvaluated(
@@ -118,7 +119,9 @@ export function setChildren(
         removeParentEdge(child, renderKey);
       }
     }
-    for (const node of nodes) {
+    for (let index = 0; index < nodes.length; index++) {
+      const node = nodes[index]!;
+      addEdgeAt(rules, 'value', index, renderKey, node);
       addParentEdge(node, renderKey, rules);
     }
     if (options.markDirty !== false) {
@@ -172,6 +175,7 @@ export function setChildAt(
       if (previous && previous !== node) {
         removeParentEdge(previous, renderKey);
       }
+      addEdgeAt(rules, 'value', index, renderKey, node);
       addParentEdge(node, renderKey, rules);
       if (options.markDirty !== false) {
         markScopeDirty(rules, ctx);

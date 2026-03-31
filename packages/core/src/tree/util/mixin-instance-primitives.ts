@@ -50,6 +50,7 @@ export type PendingMixinDefaultCandidate<TCandidate = unknown> = {
   outerRules?: Rules;
   params?: List<Node>;
   group: MixinDefaultGroup;
+  lookupScope?: Rules;
 };
 
 export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
@@ -284,9 +285,9 @@ export function createMixinInvocationRules(
   lookupParent: Node | undefined,
   sourceParent: Node | undefined,
   index: number,
-  _context: Context
+  context: Context
 ): Rules {
-  const renderKey = Symbol('mixin-invocation');
+  const renderKey = context.nextRenderKey();
   const wrapper = body.createShallowBodyWrapper(undefined, renderKey);
   wrapper.index = index;
   wrapper.parent = lookupParent;
@@ -405,14 +406,17 @@ export function prepareMixinCandidateInvocation(
  */
 export function withMixinLookupScope<T>(
   scope: Rules | undefined,
+  lookupScope: Rules | undefined,
   context: Context,
   fn: () => MaybePromise<T>
 ): MaybePromise<T> {
   const previousRulesContext = context.rulesContext;
   const previousRenderKey = context.renderKey;
+  const previousLookupScope = context.lookupScope;
   if (scope) {
     context.rulesContext = scope;
   }
+  context.lookupScope = lookupScope;
   context.renderKey = scope?.renderKey ?? previousRenderKey;
   try {
     const out = fn();
@@ -420,14 +424,17 @@ export function withMixinLookupScope<T>(
       return (out as Promise<T>).finally(() => {
         context.rulesContext = previousRulesContext;
         context.renderKey = previousRenderKey;
+        context.lookupScope = previousLookupScope;
       });
     }
     context.rulesContext = previousRulesContext;
     context.renderKey = previousRenderKey;
+    context.lookupScope = previousLookupScope;
     return out;
   } catch (error) {
     context.rulesContext = previousRulesContext;
     context.renderKey = previousRenderKey;
+    context.lookupScope = previousLookupScope;
     throw error;
   }
 }
@@ -465,6 +472,7 @@ export async function evaluateMixinGuardCandidate(
       );
       context.isDefault = isDefaultValue;
       const probeResult = await withMixinLookupScope(
+        nextScope,
         nextScope,
         context,
         () => guardNode.eval(context)
@@ -573,6 +581,7 @@ export async function replayWinningMixinDefaultCandidates<TCandidate>(
     }
     await withMixinLookupScope(
       pending.outerRules ?? pending.rules,
+      pending.outerRules ?? pending.lookupScope ?? findRulesAncestor(pending.rules, context),
       context,
       () => evaluateCandidateOutput(pending)
     );
@@ -626,7 +635,7 @@ export async function evaluateRulesetMixinCandidateOutput(
   restrictMixinOutputLookup: boolean,
   context: Context
 ): Promise<Rules> {
-  const renderKey = Symbol('ruleset-mixin');
+  const renderKey = context.nextRenderKey();
   let rules = sourceRules.createShallowBodyWrapper(undefined, renderKey);
   rules.parent = parent;
   rules.sourceParent = sourceParent;
@@ -722,13 +731,15 @@ export async function processPreparedMixinCandidate<TCandidate>(
         rules,
         outerRules: nextOuterRules,
         params,
-        group: evaluatedGuard.defaultGroup!
+        group: evaluatedGuard.defaultGroup!,
+        lookupScope: nextOuterRules ?? getMixinCandidateLookupScope(parent, rules, context)
       };
     }
   }
 
   await withMixinLookupScope(
     nextOuterRules ?? rules,
+    nextOuterRules ?? getMixinCandidateLookupScope(parent, rules, context),
     context,
     () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
   );
@@ -759,6 +770,17 @@ export function findSourceRulesAncestor(node: Node | undefined, context: Context
     sp = current ? getSourceParent(current, context) : undefined;
   }
   return sp ? findRulesAncestor(sp, context) : undefined;
+}
+
+export function getMixinCandidateLookupScope(
+  parent: Node | undefined,
+  rules: Rules,
+  context: Context
+): Rules | undefined {
+  if (isNode(parent, N.Rules)) {
+    return parent as Rules;
+  }
+  return findRulesAncestor(parent, context) ?? findRulesAncestor(rules, context);
 }
 
 /**
@@ -806,6 +828,13 @@ function copyDependency(source: Node, target: Node, context: Context): void {
       sourceExpr: dependency.sourceExpr
     }, context);
   }
+}
+
+function materializeMixinOutputNode<T extends Node>(node: T, context: Context): T {
+  if (node === node.sourceNode) {
+    return node.clone(false, undefined, context) as T;
+  }
+  return node;
 }
 
 /**
@@ -1204,7 +1233,7 @@ export async function evaluateCandidateOutput(
   }
   try {
     const callerParent = getParentFn(candidate);
-    rules.parent = invocationParent ?? callerParent;
+    rules.parent ??= outerRules ?? invocationParent ?? callerParent;
     rules.sourceParent = sourceParent;
     const previousRenderKey = context.renderKey;
     context.renderKey = rules.renderKey;
@@ -1221,9 +1250,38 @@ export async function evaluateCandidateOutput(
     newRules.parent = invocationParent ?? callerParent;
     newRules.sourceParent = sourceParent;
     newRules.index = candidate.index;
-    newRules.options.isMixinOutput = outerRules
-      ? false
-      : restrictMixinOutputLookup;
+
+    if (outerRules) {
+      const outputContainer = outerRules;
+      outputContainer.parent ??= invocationParent ?? callerParent;
+      outputContainer.sourceParent = sourceParent;
+      outputContainer.index = candidate.index;
+      outputContainer.options.isMixinOutput = false;
+      const previousRenderKey = context.renderKey;
+      const previousRulesContext = context.rulesContext;
+      context.renderKey = newRules.renderKey;
+      context.rulesContext = newRules;
+      try {
+        for (const child of [...newRules.getRegistryChildren(context)]) {
+          const emittedChild = materializeMixinOutputNode(child, context);
+          outputContainer.push(emittedChild);
+          const previousChildRenderKey = context.renderKey;
+          context.renderKey = newRules.renderKey;
+          try {
+            setParent(emittedChild, outputContainer, context);
+          } finally {
+            context.renderKey = previousChildRenderKey;
+          }
+        }
+      } finally {
+        context.renderKey = previousRenderKey;
+        context.rulesContext = previousRulesContext;
+      }
+      outputRules.push(outputContainer);
+      return;
+    }
+
+    newRules.options.isMixinOutput = restrictMixinOutputLookup;
     if (context.treeContext?.file) {
       newRules.options.rulesVisibility ??= {};
       newRules.options.rulesVisibility.VarDeclaration = 'private';

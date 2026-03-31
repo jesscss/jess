@@ -180,7 +180,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!context) {
       return fn();
     }
-    const needsRenderKey = context.renderKey !== this.renderKey;
+    const targetRenderKey = this.renderKey === CANONICAL
+      ? (context.renderKey ?? this.renderKey)
+      : this.renderKey;
+    const needsRenderKey = context.renderKey !== targetRenderKey;
     const needsRulesContext = context.rulesContext !== this;
     if (!needsRenderKey && !needsRulesContext) {
       return fn();
@@ -189,7 +192,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const previousRenderKey = context.renderKey;
     const previousRulesContext = context.rulesContext;
     if (needsRenderKey) {
-      context.renderKey = this.renderKey;
+      context.renderKey = targetRenderKey;
     }
     if (needsRulesContext) {
       context.rulesContext = this;
