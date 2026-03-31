@@ -142,6 +142,133 @@ describe('Control Nodes', () => {
     expect(context.renderCounter).toBe(6);
   });
 
+  it('proves a nested $for can resolve the inner iterable from the current outer loop binding', async () => {
+    const context = new Context();
+    const innerLoop = makeLoop(
+      makePattern(['value'], 'single'),
+      ref({ key: 'row' }, { type: 'variable' }),
+      rules([
+        decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+      ])
+    );
+    const outerLoop = makeLoop(
+      makePattern(['row'], 'single'),
+      list([
+        list([new Any('a'), new Any('b')]),
+        list([new Any('c'), new Any('d')])
+      ]),
+      rules([innerLoop])
+    );
+    const root = rules([outerLoop]);
+
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toContain('item: a;');
+    expect(css).toContain('item: b;');
+    expect(css).toContain('item: c;');
+    expect(css).toContain('item: d;');
+    expect(css).toMatch(/item: a;[\s\S]*item: b;[\s\S]*item: c;[\s\S]*item: d;/);
+    expect(context.renderCounter).toBe(6);
+  });
+
+  it('proves a nested $for resolves the outer binding for the inner iterable, then shadows that binding inside the inner body', async () => {
+    const context = new Context();
+    const innerLoop = makeLoop(
+      makePattern(['value'], 'single'),
+      ref({ key: 'value' }, { type: 'variable' }),
+      rules([
+        decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+      ])
+    );
+    const outerLoop = makeLoop(
+      makePattern(['value', 'key'], 'block'),
+      list([
+        list([new Any('a'), new Any('b')]),
+        list([new Any('c'), new Any('d')])
+      ]),
+      rules([
+        decl({ name: 'outer', value: ref({ key: 'key' }, { type: 'variable' }) }),
+        innerLoop
+      ])
+    );
+    const root = rules([outerLoop]);
+
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toMatch(
+      /outer: 1;[\s\S]*item: a;[\s\S]*item: b;[\s\S]*outer: 2;[\s\S]*item: c;[\s\S]*item: d;/
+    );
+    expect(css).not.toContain('item: $value;');
+    expect(context.renderCounter).toBe(6);
+  });
+
+  it('proves outer loop bindings are restored after an inner $for exits', async () => {
+    const context = new Context();
+    const innerLoop = makeLoop(
+      makePattern(['value', 'key'], 'block'),
+      ref({ key: 'value' }, { type: 'variable' }),
+      rules([
+        decl({ name: 'inner', value: ref({ key: 'key' }, { type: 'variable' }) })
+      ])
+    );
+    const outerLoop = makeLoop(
+      makePattern(['value', 'key'], 'block'),
+      list([
+        list([new Any('a'), new Any('b')]),
+        list([new Any('c'), new Any('d')])
+      ]),
+      rules([
+        decl({ name: 'outer-before', value: ref({ key: 'key' }, { type: 'variable' }) }),
+        innerLoop,
+        decl({ name: 'outer-after', value: ref({ key: 'key' }, { type: 'variable' }) })
+      ])
+    );
+    const root = rules([outerLoop]);
+
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toMatch(
+      /outer-before: 1;[\s\S]*inner: 1;[\s\S]*inner: 2;[\s\S]*outer-after: 1;[\s\S]*outer-before: 2;[\s\S]*inner: 1;[\s\S]*inner: 2;[\s\S]*outer-after: 2;/
+    );
+    expect(context.renderCounter).toBe(6);
+  });
+
+  it('proves nested $for lookup can climb past an intermediate loop scope to reuse an outer iterable binding', async () => {
+    const context = new Context();
+    const innerLoop = makeLoop(
+      makePattern(['value'], 'single'),
+      ref({ key: 'rows' }, { type: 'variable' }),
+      rules([
+        decl({ name: 'inner', value: ref({ key: 'value' }, { type: 'variable' }) })
+      ])
+    );
+    const middleLoop = makeLoop(
+      makePattern(['row'], 'single'),
+      ref({ key: 'rows' }, { type: 'variable' }),
+      rules([
+        decl({ name: 'middle', value: ref({ key: 'row' }, { type: 'variable' }) }),
+        innerLoop
+      ])
+    );
+    const outerLoop = makeLoop(
+      makePattern(['rows'], 'single'),
+      list([list([new Any('a'), new Any('b')])]),
+      rules([middleLoop])
+    );
+    const root = rules([outerLoop]);
+
+    const evald = await root.eval(context);
+    const css = evald.render(context);
+
+    expect(css).toMatch(
+      /middle: a;[\s\S]*inner: a;[\s\S]*inner: b;[\s\S]*middle: b;[\s\S]*inner: a;[\s\S]*inner: b;/
+    );
+    expect(context.renderCounter).toBe(7);
+  });
+
   it('evaluates $for with call iterable branch', async () => {
     const context = new Context();
     const root = rules([]);

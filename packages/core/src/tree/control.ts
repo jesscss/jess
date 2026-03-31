@@ -176,6 +176,159 @@ function cloneCurrentNodeForOutput<T extends Node>(node: T, context: Context): T
   return cloned;
 }
 
+function mergeControlDeclarationValues(
+  outNode: Node,
+  prev: Node,
+  normalizedFromAssign: AssignmentType | undefined,
+  context: Context
+): void {
+  if (!isNode(prev, N.Declaration) || !isNode(outNode, N.Declaration)) {
+    return;
+  }
+  const prevValue = getControlDeclarationValue(prev);
+  const nextValue = getControlDeclarationValue(outNode);
+  if (
+    normalizedFromAssign === AssignmentType.Add
+    || normalizedFromAssign === AssignmentType.MergeList
+  ) {
+    const prevItems = isNode(prevValue, N.List)
+      ? prevValue.get('value')
+      : [prevValue];
+    const nextItems = isNode(nextValue, N.List)
+      ? nextValue.get('value')
+      : [nextValue];
+    const nextAlreadyIncludesPrev =
+      nextItems.length >= prevItems.length
+      && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
+    const mergedItems = nextAlreadyIncludesPrev
+      ? [...nextItems]
+      : [...prevItems, ...nextItems];
+    setControlDeclarationValue(
+      outNode,
+      new List(mergedItems).inherit(nextValue),
+      context
+    );
+    return;
+  }
+  if (normalizedFromAssign === AssignmentType.MergeSequence) {
+    const prevItems = isNode(prevValue, N.Sequence)
+      ? prevValue.get('value')
+      : [prevValue];
+    const nextItems = isNode(nextValue, N.Sequence)
+      ? nextValue.get('value')
+      : [nextValue];
+    const nextAlreadyIncludesPrev =
+      nextItems.length >= prevItems.length
+      && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
+    const mergedItems = nextAlreadyIncludesPrev
+      ? [...nextItems]
+      : [...prevItems, ...nextItems];
+    setControlDeclarationValue(
+      outNode,
+      new Sequence(mergedItems).inherit(nextValue),
+      context
+    );
+  }
+}
+
+function findMatchingAccumulatedDeclarationIndex(
+  accumulatedNodes: readonly Node[],
+  outName: string
+): number {
+  for (let i = 0; i < accumulatedNodes.length; i++) {
+    const prev = accumulatedNodes[i]!;
+    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev) === outName) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function removeDuplicateAccumulatedDeclarationsAfter(
+  accumulatedNodes: Node[],
+  outName: string,
+  firstMatch: number
+): void {
+  for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
+    const prev = accumulatedNodes[i]!;
+    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev) === outName) {
+      accumulatedNodes.splice(i, 1);
+    }
+  }
+}
+
+function insertControlNodeBeforeFirstNestedRuleset(
+  accumulatedNodes: Node[],
+  outNode: Node
+): boolean {
+  for (let i = 0; i < accumulatedNodes.length; i++) {
+    if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
+      accumulatedNodes.splice(i, 0, outNode);
+      return true;
+    }
+  }
+  return false;
+}
+
+function appendControlOutputNode(
+  accumulatedNodes: Node[],
+  outNode: Node,
+  context: Context
+): void {
+  if (isNode(outNode, N.Declaration)) {
+    const normalizedFromAssign = getControlDeclarationAssignType(outNode);
+    const outName = getControlDeclarationName(outNode);
+    const isMergedAssignment =
+      normalizedFromAssign === AssignmentType.Add
+      || normalizedFromAssign === AssignmentType.MergeList
+      || normalizedFromAssign === AssignmentType.MergeSequence;
+    // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
+    // `index` declarations in plain loop bodies should remain per-iteration.
+    const shouldCoalesceByName = outName === 'padding';
+    if (isMergedAssignment || shouldCoalesceByName) {
+      const firstMatch = findMatchingAccumulatedDeclarationIndex(accumulatedNodes, outName);
+      if (firstMatch >= 0) {
+        mergeControlDeclarationValues(
+          outNode,
+          accumulatedNodes[firstMatch]!,
+          normalizedFromAssign,
+          context
+        );
+        accumulatedNodes[firstMatch] = outNode;
+        removeDuplicateAccumulatedDeclarationsAfter(accumulatedNodes, outName, firstMatch);
+        return;
+      }
+      // Keep merged declarations before nested rulesets to avoid split-output
+      // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
+      if (insertControlNodeBeforeFirstNestedRuleset(accumulatedNodes, outNode)) {
+        return;
+      }
+    }
+  }
+  accumulatedNodes.push(outNode);
+}
+
+function collectScopedResultNodes(result: Node, context: Context): Node[] {
+  if (!isNode(result, N.Rules)) {
+    return [result];
+  }
+  return getChildren(result, context).map(rawOutNode => cloneCurrentNodeForOutput(rawOutNode, context));
+}
+
+async function evalScopedRulesForOutput(
+  scopedRules: Rules,
+  context: Context
+): Promise<Node[]> {
+  const previousRenderKey = context.renderKey;
+  try {
+    context.renderKey = scopedRules.renderKey;
+    const result = await scopedRules.eval(context);
+    return collectScopedResultNodes(result, context);
+  } finally {
+    context.renderKey = previousRenderKey;
+  }
+}
+
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
     yield* resolveEntries(await input.get('value', context).eval(context), context);
@@ -407,107 +560,10 @@ export class For extends Node<ForValue, any, ForChildData> {
           loopRules.unshift(varDecl);
         }
         counter++;
-        const previousRenderKey = context.renderKey;
-        context.renderKey = loopRules.renderKey;
-        const result = await loopRules.eval(context);
-        if (isNode(result, N.Rules)) {
-          for (const rawOutNode of getChildren(result, context)) {
-            const outNode = cloneCurrentNodeForOutput(rawOutNode, context);
-            if (isNode(outNode, N.Declaration)) {
-              const normalizedFromAssign = getControlDeclarationAssignType(outNode);
-              const outName = getControlDeclarationName(outNode);
-              const isMergedAssignment =
-                normalizedFromAssign === AssignmentType.Add
-                || normalizedFromAssign === AssignmentType.MergeList
-                || normalizedFromAssign === AssignmentType.MergeSequence;
-              // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
-              // `index` declarations in plain loop bodies should remain per-iteration.
-              const shouldCoalesceByName = outName === 'padding';
-              if (isMergedAssignment || shouldCoalesceByName) {
-                let firstMatch = -1;
-                for (let i = 0; i < accumulatedNodes.length; i++) {
-                  const prev = accumulatedNodes[i]!;
-                  if (isNode(prev, N.Declaration) && getControlDeclarationName(prev) === outName) {
-                    firstMatch = i;
-                    break;
-                  }
-                }
-                if (firstMatch >= 0) {
-                  const prev = accumulatedNodes[firstMatch]!;
-                  if (isNode(prev, N.Declaration)) {
-                    const prevValue = getControlDeclarationValue(prev);
-                    const nextValue = getControlDeclarationValue(outNode);
-                    if (
-                      normalizedFromAssign === AssignmentType.Add
-                      || normalizedFromAssign === AssignmentType.MergeList
-                    ) {
-                      const prevItems = isNode(prevValue, N.List)
-                        ? prevValue.get('value')
-                        : [prevValue];
-                      const nextItems = isNode(nextValue, N.List)
-                        ? nextValue.get('value')
-                        : [nextValue];
-                      const nextAlreadyIncludesPrev =
-                        nextItems.length >= prevItems.length
-                        && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
-                      const mergedItems = nextAlreadyIncludesPrev
-                        ? [...nextItems]
-                        : [...prevItems, ...nextItems];
-                      setControlDeclarationValue(
-                        outNode,
-                        new List(mergedItems).inherit(nextValue),
-                        context
-                      );
-                    } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
-                      const prevItems = isNode(prevValue, N.Sequence)
-                        ? prevValue.get('value')
-                        : [prevValue];
-                      const nextItems = isNode(nextValue, N.Sequence)
-                        ? nextValue.get('value')
-                        : [nextValue];
-                      const nextAlreadyIncludesPrev =
-                        nextItems.length >= prevItems.length
-                        && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
-                      const mergedItems = nextAlreadyIncludesPrev
-                        ? [...nextItems]
-                        : [...prevItems, ...nextItems];
-                      setControlDeclarationValue(
-                        outNode,
-                        new Sequence(mergedItems).inherit(nextValue),
-                        context
-                      );
-                    }
-                  }
-                  accumulatedNodes[firstMatch] = outNode;
-                  for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
-                    const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev) === outName) {
-                      accumulatedNodes.splice(i, 1);
-                    }
-                  }
-                  continue;
-                }
-                // Keep merged declarations before nested rulesets to avoid split-output
-                // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
-                let firstNestedRuleset = -1;
-                for (let i = 0; i < accumulatedNodes.length; i++) {
-                  if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
-                    firstNestedRuleset = i;
-                    break;
-                  }
-                }
-                if (firstNestedRuleset >= 0) {
-                  accumulatedNodes.splice(firstNestedRuleset, 0, outNode);
-                  continue;
-                }
-              }
-            }
-            accumulatedNodes.push(outNode);
-          }
-        } else {
-          accumulatedNodes.push(result);
+        const outputNodes = await evalScopedRulesForOutput(loopRules, context);
+        for (const outNode of outputNodes) {
+          appendControlOutputNode(accumulatedNodes, outNode, context);
         }
-        context.renderKey = previousRenderKey;
       }
       const output = new Rules(accumulatedNodes);
       return output;
