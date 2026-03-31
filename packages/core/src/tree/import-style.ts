@@ -9,7 +9,7 @@ import { EvalState } from '../eval-state.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { getField, getParent, getChildren, markChangedVar, setIndex } from './util/field-helpers.js';
+import { getParent, getChildren, markChangedVar, setIndex } from './util/field-helpers.js';
 import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';

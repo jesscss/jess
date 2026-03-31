@@ -13,6 +13,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
+import { addParentEdge } from './util/cursor.js';
 export type { TreeContext };
 
 const { isArray } = Array;
@@ -968,10 +969,14 @@ export abstract class Node<
     const options = this._meta?.options;
     const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
 
-    // Route parent writes through eval state and restore canonical pointers.
+    // Reconnect shallow-cloned children on the active render path without
+    // mutating canonical parent pointers.
     if (priorChildParents) {
+      const renderKey = ctx!.renderKey ?? this.renderKey;
       for (const [child, priorParent] of priorChildParents) {
-        ctx!.activeState.get(child).fields.set('parent', newNode);
+        if (renderKey !== undefined) {
+          addParentEdge(child, renderKey, newNode);
+        }
         (child as any).parent = priorParent;
       }
     }

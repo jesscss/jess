@@ -17,7 +17,6 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
-import { getField } from './field-helpers.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -153,13 +152,12 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
     const arg = selector.get('arg');
     if (arg && isNode(arg, N.Selector)) {
       const copy = selector.copy(true) as PseudoSelector;
-      copy.setData(
-        'arg',
-        normalizeGeneratedIsOrder(
-          arg as Selector,
-          insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
-        )
+      const nextArg = normalizeGeneratedIsOrder(
+        arg as Selector,
+        insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
       );
+      copy.adopt(nextArg);
+      copy.arg = nextArg;
       return copy as Selector;
     }
   }
@@ -665,16 +663,10 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
 }
 
 function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | undefined {
-  return context
-    ? getField<boolean | undefined>(ruleset, 'hoistToRoot', context)
-    : ruleset.hoistToRoot;
+  return ruleset.hoistToRoot;
 }
 
 function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
-  if (context) {
-    context.activeState.get(ruleset).fields.set('hoistToRoot', value);
-    return;
-  }
   ruleset.hoistToRoot = value;
 }
 

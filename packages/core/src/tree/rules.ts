@@ -34,10 +34,8 @@ import { addEdge, addParentEdge, getEdgeAt } from './util/cursor.js';
 import { getCurrentParentNode } from './util/selector-utils.js';
 import {
   getChildren,
-  getField,
   getParent,
   getSourceParent,
-  setField,
   setChildren,
   setChildAt,
   getIndex,
@@ -216,13 +214,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   } {
-    return this._withOwnRenderKey(context, () => (
-      context
-        ? getField<RulesOptions & NodeOptions & {
-          rulesVisibility: Record<string, RulesVisibility>;
-        }>(this, 'options', context)
-        : this.options
-    ));
+    return this._withOwnRenderKey(context, () => this.options);
   }
 
   setCurrentOptions(
@@ -232,10 +224,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context?: Context
   ): void {
     this._withOwnRenderKey(context, () => {
-      if (context && this === this.sourceNode) {
-        setField(this, 'options', options, context);
-        return;
-      }
       this.options = options;
     });
   }
@@ -431,17 +419,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context?: Context
   ) {
     return this._withOwnRenderKey(context, () => {
-      const key = Rules._registryKey(type);
       this._ensureWrapperRegistrySeeded(context);
-      if (context && !this._isWrapperRegistryOwner()) {
-        const ns = context.activeState.get(this);
-        let registry = ns[key];
-        if (!registry) {
-          registry = new (Rules._registryClass(type))(this, context) as any;
-          ns[key] = registry as any;
-        }
-        return (registry as any).add(node);
-      }
       const registry = this._ensureDirectRegistry(type, context);
       return registry.add(node);
     });
@@ -458,21 +436,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context) {
     return this._withOwnRenderKey(context, () => {
-      const key = Rules._registryKey(type);
       this._ensureWrapperRegistrySeeded(context);
-      if (context && !this._isWrapperRegistryOwner()) {
-        let state: EvalState | undefined = context.activeState;
-        while (state) {
-          const registry = state.peek(this)?.[key];
-          if (registry) {
-            return registry;
-          }
-          state = state.parent;
-        }
-      }
-      // Fall back to instance property; create if missing.
-      // Empty registries are cheap — just a Map. The parent/child walk
-      // infrastructure needs a registry instance even when nothing is registered.
       return this._ensureDirectRegistry(type, context);
     });
   }
@@ -1953,28 +1917,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This handles both in-scope merges and merges that span call-produced Rules blocks.
    */
   private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
-    const getDeclValue = (node: Node): Node => (
-      context ? getField<Node>(node, 'value', context) : (node as any).value
-    );
-    const getDeclImportant = (node: Node): Node | undefined => (
-      context ? getField<Node | undefined>(node, 'important', context) : (node as any).important
-    );
-    const getDeclName = (node: Node): string => {
-      const name = context ? getField<Node>(node, 'name', context) : (node as any).name;
-      return String((name as any)?.valueOf?.() ?? name);
+    const getDeclValue = (node: Declaration): Node => node.getCurrentValue(context);
+    const getDeclImportant = (node: Declaration): Node | undefined => node.getCurrentImportant(context);
+    const getDeclName = (node: Declaration): string => {
+      const name = node.getCurrentName(context);
+      return String(name?.valueOf?.() ?? name);
     };
-    const getDeclAssign = (node: Node): string => {
-      const options = context
-        ? getField<Record<string, unknown> | undefined>(node, 'options', context)
-        : node.options;
+    const getDeclAssign = (node: Declaration): string => {
+      const options = node.getCurrentOptions(context);
       return String(options?.normalizedFromAssign ?? '');
     };
-    const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
-      if (context) {
-        setField(node, key, value, context);
-        return;
-      }
-      node.setData(key, value);
+    const setDeclValue = (node: Declaration, value: Node): void => {
+      node.setCurrentValue(value, context);
+    };
+    const setDeclImportant = (node: Declaration, value: Node | undefined): void => {
+      node.setCurrentImportant(value as Declaration['important'], context);
     };
     const removeVisibleFlag = (node: Node): void => {
       if (context) {
@@ -1991,17 +1948,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       && node._getChildren(context).length > 0
       && node._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
     );
-    const composeMergedValue = (decl: Node, prior: Node, assign: string): void => {
+    const composeMergedValue = (decl: Declaration, prior: Declaration, assign: string): void => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return;
       }
       const priorValue = getDeclValue(prior);
       const nextValue = getDeclValue(decl);
-      setDeclField(decl, 'value', assign === '&_:'
+      setDeclValue(decl, assign === '&_:'
         ? spaced([priorValue, nextValue])
         : new List([priorValue, nextValue]));
       if (!getDeclImportant(decl) && getDeclImportant(prior)) {
-        setDeclField(decl, 'important', getDeclImportant(prior));
+        setDeclImportant(decl, getDeclImportant(prior));
       }
     };
     const normalizeMergedDeclarationValue = (node: Node): void => {

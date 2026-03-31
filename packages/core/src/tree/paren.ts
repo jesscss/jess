@@ -6,7 +6,6 @@ import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField } from './util/field-helpers.js';
 
 export type ParenOptions = {
   escaped?: boolean;
@@ -45,9 +44,7 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
   }
 
   private _getOptions(context?: Context): ParenOptions | undefined {
-    return context
-      ? getField<ParenOptions | undefined>(this, 'options', context)
-      : this.options;
+    return this.options;
   }
 
   private _isEscaped(context?: Context): boolean {

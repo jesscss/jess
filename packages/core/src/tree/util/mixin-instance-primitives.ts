@@ -18,7 +18,7 @@ import { CANONICAL, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getChildren, getDependency, getField, getParent, getSourceParent, mergeDependencies, setField, setChildren, setDependency, setParent, setSourceParent } from './field-helpers.js';
+import { getChildren, getDependency, getParent, getSourceParent, mergeDependencies, setChildren, setDependency, setParent, setSourceParent } from './field-helpers.js';
 import type { Mixin } from '../mixin.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
@@ -1332,7 +1332,7 @@ export async function dispatchMixinEvalCandidates(
     let rules = candidate
       .get('rules', candidateRenderKey ?? context)
       .withRenderOwner(candidate, candidateRenderKey, context);
-    let params = getField<List<Node> | undefined>(candidate as Node, 'params', context);
+    let params = candidate.params;
     const prepared = prepareMixinCandidateInvocation(
       rules,
       params,

@@ -319,7 +319,7 @@ function applyTemplate(resolved: Selector, template: string, inherit: Selector):
     for (const s of n.nodes(true)) {
       if (isNode(s, N.SimpleSelector)) {
         if (isNode(s, N.BasicSelector)) {
-          (s as BasicSelector).setData((s as BasicSelector).value + template);
+          (s as BasicSelector).value = (s as BasicSelector).value + template;
           return;
         }
         throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
@@ -485,7 +485,9 @@ function resolveAuthoredAmpersands(
     const arg = (selector as PseudoSelector).get('arg');
     if (arg && isNode(arg, N.Selector)) {
       const copy = (selector as PseudoSelector).copy(true) as PseudoSelector;
-      copy.setData('arg', resolveAuthoredAmpersands(arg as Selector, parentSelector));
+      const nextArg = resolveAuthoredAmpersands(arg as Selector, parentSelector);
+      copy.adopt(nextArg);
+      copy.arg = nextArg;
       return copy as Selector;
     }
   }

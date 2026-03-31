@@ -530,7 +530,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               }
               if (changed) {
                 const nextRules = existingRules.clone();
-                nextRules.setData(nextChildren);
+                (nextRules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextChildren);
+                for (const child of nextChildren) {
+                  nextRules.adopt(child);
+                }
                 existingRules = nextRules;
               }
             }

@@ -6,48 +6,6 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { addEdgeAt, addParentEdge, removeParentEdge } from './cursor.js';
 
-export function getField<T = unknown>(
-  node: Node,
-  key: string,
-  ctx: Context
-): T {
-  let state: EvalState | undefined = ctx.activeState;
-  while (state) {
-    const val = state.peek(node)?._fields?.get(key);
-    if (val !== undefined) {
-      return val as T;
-    }
-    state = state.parent;
-  }
-  return (node as unknown as Record<string, unknown>)[key] as T;
-}
-
-export function setField(
-  node: Node,
-  key: string,
-  value: unknown,
-  ctx: Context
-): void {
-  if (ctx.renderKey !== undefined) {
-    const childKeys = (node.constructor as { childKeys?: readonly string[] | null }).childKeys;
-    if (childKeys?.includes(key) && isNode(value)) {
-      const record = node as unknown as Record<string, unknown>;
-      const edgeKey = `${key}Edge`;
-      const edge = (record[edgeKey] as Map<object | symbol, Node> | undefined) ?? new Map<object | symbol, Node>();
-      const previous = (edge.get(ctx.renderKey) as Node | undefined)
-        ?? (record[key] as Node | undefined);
-      if (previous && previous !== value) {
-        removeParentEdge(previous, ctx.renderKey);
-      }
-      edge.set(ctx.renderKey, value);
-      record[edgeKey] = edge;
-      addParentEdge(value, ctx.renderKey, node);
-      return;
-    }
-  }
-  ctx.activeState.get(node).fields.set(key, value);
-}
-
 export function getParent(
   node: Node,
   ctx: Context
@@ -81,7 +39,7 @@ export function setParent(
 
 export function isEvaluated(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): boolean {
   return node.evaluated;
 }
@@ -89,14 +47,14 @@ export function isEvaluated(
 export function setEvaluated(
   node: Node,
   value: boolean,
-  ctx: Context
+  _ctx: Context
 ): void {
   node.evaluated = value;
 }
 
 export function isPreEvaluated(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): boolean {
   return node.preEvaluated;
 }
@@ -104,47 +62,39 @@ export function isPreEvaluated(
 export function setPreEvaluated(
   node: Node,
   value: boolean,
-  ctx: Context
+  _ctx: Context
 ): void {
   node.preEvaluated = value;
 }
 
 export function getIndex(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): number {
-  const idx = ctx.activeState.peek(node)?._fields?.get('index');
-  if (idx !== undefined) {
-    return idx as number;
-  }
   return node.index;
 }
 
 export function setIndex(
   node: Node,
   index: number,
-  ctx: Context
+  _ctx: Context
 ): void {
-  ctx.activeState.get(node).fields.set('index', index);
+  node.index = index;
 }
 
 export function getSourceParent(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): Node | undefined {
-  const sp = ctx.activeState.peek(node)?._fields?.get('sourceParent');
-  if (sp !== undefined) {
-    return sp as Node | undefined;
-  }
   return node.sourceParent;
 }
 
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
-  ctx: Context
+  _ctx: Context
 ): void {
-  ctx.activeState.get(node).fields.set('sourceParent', parent);
+  node.sourceParent = parent;
 }
 
 export function getChildren(
@@ -160,23 +110,43 @@ export function setChildren(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  if (ctx.renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === ctx.renderKey) {
+  const renderKey = ctx.renderKey ?? rules.renderKey;
+  if (renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === renderKey) {
     const previous = rules.value;
     (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray([...nodes]);
     for (const child of previous) {
       if (!nodes.includes(child)) {
-        removeParentEdge(child, ctx.renderKey);
+        removeParentEdge(child, renderKey);
       }
     }
     for (const node of nodes) {
-      addParentEdge(node, ctx.renderKey, rules);
+      addParentEdge(node, renderKey, rules);
     }
     if (options.markDirty !== false) {
       markScopeDirty(rules, ctx);
     }
     return;
   }
-  ctx.activeState.get(rules).fields.set('value', [...nodes]);
+  if (renderKey === undefined) {
+    (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray([...nodes]);
+    for (const node of nodes) {
+      rules.adopt(node, ctx);
+    }
+    if (options.markDirty !== false) {
+      markScopeDirty(rules, ctx);
+    }
+    return;
+  }
+  const previous = rules.get('value', ctx);
+  for (const child of previous) {
+    if (!nodes.includes(child)) {
+      removeParentEdge(child, renderKey);
+    }
+  }
+  nodes.forEach((node, index) => {
+    addEdgeAt(rules, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, rules);
+  });
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }
@@ -189,8 +159,9 @@ export function setChildAt(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  if (ctx.renderKey !== undefined) {
-    if (rules.renderKey !== undefined && rules.renderKey === ctx.renderKey) {
+  const renderKey = ctx.renderKey ?? rules.renderKey;
+  if (renderKey !== undefined) {
+    if (rules.renderKey !== undefined && rules.renderKey === renderKey) {
       const currentChildren = rules.value;
       if (currentChildren[index] === node) {
         return;
@@ -200,9 +171,9 @@ export function setChildAt(
       nextValue[index] = node;
       (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextValue);
       if (previous && previous !== node) {
-        removeParentEdge(previous, ctx.renderKey);
+        removeParentEdge(previous, renderKey);
       }
-      addParentEdge(node, ctx.renderKey, rules);
+      addParentEdge(node, renderKey, rules);
       if (options.markDirty !== false) {
         markScopeDirty(rules, ctx);
       }
@@ -214,24 +185,23 @@ export function setChildAt(
     }
     const previous = currentChildren[index];
     if (previous && previous !== node) {
-      removeParentEdge(previous, ctx.renderKey);
+      removeParentEdge(previous, renderKey);
     }
-    addEdgeAt(rules, 'value', index, ctx.renderKey, node);
-    addParentEdge(node, ctx.renderKey, rules);
+    addEdgeAt(rules, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, rules);
     if (options.markDirty !== false) {
       markScopeDirty(rules, ctx);
     }
     return;
   }
-  const s = ctx.activeState.get(rules);
-  const currentChildren = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
+  const currentChildren = [...rules.value];
   const prev = currentChildren[index];
   if (prev === node) {
     return;
   }
   currentChildren[index] = node;
-  s.fields.set('value', currentChildren);
+  (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(currentChildren);
+  rules.adopt(node, ctx);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);
   }

@@ -7,7 +7,6 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
-import { getField } from './field-helpers.js';
 import type { EvalState } from '../../eval-state.js';
 import type { FlatRulePosition } from '../rules.js';
 /**
@@ -381,7 +380,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         w.add(normalizeIndent(post, idt));
       }
     });
-
   }
   inFrames.pop();
   frameHeaders.pop();

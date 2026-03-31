@@ -370,7 +370,8 @@ export function processLeadingIs(
       if (rest.length > 0) {
         if (isNode(normalizedList, N.SelectorList) && normalizedList !== normalizedArg) {
           const copy = (first as PseudoSelector).clone(false) as PseudoSelector;
-          copy.setData('arg', normalizedList);
+          copy.adopt(normalizedList);
+          copy.arg = normalizedList;
           return ComplexSelector.create([
             ...value.slice(0, firstSelIndex).map(c => (c as Selector).clone(false) as ComplexSelectorComponent),
             copy as unknown as ComplexSelectorComponent,

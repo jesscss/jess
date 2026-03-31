@@ -24,7 +24,6 @@ import type { VarDeclaration } from './declaration-var.js';
 import {
   isTopLevelVarDeclaration,
   getDependency,
-  getField,
   getParent,
   getSourceParent,
   setSourceParent,

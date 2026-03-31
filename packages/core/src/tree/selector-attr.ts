@@ -71,6 +71,20 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
     }
   }
 
+  private _setName(name: string | Node, context?: Context): void {
+    if (name instanceof Node) {
+      this.adopt(name, context);
+    }
+    this.name = name;
+  }
+
+  private _setValue(value: Node | undefined, context?: Context): void {
+    if (value instanceof Node) {
+      this.adopt(value, context);
+    }
+    this.value = value;
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     const currentName = this.get('name', context);
     const currentValue = this.get('value', context);
@@ -82,10 +96,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
       const node = this.clone();
 
       if (name !== currentName) {
-        node.setData('name', name);
+        node._setName(name, context);
       }
       if (value !== currentValue) {
-        node.setData('value', value);
+        node._setValue(value, context);
       }
 
       return node;

@@ -12,7 +12,6 @@ import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './util/ampersand-template.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-import { getField } from './util/field-helpers.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
@@ -285,8 +284,8 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
-    const template = getField<string | Nil | undefined>(this, 'template', context) ?? this.template;
-    const hoistToRoot = getField<boolean | undefined>(this, 'hoistToRoot', context) ?? this.hoistToRoot;
+    const template = this.template;
+    const hoistToRoot = this.hoistToRoot;
     const selectorContainer = this._selectorContainer;
     const storedSelector = getSelectorFromContainer(selectorContainer, context);
     // Check if template is defined (including empty string), or if hoistToRoot/collapseNesting is set
@@ -403,7 +402,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
                 if (typeof (s as any).value === 'string') {
-                  s.setData((s as any).value + template);
+                  (s as { value: string }).value = (s as { value: string }).value + template;
                   appended = true;
                   break;
                 }

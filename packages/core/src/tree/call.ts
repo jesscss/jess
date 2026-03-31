@@ -11,7 +11,7 @@ import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-import { getField, getParent, mergeDependencies, setDependency, setParent } from './util/field-helpers.js';
+import { getParent, mergeDependencies, setDependency, setParent } from './util/field-helpers.js';
 import {
   cloneDetachedMaterializedWrapper,
   materializeEvaluatedCopy
@@ -154,9 +154,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
   }
 
   private _getOptions(context?: Context): CallOptions | undefined {
-    return context
-      ? getField<CallOptions | undefined>(this, 'options', context)
-      : this.options;
+    return this.options;
   }
 
   private _normalizeFallbackArgSpacing(node: Node): void {
@@ -251,7 +249,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
     for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
-        rule.setData('important', important);
+        rule.setCurrentImportant(important);
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule | N.Ruleset)) {
