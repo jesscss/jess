@@ -440,7 +440,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
       return result;
     }
 
-    const amp: Ampersand = this.maybeClone(context);
+    const amp: Ampersand = this.clone();
     let frame = atIndex(context.rulesetFrames, -1);
     /**
      * Attach the current context selector if we need it later, for extends and such.

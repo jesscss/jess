@@ -47,11 +47,11 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this._isPreEvaluated(context)) {
+    if (this.preEvaluated) {
       return this;
     }
-    const node = this.maybeClone(context) as this;
-    node._setPreEvaluated(true, context);
+    const node = this.clone() as this;
+    node.preEvaluated = true;
     const value = ((context.activeState.peek(this)?.fields.get('value') as Selector | undefined) ?? this.value);
     const applyValue = (preEvald: Selector): this => {
       if (((context.activeState.peek(node)?.fields.get('value') as Selector | undefined) ?? node.value) !== preEvald) {

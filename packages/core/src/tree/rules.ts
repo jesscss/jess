@@ -658,6 +658,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     for (const item of items) {
       if (item instanceof Node) {
         this.adopt(item);
+        this.registerNode(item);
       }
     }
   }
@@ -1271,12 +1272,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
-    if (!this._isPreEvaluated(context)) {
+    if (!this.preEvaluated) {
       context.depth++;
       /** @removal-target — node-copy-reduction: maybeClone → return this.
        * Registry population, child indexing, and prelude eval should
        * all work against canonical nodes + position patches. */
-      let rules = this.maybeClone(context);
+      let rules = this.clone();
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
@@ -1295,7 +1296,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isWrapper) {
         rules = this;
       }
-      rules._setPreEvaluated(true, context);
+      rules.preEvaluated = true;
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
@@ -2252,7 +2253,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
           // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
           const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-            if (rules._isPreEvaluated(context)) {
+            if (rules.preEvaluated) {
               return rules;
             }
             const result = rules.preEval(context);

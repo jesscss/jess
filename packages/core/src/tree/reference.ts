@@ -133,6 +133,12 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
 }
 
 function getLookupParentNode(node: Node, context: Context): Node | undefined {
+  if (isNode(node, N.Rules)) {
+    const renderRulesParent = (node as Rules).renderParent;
+    if (renderRulesParent) {
+      return renderRulesParent;
+    }
+  }
   const renderKey = context.renderKey ?? context.rulesContext?.renderKey;
   if (renderKey !== undefined && renderKey !== CANONICAL) {
     return getParentEdge({ node, renderKey })?.node ?? node.parent;

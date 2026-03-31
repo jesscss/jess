@@ -43,8 +43,8 @@ export function getListItem<T extends Node | NodeEdge<Node>>(list: T[], index: n
 export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   static override childKeys = ['value'] as const;
 
-  readonly value: T[];
-  readonly valueEdges?: Array<NodeEdge<T> | undefined>;
+  value: T[];
+  valueEdges?: Array<NodeEdge<T> | undefined>;
 
   getValue() {
     return this.valueEdges ?? this.value;
@@ -137,25 +137,23 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const ownItems = this.get('value', context);
-    const nextItems = b instanceof List ? b.get('value', context) : [b as T];
-    let newList = this.maybeClone(context);
+    let { renderKey } = context;
+    const ownItems = this.getValue();
+    const nextItems = b instanceof List ? b.value : [b as T];
+    let newList = this.clone();
     const nextValue = [...ownItems, ...nextItems];
-    if (newList === this) {
-      context.activeState.get(this).fields.set('value', nextValue);
-    } else {
-      newList.value = nextValue;
-    }
+    newList.value = nextValue;
+    
     return newList;
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (this._isPreEvaluated(context)) {
+    if (this.preEvaluated) {
       return this;
     }
 
-    const node = this.maybeClone(context);
-    node._setPreEvaluated(true, context);
+    const node = this.clone();
+    node.preEvaluated = true;
     const value = node.get('value', context);
     const nextValue = value.slice();
 
@@ -218,7 +216,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
   }
 
   protected override evalNode(context: Context): MaybePromise<Node> {
-    const value = this.get('value', context);
+    const value = this.get('value', context.renderKey);
     const nextValue = value.slice();
 
     if (!this.hasFlag(F_MAY_ASYNC)) {

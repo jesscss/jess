@@ -62,6 +62,19 @@ type Node = {
    * Alternate parent edges keyed by render key.
    */
   parentEdges?: NodeEdge<Node>;
+
+  /**
+   * Canonical lifecycle / flag word.
+   */
+  state: number;
+  preEvaluated: boolean;
+  evaluated: boolean;
+
+  /**
+   * Non-canonical state only exists when it diverges.
+   * `CANONICAL` must not be stored here.
+   */
+  stateEdges?: Map<RenderKey, number>;
 };
 
 type Cursor = {

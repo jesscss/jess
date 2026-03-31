@@ -92,26 +92,13 @@ export function setEvaluated(
   ctx: Context
 ): void {
   node.evaluated = value;
-  if (ctx.renderKey !== undefined) {
-    const keys = (node.evaluatedRenderKeys ??= new Set());
-    if (value) {
-      keys.add(ctx.renderKey);
-    } else {
-      keys.delete(ctx.renderKey);
-    }
-    return;
-  }
 }
 
 export function isPreEvaluated(
   node: Node,
   ctx: Context
 ): boolean {
-  const renderKey = ctx.renderKey ?? node.renderKey;
-  if (renderKey !== undefined) {
-    return node.preEvaluatedRenderKeys?.has(renderKey) ?? false;
-  }
-  return ctx.activeState.peek(node)?.preEvaluated ?? false;
+  return node.preEvaluated;
 }
 
 export function setPreEvaluated(
@@ -119,16 +106,7 @@ export function setPreEvaluated(
   value: boolean,
   ctx: Context
 ): void {
-  if (ctx.renderKey !== undefined) {
-    const keys = (node.preEvaluatedRenderKeys ??= new Set());
-    if (value) {
-      keys.add(ctx.renderKey);
-    } else {
-      keys.delete(ctx.renderKey);
-    }
-    return;
-  }
-  ctx.activeState.get(node).preEvaluated = value;
+  node.preEvaluated = value;
 }
 
 export function getIndex(

@@ -143,7 +143,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
         const value = selector.get('value', context);
         if (value.length === 1) {
           const originalOnly = value[0]!;
-          const only = originalOnly.clone(false, undefined, context);
+          const only = originalOnly.clone();
           only.inherit(selector);
           if ((context.activeState.peek(this)?.fields.get('hoistToRoot') as boolean | undefined) || this.hoistToRoot || only.hoistToRoot) {
             only.hoistToRoot = true;

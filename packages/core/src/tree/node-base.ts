@@ -272,6 +272,7 @@ export abstract class Node<
 
   preEvaluated = false;
   evaluated = false;
+  declare stateEdges: Map<RenderKey, number> | undefined;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -385,11 +386,6 @@ export abstract class Node<
   declare readonly parent: Node | undefined;
   declare parentEdges: NodeEdge<Node> | undefined;
   declare renderKey: RenderKey;
-  /**
-   * @todo - No idea why these two fields need to exist.
-   */
-  declare evaluatedRenderKeys: Set<RenderKey> | undefined;
-  declare preEvaluatedRenderKeys: Set<RenderKey> | undefined;
 
   get sourceParent() {
     return this._meta?.sourceParent;
@@ -436,59 +432,7 @@ export abstract class Node<
     }
   }
 
-  /**
-   * Set the whole data, a named property on the data, or an array index.
-   *
-   * @example
-   *   this.setData(newSelectors)           // replace the whole data
-   *   this.setData('selector', selector)   // set a named property
-   *   this.setData(0, node)               // set array index
-   */
-  setData(val: NodeValue): void;
-  setData(key: string | number, val: unknown): void;
-  setData(...args: unknown[]): void {
-    if (args.length === 1) {
-      const val = args[0];
-      const ck = (this.constructor as typeof Node).childKeys;
-      if (Array.isArray(ck) && ck.length === 1 && (Array.isArray(val) || typeof val !== 'object')) {
-        (this as any)[ck[0]!] = val;
-      } else if (Array.isArray(ck) && ck.length > 1 && typeof val === 'object' && val !== null) {
-        for (const key of ck) {
-          if (key! in (val as any)) {
-            (this as any)[key!] = (val as any)[key!];
-          }
-        }
-      } else {
-        (this as any).value = val;
-      }
-      this._adoptValue(val);
-      this._invalidateValueOf();
-      return;
-    }
-    const key = args[0] as string | number;
-    const val = args[1];
-    const ck = (this.constructor as typeof Node).childKeys;
-    // For array-based containers (childKeys=['value']), numeric keys index into
-    // the array field, not the instance itself.
-    if (typeof key === 'number') {
-      const arr = (this as any)[ck![0]!];
-      const prev = arr[key];
-      if (prev === val) {
-        return;
-      }
-      arr[key] = val;
-    } else {
-      const prev = (this as any)[key];
-      if (prev === val) {
-        return;
-      }
-      (this as any)[key] = val;
-    }
-    this._adoptValue(val);
-    this._invalidateValueOf();
-  }
-
-  private _invalidateValueOf() {
+  protected _invalidateValueOf(): void {
     const self = this as unknown as Record<string, unknown>;
     if ('_valueOf' in self) {
       self._valueOf = undefined;
@@ -500,62 +444,6 @@ export abstract class Node<
     }
   }
 
-  /** Get the array field for array-valued nodes (childKeys=['value'] etc.) */
-  private _getArrayField(): any[] {
-    const ck = (this.constructor as typeof Node).childKeys;
-    return (this as any)[ck![0]!];
-  }
-
-  /** Push items onto an array-valued node.
-   * Pass a Context as the first argument to route parent adoption through the eval state. */
-  push(ctx: Context, ...items: Node[]): void;
-  push(...items: Node[]): void;
-  push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
-    let ctx: Context | undefined;
-    let items: Node[];
-    if (ctxOrFirst instanceof Node) {
-      items = [ctxOrFirst, ...rest];
-    } else {
-      ctx = ctxOrFirst as Context;
-      items = rest;
-    }
-    const arr = this._getArrayField();
-    arr.push(...items);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item instanceof Node) {
-        this.adopt(item, ctx);
-      }
-    }
-    this._invalidateValueOf();
-  }
-
-  /** Remove and/or insert items in an array-valued node. */
-  splice(start: number, deleteCount: number, ...items: any[]): any[] {
-    const arr = this._getArrayField();
-    const removed = arr.splice(start, deleteCount, ...items);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item instanceof Node) {
-        this.adopt(item);
-      }
-    }
-    this._invalidateValueOf();
-    return removed;
-  }
-
-  /** Prepend items to an array-valued node. */
-  unshift(...items: any[]): void {
-    const arr = this._getArrayField();
-    arr.unshift(...items);
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item instanceof Node) {
-        this.adopt(item);
-      }
-    }
-    this._invalidateValueOf();
-  }
 
   /**
    * Add a flag to the node's state
@@ -596,72 +484,50 @@ export abstract class Node<
     }
   }
 
-  // ------------------------------------------------------------------
-  // EvalState-aware eval lifecycle helpers (Stage 8).
-  // Defined here (not in field-helpers.ts) to avoid a circular import:
-  // field-helpers.ts imports Node from this file, so this file cannot
-  // import from field-helpers.ts.  These mirror the public helpers in
-  // field-helpers.ts; both sets delegate to context.activeState.
-  // ------------------------------------------------------------------
-
-  protected _isPreEvaluated(context: Context): boolean {
-    return context.activeState.peek(this)?.preEvaluated ?? false;
+  private _resolveRuntimeRenderKey(context: Context): RenderKey {
+    return context.renderKey ?? this.renderKey;
   }
 
-  protected _setPreEvaluated(value: boolean, context: Context): void {
-    context.activeState.get(this).preEvaluated = value;
-  }
-
-  protected _isEvaluated(context: Context): boolean {
-    return context.activeState.peek(this)?.evaluated ?? false;
-  }
-
-  protected _setEvaluated(value: boolean, context: Context): void {
-    context.activeState.get(this).evaluated = value;
-  }
-
-  /**
-   * EvalState-aware flag check. If eval state patches exist, applies
-   * flagsAdd/flagsRemove from the runtime overlay on top of
-   * the canonical flags.
-   */
   _hasFlag(flag: number, context: Context): boolean {
-    const ns = context.activeState.peek(this);
-    if (ns?._fields) {
-      let flags = this.state;
-      const flagsRemove = ns._fields.get('flagsRemove') as number | undefined;
-      const flagsAdd = ns._fields.get('flagsAdd') as number | undefined;
-      if (flagsRemove) {
-        flags &= ~flagsRemove;
-      }
-      if (flagsAdd) {
-        flags |= flagsAdd;
-      }
-      return (flags & flag) !== 0;
+    const renderKey = this._resolveRuntimeRenderKey(context);
+    if (renderKey === this.renderKey) {
+      return this.hasFlag(flag);
     }
-    return this.hasFlag(flag);
+    const flags = this.stateEdges?.get(renderKey) ?? this.state;
+    return (flags & flag) !== 0;
   }
 
   _addFlag(flag: number, context: Context): void {
-    const s = context.activeState.get(this);
-    const cur = (s._fields?.get('flagsAdd') as number | undefined) ?? 0;
-    s.fields.set('flagsAdd', cur | flag);
-    const curRemove = (s._fields?.get('flagsRemove') as number | undefined) ?? 0;
-    s.fields.set('flagsRemove', curRemove & ~flag);
+    const renderKey = this._resolveRuntimeRenderKey(context);
+    if (renderKey === this.renderKey) {
+      this.addFlag(flag);
+      return;
+    }
+    const stateEdges = (this.stateEdges ??= new Map());
+    let nextFlags = (stateEdges.get(renderKey) ?? this.state) | flag;
+    if (flag === F_NON_STATIC) {
+      nextFlags &= ~F_STATIC;
+    }
+    stateEdges.set(renderKey, nextFlags);
   }
 
   _removeFlag(flag: number, context: Context): void {
-    const s = context.activeState.get(this);
-    const cur = (s._fields?.get('flagsRemove') as number | undefined) ?? 0;
-    s.fields.set('flagsRemove', cur | flag);
-    const curAdd = (s._fields?.get('flagsAdd') as number | undefined) ?? 0;
-    s.fields.set('flagsAdd', curAdd & ~flag);
+    const renderKey = this._resolveRuntimeRenderKey(context);
+    if (renderKey === this.renderKey) {
+      this.removeFlag(flag);
+      return;
+    }
+    const stateEdges = (this.stateEdges ??= new Map());
+    stateEdges.set(renderKey, (stateEdges.get(renderKey) ?? this.state) & ~flag);
   }
 
   adopt(node: Node, ctx?: Context) {
     if (!node.frozen) {
-      if (ctx) {
-        ctx.activeState.get(node).fields.set('parent', this);
+      const renderKey = ctx?.renderKey;
+      if (renderKey !== undefined && renderKey !== CANONICAL) {
+        const edge = node.parentEdges ?? new Map<RenderKey, Node>();
+        edge.set(renderKey, this);
+        node.parentEdges = edge;
       } else {
         (node as any).parent = this;
       }
@@ -718,9 +584,9 @@ export abstract class Node<
    *   url.get('name')               // TS error if 'name' not in ChildData
    */
   get<K extends keyof ChildData & string>(key: K): ChildData[K];
-  get<K extends keyof ChildData & string>(key: K, renderKey: RenderKey): ChildData[K];
-  get<K extends keyof ChildData & string>(key: K, ctx: Context): ChildData[K];
-  get<K extends keyof ChildData & string>(key: K, ctxOrRenderKey?: Context | RenderKey): ChildData[K] {
+  get<K extends keyof ChildData & string>(key: K, renderKey: RenderKey | undefined): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, ctx: Context | undefined): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, ctxOrRenderKey?: Context | RenderKey | undefined): ChildData[K] {
     const ctx = isContextArg(ctxOrRenderKey) ? ctxOrRenderKey : undefined;
     const renderKey = ctx
       ? (ctx.renderKey ?? this.renderKey)
@@ -750,16 +616,6 @@ export abstract class Node<
       }
     }
 
-    if (ctx) {
-      let state: EvalState | undefined = ctx.activeState;
-      while (state) {
-        const val = state.peek(this)?._fields?.get(key);
-        if (val !== undefined) {
-          return val as ChildData[K];
-        }
-        state = state.parent;
-      }
-    }
     return (this as unknown as Record<string, unknown>)[key] as ChildData[K];
   }
 
@@ -1026,11 +882,6 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  maybeClone(_context: Context, _deep?: boolean, _cloneFn?: (n: Node) => Node): this {
-    // EvalState provides isolation — no clone needed.
-    return this;
-  }
-
   clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     let Class = this.constructor as Class<this>;
     const ck = (Class as unknown as typeof Node).childKeys;
@@ -1197,9 +1048,9 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    if (!this._isPreEvaluated(context)) {
-      let node = this.maybeClone(context);
-      node._setPreEvaluated(true, context);
+    if (!this.preEvaluated) {
+      let node = this.clone();
+      node.preEvaluated = true;
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
@@ -1241,7 +1092,7 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node._isEvaluated(context)) {
+    if (node.hasFlag(F_STATIC) && node.evaluated) {
       return node;
     }
 
@@ -1253,26 +1104,26 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node._isPreEvaluated(context)) {
+        if (!node.preEvaluated) {
           return node.preEval(context);
         }
         return node;
       },
       (preEvald) => {
         preEvaluatedNode = preEvald;
-        preEvaluatedNode._setPreEvaluated(true, context);
+        preEvaluatedNode.preEvaluated = true;
         if (preEvald !== node) {
           Node._inheritDerivedRenderKey(node, preEvaluatedNode);
           preEvaluatedNode.inherit(node);
         }
-        if (!preEvaluatedNode._isEvaluated(context)) {
+        if (!preEvaluatedNode.evaluated) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
       },
       (evald) => {
         if (evald instanceof Node) {
-          evald._setEvaluated(true, context);
+          evald.evaluated = true;
         } else {
           (evald as Record<string, unknown>).evaluated = true;
         }
@@ -1288,25 +1139,25 @@ export abstract class Node<
   private static _evalStaticSync(node: Node, context: Context): Node {
     let preEvaluatedNode: Node;
 
-    if (!node._isPreEvaluated(context)) {
+    if (!node.preEvaluated) {
       preEvaluatedNode = node.preEval(context) as Node;
     } else {
       preEvaluatedNode = node;
     }
-    preEvaluatedNode._setPreEvaluated(true, context);
+    preEvaluatedNode.preEvaluated = true;
     if (preEvaluatedNode !== node) {
       Node._inheritDerivedRenderKey(node, preEvaluatedNode);
       preEvaluatedNode.inherit(node);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode._isEvaluated(context)) {
+    if (!preEvaluatedNode.evaluated) {
       evald = preEvaluatedNode.evalNode(context) as Node;
     } else {
       evald = preEvaluatedNode;
     }
     if (evald instanceof Node) {
-      evald._setEvaluated(true, context);
+      evald.evaluated = true;
     } else {
       (evald as Record<string, unknown>).evaluated = true;
     }
@@ -1479,7 +1330,7 @@ export abstract class Node<
    * In almost all Node cases, this should not be overriden,
    * and toTrimmedString() should be overridden instead.
    */
-  toString(options?: PrintOptions): string {
+  toString(options?: PrintOptions, renderKey?: RenderKey): string {
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
@@ -1506,8 +1357,8 @@ export abstract class Node<
    * Use this instead of toString() when serializing eval results.
    * toString() serializes the canonical (parsed) tree without eval state.
    */
-  render(context: Context, options?: PrintOptions): string {
-    return this.toString({ ...options, context });
+  render(options?: PrintOptions, renderKey?: RenderKey): string {
+    return this.toString(options, renderKey);
   }
 
   /**
@@ -1517,8 +1368,10 @@ export abstract class Node<
    * so that the internal spacing of the node serialization is
    * correct. This method just serializes a node without the outer
    * pre/post nodes.
+   * 
+   * @todo - Simplify
    */
-  toTrimmedString(options?: PrintOptions) {
+  toTrimmedString(options?: PrintOptions, renderKey?: RenderKey) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();

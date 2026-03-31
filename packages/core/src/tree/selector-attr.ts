@@ -79,7 +79,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
       : currentName.eval(context);
     const maybeValue = currentValue?.eval(context);
     const finish = (name: string | Node, value: Node | undefined): this => {
-      const node = this.maybeClone(context);
+      const node = this.clone();
 
       if (name !== currentName) {
         node.setData('name', name);

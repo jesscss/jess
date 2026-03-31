@@ -40,6 +40,16 @@ function registerInnerExtendRootIfHoisted(
   context.extendRoots.registerRoot(innerRules, wrapperRules, { layerName });
 }
 
+function getScopeParentNode(node: Node, renderKey?: RenderKey): Node | undefined {
+  if (isNode(node, N.Rules) && (node as Rules).renderParent) {
+    return (node as Rules).renderParent;
+  }
+  if (renderKey !== undefined) {
+    return getCurrentParentNode(node, renderKey);
+  }
+  return node.parent;
+}
+
 export type AtRuleValue = {
   name: Any<'atkeyword'> | Interpolated<'atkeyword'>;
   /** The prelude */
@@ -161,6 +171,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
   /**
    * Means: can bubble ruleset parents to children.
+   * 
+   * @todo - There's no reason to make this state-aware. At-rules can't change their name.
    */
   isNestable(context?: Context) {
     return NESTABLE_AT_RULES.includes(this.get('name', context).valueOf() as (typeof NESTABLE_AT_RULES)[number]);
@@ -168,6 +180,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
   /**
    * For legacy collapseNesting, will push ruleset to root silently.
+   * 
+   * @todo - There's no reason to make this state-aware. At-rules can't change their name.
    */
   isRootOnly(context?: Context) {
     return ROOT_ONLY_AT_RULES.includes(this.get('name', context).valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
@@ -190,9 +204,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
    * This allows us to extract layer names before rules are evaluated
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
-    if (!this._isPreEvaluated(context)) {
-      const node = this.maybeClone(context);
-      node._setPreEvaluated(true, context);
+    if (!this.preEvaluated) {
+      const node = this.clone();
+      node.preEvaluated = true;
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
 
@@ -505,13 +519,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           let liftedRulesContext = savedRulesContext;
           // If our current rulesContext is a Rules whose parent is an AtRule, lift to the enclosing Rules.
           if (liftedRulesContext && isNode(liftedRulesContext, N.Rules)) {
+            if (liftedRulesContext.renderParent) {
+              liftedRulesContext = liftedRulesContext.renderParent;
+            }
             const renderKey = liftedRulesContext.renderKey;
             let cursor: Node = liftedRulesContext;
             let depth = 0;
-            while (getCurrentParentNode(cursor, renderKey) && depth++ < 10) {
-              const cursorParent = getCurrentParentNode(cursor, renderKey);
-              if (isNode(cursorParent, N.AtRule) && isNode(getCurrentParentNode(cursorParent, renderKey), N.Rules)) {
-                cursor = getCurrentParentNode(cursorParent, renderKey)!;
+            while (getScopeParentNode(cursor, renderKey) && depth++ < 10) {
+              const cursorParent = getScopeParentNode(cursor, renderKey);
+              if (isNode(cursorParent, N.AtRule) && isNode(getScopeParentNode(cursorParent, renderKey), N.Rules)) {
+                cursor = getScopeParentNode(cursorParent, renderKey)!;
                 continue;
               }
               break;

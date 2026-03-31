@@ -88,7 +88,13 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
       context.activeState.get(this).fields.set('value', value);
       return;
     }
-    this.setData('value', value);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
+    this._invalidateValueOf();
   }
 
   // NOTE: `length` intentionally remains canonical for now. A state-aware
@@ -115,6 +121,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     return undefined;
   }
 
+  /** @todo - This serialization seems overly complex */
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     if (options?.inCustom) {
@@ -176,12 +183,12 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`);
     }
-    let newSequence = this.maybeClone(context);
+    let newSequence = this.clone();
     if (b instanceof List) {
       return new List([newSequence, ...b.get('value')]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.get('value', context).map(v => v.maybeClone(context));
+      const values = b.get('value', context).map(v => v.clone());
       if (values.length) {
         values[0]!.pre = 1;
       }
@@ -191,7 +198,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
         newSequence.setData('value', [...newSequence.get('value', context), ...values]);
       }
     } else {
-      b = b.maybeClone(context);
+      b = b.clone();
       b.pre = 1;
       if (newSequence === this) {
         this._setValue([...newSequence.get('value', context), b], context);

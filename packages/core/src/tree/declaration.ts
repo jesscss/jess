@@ -206,8 +206,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override preEval(context: Context): MaybePromise<this> {
     /** @removal-target — node-copy-reduction: maybeClone → return this.
      * Options changes should go through position.setField(this, 'options', ...) */
-    let node = this.maybeClone(context);
-    node._setPreEvaluated(true, context);
+    let node = this.clone();
+    node.preEvaluated = true;
     // Index should already be assigned by parent Rules
     return this._applyAssignmentNormalization(node, context);
   }
@@ -230,7 +230,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       if (assign) {
         const normalizedAssign = assign;
-        value = value.maybeClone(context);
+        value = value.clone();
         /** Reference type */
         let type: 'property' | 'variable' =
           node.type === 'Declaration' ? 'property' : 'variable';
@@ -330,7 +330,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         && isNode((currentValue as Sequence).get('value')[(currentValue as Sequence).get('value').length - 1]!, N.Collection)
       );
     if (this.hasFlag(F_STATIC) && !staticNestedCollection) {
-      this._setEvaluated(true, context);
+      this.evaluated = true;
       return this;
     }
     return pipe(

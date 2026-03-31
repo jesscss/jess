@@ -223,15 +223,15 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this._isPreEvaluated(context)) {
+    if (this.preEvaluated) {
       return this;
     }
     // Mixins should NOT pre-evaluate their rules during initial registration.
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    let node = this.maybeClone(context);
-    node._setPreEvaluated(true, context);
+    let node = this.clone();
+    node.preEvaluated = true;
     node.sourceNode ??= this;
 
     const name = node.get('name', context);

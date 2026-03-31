@@ -78,7 +78,7 @@ function cloneForPriorScope(node: Node, context: Context): Node {
   if (isNode(node, N.Rules)) {
     return node.createShallowBodyWrapper(context);
   }
-  return node.clone(false, undefined, context);
+  return node.clone();
 }
 
 function getControlField<T>(node: Node, key: string, context: Context | undefined, fallback: T): T {
@@ -318,9 +318,9 @@ export class For extends Node<ForValue, any, ForChildData> {
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (!this._isPreEvaluated(context)) {
-      const node = this.maybeClone(context) as For;
-      node._setPreEvaluated(true, context);
+    if (!this.preEvaluated) {
+      const node = this.clone() as For;
+      node.preEvaluated = true;
       return node;
     }
     return this;

@@ -237,7 +237,7 @@ describe('Call', () => {
       args: list([])
     }, { markImportant: true });
 
-    const shallow = returnValue.clone(false, undefined, context);
+    const shallow = returnValue.clone();
 
     expect(shallow.value[0]).toBe(childDecl);
     expect(childDecl.parent).toBe(shallow);

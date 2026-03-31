@@ -53,7 +53,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChild
   override evalNode(context: Context): MaybePromise<JsImport> {
     const path = this.get('path', context);
     const finish = (nextPath: Quoted): JsImport => {
-      const out = this.maybeClone(context) as JsImport;
+      const out = this.clone() as JsImport;
       if (nextPath !== path) {
         if (out === this) {
           context.activeState.get(this).fields.set('path', nextPath);

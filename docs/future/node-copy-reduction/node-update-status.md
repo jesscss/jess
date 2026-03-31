@@ -21,6 +21,12 @@ The target runtime shape is:
   - singular child: `fooEdge?: NodeEdge<T>`
   - list child: `fooEdges?: Array<NodeEdge<T> | undefined>`
 - alternate parent links live in `parentEdges?: NodeEdge<Node>`
+- canonical runtime state stays direct on the node:
+  - `state: number`
+  - `preEvaluated: boolean`
+  - `evaluated: boolean`
+- non-canonical runtime state only exists when it diverges:
+  - `stateEdges?: Map<RenderKey, number>`
 - path selection uses `RenderKey`
 - traversal uses a cursor: `{ node, renderKey }`
 
@@ -126,7 +132,7 @@ This section tracks only edge/cursor conversion status.
 | `Rest` | `converted` | Simple child surface converted to direct field + render-key read path. |
 | `Sequence` | `converted` | List child surface converted to direct field + render-key read path. |
 | `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding now indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation now updates/removes `parentEdges` directly on wrapper-owned paths. Still hybrid because render walks and option/state surfaces still mix edge work with overlay-era behavior. |
-| `Ruleset` | `in_progress` | Still hybrid. `rules` container entry is partly render-key aware, but selector/rules/option behavior still mixes edge work with clone/state-era behavior. |
+| `Ruleset` | `in_progress` | Direct field getters are now field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and invalid overlay-era tests were removed. Remaining red is in mixin/reference lookup, not the `Ruleset` field surface itself. |
 | `AtRule` | `in_progress` | Current-view `prelude` / `rules` reads improved, but node is not edge/cursor-complete. |
 | `Call` | `not_converted` | Old wrapper/materialize characterization tests were deleted. Remaining production seam is returned-result shaping through `util/legacy-node-ops.ts` instead of direct edge/cursor ownership. |
 | `Mixin` | `not_converted` | Still routes body/current-view handling through hybrid clone/state-era behavior. |

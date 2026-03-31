@@ -293,7 +293,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         return node;
       };
       const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
-        const clone = node.clone(false, undefined, context) as T;
+        const clone = node.clone() as T;
         const nodeState = context.activeState.peek(node);
         if (nodeState?._fields) {
           const sn = nodeState._fields.get('sourceNode');
@@ -481,7 +481,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           if (!callOptions.silentFail || shouldRethrowForMode) {
             throw e;
           }
-          let newCall = this.clone(false, undefined, context).inherit(this);
+          let newCall = this.clone().inherit(this);
           /** Remove this flag for serialization */
           newCall.options.silentFail = false;
           newCall.name = isNode(name, N.Reference) && name.options.fallbackValue === true
@@ -509,8 +509,8 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         context.callStack.pop();
         const needsMaterializedClone = Boolean(callOptions.silentFail);
         const node = needsMaterializedClone
-          ? this.clone(false, undefined, context)
-          : this.maybeClone(context);
+          ? this.clone()
+          : this.clone();
         node.options.silentFail = false;
         if (
           n === 'calc' && evaluatedArgs

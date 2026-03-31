@@ -65,7 +65,7 @@ export class Any<
   }
 
   override preEval(context: Context): this | Nil {
-    this._setPreEvaluated(true, context);
+    this.preEvaluated = true;
     // Index should already be assigned by parent Rules
     if (this.role === 'charset') {
       if (!context.currentCharset) {
@@ -105,6 +105,7 @@ export class Any<
       }
       return Number(text) === otherNumber ? 0 : undefined;
     }
+    /** @todo - What is this about? */
     if ((other as any).toString) {
       const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
       return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;

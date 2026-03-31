@@ -118,7 +118,7 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
             return value;
           }
         }
-        let node = this.maybeClone(context);
+        let node = this.clone();
         if (node === this) {
           const prevValue = this.get('value', context);
           context.activeState.get(node).fields.set('value', value);

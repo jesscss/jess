@@ -182,7 +182,7 @@ describe('Rules extend', () => {
       expect(selector.parent).toBe(node);
       expect(target.parent).toBe(node);
 
-      const cloned = node.clone(false, undefined, context);
+      const cloned = node.clone();
 
       expect(cloned).not.toBe(node);
       expect(selector.parent).toBe(node);
@@ -202,7 +202,7 @@ describe('Rules extend', () => {
       setField(node, 'namespace', 'patched', context);
       setField(node, 'flag', ExtendFlag.All, context);
 
-      const cloned = node.clone(false, undefined, context);
+      const cloned = node.clone();
 
       expect(cloned.get('target').valueOf()).toBe('.other');
       expect(cloned.get('namespace')).toBe('patched');

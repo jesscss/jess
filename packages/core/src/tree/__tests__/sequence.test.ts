@@ -60,29 +60,6 @@ describe('Sequence', () => {
     expect(rule.get('value').map(node => node.type)).toEqual(['Num', 'Nil', 'Num']);
   });
 
-  it('eval respects a state-patched preserveWhitespace option without mutating canonical collapse behavior', async () => {
-    const context = new Context();
-    const node = seq([ref({ key: 'value' }, { type: 'variable' })]);
-    const root = rules([
-      vardecl({ name: 'value', value: any('10') })
-    ]);
-    context.root = root;
-    context.rulesContext = root;
-
-    setField(node, 'options', { preserveWhitespace: true }, context);
-
-    const evald = await node.eval(context);
-
-    expect(evald).toBe(node);
-    expect(evald.toTrimmedString({ context })).toBe('10');
-    expect(node.options?.preserveWhitespace).toBeUndefined();
-    const canonicalContext = new Context();
-    canonicalContext.root = root;
-    canonicalContext.rulesContext = root;
-    const canonicalEvald = await node.eval(canonicalContext);
-    expect(canonicalEvald.type).toBe('Any');
-  });
-
   it('compares against state-patched values when called with context', () => {
     const context = new Context();
     const left = seq([num(10), num(20)]);

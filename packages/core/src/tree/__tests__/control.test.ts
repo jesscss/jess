@@ -346,7 +346,7 @@ describe('Control Nodes', () => {
       }
     }, context);
 
-    const clonedLoopRules = loop.get('rules').clone(false, undefined, context);
+    const clonedLoopRules = loop.get('rules').clone();
     const evald = await root.eval(context);
 
     expect(clonedLoopRules.options.rulesVisibility.VarDeclaration).toBe('private');

@@ -135,8 +135,8 @@ export function bindMixinParamValue(
   value: Node,
   context: Context
 ): void {
-  void context;
-  param.setData('value', value);
+  param.value = value;
+  param.adopt(value, context);
 }
 
 /**
@@ -305,27 +305,21 @@ export function createMixinInvocationRules(
   body: Rules,
   definitionParent: Node | undefined,
   placementParent: Node | undefined,
+  renderParent: Rules | undefined,
   sourceParent: Node | undefined,
   index: number,
-  params: List<Node> | undefined,
-  nodeArgs: readonly Node[],
+  _params: List<Node> | undefined,
+  _nodeArgs: readonly Node[],
   context: Context
 ): Rules {
   const renderKey = Symbol('mixin-invocation');
   const wrapper = body.createShallowBodyWrapper(undefined, renderKey);
   wrapper.index = index;
   wrapper.parent = placementParent ?? definitionParent;
-  wrapper.renderParent = isNode(definitionParent, N.Rules)
-    ? definitionParent as Rules
-    : undefined;
+  wrapper.renderParent = renderParent
+    ?? (isNode(definitionParent, N.Rules) ? definitionParent as Rules : undefined);
   wrapper.sourceParent = sourceParent;
-
-  if (params) {
-    const paramScope = createMixinParamScope(index);
-    populateMixinParamScope(paramScope, params, context);
-    defineMixinArgumentsInScope(paramScope, params, nodeArgs, context);
-    wrapper.prependWrapperChildren(...paramScope.value as Node[]);
-  }
+  void context;
 
   wrapper.options = {
     ...wrapper.options,
@@ -380,7 +374,8 @@ export function normalizeMixinInvocationParams(
       value: restValue
     }, { paramVar: true });
 
-    params.setData(i, restVarDecl);
+    params.value[i] = restVarDecl;
+    params.adopt(restVarDecl, context);
   }
 
   return params;
@@ -419,6 +414,7 @@ export function prepareMixinCandidateInvocation(
     rules,
     parent,
     placementParent,
+    outerRules,
     sourceParent,
     index,
     normalizedParams,
@@ -850,7 +846,7 @@ export async function processPreparedMixinCandidate<TCandidate>(
   }
 
   await withMixinLookupScope(
-    lookupScope,
+    nextOuterRules ?? lookupScope,
     context,
     () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
   );
@@ -956,7 +952,8 @@ export async function evaluateMixinArgs(
           if (value instanceof Node) {
             const evaldValue = await value.eval(context);
             const bound = arg.clone(false);
-            (bound as VarDeclaration).setData('value', evaldValue);
+            (bound as VarDeclaration).value = evaldValue;
+            (bound as VarDeclaration).adopt(evaldValue, context);
             nodeArgs.push(bound);
           } else {
             nodeArgs.push(arg);
@@ -1093,7 +1090,8 @@ export async function matchMixinCandidates(
           }
           normalizeBoundLeadingItemWhitespace(boundValue);
           copyDependency(argValue, boundValue, context);
-          param.setData('value', boundValue);
+          param.value = boundValue;
+          param.adopt(boundValue, context);
         } else if (isNode(param, N.Any) && param.role === 'property') {
           const boundValue = argValue.copy(true, freezeChildren);
           boundValue.frozen = true;
@@ -1106,7 +1104,8 @@ export async function matchMixinCandidates(
             name: param as Any<'property'>,
             value: boundValue
           }, { paramVar: true });
-          params.setData(pi, varDecl);
+          params.value[pi] = varDecl;
+          params.adopt(varDecl, context);
         } else if (param.type === 'Rest') {
           const rest = nodeArgs.slice(argPos).map((restArg) => {
             const cloned = restArg.copy(true, freezeChildren);
@@ -1131,7 +1130,8 @@ export async function matchMixinCandidates(
             ) as Any<'property'>,
             value: restValue
           });
-          params.setData(pi, restVarDecl);
+          params.value[pi] = restVarDecl;
+          params.adopt(restVarDecl, context);
         } else {
           const originalPatternParam = !isNode(arg, N.VarDeclaration)
             ? ((mixin as any).params as List<Node> | undefined)?.get('value')[pi]
@@ -1161,9 +1161,10 @@ export async function matchMixinCandidates(
       }
       if (match) {
         const originalMixin = mixin;
-        mixin = mixin.clone(false, undefined, context);
+        mixin = mixin.clone();
         getCandidateParent(originalMixin, context).adopt(mixin);
-        (mixin as any).setData('params', params);
+        mixin.params = params;
+        mixin.adopt(params, context);
         mixinCandidates.push(mixin);
       }
     }
@@ -1325,6 +1326,7 @@ export async function evaluateCandidateOutput(
     const callerParent = getParentFn(candidate);
     void outerRules;
     rules.parent = invocationParent ?? callerParent;
+    rules.renderParent = outerRules ?? rules.renderParent;
     rules.sourceParent = sourceParent;
 
     let newRules: Rules = await rules.eval(context);
@@ -1333,6 +1335,7 @@ export async function evaluateCandidateOutput(
       newRules.renderKey = rules.renderKey;
     }
     newRules.parent = invocationParent ?? callerParent;
+    newRules.renderParent = outerRules ?? rules.renderParent;
     newRules.sourceParent = sourceParent;
     newRules.index = candidate.index;
     newRules.options.isMixinOutput = restrictMixinOutputLookup;
