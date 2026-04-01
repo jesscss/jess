@@ -1,4 +1,4 @@
-import { EVAL, type Node } from '../node-base.js';
+import { CANONICAL, EVAL, type Node } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
@@ -10,7 +10,7 @@ export function getParent(
   ctx: Context
 ): Node | undefined {
   const renderKey = ctx.renderKey
-    ?? node.renderKey
+    ?? (node.renderKey !== CANONICAL ? node.renderKey : undefined)
     ?? (node.parentEdges?.has(EVAL) ? EVAL : undefined);
   if (renderKey !== undefined) {
     const parent = node.parentEdges?.get(renderKey);
@@ -86,7 +86,10 @@ export function getSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const renderKey = ctx.renderKey ?? ctx.rulesContext?.renderKey ?? node.renderKey;
+  const renderKey = ctx.renderKey
+    ?? ctx.rulesContext?.renderKey
+    ?? (node.renderKey !== CANONICAL ? node.renderKey : undefined)
+    ?? ((node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge?.has(EVAL) ? EVAL : undefined);
   if (renderKey !== undefined) {
     const edge = (node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge;
     if (edge?.has(renderKey)) {

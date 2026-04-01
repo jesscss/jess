@@ -11,7 +11,8 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-import { setParent } from './util/field-helpers.js';
+import { addParentEdge } from './util/cursor.js';
+import { CANONICAL, EVAL } from './node-base.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -71,7 +72,7 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const options = (this as any)._meta?.options;
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
-    if (!deep && ctx) {
+    if (!deep) {
       priorChildParents = [];
       if (selector instanceof Node) {
         priorChildParents.push([selector, selector.parent]);
@@ -91,9 +92,10 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
       this.location,
       this.treeContext
     );
-    if (priorChildParents && ctx) {
+    if (priorChildParents) {
+      const renderKey = ctx?.renderKey ?? (this.renderKey === CANONICAL ? EVAL : this.renderKey);
       for (const [child, priorParent] of priorChildParents) {
-        setParent(child, newNode, ctx);
+        addParentEdge(child, renderKey, newNode);
         (child as unknown as { parent?: Node }).parent = priorParent;
       }
     }

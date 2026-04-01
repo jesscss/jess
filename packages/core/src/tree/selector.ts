@@ -27,8 +27,20 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions, CD 
 
   keySetLibrary: BitSetLibrary<string> | undefined;
 
+  private _seedKeySetLibrary(library: BitSetLibrary<string>): void {
+    this.keySetLibrary = library;
+    for (const child of this.children(true)) {
+      if ((child as Selector).isSelector) {
+        (child as Selector).keySetLibrary = library;
+      }
+    }
+  }
+
   protected override evalNode(context: Context): MaybePromise<Node> {
-    this.keySetLibrary = context.selectorBits;
+    this._seedKeySetLibrary(context.selectorBits);
+    if (this.sourceNode !== this && (this.sourceNode as Selector).isSelector) {
+      (this.sourceNode as Selector)._seedKeySetLibrary(context.selectorBits);
+    }
     return super.evalNode(context);
   }
 

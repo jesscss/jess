@@ -632,21 +632,27 @@ function markExtendedSelector(selector: Selector, context?: Context): void {
 }
 
 function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?: Context): void {
+  const rulesetFlagTarget = isNode(ruleset.sourceNode, N.Ruleset)
+    ? ruleset.sourceNode as Ruleset
+    : ruleset;
   if (context) {
-    ruleset._addFlag(F_EXTENDED, context);
-    ruleset._addFlag(F_VISIBLE, context);
+    rulesetFlagTarget._addFlag(F_EXTENDED, context);
+    rulesetFlagTarget._addFlag(F_VISIBLE, context);
   } else {
-    ruleset.addFlag(F_EXTENDED);
-    ruleset.addFlag(F_VISIBLE);
+    rulesetFlagTarget.addFlag(F_EXTENDED);
+    rulesetFlagTarget.addFlag(F_VISIBLE);
   }
   markExtendedSelector(selector, context);
 }
 
 function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
+  const rulesetFlagTarget = isNode(ruleset.sourceNode, N.Ruleset)
+    ? ruleset.sourceNode as Ruleset
+    : ruleset;
   if (context) {
-    ruleset._removeFlag(F_EXTENDED, context);
+    rulesetFlagTarget._removeFlag(F_EXTENDED, context);
   } else {
-    ruleset.removeFlag(F_EXTENDED);
+    rulesetFlagTarget.removeFlag(F_EXTENDED);
   }
   if (getRulesetHoistToRoot(ruleset, context) !== undefined) {
     setRulesetHoistToRoot(ruleset, undefined, context);
@@ -662,11 +668,11 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   syncRulesetDerivedSelector(ruleset, context);
 }
 
-function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | undefined {
+function getRulesetHoistToRoot(ruleset: Ruleset, _context?: Context): boolean | undefined {
   return ruleset.hoistToRoot;
 }
 
-function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
+function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, _context?: Context): void {
   ruleset.hoistToRoot = value;
 }
 

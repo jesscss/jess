@@ -28,7 +28,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.a'), el('.c'), false);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.a, .b, .c');
   });
 
@@ -37,7 +37,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.a'), el('.c'), false);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.a, .b, .c)');
   });
 
@@ -112,7 +112,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.c'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.a > :is(.b, .c)');
   });
 
@@ -121,7 +121,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.a > :is(.b, .d).c');
   });
 
@@ -130,7 +130,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.b, .d).c');
   });
 
@@ -139,7 +139,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.parent'), el('.container'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.parent, .container) > .child');
   });
 
@@ -148,7 +148,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(:is(.b, .d).c)');
   });
 
@@ -157,7 +157,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':where(.b, .d)');
   });
 
@@ -166,7 +166,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':where(.x, .b, .d)');
   });
 
@@ -192,7 +192,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.x, .b, .d)');
   });
 
@@ -215,7 +215,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.btn'), el('.primary'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.btn, .primary):hover');
   });
 
@@ -224,7 +224,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.x, :is(.b, .d).c');
   });
 
@@ -233,7 +233,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.d'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.x, .b, .d');
   });
 
@@ -257,7 +257,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.child'), el('.other'), true, parent);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(result.value.hoistToRoot).toBeFalsy();
     expect(serialize(result.value)).toBe('& :is(.child, .other)');
   });
@@ -634,7 +634,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.a'), compound([el('div'), el('.b')]), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('div:is(.a, .b)');
   });
 
@@ -643,7 +643,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.class'), compound([el('#foo'), el('.other')]), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('#foo:is(.class, .other)');
   });
 
@@ -652,7 +652,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.class'), compound([el('span'), el('.other')]), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('a > :is(.class, span.other)');
   });
 
@@ -672,7 +672,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, find, el('.q'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('div + :is(.a.c.b > .y.x, .q)');
   });
 
@@ -682,7 +682,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, find, el('.q'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.a.b, .q).c');
   });
 
@@ -692,7 +692,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, find, el('.q'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.b.x, .q).a');
   });
 
@@ -704,7 +704,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.bar'), el('.q'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe(':is(.foo :is(.bar, .q), .baz)');
   });
 
@@ -717,7 +717,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.a'), el('.q'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.outer:is(:is(.a, .q).b, .x).tail');
   });
 
@@ -730,7 +730,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, el('.b'), el('.q'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.a:is(.b, .c, .q).d');
   });
 
@@ -749,7 +749,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, compound([el('.a'), el('.b')]), el('.foo'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('qux > :is(div > :is(.a.b, .foo)).c > qux');
   });
 
@@ -762,7 +762,7 @@ describe('tryExtendSelector', () => {
     const result = tryExtendSelector(target, sel([el('div'), co('>'), el('.c')]), el('.foo'), true);
 
     expect(result.error).toBeUndefined();
-    expect(result.value).toBe(target);
+    expect(result.value).not.toBe(target);
     expect(serialize(result.value)).toBe('.a:is(div > .c, .foo).b');
   });
 

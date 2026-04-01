@@ -473,7 +473,16 @@ export abstract class Node<
   }
 
   private _resolveRuntimeRenderKey(context: Context): RenderKey {
-    return context.renderKey ?? this.renderKey;
+    if (context.renderKey !== undefined) {
+      return context.renderKey;
+    }
+    if (this.renderKey !== CANONICAL) {
+      return this.renderKey;
+    }
+    if (this.stateEdges?.has(EVAL)) {
+      return EVAL;
+    }
+    return this.renderKey;
   }
 
   _hasFlag(flag: number, context: Context): boolean {

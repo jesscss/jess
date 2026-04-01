@@ -119,6 +119,13 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   private _storedSelector: Selector | Nil | undefined;
   private _selectorContainer: SelectorContainer | undefined;
 
+  private _getSelector(context?: Context): Selector | Nil | undefined {
+    if (!context) {
+      return this._storedSelector;
+    }
+    return getSelectorFromContainer(this._selectorContainer, context) ?? this._storedSelector;
+  }
+
   constructor(
     value?: AmpersandValue | string | Nil,
     options?: NodeOptions,
@@ -135,7 +142,22 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
-        this._storedSelector = getSelectorFromContainer(selectorContainer);
+        const storedSelector = getSelectorFromContainer(selectorContainer);
+        if (isNode(storedSelector as Node | undefined)) {
+          const storedClone = storedSelector.clone(true) as Selector | Nil;
+          const sourceLibrary = (storedSelector as Selector).keySetLibrary;
+          if (sourceLibrary && isNode(storedClone as Node | undefined)) {
+            (storedClone as Selector).keySetLibrary = sourceLibrary;
+            for (const child of (storedClone as Selector).children(true)) {
+              if ((child as Selector).isSelector) {
+                (child as Selector).keySetLibrary = sourceLibrary;
+              }
+            }
+          }
+          this._storedSelector = storedClone;
+        } else {
+          this._storedSelector = storedSelector;
+        }
       }
     }
     this.template = finalTemplate;
@@ -169,7 +191,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   override computeKeySets(): void {
     let library = this.keySetLibrary!;
     const stored = this._storedSelector;
-    const current = getSelectorFromContainer(this._selectorContainer);
+    const current = this._getSelector();
     let keySet = this._keySet;
     /** Ampersands don't participate to the visible key set */
     if (!this._visibleKeySet) {
@@ -194,7 +216,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
       return this.keySet;
     }
 
-    const current = getSelectorFromContainer(this._selectorContainer, context);
+    const current = this._getSelector(context);
     if (!current || isNode(current, N.Nil)) {
       const library = this.keySetLibrary;
       if (!library) {
@@ -211,7 +233,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
   getResolvedSelector(context?: Context): Selector | Nil | undefined {
-    const selector = getSelectorFromContainer(this._selectorContainer, context);
+    const selector = this._getSelector(context);
     if (selector && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return wrapParentSelectorForNestedContext(selector as Selector);
     }
@@ -219,7 +241,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
   }
 
   override valueOf(context?: Context) {
-    const selector = getSelectorFromContainer(this._selectorContainer, context);
+    const selector = this._getSelector(context);
     if (selector) {
       return selector.valueOf();
     }
@@ -301,15 +323,10 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
       if (!selector) {
         return new Nil();
       }
-      // Never mutate a simple parent/frame selector in-place in the collapse/hoist branch.
-      // This path normalizes spacing via `pre`/`post`, and for simple selectors that can
-      // alias the canonical parent selector directly.
-      if (
-        !isNode(selector, N.Nil)
-        && !isNode(selector, N.SelectorList)
-        && !isNode(selector, N.ComplexSelector)
-      ) {
-        selector = selector.clone(true) as Selector;
+      // Collapse/hoist/template processing normalizes spacing and may rewrite
+      // selector contents, so never mutate the live parent selector in place.
+      if (!isNode(selector, N.Nil)) {
+        selector = selector.copy(true) as Selector;
       }
       /** Remove any surrounding whitespace */
       selector.pre = undefined;
