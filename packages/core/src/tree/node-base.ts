@@ -1078,7 +1078,7 @@ export abstract class Node<
         preEvaluatedNode = preEvald;
         preEvaluatedNode.preEvaluated = true;
         if (preEvald !== node) {
-          Node._inheritDerivedRenderKey(node, preEvaluatedNode);
+          Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
           preEvaluatedNode.inherit(node);
         }
         if (!preEvaluatedNode.evaluated) {
@@ -1093,7 +1093,7 @@ export abstract class Node<
           (evald as Record<string, unknown>).evaluated = true;
         }
         if (preEvaluatedNode !== evald) {
-          Node._inheritDerivedRenderKey(preEvaluatedNode, evald);
+          Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
           evald.inherit(preEvaluatedNode);
         }
         return evald;
@@ -1111,7 +1111,7 @@ export abstract class Node<
     }
     preEvaluatedNode.preEvaluated = true;
     if (preEvaluatedNode !== node) {
-      Node._inheritDerivedRenderKey(node, preEvaluatedNode);
+      Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
       preEvaluatedNode.inherit(node);
     }
 
@@ -1127,18 +1127,18 @@ export abstract class Node<
       (evald as Record<string, unknown>).evaluated = true;
     }
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
-      Node._inheritDerivedRenderKey(preEvaluatedNode, evald);
+      Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
       evald.inherit(preEvaluatedNode);
     }
     return evald;
   }
 
-  private static _inheritDerivedRenderKey(source: Node, derived: Node): void {
+  private static _inheritDerivedRenderKey(source: Node, derived: Node, context?: Context): void {
     if (source === derived || derived.renderKey !== CANONICAL) {
       return;
     }
     derived.renderKey = source.renderKey === CANONICAL
-      ? EVAL
+      ? (context?.renderKey ?? EVAL)
       : source.renderKey;
   }
 
@@ -1323,7 +1323,10 @@ export abstract class Node<
    * toString() serializes the canonical (parsed) tree without eval state.
    */
   render(options?: PrintOptions, renderKey?: RenderKey): string {
-    return this.toString(options, renderKey);
+    const normalizedOptions = isContextArg(options as Context | undefined)
+      ? { context: options as unknown as Context }
+      : options;
+    return this.toString(normalizedOptions, renderKey);
   }
 
   /**

@@ -1683,7 +1683,7 @@ describe('Mixin', () => {
       context.root = root;
 
       const evald = await root.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = evald.toString({ collapseNesting: true, context });
 
       expect(css).toContain('.menu > li');
       expect(css).not.toContain('.menu .nav-justified');

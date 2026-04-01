@@ -29,7 +29,7 @@ import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
-import { addEdge, addParentEdge, getEdgeAt } from './util/cursor.js';
+import { addEdge, addEdgeAt, addParentEdge, getEdgeAt } from './util/cursor.js';
 import { getCurrentParentNode } from './util/selector-utils.js';
 import {
   getChildren,
@@ -528,7 +528,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           return isNode(node, N.Comment) || isNode(node, N.Any);
         };
         if (ctx?.topImports?.length) {
-          for (const node of this._getChildren(ctx)) {
+          for (const node of this._getRenderChildren(ctx)) {
             if (!isCommentLike(node)) {
               break;
             }
@@ -631,6 +631,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     wrapper.inherit(this);
     wrapper.renderKey = renderKey;
     wrapper._connectSharedChildren(wrapper.renderKey);
+    const sourceValueEdges = (this as unknown as { valueEdges?: Array<Map<RenderKey, Node> | undefined> }).valueEdges;
+    if (sourceValueEdges) {
+      for (let index = 0; index < sourceValueEdges.length; index++) {
+        const override = sourceValueEdges[index]?.get(renderKey);
+        if (!override) {
+          continue;
+        }
+        addEdgeAt(wrapper, 'value', index, renderKey, override);
+        addParentEdge(override, renderKey, wrapper);
+      }
+    }
     return wrapper;
   }
 
@@ -720,28 +731,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return canonical;
   }
 
-  private _getChildren(context?: Context): readonly Node[] {
+  private _getRenderChildren(context?: Context): readonly Node[] {
     return this._withOwnRenderKey(context, () => {
       if (this.renderKey === CANONICAL) {
-        return context
-          ? getChildren(this, context)
-          : this.value;
+        return context ? getChildren(this, context) : this.value;
       }
 
-      const visible: Node[] = [];
-      const length = this.value.length;
-      for (let i = 0; i < length; i++) {
+      const children: Node[] = [];
+      for (let i = 0; i < this.value.length; i++) {
         const child = this._getRenderVisibleChildAt(i, context);
         if (child) {
-          visible.push(child);
+          children.push(child);
         }
       }
-      return visible;
+      return children;
     });
   }
 
   getRegistryChildren(context?: Context): readonly Node[] {
-    return this._getChildren(context);
+    return this._getRenderChildren(context);
   }
 
   ensureCurrentRenderRulesRegistered(context?: Context): void {
@@ -790,10 +798,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let space = ''.padStart(depth * 2);
     return this._withOwnRenderKey(opts.context, () => {
       w.add('{');
-      // Set depth for _emitRulesBody - children should be one level deeper
+      // Children render one level deeper inside braces.
       const childOptions = { ...opts, depth: depth + 1 };
       childOptions.writer!.add('\n');
-      this._emitRulesBody(childOptions);
+      this.toTrimmedString(childOptions);
       // ensure closing brace is on its own properly indented line
       w.add('\n');
       if (depth !== 0) {
@@ -807,110 +815,88 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
   }
 
-  private _emitRulesBody(options: PrintOptions) {
-    const w = options.writer!;
-    const depth = options.depth ?? 0;
-    const space = indent(depth);
-    const value = this._getChildren(options.context);
-    const referenceMode = Boolean(options.referenceMode);
-    const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
-
-    // Skip charset nodes - they are collected and prepended at root level
-    // Nil nodes are now non-visible, so they're automatically filtered by n.visible
-    const items = value.filter(n => n.visible);
-
-    if (items.length === 0) {
-      return;
-    }
-
-    // No spacing flags; writer.capture is used where needed
-
-    const isInlineSourceRules = (node: Node): boolean => {
-      if (node.type !== 'Rules') {
-        return false;
-      }
-      const rulesNode = node as Rules;
-      const rulesValue = rulesNode._getChildren(options.context);
-      if (rulesValue.length !== 1) {
-        return false;
-      }
-      const only = rulesValue[0]!;
-      return only.type === 'Any' && (only as Any).role === 'any';
-    };
-
-    let emittedCount = 0;
-    let lastEmittedType: string | undefined;
-    let lastEmittedWasInlineSourceRules = false;
-    for (let idx = 0; idx < items.length; idx++) {
-      const n = items[idx]!;
-      const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
-      if (referenceMode && !referenceRenderEnabled && !isContainer) {
-        continue;
-      }
-      if (emittedCount > 0) {
-        // Check actual buffer state - not just previous captured output
-        // Frame closing in serializeRulesContainer adds newlines that aren't in the capture
-        const currentBuffer = w.getSince(0);
-        const bufferEndsWithNewline = currentBuffer.endsWith('\n');
-        const needsInlineBoundarySpacing = (
-          (lastEmittedType === 'Any' && n.type !== 'Any')
-          || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
-        );
-        if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
-          w.add('\n');
-        }
-      }
-      const isChildRules = n.type === 'Rules';
-      const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
-      // Add indentation only for simple nodes (declarations, etc.)
-      // Ruleset and AtRule nodes indent themselves in renderOpening
-      if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
-        w.add(space);
-      }
-
-      // Emit directly to preserve source map segments
-      // For child Rules nodes, pass the same depth (don't increment depth)
-      // Rules nodes inside Rules nodes are at the same level
-      let childOptions = isChildRules
-        ? { ...options, depth }
-        : { ...options, depth };
-      if (isChildRules) {
-        const ownReferenceMode = (n.options as any)?.referenceMode === true;
-        const childReferenceMode = referenceMode || ownReferenceMode;
-        const enteringReferenceMode = !referenceMode && ownReferenceMode;
-        const childReferenceRenderEnabled = childReferenceMode
-          ? (enteringReferenceMode ? false : referenceRenderEnabled)
-          : true;
-        childOptions = {
-          ...childOptions,
-          referenceMode: childReferenceMode,
-          referenceRenderEnabled: childReferenceRenderEnabled
-        };
-      }
-      let rule = w.capture(() => n.toTrimmedString(childOptions));
-      if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
-        continue;
-      }
-      w.add(rule, n); // Pass node as origin to preserve location info
-      const needsSemi = isNode(n, N.Declaration | N.VarDeclaration)
-        ? (n as Declaration).requiresSemi(childOptions.context)
-        : (n as Node).requiredSemi;
-      if (needsSemi && n.options.semi !== false) {
-        w.add(';', n);
-      }
-      emittedCount++;
-      lastEmittedType = n.type;
-      lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
-    }
-  }
-
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const ctx = options.context;
     return this._withOwnRenderKey(ctx, () => {
-      this._emitRulesBody(options);
+      const depth = options.depth ?? 0;
+      const space = indent(depth);
+      const value = this._getRenderChildren(options.context);
+      const referenceMode = Boolean(options.referenceMode);
+      const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
+      const items = value.filter(n => n.visible);
+
+      const isInlineSourceRules = (node: Node): boolean => {
+        if (node.type !== 'Rules') {
+          return false;
+        }
+        const rulesNode = node as Rules;
+        const rulesValue = rulesNode._getRenderChildren(options.context);
+        if (rulesValue.length !== 1) {
+          return false;
+        }
+        const only = rulesValue[0]!;
+        return only.type === 'Any' && (only as Any).role === 'any';
+      };
+
+      let emittedCount = 0;
+      let lastEmittedType: string | undefined;
+      let lastEmittedWasInlineSourceRules = false;
+      for (const n of items) {
+        const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+        if (referenceMode && !referenceRenderEnabled && !isContainer) {
+          continue;
+        }
+        if (emittedCount > 0) {
+          const currentBuffer = w.getSince(0);
+          const bufferEndsWithNewline = currentBuffer.endsWith('\n');
+          const needsInlineBoundarySpacing = (
+            (lastEmittedType === 'Any' && n.type !== 'Any')
+            || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+          );
+          if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
+            w.add('\n');
+          }
+        }
+
+        const isChildRules = n.type === 'Rules';
+        const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
+        if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
+          w.add(space);
+        }
+
+        let childOptions = { ...options, depth };
+        if (isChildRules) {
+          const ownReferenceMode = (n.options as any)?.referenceMode === true;
+          const childReferenceMode = referenceMode || ownReferenceMode;
+          const enteringReferenceMode = !referenceMode && ownReferenceMode;
+          const childReferenceRenderEnabled = childReferenceMode
+            ? (enteringReferenceMode ? false : referenceRenderEnabled)
+            : true;
+          childOptions = {
+            ...childOptions,
+            referenceMode: childReferenceMode,
+            referenceRenderEnabled: childReferenceRenderEnabled
+          };
+        }
+
+        const rule = w.capture(() => n.toTrimmedString(childOptions));
+        if (!rule && isContainer) {
+          continue;
+        }
+        w.add(rule, n);
+        const needsSemi = isNode(n, N.Declaration | N.VarDeclaration)
+          ? (n as Declaration).requiresSemi(childOptions.context)
+          : (n as Node).requiredSemi;
+        if (needsSemi && n.options.semi !== false) {
+          w.add(';', n);
+        }
+        emittedCount++;
+        lastEmittedType = n.type;
+        lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
+      }
       return w.getSince(mark);
     });
   }
@@ -924,7 +910,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     ) => {
       const renderKey = rules.renderKey ?? inheritedRenderKey;
 
-      for (let n of rules._getChildren(context)) {
+      for (let n of rules._getRenderChildren(context)) {
         if (isNode(n, N.Rules)) {
           if ((n.options as RulesOptions)?.referenceMode === true) {
             finalRules.push(n);
@@ -946,7 +932,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   visibleRules(context?: Context) {
-    return this._getChildren(context).filter(n => n.visible);
+    return this._getRenderChildren(context).filter(n => n.visible);
   }
 
   /**
@@ -958,7 +944,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   toObject(convertToPrimitives: boolean = true, context?: Context): Record<string, string | number | boolean | Node> {
     let output = new Map<string, boolean | string | number | Node>();
     const iterateRules = (rules: Rules) => {
-      for (let n of rules._getChildren(context)) {
+      for (let n of rules._getRenderChildren(context)) {
         if (isNode(n, N.Declaration)) {
           let { name, value, important } = n as any;
           if (convertToPrimitives) {
@@ -1099,7 +1085,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const nodes = (hasCtx ? args.slice(1) : args) as Node[];
     // Route through _getChildren/_setChildren overlay when context is active
     if (ctx) {
-      const nextValue = [...this._getChildren(ctx)];
+      const nextValue = [...this._getRenderChildren(ctx)];
       for (const node of nodes) {
         this.adopt(node, ctx);
         nextValue.push(node);
@@ -1126,7 +1112,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const [start, deleteCount, ...items] = (hasCtx ? args.slice(1) : args) as [number, number, ...Node[]];
     // Route through overlay when context is active
     if (ctx) {
-      const nextValue = [...this._getChildren(ctx)];
+      const nextValue = [...this._getRenderChildren(ctx)];
       const removed = nextValue.splice(start, deleteCount, ...items);
       for (const item of items) {
         if (item instanceof Node) {
@@ -1168,7 +1154,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           this.adopt(item, ctx);
         }
       }
-      this._setChildren([...items, ...this._getChildren(ctx)], ctx);
+      this._setChildren([...items, ...this._getRenderChildren(ctx)], ctx);
       for (const item of items) {
         if (item instanceof Node) {
           this.registerNode(item, undefined, ctx);
@@ -1189,7 +1175,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   at(index: number, context?: Context) {
-    return atIndex(this._getChildren(context), index);
+    return atIndex(this._getRenderChildren(context), index);
   }
 
   /**
@@ -1210,7 +1196,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const isNestableAtRuleBody =
         parentAtRule
         && nestableAtRuleNames.has(String((parentAtRule as any).name?.valueOf?.() ?? ''));
-      const children = rules._getChildren(context);
+      const children = rules._getRenderChildren(context);
       const first = children[0];
       const isWrapper =
         isNestableAtRuleBody
@@ -1295,7 +1281,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const dynamicNodes: Node[] = [];
 
     // Process each node with static name, handling both sync and async preEval
-    const processResult = serialForEach(rules._getChildren(context), (node, index) => {
+    const processResult = serialForEach(rules._getRenderChildren(context), (node, index) => {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
@@ -1456,7 +1442,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const applyResolvedNodes = () => {
-      const children = rules._getChildren(context);
+      const children = rules._getRenderChildren(context);
       for (let i = 0; i < children.length; i++) {
         const node = children[i]!;
         const nodeIdx = getIndex(node, context);
@@ -1584,7 +1570,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Helper method to continue preEval'ing remaining children after an async preEval.
    */
   private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number, saved?: any): MaybePromise<this> {
-    const children = rules._getChildren(context);
+    const children = rules._getRenderChildren(context);
     for (let i = startIndex; i < children.length; i++) {
       const node = children[i]!;
 
@@ -1675,7 +1661,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     counter: { value: number },
     context?: Context
   ): void {
-    const value = rules._getChildren(context);
+    const value = rules._getRenderChildren(context);
     if (!isArray(value)) {
       return;
     }
@@ -1694,7 +1680,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Build the evaluation queue partitioned by priority */
   private _buildEvalQueue(rules: Rules, context: Context): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
-    for (const item of rules._getChildren(context).entries()) {
+    for (const item of rules._getRenderChildren(context).entries()) {
       let [idx, rule] = item;
       if (rule.index === undefined) {
         rule.index = idx;
@@ -1718,7 +1704,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             const hasNestedMixinDefinitions =
               isNode(val, N.Mixin)
               && isNode((val as any).rules, N.Rules)
-              && (val as any).rules._getChildren(context).some((n: any) => n?.type === 'Mixin');
+              && (val as any).rules._getRenderChildren(context).some((n: any) => n?.type === 'Mixin');
             if (hasNestedMixinDefinitions) {
               priority = Priority.High;
             }
@@ -1916,8 +1902,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     );
     const isDeclarationOnlyRules = (node: Node): node is Rules => (
       isNode(node, N.Rules)
-      && node._getChildren(context).length > 0
-      && node._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
+      && node._getRenderChildren(context).length > 0
+      && node._getRenderChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
     );
     const composeMergedValue = (decl: Declaration, prior: Declaration, assign: string): void => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
@@ -1973,13 +1959,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mergedAnchorByName = new Map<string, Node>();
     const stream: Node[] = [];
 
-    for (const node of rules._getChildren(context)) {
+    for (const node of rules._getRenderChildren(context)) {
       if (isNode(node, N.Declaration)) {
         stream.push(node);
         continue;
       }
       if (isDeclarationOnlyRules(node)) {
-        for (const child of node._getChildren(context)) {
+        for (const child of node._getRenderChildren(context)) {
           if (isNode(child, N.Declaration)) {
             stream.push(child);
           }
@@ -2049,7 +2035,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This runs after queue evaluation to avoid mutating rule indices mid-eval.
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules, context?: Context): void {
-    const children = rules._getChildren(context);
+    const children = rules._getRenderChildren(context);
     const firstNestedIdx = children.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
     if (firstNestedIdx < 0) {
       return;
@@ -2063,8 +2049,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (
         !isNode(n, N.Rules)
         || !isNode(sourceParent, N.Call)
-        || n._getChildren(context).length === 0
-        || !n._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
+        || n._getRenderChildren(context).length === 0
+        || !n._getRenderChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
       ) {
         return false;
       }

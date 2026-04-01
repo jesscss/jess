@@ -241,6 +241,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       : this.rules;
   }
 
+  private _assignRules(rules: Rules, context: Context): void {
+    const renderKey = this._resolveRenderKey(context);
+    if (renderKey !== undefined && renderKey !== CANONICAL) {
+      this.rulesEdge?.delete(renderKey);
+      if (this.rulesEdge?.size === 0) {
+        this.rulesEdge = undefined;
+      }
+    }
+    this.rules = rules;
+    this.adopt(rules, context);
+  }
+
   getGuard(renderKey?: RenderKey): Condition | Nil | undefined {
     return renderKey !== undefined
       ? this.guardEdge?.get(renderKey) ?? this.guard
@@ -843,8 +855,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               });
             }
             context.rulesetFrames.pop();
-            node.rules = preEvaldRules as Rules;
-            node.adopt(preEvaldRules as Rules, context);
+            node._assignRules(preEvaldRules as Rules, context);
             if (extendRoot && preEvaldRules !== childRules) {
               context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
             }
@@ -969,13 +980,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // when debug code traverses the AST
           if (isThenable(evaluatedRules)) {
             return (evaluatedRules as Promise<Rules>).then((rules) => {
-              this.rules = rules;
-              this.adopt(rules, context);
+              this._assignRules(rules, context);
               return rules;
             });
           }
-          this.rules = evaluatedRules as Rules;
-          this.adopt(evaluatedRules as Rules, context);
+          this._assignRules(evaluatedRules as Rules, context);
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
@@ -1023,8 +1032,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
 
-        this.rules = evaluatedRules as Rules;
-        this.adopt(this.rules, context);
+        this._assignRules(evaluatedRules as Rules, context);
         const rules = this.enterRules(context);
         if (rules.visibleRules(context).length === 0) {
           this._removeFlag(F_VISIBLE, context);

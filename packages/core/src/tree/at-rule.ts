@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, type NodeOptions, type RenderKey } from './node.js';
+import { Node, defineType, F_VISIBLE, CANONICAL, type NodeOptions, type RenderKey } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
@@ -96,6 +96,30 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
   private _resolveRenderKey(context?: Context): RenderKey | undefined {
     return context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
+  }
+
+  private _assignRules(rules: Rules, context: Context): void {
+    const renderKey = this._resolveRenderKey(context);
+    if (renderKey !== undefined && renderKey !== CANONICAL) {
+      this.rulesEdge?.delete(renderKey);
+      if (this.rulesEdge?.size === 0) {
+        this.rulesEdge = undefined;
+      }
+    }
+    this.rules = rules;
+    this.adopt(rules, context);
+  }
+
+  private _assignPrelude(prelude: Node, context: Context): void {
+    const renderKey = this._resolveRenderKey(context);
+    if (renderKey !== undefined && renderKey !== CANONICAL) {
+      this.preludeEdge?.delete(renderKey);
+      if (this.preludeEdge?.size === 0) {
+        this.preludeEdge = undefined;
+      }
+    }
+    this.prelude = prelude;
+    this.adopt(prelude, context);
   }
 
   getPrelude(renderKey?: RenderKey): Node | undefined {
@@ -268,7 +292,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           if (pushedExtendRootForPreEval) {
             context.extendRoots.popExtendRoot();
           }
-          node.rules = evaldRules;
+          node._assignRules(evaldRules, context);
           return node;
         });
       }
@@ -278,7 +302,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       if (pushedExtendRootForPreEval) {
         context.extendRoots.popExtendRoot();
       }
-      node.rules = preEvaldRules as Rules;
+      node._assignRules(preEvaldRules as Rules, context);
     }
     return node;
   }
@@ -437,8 +461,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       }
 
       // Replace outer rules with the inner rules (flatten nested media).
-      node.rules = innerRules;
-      node.adopt(innerRules);
+      node._assignRules(innerRules, context);
     };
 
     return pipe(
@@ -470,11 +493,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
           context.rulesContext = savedRulesContext;
           if (isThenable(out)) {
             return (out as Promise<Node>).then((n) => {
-              node.prelude = n;
+              node._assignPrelude(n, context);
               return undefined;
             });
           }
-          node.prelude = out as Node;
+          node._assignPrelude(out as Node, context);
         }
       },
       () => {
@@ -579,7 +602,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
                   }
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-                  node.rules = finalRules;
+                  node._assignRules(finalRules, context);
                   tryMergeNestedMedia();
                   context.extendRoots.popExtendRoot();
                   const layerName = context.extendRoots.takeLayerName(node);
@@ -626,7 +649,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-              node.rules = finalRules;
+              node._assignRules(finalRules, context);
               tryMergeNestedMedia();
 
               if (pushedExtendRoot && node.isNestable()) {
@@ -655,7 +678,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
           const finalRules =
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
-          node.rules = finalRules;
+          node._assignRules(finalRules, context);
           tryMergeNestedMedia();
 
           if (pushedExtendRoot && node.isNestable()) {
