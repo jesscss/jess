@@ -661,10 +661,10 @@ describe('selector lists and branching', () => {
       expect(partialMatches).toHaveLength(2);
       expect(partialMatches[0]!.startIndex).toBe(0);
       expect(partialMatches[0]!.endIndex).toBe(0);
-      expect(partialMatches[0]!.containingNode).toBe(sel0);
+      expect((partialMatches[0]!.containingNode.sourceNode ?? partialMatches[0]!.containingNode)).toBe(sel0);
       expect(partialMatches[1]!.startIndex).toBe(3);
       expect(partialMatches[1]!.endIndex).toBe(3);
-      expect(partialMatches[1]!.containingNode).toBe(sel0);
+      expect((partialMatches[1]!.containingNode.sourceNode ?? partialMatches[1]!.containingNode)).toBe(sel0);
     });
 
     it('can find multiple matches #5', async () => {
@@ -682,10 +682,10 @@ describe('selector lists and branching', () => {
       expect(partialMatches).toHaveLength(2);
       expect(partialMatches[0]!.startIndex).toBe(0);
       expect(partialMatches[0]!.endIndex).toBe(1);
-      expect(partialMatches[0]!.containingNode).toBe(sel0);
+      expect((partialMatches[0]!.containingNode.sourceNode ?? partialMatches[0]!.containingNode)).toBe(sel0);
       expect(partialMatches[1]!.startIndex).toBe(3);
       expect(partialMatches[1]!.endIndex).toBe(4);
-      expect(partialMatches[1]!.containingNode).toBe(sel0);
+      expect((partialMatches[1]!.containingNode.sourceNode ?? partialMatches[1]!.containingNode)).toBe(sel0);
     });
   });
 
@@ -817,7 +817,9 @@ describe('selector lists and branching', () => {
       expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
       expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.get('value')[4]);
       expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
-      expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode).toBe(parentSelector);
+      expect(
+        result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode.valueOf()
+      ).toBe(parentSelector.valueOf());
     });
 
     describe('parent selector context', () => {

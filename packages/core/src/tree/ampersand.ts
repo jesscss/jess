@@ -104,6 +104,26 @@ function getSelectorFromContainer(
   return selectorContainer.selector;
 }
 
+function cloneStoredSelector(
+  storedSelector: Selector | Nil | undefined,
+  deep?: boolean
+): Selector | Nil | undefined {
+  if (!isNode(storedSelector as Node | undefined)) {
+    return storedSelector;
+  }
+  const storedClone = storedSelector.clone(deep) as Selector | Nil;
+  const sourceLibrary = (storedSelector as Selector).keySetLibrary;
+  if (sourceLibrary && isNode(storedClone as Node | undefined)) {
+    (storedClone as Selector).keySetLibrary = sourceLibrary;
+    for (const child of (storedClone as Selector).children(true)) {
+      if ((child as Selector).isSelector) {
+        (child as Selector).keySetLibrary = sourceLibrary;
+      }
+    }
+  }
+  return storedClone;
+}
+
 /**
  * The '&' selector element
  */
@@ -143,21 +163,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
         const storedSelector = getSelectorFromContainer(selectorContainer);
-        if (isNode(storedSelector as Node | undefined)) {
-          const storedClone = storedSelector.clone(true) as Selector | Nil;
-          const sourceLibrary = (storedSelector as Selector).keySetLibrary;
-          if (sourceLibrary && isNode(storedClone as Node | undefined)) {
-            (storedClone as Selector).keySetLibrary = sourceLibrary;
-            for (const child of (storedClone as Selector).children(true)) {
-              if ((child as Selector).isSelector) {
-                (child as Selector).keySetLibrary = sourceLibrary;
-              }
-            }
-          }
-          this._storedSelector = storedClone;
-        } else {
-          this._storedSelector = storedSelector;
-        }
+        this._storedSelector = cloneStoredSelector(storedSelector, true);
       }
     }
     this.template = finalTemplate;
@@ -479,8 +485,10 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
     if (newNode.template instanceof Nil) {
       newNode.adopt(newNode.template as unknown as Node);
     }
-    // Don't copy _selectorContainer — clones must rebind to the current eval
-    // context frame (e.g. call-site for mixin clones, not definition-site).
+    // Preserve authored selector context when it already exists. EvalNode will
+    // still bind the current frame when the clone has no selector container.
+    newNode._selectorContainer = this._selectorContainer;
+    newNode._storedSelector = cloneStoredSelector(this._storedSelector, deep);
     return newNode;
   }
 

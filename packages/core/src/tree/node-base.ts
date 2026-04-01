@@ -1202,6 +1202,9 @@ export abstract class Node<
     if (node.hoistToRoot) {
       this.hoistToRoot = true;
     }
+    if ((this as any).keySetLibrary === undefined && (node as any).keySetLibrary !== undefined) {
+      (this as any).keySetLibrary = (node as any).keySetLibrary;
+    }
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)

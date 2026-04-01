@@ -39,7 +39,10 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
     return this.value.length;
   }
 
-  override clone(_deep?: boolean): this {
+  override clone(deep?: boolean): this {
+    if (deep) {
+      return super.clone(true) as this;
+    }
     return this._withValue(this.value) as this;
   }
 

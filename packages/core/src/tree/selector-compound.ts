@@ -44,7 +44,10 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
     return this.value.length;
   }
 
-  override clone(_deep?: boolean): this {
+  override clone(deep?: boolean): this {
+    if (deep) {
+      return super.clone(true) as this;
+    }
     return this._withValue(this.value) as this;
   }
 

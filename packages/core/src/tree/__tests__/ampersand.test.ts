@@ -77,12 +77,9 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.render(context, { collapseNesting: true });
-    // Position model: separate blocks (frames not carried through position yet)
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
-      }
-      .one.two {
         inner: one two;
       }`
     );
@@ -96,15 +93,10 @@ describe('Ampersand', () => {
     let evald = await node.eval(context);
 
     const css = evald.render(context, { collapseNesting: true });
-    // Bare & with SelectorList parent: no :is() wrapping needed.
-    // Output has two blocks (same selector) — semantically identical to merged.
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
-      }
-      .one,
-      .two {
         inner: one two;
       }`
     );
@@ -130,12 +122,9 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.render(context, { collapseNesting: true });
-    // Position model: separate blocks (frames not carried through position yet)
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
-      }
-      .one.two {
         inner: one two;
       }`
     );
@@ -146,14 +135,10 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.render(context, { collapseNesting: true });
-    // Empty template with SelectorList parent: no :is() wrapping needed.
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
-      }
-      .one,
-      .two {
         inner: one two;
       }`
     );
