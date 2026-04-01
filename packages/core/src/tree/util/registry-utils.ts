@@ -54,6 +54,28 @@ function getSelectorKeyValues(keySet: SelectorKeySource | undefined): string[] {
   return keySet._library?.valuesOf(keySet) ?? [];
 }
 
+function getFallbackSelectorIndexKeys(selector: Node | undefined): string[] {
+  if (!selector) {
+    return [];
+  }
+  const value = (selector as unknown as { value?: unknown }).value;
+  if (isArray(value)) {
+    const keys: string[] = [];
+    for (const child of value) {
+      if (!(child instanceof Node)) {
+        continue;
+      }
+      if (isNode(child, N.Combinator)) {
+        continue;
+      }
+      keys.push(...getFallbackSelectorIndexKeys(child));
+    }
+    return keys;
+  }
+  const key = String(selector.valueOf?.() ?? '');
+  return key && isIndexableSelectorKey(key) ? [key] : [];
+}
+
 function hasSelectorKey(keySet: SelectorKeySet | undefined, key: string): boolean {
   if (!keySet) {
     return false;
@@ -237,11 +259,17 @@ function addMixinToIndex(
     if (keySetToUse !== undefined) {
       indexMixinSelectorStart(index, mixin, keySetToUse);
     } else {
-      // Fallback: when keySetLibrary isn't available (e.g. test-created nodes),
-      // use valueOf() as the index key so the Ruleset is still discoverable.
-      const selectorStr = String(callableSelector.valueOf?.() ?? '');
-      if (selectorStr) {
-        indexMixinSelectorStart(index, mixin, [selectorStr]);
+      // Fallback: test-created compound selectors may not have a keySet yet.
+      // Derive indexable selector segments directly from the selector tree so
+      // namespace/compound lookups can still use startKey + remainder matching.
+      const fallbackKeys = getFallbackSelectorIndexKeys(callableSelector as Node);
+      if (fallbackKeys.length > 0) {
+        indexMixinSelectorStart(index, mixin, fallbackKeys);
+      } else {
+        const selectorStr = String(callableSelector.valueOf?.() ?? '');
+        if (selectorStr) {
+          indexMixinSelectorStart(index, mixin, [selectorStr]);
+        }
       }
     }
     return;

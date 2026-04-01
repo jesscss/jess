@@ -1010,12 +1010,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       if (node.options?.setDefined && context) {
         const key = (node as any).name?.toString();
+        const sourceNode = node.sourceNode ?? node;
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
         opts.context = context;
         opts.start = undefined;
-        // Exclude the node being registered so setDefined doesn't find itself
-        opts.filter = (n: Node) => n !== node;
+        // Exclude the current declaration by source identity so a derived eval node
+        // cannot resolve its own canonical registry entry as the "existing" declaration.
+        opts.filter = (n: Node) => (n.sourceNode ?? n) !== sourceNode;
         let result = this.find('declaration', key, node.type as 'VarDeclaration' | 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {

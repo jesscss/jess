@@ -877,22 +877,40 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const priorSelectorParent = !deep && this.selector instanceof Node
+      ? this.selector.parent
+      : undefined;
+    const priorRulesParent = !deep && this.rules instanceof Node
+      ? this.rules.parent
+      : undefined;
     const cloned = super.clone(deep, cloneFn, ctx) as this;
-    if (!deep && ctx) {
-      const selector = cloned.getSelector(cloned._resolveRenderKey(ctx));
-      if (selector instanceof Node) {
-        cloned.selector = selector.clone(false, undefined, ctx) as Selector | Nil;
-        cloned.adopt(cloned.selector, ctx);
+    if (!deep) {
+      if (this.selector instanceof Node) {
+        (this.selector as unknown as { parent?: Node }).parent = priorSelectorParent;
       }
-      const currentRules = this.getRules(this._resolveRenderKey(ctx));
-      if (currentRules !== this.rules) {
+      if (this.rules instanceof Node) {
+        (this.rules as unknown as { parent?: Node }).parent = priorRulesParent;
+      }
+      const renderKey = ctx ? cloned._resolveRenderKey(ctx) : this.renderKey;
+      const selector = cloned.getSelector(renderKey);
+      if (selector instanceof Node) {
+        if (ctx || this !== this.sourceNode) {
+          cloned.selector = selector.clone(false, undefined, ctx) as Selector | Nil;
+          cloned.adopt(cloned.selector, ctx);
+        }
+      }
+      const currentRules = this.getRules(renderKey);
+      if (ctx && currentRules !== this.rules) {
         cloned.rules = currentRules;
         cloned.adopt(currentRules, ctx);
       }
+      if (this !== this.sourceNode && cloned.rules === this.rules) {
+        const rules = ctx ? cloned.enterRules(ctx) : cloned.rules;
+        cloned.rules = rules.createShallowBodyWrapper(ctx);
+        cloned.adopt(cloned.rules, ctx);
+      }
     }
-    if (!deep && ctx && this !== this.sourceNode && cloned.rules === this.rules) {
-      const rules = cloned.enterRules(ctx);
-      cloned.rules = rules.createShallowBodyWrapper(ctx);
+    if (!deep && ctx && this !== this.sourceNode && cloned.rules !== this.rules && cloned.rules.parent !== cloned) {
       cloned.adopt(cloned.rules, ctx);
     }
     return cloned;

@@ -84,16 +84,31 @@ export function setIndex(
 
 export function getSourceParent(
   node: Node,
-  _ctx: Context
+  ctx: Context
 ): Node | undefined {
+  const renderKey = ctx.renderKey ?? ctx.rulesContext?.renderKey ?? node.renderKey;
+  if (renderKey !== undefined) {
+    const edge = (node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge;
+    if (edge?.has(renderKey)) {
+      return edge.get(renderKey);
+    }
+  }
   return node.sourceParent;
 }
 
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
-  _ctx: Context
+  ctx: Context
 ): void {
+  const renderKey = ctx.renderKey ?? ctx.rulesContext?.renderKey ?? node.renderKey;
+  if (renderKey !== undefined) {
+    const edgeOwner = node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> };
+    const edge = edgeOwner.sourceParentEdge ?? new Map<unknown, Node | undefined>();
+    edge.set(renderKey, parent);
+    edgeOwner.sourceParentEdge = edge;
+    return;
+  }
   node.sourceParent = parent;
 }
 

@@ -8,6 +8,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 import { isEvaluated } from './tree/util/field-helpers.js';
+import { F_STATIC } from './tree/node.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
@@ -831,6 +832,9 @@ function createThunk(val: any, paramDef: any, context?: Context): () => MaybePro
     let result;
     if (context && isNode(val) && !isEvaluated(val, context)) {
       result = await (val as any).eval(context);
+      if (val.hasFlag(F_STATIC) && isNode(result) && result.sourceNode === val) {
+        result = val;
+      }
     } else if (typeof val === 'function') {
       // If val is a function (lazy parameter), call it
       result = await val();

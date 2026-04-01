@@ -66,6 +66,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
       : this.value[index];
   }
 
+  at(index: number, context?: Context) {
+    const renderKey = context?.renderKey ?? this.renderKey;
+    return this.getValueAt(index, renderKey);
+  }
+
   private _replaceValueAt(index: number, node: T, renderKey: RenderKey): void {
     const previous = this.getValueAt(index, renderKey);
     if (previous === node) {

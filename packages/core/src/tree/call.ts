@@ -98,7 +98,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     };
 
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
-    if (!deep && ctx) {
+    if (!deep) {
       priorChildParents = [];
       if (cloneData.name instanceof Node) {
         priorChildParents.push([cloneData.name, cloneData.name.parent]);
@@ -119,9 +119,11 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       this.treeContext
     );
 
-    if (priorChildParents && ctx) {
+    if (priorChildParents) {
       for (const [child, priorParent] of priorChildParents) {
-        setParent(child, newNode, ctx);
+        if (ctx) {
+          setParent(child, newNode, ctx);
+        }
         (child as unknown as { parent?: Node }).parent = priorParent;
       }
     }
@@ -187,6 +189,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     return list(
       args.get('value').map((arg) => {
         const cloned = arg.clone(true, undefined, context);
+        this._normalizeFallbackArgSpacing(cloned);
         cloned.frozen = true;
         return cloned;
       }),

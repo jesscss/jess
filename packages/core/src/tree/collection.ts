@@ -37,9 +37,8 @@ export class Collection extends Rules {
     if (this.preEvaluated) {
       return this;
     }
-    const node = this.clone() as this;
-    node.preEvaluated = true;
-    return node;
+    this.preEvaluated = true;
+    return this;
   }
 }
 

@@ -193,6 +193,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
   }
 
+  override preEval(context: Context): MaybePromise<Node> {
+    if (this.preEvaluated) {
+      return this;
+    }
+    const node = this.clone();
+    node.preEvaluated = true;
+    if (this.parentEdges) {
+      node.parentEdges = new Map(this.parentEdges);
+    }
+    const out = node.forEachNode(child => child.preEval(context), context);
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => node);
+    }
+    return node;
+  }
+
   override valueOf() {
     return '';
   }
@@ -319,6 +335,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
     // wrapper `Rules` and should be visible inside nested at-rule preludes.
     const activeRulesParent = getStateRulesParent(this, context);
     const activeSourceRulesParent = getStateSourceRulesParent(this, context);
+    const sourceReference = this.sourceNode as Node;
     let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? activeRulesParent;
     const result = pipe(
       () => {
@@ -755,7 +772,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               let out = evald;
               out.pre = this.pre;
               out.post = this.post;
-              setSourceParent(out, this, context);
+              setSourceParent(out, sourceReference, context);
               const dependency = isTopLevelVarDeclaration(returnVal as Node, context)
                 ? {
                     dependsOn: new Set<VarDeclaration>([returnVal as VarDeclaration]),
@@ -778,7 +795,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           if (type === 'mixin-ruleset' && !isNode(getLookupParentNode(this, context), N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
-              setSourceParent(first as Node, this, context);
+              setSourceParent(first as Node, sourceReference, context);
               context.popReference();
               return cast(first);
             }
@@ -788,7 +805,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
 
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
-            setSourceParent(item, this, context);
+            setSourceParent(item, sourceReference, context);
             if (!isNode(item, N.Mixin | N.Ruleset)) {
               context.popReference();
               return cast(undefined);
@@ -814,7 +831,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();
-        setSourceParent(result, this, context);
+        setSourceParent(result, sourceReference, context);
         return result;
       }
     );
