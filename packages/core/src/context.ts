@@ -286,12 +286,29 @@ export class Context {
    * When doing any kind of lookup, the current node and resolved
    * nodes in the search chain are added to prevent recursion errors.
    *
-   * We use a set here because we look it up for filtering.
+   * Search-scope identity is canonical when available (`sourceNode ?? node`)
+   * so derived wrappers do not bypass recursion guards.
    * Also used to track mixins currently being evaluated to prevent infinite recursion.
    */
   private _searchScope: Set<Node> | undefined;
   get searchScope() {
     return (this._searchScope ??= new Set());
+  }
+
+  getSearchScopeIdentity(node: Node): Node {
+    return node.sourceNode ?? node;
+  }
+
+  hasInSearchScope(node: Node): boolean {
+    return this.searchScope.has(this.getSearchScopeIdentity(node));
+  }
+
+  addToSearchScope(node: Node): void {
+    this.searchScope.add(this.getSearchScopeIdentity(node));
+  }
+
+  deleteFromSearchScope(node: Node): void {
+    this.searchScope.delete(this.getSearchScopeIdentity(node));
   }
 
   /**
@@ -491,6 +508,7 @@ export class Context {
   /** Full resolved path -> tree */
   sourceTrees = new Map<string, Rules>();
   evaldTrees = new Map<string, Rules>();
+  composeSetValues = new Map<string, Rules>();
 
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.

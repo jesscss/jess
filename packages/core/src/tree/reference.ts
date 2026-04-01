@@ -468,7 +468,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           const blockedParamVar = isNode(n, N.VarDeclaration)
             && Boolean(n.options?.paramVar)
             && !isWithinParamVarScope(getLookupParentNode(n, context), context.rulesContext);
-          const blockedBySearchScope = context.searchScope.has(n);
+          const blockedBySearchScope = context.hasInSearchScope(n);
           return passesOriginal && !blockedBySearchScope && !blockedParamVar;
         };
         const hasTarget = !!target;
@@ -725,7 +725,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           return out;
         }
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
-          context.searchScope.add(returnVal as Node);
+          context.addToSearchScope(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).get('important');
           const declValue = (returnVal as Declaration).get('value', context);
           const scopeRenderKey = context.lookupScope?.renderKey ?? context.renderKey;
@@ -766,7 +766,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               }
             },
             (evald) => {
-              context.searchScope.delete(returnVal as Node);
+              context.deleteFromSearchScope(returnVal as Node);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
               let out = evald;

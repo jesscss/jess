@@ -10,6 +10,7 @@ export function getParent(
   ctx: Context
 ): Node | undefined {
   const renderKey = ctx.renderKey
+    ?? ctx.rulesContext?.renderKey
     ?? (node.renderKey !== CANONICAL ? node.renderKey : undefined)
     ?? (node.parentEdges?.has(EVAL) ? EVAL : undefined);
   if (renderKey !== undefined) {

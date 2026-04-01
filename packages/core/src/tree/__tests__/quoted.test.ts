@@ -26,7 +26,7 @@ describe('Quoted', () => {
     expect(node.get('value')).not.toBe('blue');
   });
 
-  it('evaluates to a cloned quoted node without overwriting the canonical value', async () => {
+  it('keeps the canonical root unchanged when eval returns a derived quoted node', async () => {
     const context = new Context();
     const node = quoted(interpolated({
       source: '%%',
@@ -36,8 +36,9 @@ describe('Quoted', () => {
     const evald = await node.eval(context);
 
     expect(evald).not.toBe(node);
-    expect(node.toTrimmedString({ context })).toBe('"blue"');
+    expect(evald.toTrimmedString({ context })).toBe('"blue"');
     expect(node.toTrimmedString()).toBe('"$(blue)"');
+    expect(node.toTrimmedString({ context })).toBe('"$(blue)"');
     expect(node.get('value')).toBeTypeOf('object');
     expect(node.get('value')).not.toBe('blue');
   });

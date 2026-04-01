@@ -14,7 +14,7 @@ import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { setParent } from './field-helpers.js';
+import { getParent, setParent } from './field-helpers.js';
 
 const { isArray } = Array;
 
@@ -89,6 +89,14 @@ function hasSelectorKey(keySet: SelectorKeySet | undefined, key: string): boolea
 function getIndexableSelectorKeys(keySet: SelectorKeySource | undefined): string[] {
   return getSelectorKeyValues(keySet).filter(
     key => typeof key === 'string' && !key.startsWith('*') && isIndexableSelectorKey(key)
+  );
+}
+
+function isNonImportStyleBoundary(rules: Rules | undefined): boolean {
+  return Boolean(
+    rules
+    && rules.sourceNode?.type === 'StyleImport'
+    && rules.sourceNode.options.type !== 'import'
   );
 }
 
@@ -1193,20 +1201,15 @@ export class MixinRegistry extends Registry<
       // Mark this Rules node as searched after we've finished searching it (including children)
       searchedRules.add(rules);
 
+      if (isNonImportStyleBoundary(rules)) {
+        searchParents = false;
+      }
+
       if (!searchParents) {
         break;
       }
       do {
         rules = rules?.getRegistryParent(this.context);
-        /**
-         * If we reach an import boundary, stop unless it's an `@import`
-         * which means these rules can reach into the parent file that imports
-         * this one.
-         */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          rules = undefined;
-          break;
-        }
       } while (rules && rules.type !== 'Rules');
     }
 
@@ -1262,6 +1265,9 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
     let { searchParents = true } = options ?? {};
     let findRoot = false;
     while (rules) {
+      if (isNonImportStyleBoundary(rules)) {
+        searchParents = false;
+      }
       let registry = rules.functionRegistry;
       if (registry) {
         registry.indexPendingItems();
@@ -1281,12 +1287,6 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
         ) {
           /** We're at the root */
           break;
-        }
-        /**
-         * If we reach an import boundary, skip the scope until we get to the top level.
-         */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          findRoot = true;
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
@@ -1573,7 +1573,15 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // Sort by comparePosition and take the last one
           candidateArray.sort((a, b) => {
             const pos = comparePosition(a, b);
-            return pos ?? 0;
+            if (pos && Number.isFinite(pos)) {
+              return pos;
+            }
+            const aDirect = getParent(a, this.context) === rules;
+            const bDirect = getParent(b, this.context) === rules;
+            if (aDirect !== bDirect) {
+              return aDirect ? 1 : -1;
+            }
+            return 0;
           });
           bestResult = candidateArray[candidateArray.length - 1];
         }
@@ -1585,6 +1593,9 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       // If we haven't found public candidates in the current scope, continue normal parent search
       // (optional candidates are tracked but we keep searching up the parent chain)
+      if (isNonImportStyleBoundary(rules)) {
+        searchParents = false;
+      }
       if (isPublic || !searchParents) {
         if (options && searchChildrenOptions.readonly) {
           options.readonly = true;
@@ -1595,10 +1606,6 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       do {
         rules = rules?.getRegistryParent(this.context);
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          rules = undefined;
-          break;
-        }
       } while (rules && rules.type !== 'Rules');
       // The start constraint only applies within the originating scope.
       // When walking up to a parent scope, drop it so declarations at any

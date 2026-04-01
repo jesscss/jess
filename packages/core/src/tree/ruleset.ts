@@ -727,7 +727,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
-      const node = this.clone();
+      const node = this.clone(false, undefined, context);
       node.preEvaluated = true;
       const renderKey = node._resolveRenderKey(context);
       // Index should already be assigned by parent Rules
@@ -1034,13 +1034,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         if (evaluatedRules instanceof Nil) {
           return evaluatedRules;
-        }
-        const selectorText = String(this.getSelector(renderKey)?.valueOf?.() ?? '');
-        if (
-          selectorText.includes('.call-lock-mixin')
-          || selectorText.includes('#guarded-caller')
-          || selectorText.includes('#guarded-deeper')
-        ) {
         }
 
         // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)

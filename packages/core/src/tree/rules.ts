@@ -234,14 +234,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const location = Array.isArray(this.location) && this.location.length === 6
       ? this.location as LocationInfo
       : undefined;
+    const detachedRenderKey = (
+      !deep
+      && this.renderKey === CANONICAL
+      && ctx
+        ? ctx.nextRenderKey()
+        : this.renderKey
+    );
     const newRules = deep
       ? super.clone(deep, cloneFn, ctx)
-      : new (this.constructor as typeof Rules)(
-        this.value,
-        options ? { ...options } : undefined,
-        location,
-        this.treeContext
-      ) as this;
+      : (() => {
+          const wrapper = new (this.constructor as typeof Rules)(
+            [],
+            options ? { ...options } : undefined,
+            location,
+            this.treeContext
+          ) as this;
+          wrapper._setValueArray(this.value as Node[]);
+          wrapper.inherit(this);
+          wrapper.renderKey = detachedRenderKey;
+          if (wrapper.renderKey !== CANONICAL) {
+            wrapper._connectSharedChildren(wrapper.renderKey);
+          }
+          return wrapper;
+        })();
 
     if (deep && options) {
       newRules.options = options as typeof newRules.options;
@@ -254,7 +270,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (ctx) {
       const parent = getCurrentParentNode(this, ctx);
       if (parent) {
-        setParent(newRules, parent, ctx);
+        if (newRules.renderKey !== CANONICAL) {
+          setParent(newRules, parent, { ...ctx, renderKey: newRules.renderKey });
+        } else {
+          setParent(newRules, parent, ctx);
+        }
       }
     }
 
@@ -645,6 +665,52 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return wrapper;
   }
 
+  createPlacementWrapper(ctx?: Context, renderKey: RenderKey = EVAL): Rules {
+    const options = this._cloneOptionsForContext(ctx);
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as LocationInfo
+      : undefined;
+    const wrapper = new (this.constructor as typeof Rules)(
+      [],
+      options ? { ...options } : undefined,
+      location,
+      this.treeContext
+    );
+    const previousRenderKey = ctx?.renderKey;
+    if (ctx && this.renderKey !== CANONICAL) {
+      ctx.renderKey = this.renderKey;
+    }
+    try {
+      wrapper._setValueArray([...getChildren(this, ctx)] as Node[]);
+    } finally {
+      if (ctx) {
+        ctx.renderKey = previousRenderKey;
+      }
+    }
+    wrapper.inherit(this);
+    wrapper.renderKey = renderKey;
+    wrapper._connectSharedChildren(wrapper.renderKey);
+    return wrapper;
+  }
+
+  createPlacementWrapperWithChildren(children: readonly Node[], renderKey: RenderKey = EVAL): Rules {
+    const options = this._cloneOptionsForContext(undefined);
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as LocationInfo
+      : undefined;
+    const wrapper = new (this.constructor as typeof Rules)(
+      [],
+      options ? { ...options } : undefined,
+      location,
+      this.treeContext
+    );
+    wrapper._setValueArray([...children] as Node[]);
+    wrapper.inherit(this);
+    wrapper.renderKey = renderKey;
+    wrapper._connectSharedChildren(wrapper.renderKey);
+    return wrapper;
+  }
+
   withRenderOwner(
     owner: Node,
     renderKey?: RenderKey,
@@ -801,7 +867,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Children render one level deeper inside braces.
       const childOptions = { ...opts, depth: depth + 1 };
       childOptions.writer!.add('\n');
-      this.toTrimmedString(childOptions);
+      Rules.prototype.toTrimmedString.call(this, childOptions);
       // ensure closing brace is on its own properly indented line
       w.add('\n');
       if (depth !== 0) {
@@ -1189,7 +1255,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       /** @removal-target — node-copy-reduction: maybeClone → return this.
        * Registry population, child indexing, and prelude eval should
        * all work against canonical nodes + position patches. */
-      let rules = this.clone();
+      let rules = this.clone(false, undefined, context);
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);

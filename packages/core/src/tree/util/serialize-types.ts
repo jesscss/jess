@@ -137,6 +137,8 @@ function getNodeValue(n: Node): unknown {
   const childKeys = (n.constructor as typeof Node).childKeys;
   const NODE_INTERNAL = new Set([
     'parent', 'index', 'frames', 'pre', 'post', 'state', 'nodeType',
+    'preEvaluated', 'evaluated',
+    'renderKey',
     'isSelector', 'keySetLibrary', 'role',
     'fullRender',
     'rulesetRegistry', 'mixinRegistry', 'declarationRegistry', 'functionRegistry',

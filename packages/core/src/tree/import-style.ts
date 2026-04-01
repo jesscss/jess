@@ -273,29 +273,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    const shouldCloneImportWrapper = type === 'import' && importOptions!._dedupe === true;
-    // `@import` always evaluates through a fresh shallow root clone already, so
-    // finalization can mutate that per-import Rules in place. Plain `@-compose`
-    // reuses cached evaluated Rules across imports, so it still needs a shallow
-    // wrapper for per-import visibility/source metadata. Repeated `_dedupe`
-    // imports also need an isolated shallow wrapper so the cached import root
-    // keeps its canonical child array / registry slot. `_dedupe` still needs
-    // child Ruleset isolation so implicit-reference extends don't contaminate
-    // shared selector state.
-    /** @removal-target — node-copy-reduction: materialize/clone wrappers.
-     * Import/compose results should reuse canonical children with per-import
-     * graph ownership instead of wrapper cloning. */
     const materializeConfiguredComposeChildren = type === 'compose' && this.get('withNode', context) != null;
-    // Create a lightweight output per import — canonical children, no materialization.
-    // Same pattern as mixin output (finalizeMixinInvocationOutput).
-    let out: Rules;
-    if (type === 'import' && !shouldCloneImportWrapper) {
-      out = evaluatedRules;
-    } else {
-      const children = [...getChildren(evaluatedRules, context)];
-      out = Rules.create(children, { ...evaluatedRules.options });
-      out.inherit(evaluatedRules);
-    }
+    // Every import placement gets its own render-owned Rules wrapper so the same
+    // source module can be imported multiple times without clone-driven cleanup.
+    const out = evaluatedRules.createPlacementWrapper(context, context.nextRenderKey());
     if (materializeConfiguredComposeChildren) {
       const children = getChildren(out, context);
       for (let i = 0; i < children.length; i++) {
@@ -434,14 +415,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         // - Subsequent compose imports reuse the cached evaluated Rules (so re-imports don't re-run evaluation).
         // - Subsequent compose imports default to "reference" mode unless `multiple: true` is set,
         //   so rulesets / at-rules are not output again.
+        const cachedSetValues = context.composeSetValues.get(resolvedPath);
         if (type === 'compose' && evaldRules) {
-          if (withValues) {
-          // Sass-style: once configured, cannot be configured again.
-          // (We keep parsing show/hide/prefix metadata elsewhere; this is for with/set configs.)
+          if (withValues?.type === 'set') {
+            // `set` establishes the cached module baseline and cannot be applied twice.
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // Reuse cached evaluated rules tree.
-          rules = evaldRules;
+          if (withValues?.type !== 'with') {
+            // Reuse cached evaluated rules tree for plain compose re-imports and `set` baselines.
+            rules = evaldRules;
+          }
           // Default: de-dupe output for compose re-imports unless explicitly multiple.
           if (!importOptions!.multiple) {
             importOptions!.reference = true;
@@ -466,7 +449,29 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             }
             withRulesNode = evaluated;
           }
-          const withRules = withRulesNode as Rules;
+          let withRules = withRulesNode as Rules;
+          if (type === 'compose' && withValues.type === 'with' && cachedSetValues) {
+            const mergedConfig = new Map<string, Node>();
+            for (const configuredNode of cachedSetValues.value) {
+              if (!isNode(configuredNode, N.VarDeclaration)) {
+                continue;
+              }
+              const key = String((configuredNode as VarDeclaration).get('name')?.valueOf() ?? '');
+              if (key) {
+                mergedConfig.set(key, configuredNode);
+              }
+            }
+            for (const configuredNode of withRules.value) {
+              if (!isNode(configuredNode, N.VarDeclaration)) {
+                continue;
+              }
+              const key = String((configuredNode as VarDeclaration).get('name')?.valueOf() ?? '');
+              if (key) {
+                mergedConfig.set(key, configuredNode);
+              }
+            }
+            withRules = Rules.create([...mergedConfig.values()]);
+          }
 
           // Build a name→index map over canonical top-level VarDeclarations for O(1) lookup.
           // This replaces the previous rules.clone(true) + registry approach — we no longer
@@ -517,7 +522,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           for (let i = 0; i < rules.value.length; i++) {
             finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
           }
-          rules = Rules.create(finalChildren);
+          rules = rules.createPlacementWrapperWithChildren(finalChildren, context.nextRenderKey());
+          if (type === 'compose' && withValues.type === 'set') {
+            context.composeSetValues.set(resolvedPath, withRules);
+          }
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
@@ -604,7 +612,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
           // Cache compose modules (and configured modules) after first evaluation.
           if (
-            type === 'compose'
+            (type === 'compose' && withValues?.type !== 'with')
             || withValues?.type === 'set'
             || (type === 'import' && importOptions!.once !== false)
           ) {
@@ -642,8 +650,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         // configuredWithCanonicalParents restore removed — canonical parents are not mutated.
 
         // For import type, register the final Rules as a child root of the parent
-        // so extends from the parent can find rulesets in the imported Rules
-        // Do this AFTER getFinalRules because it returns a cloned Rules
+        // so extends from the parent can find rulesets in the imported Rules.
         if (type === 'import') {
           const currentParentExtendRoot = context.extendRoots.getCurrentExtendRoot();
           // Import type is mutable by default (unless explicitly mutable: false)

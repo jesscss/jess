@@ -434,6 +434,110 @@ export abstract class Node<
   }
 
   /**
+   * Set the whole child payload, a named child field, or an indexed child item.
+   * This is a canonical mutation compatibility seam; non-canonical mutation
+   * should happen through derived nodes and keyed edges.
+   */
+  setData(val: NodeValue): void;
+  setData(key: string | number, val: unknown): void;
+  setData(...args: unknown[]): void {
+    const childKeys = (this.constructor as typeof Node).childKeys;
+
+    if (args.length === 1) {
+      const val = args[0];
+      if (Array.isArray(childKeys) && childKeys.length === 1) {
+        (this as unknown as Record<string, unknown>)[childKeys[0]!] = val;
+      } else if (Array.isArray(childKeys) && val && typeof val === 'object') {
+        for (const key of childKeys) {
+          if (key! in (val as Record<string, unknown>)) {
+            (this as unknown as Record<string, unknown>)[key!] = (val as Record<string, unknown>)[key!];
+          }
+        }
+      } else {
+        (this as unknown as Record<string, unknown>).value = val;
+      }
+      this._adoptValue(val);
+      this._invalidateValueOf();
+      return;
+    }
+
+    const key = args[0] as string | number;
+    const val = args[1];
+    if (typeof key === 'number') {
+      const arr = this._getArrayField();
+      if (arr[key] === val) {
+        return;
+      }
+      arr[key] = val;
+    } else {
+      const fields = this as unknown as Record<string, unknown>;
+      if (fields[key] === val) {
+        return;
+      }
+      fields[key] = val;
+    }
+    this._adoptValue(val);
+    this._invalidateValueOf();
+  }
+
+  private _getArrayField(): unknown[] {
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    if (!Array.isArray(childKeys) || childKeys.length === 0) {
+      throw new Error(`${this.type} has no array child field`);
+    }
+    const key = childKeys[0]!;
+    const value = (this as unknown as Record<string, unknown>)[key];
+    if (!isArray(value)) {
+      throw new Error(`${this.type}.${key} is not an array child field`);
+    }
+    return value as unknown[];
+  }
+
+  push(ctx: Context, ...items: Node[]): void;
+  push(...items: Node[]): void;
+  push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
+    let ctx: Context | undefined;
+    let items: Node[];
+    if (ctxOrFirst instanceof Node) {
+      items = [ctxOrFirst, ...rest];
+    } else {
+      ctx = ctxOrFirst as Context;
+      items = rest;
+    }
+    const arr = this._getArrayField();
+    arr.push(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item, ctx);
+      }
+    }
+    this._invalidateValueOf();
+  }
+
+  splice(start: number, deleteCount: number, ...items: unknown[]): unknown[] {
+    const arr = this._getArrayField();
+    const removed = arr.splice(start, deleteCount, ...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
+    return removed;
+  }
+
+  unshift(...items: unknown[]): void {
+    const arr = this._getArrayField();
+    arr.unshift(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
+  }
+
+  /**
    * Add a flag to the node's state
    * Handles STATIC/NON_STATIC exclusivity automatically
    */
@@ -585,9 +689,11 @@ export abstract class Node<
   get<K extends keyof ChildData & string>(key: K, ctx: Context | undefined): ChildData[K];
   get<K extends keyof ChildData & string>(key: K, ctxOrRenderKey?: Context | RenderKey | undefined): ChildData[K] {
     const ctx = isContextArg(ctxOrRenderKey) ? ctxOrRenderKey : undefined;
-    const renderKey = ctx
-      ? (ctx.renderKey ?? this.renderKey)
-      : ctxOrRenderKey;
+    const renderKey = this.renderKey !== CANONICAL
+      ? this.renderKey
+      : ctx
+        ? ctx.renderKey
+        : ctxOrRenderKey;
 
     if (renderKey !== undefined) {
       const singularEdge = (this as unknown as Record<string, unknown>)[`${key}Edge`] as NodeEdge<ChildData[K]> | undefined;
