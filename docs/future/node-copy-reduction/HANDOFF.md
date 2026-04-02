@@ -74,6 +74,21 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 5. Update docs only if the model or migration status actually changed.
 6. Commit and push.
 
+## Current Narrow Frontier
+
+- `packages/core/src/tree/__tests__/rules.test.ts` is green again after aligning
+  its shallow-clone characterization with canonical-parent plus render-key-edge
+  behavior.
+- `packages/core/src/tree/__tests__/extend-roots.test.ts` is green again:
+  nested `@layer` root naming now follows the eval frame path, and active
+  selector assertions now target the evaluated placement rather than the parsed
+  source node.
+- The open extend/runtime seam is now narrower:
+  explicit `reference: true` import branches are still failing to activate
+  imported rulesets into rendered output when an external extend hits them.
+  Treat that as a reference-import activation/render-path bug, not a generic
+  extend-match bug.
+
 ## What To Delete Over Time
 
 - `_carriedState`

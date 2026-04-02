@@ -1,7 +1,7 @@
 import type { AtRule } from '../at-rule.js';
 import type { Declaration } from '../declaration.js';
 import type { Ruleset } from '../ruleset.js';
-import { F_EXTENDED, type Node } from '../node.js';
+import { F_EXTENDED, isVisibleInContext, type Node } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -195,7 +195,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     // Push per-node position from the position map so patched fields resolve
     const skipped = withNodePosition(n, () => {
-      if (!n.visible && !n.fullRender) {
+      if (!isVisibleInContext(n, options.context) && !n.fullRender) {
         return true;
       }
       if (inReferenceMode && !renderEnabled && !isContainer) {
@@ -242,7 +242,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
           const fromCall = originatesFromCall(n as any);
           const laterCandidates = rulesToRender.slice(idx + 1);
           const hasLaterExternalNonContainer = laterCandidates.some((later) => {
-            if (!later.visible && !later.fullRender) {
+            if (!isVisibleInContext(later, options.context) && !later.fullRender) {
               return false;
             }
             if (isNode(later, N.Ruleset | N.AtRule | N.Rules)) {

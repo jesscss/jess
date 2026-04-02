@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, CANONICAL, type NodeOptions, type RenderKey } from './node.js';
+import { Node, defineType, F_VISIBLE, CANONICAL, isVisibleInContext, type NodeOptions, type RenderKey } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
@@ -317,14 +317,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
         let parentLayerName: string | undefined;
         for (let i = context.frames.length - 2; i >= 0; i--) {
           const frame = context.frames[i]!;
-          if (!isNode(frame, N.AtRule)) {
-            continue;
-          }
-          const parentFrame = frame as AtRule;
-          const parentName = parentFrame.name;
-          const parentRules = parentFrame.enterRules(context);
-          if (parentName?.toTrimmedString?.() === '@layer' && parentRules?.value?.includes(node)) {
-            parentLayerName = context.extendRoots.getLayerName(parentFrame);
+          if (isNode(frame, N.AtRule) && frame.name?.toTrimmedString?.() === '@layer') {
+            parentLayerName = context.extendRoots.getLayerName(frame as AtRule);
           }
           if (parentLayerName) {
             break;
@@ -395,7 +389,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
 
     // @plugin is handled by the Less compatibility plugin (preEval). If we reach eval and it's still visible, no plugin processed it.
     const atName = String(node.name?.valueOf?.() ?? '');
-    if (atName === '@plugin' && node.visible) {
+    if (atName === '@plugin' && isVisibleInContext(node, context)) {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
 
@@ -433,7 +427,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
       if (!outerRules) {
         return;
       }
-      const visible = outerRules.value.filter(n => n.visible);
+      const visible = outerRules.value.filter(n => isVisibleInContext(n, context));
       if (visible.length !== 1) {
         return;
       }

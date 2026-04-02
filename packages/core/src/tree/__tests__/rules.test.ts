@@ -227,7 +227,7 @@ describe('Rules', () => {
         expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
       });
 
-      it('characterizes shallow Rules clones as still canonically reparenting shared top-level children while nested ruleset bodies stay shared', () => {
+      it('characterizes shallow Rules clones as keeping canonical parentage while exposing shared top-level children through render-key parent edges', () => {
         const ctx = new Context();
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
@@ -240,10 +240,13 @@ describe('Rules', () => {
 
         const cloned = node.clone(false, undefined, ctx);
         const clonedRuleset = cloned.at(0, context) as typeof nested;
+        const activeCtx = new Context();
+        activeCtx.renderKey = cloned.renderKey;
 
         expect(clonedRuleset).toBe(nested);
-        expect(getParent(clonedRuleset, ctx)).toBe(cloned);
-        expect(clonedRuleset.parent).toBe(cloned);
+        expect(getParent(clonedRuleset, ctx)).toBe(node);
+        expect(getParent(clonedRuleset, activeCtx)).toBe(cloned);
+        expect(clonedRuleset.parent).toBe(node);
         expect(clonedRuleset.get('rules')).toBe(nestedBody);
         expect(clonedRuleset.get('rules').parent).toBe(clonedRuleset);
         expect(clonedRuleset.get('rules').at(0, context)).toBe(nestedBody.at(0, context));

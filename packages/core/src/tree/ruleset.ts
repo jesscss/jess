@@ -29,6 +29,7 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
+import { addEdge } from './util/cursor.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -193,7 +194,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   protected _valueOf: string | undefined;
 
   private _resolveRenderKey(context?: Context): RenderKey {
-    return context?.renderKey ?? this.renderKey;
+    return context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
   }
 
   getOwnSelector(): Selector | Nil | undefined {
@@ -265,8 +266,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       : this.selectorBeforeExtend;
   }
 
-  setSelectorBeforeExtend(selector: Selector | Nil | undefined, _context: Context): void {
-    this.selectorBeforeExtend = selector;
+  setSelectorBeforeExtend(selector: Selector | Nil | undefined, context: Context): void {
+    const renderKey = this._resolveRenderKey(context);
+    if (renderKey === undefined || renderKey === CANONICAL) {
+      this.selectorBeforeExtend = selector;
+      return;
+    }
+    if (selector instanceof Node) {
+      this.adopt(selector, { ...context, renderKey });
+    }
+    addEdge(this, 'selectorBeforeExtend', renderKey, selector as Selector | Nil);
   }
 
   getExtendedSelector(renderKey?: RenderKey): Selector | Nil | undefined {
@@ -276,16 +285,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   setExtendedSelector(selector: Selector | Nil | undefined, context?: Context): void {
-    if (!context) {
+    const renderKey = context ? this._resolveRenderKey(context) : undefined;
+    if (renderKey === undefined || renderKey === CANONICAL) {
       this._extendedSelector = selector;
       this.invalidateSelectorValueCache();
       return;
     }
     if (selector instanceof Node) {
-      this.adopt(selector, context);
+      this.adopt(selector, { ...context, renderKey });
     }
-    this._extendedSelector = selector;
-    this.invalidateSelectorValueCache();
+    addEdge(this, '_extendedSelector', renderKey, selector as Selector | Nil);
   }
 
   /**
@@ -638,18 +647,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return SelectorList.create(kept).inherit(sel);
   }
 
-  private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
+  private static filterExtendedTopLevelSelectorItems(sel: Selector, context?: Context): Selector | Nil {
     return Ruleset.filterSelectorItems(sel, item =>
-      item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
+      (context ? item._hasFlag(F_EXTENDED, context) : item.hasFlag(F_EXTENDED))
+      && !(context ? item._hasFlag(F_EXTEND_TARGET, context) : item.hasFlag(F_EXTEND_TARGET))
     );
   }
 
   private static filterReferenceVisibleSelectorItems(
     current: Selector,
-    original?: Selector | Nil
+    original?: Selector | Nil,
+    context?: Context
   ): Selector | Nil {
     if (!original || original instanceof Nil) {
-      return Ruleset.filterExtendedTopLevelSelectorItems(current);
+      return Ruleset.filterExtendedTopLevelSelectorItems(current, context);
     }
     const originalValues = new Set<string>();
     if (isNode(original, N.SelectorList)) {
@@ -698,11 +709,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       options.referenceMode === true
       && options.referenceRenderEnabled === true
       && !(renderSelector instanceof Nil)
-      && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
     ) {
       renderSelector = Ruleset.filterReferenceVisibleSelectorItems(
         renderSelector as Selector,
-        this.getSelectorBeforeExtend(renderKey)
+        this.getSelectorBeforeExtend(renderKey),
+        options.context
       ) as typeof renderSelector;
       if (renderSelector instanceof Nil) {
         return '';

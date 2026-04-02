@@ -8,7 +8,8 @@ import {
   EVAL,
   type TreeContext,
   F_STATIC,
-  F_VISIBLE
+  F_VISIBLE,
+  isVisibleInContext
 } from './node.js';
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -514,7 +515,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override toString(options?: PrintOptions): string {
-    if (!this.visible && !this.fullRender) {
+    if (!isVisibleInContext(this, options?.context) && !this.fullRender) {
       return '';
     }
     options = getPrintOptions(options);
@@ -901,7 +902,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const value = this._getRenderChildren(options.context);
       const referenceMode = Boolean(options.referenceMode);
       const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
-      const items = value.filter(n => n.visible);
+      const items = value.filter(n => isVisibleInContext(n, options.context));
 
       const isInlineSourceRules = (node: Node): boolean => {
         if (node.type !== 'Rules') {
@@ -955,6 +956,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             referenceMode: childReferenceMode,
             referenceRenderEnabled: childReferenceRenderEnabled
           };
+        } else if (
+          referenceMode
+          && isRulesetOrAtRule
+          && this.options.rulesVisibility?.Ruleset === 'optional'
+        ) {
+          childOptions = {
+            ...childOptions,
+            referenceMode: true,
+            referenceRenderEnabled: true
+          };
         }
 
         const rule = w.capture(() => n.toTrimmedString(childOptions));
@@ -994,7 +1005,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           continue;
         }
-        if (!visibleOnly || n.visible || n.fullRender) {
+        if (!visibleOnly || isVisibleInContext(n, context) || n.fullRender) {
           if (positionMap && renderKey !== CANONICAL) {
             positionMap.set(n, { renderKey });
           }
@@ -1007,7 +1018,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   visibleRules(context?: Context) {
-    return this._getRenderChildren(context).filter(n => n.visible);
+    return this._getRenderChildren(context).filter(n => isVisibleInContext(n, context));
   }
 
   /**
@@ -2057,7 +2068,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       if (!merged) {
         mergedAnchorByName.delete(name);
-        if (node.visible) {
+        if (isVisibleInContext(node, context)) {
           lastVisibleByName.set(name, node);
         }
         continue;
@@ -2088,14 +2099,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           setDeclField(existingAnchor, 'important', getDeclImportant(node));
         }
         removeVisibleFlag(node);
-        if (existingAnchor.visible) {
+        if (isVisibleInContext(existingAnchor, context)) {
           lastVisibleByName.set(name, existingAnchor);
         }
         continue;
       }
 
       mergedAnchorByName.set(name, node);
-      if (node.visible) {
+      if (isVisibleInContext(node, context)) {
         lastVisibleByName.set(name, node);
       }
     }

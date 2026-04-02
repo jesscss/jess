@@ -165,6 +165,10 @@ export const F_EXTEND_TARGET = 0b10000000;
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
 
+export function isVisibleInContext(node: Node, context?: Context): boolean {
+  return context ? node._hasFlag(F_VISIBLE, context) : node.hasFlag(F_VISIBLE);
+}
+
 /** Secondary metadata flags. Keeps a pile of booleans off the instance shape. */
 const M_ALLOW_ROOT = 1 << 0;
 const M_ALLOW_RULE_ROOT = 1 << 1;
@@ -1414,7 +1418,7 @@ export abstract class Node<
    * and toTrimmedString() should be overridden instead.
    */
   toString(options?: PrintOptions, _renderKey?: RenderKey): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!isVisibleInContext(this, options?.context) && !this.fullRender) {
       return '';
     }
     if (options?.suppressComments && this.type === 'Comment') {

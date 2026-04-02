@@ -632,9 +632,7 @@ function markExtendedSelector(selector: Selector, context?: Context): void {
 }
 
 function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?: Context): void {
-  const rulesetFlagTarget = isNode(ruleset.sourceNode, N.Ruleset)
-    ? ruleset.sourceNode as Ruleset
-    : ruleset;
+  const rulesetFlagTarget = ruleset;
   if (context) {
     rulesetFlagTarget._addFlag(F_EXTENDED, context);
     rulesetFlagTarget._addFlag(F_VISIBLE, context);
@@ -646,9 +644,7 @@ function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?:
 }
 
 function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
-  const rulesetFlagTarget = isNode(ruleset.sourceNode, N.Ruleset)
-    ? ruleset.sourceNode as Ruleset
-    : ruleset;
+  const rulesetFlagTarget = ruleset;
   if (context) {
     rulesetFlagTarget._removeFlag(F_EXTENDED, context);
   } else {

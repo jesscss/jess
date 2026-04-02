@@ -147,8 +147,8 @@ This section tracks only edge/cursor conversion status.
 | `Rest` | `converted` | Simple child surface converted to direct field + render-key read path. |
 | `Sequence` | `converted` | Canonical container stays in place for same-length render-path child replacement; `valueEdges` carry indexed alternates and only shape changes return a different node. |
 | `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation updates/removes `parentEdges` directly on wrapper-owned paths. Main blocker now is scope ownership still leaking through `renderParent` instead of a pure parent-edge / cursor model. |
-| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Remaining blocker is not the field API itself; it is hoist/scope ownership that still feeds `Reference` through side channels. |
-| `AtRule` | `in_progress` | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Current blocker is nested prelude/body scope ownership, not `AtRule` field access. |
+| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Recent progress: `extend-roots` is green again after moving active-selector proofs onto evaluated placements. Remaining blocker is reference/import activation and hoist/scope ownership, not the field API itself. |
+| `AtRule` | `in_progress` | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Recent progress: nested `@layer` root naming now follows the eval frame path and `extend-roots` is green again. Current blocker is explicit reference-import activation/render behavior, not raw `AtRule` field access. |
 | `Reference` | `in_progress` | Current lookup-parent walk still depends on `context.rulesContext` and `Rules.renderParent` as side channels. This now directly blocks nested `@media` param lookup and caller-context mixin selector composition. |
 | `Call` | `not_converted` | Test-side field-patch cases were removed. Remaining production seam is returned-result shaping plus `setData`-style mutation inside call-time result processing instead of direct edge/cursor ownership. |
 | `Mixin` | `not_converted` | Test-side overlay proofs were removed. Invocation/output scope still depends on thin `Rules` wrappers plus `renderParent`; not yet expressed as a pure edge/cursor-owned placement model. |
@@ -159,9 +159,9 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 ## Immediate Next Work
 
 1. Stay on narrow production surfaces only: pick one component, convert one owner/path seam, and verify it with a focused proof test.
-2. Replace `Rules.renderParent` lookup semantics with a real parent-edge / cursor-owned scope path.
-3. Convert `Reference` parent/scope resolution to follow that path directly instead of consulting `context.rulesContext` as a side channel.
-4. Revisit nested `AtRule` prelude evaluation and other dependent component paths only after the lookup owner is explicit.
+2. Finish the explicit `reference: true` import activation/render path so externally-extended imported rulesets become render-visible without leaking ordinary reference output.
+3. Keep replacing render-time canonical flag/field reads with context-aware render-key reads where activation is supposed to stay placement-local.
+4. Revisit remaining extend/import integration only after the explicit reference-import activation seam is resolved.
 
 ## Transitional Baggage To Remove
 

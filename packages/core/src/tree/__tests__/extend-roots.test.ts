@@ -89,11 +89,13 @@ describe('Extend Roots Registry', () => {
       // Cache the initial selector string before extend runs
       expect(targetRuleset.valueOf()).toBe('.base');
 
-      await node.eval(context);
+      const evald = await node.eval(context);
+      const activeContext = new Context();
+      activeContext.renderKey = evald.renderKey;
+      const renderedTarget = evald.at(0, activeContext) as typeof targetRuleset;
 
       // The extended selector is on the current render path.
-      // valueOf(context) reads the current selector view.
-      expect(targetRuleset.valueOf(context)).toBe('.base,.ext');
+      expect(renderedTarget.valueOf(activeContext)).toBe('.base,.ext');
       // Canonical valueOf() still returns the original selector.
       expect(targetRuleset.valueOf()).toBe('.base');
     });
