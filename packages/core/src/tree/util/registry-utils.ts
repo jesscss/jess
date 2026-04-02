@@ -222,8 +222,12 @@ function addMixinToIndex(
         (ownSelector as any).keySetLibrary = (selectorToIndex as any).keySetLibrary;
       }
       const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
-      const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
-        ? (mixin.parent.parent as Ruleset).get('selector')
+      const parentRules = context ? getParent(mixin, context) : mixin.parent;
+      const parentRuleset = parentRules
+        ? (context ? getParent(parentRules, context) : parentRules.parent)
+        : undefined;
+      const parentSelector = isNode(parentRuleset, N.Ruleset)
+        ? (parentRuleset as Ruleset).get('selector')
         : undefined;
       const parentKeys = (
         parentSelector && !isNode(parentSelector, N.Nil)

@@ -120,6 +120,23 @@ function getSelectorReferenceKeys(selector: Selector): string[] {
   return val ? [val] : [];
 }
 
+function normalizeSelectorPathKey(
+  key: string,
+  type: ReferenceOptions['type']
+): string | string[] {
+  if (type !== 'mixin' && type !== 'ruleset' && type !== 'mixin-ruleset') {
+    return key;
+  }
+  if (key.includes(' ') || key.includes('>') || key.includes('+') || key.includes('~') || key.includes('||')) {
+    return key;
+  }
+  const parts = key.match(/[.#][^.#\s>+~|]+/g);
+  if (parts && parts.length > 1 && parts.join('') === key) {
+    return parts;
+  }
+  return key;
+}
+
 function isInsideSelectorCapture(node: Node | undefined, context?: Context): boolean {
   let cursor: Node | undefined = node;
   while (cursor) {
@@ -374,7 +391,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         if (isArray(out)) {
           return [resolvedTarget, out] as [any, string[]];
         }
-        const normalizedKey = isNode(out) ? out.valueOf() : out;
+        const normalizedKey = typeof (isNode(out) ? out.valueOf() : out) === 'string'
+          ? normalizeSelectorPathKey(String(isNode(out) ? out.valueOf() : out), type)
+          : (isNode(out) ? out.valueOf() : out);
         return [resolvedTarget, normalizedKey] as [any, string];
       },
       ([resolvedTarget, valueKey]) => {

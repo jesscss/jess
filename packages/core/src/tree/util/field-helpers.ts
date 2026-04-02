@@ -87,15 +87,18 @@ export function getSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
+  const edge = (node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge;
   const renderKey = ctx.renderKey
     ?? ctx.rulesContext?.renderKey
     ?? (node.renderKey !== CANONICAL ? node.renderKey : undefined)
-    ?? ((node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge?.has(EVAL) ? EVAL : undefined);
+    ?? (edge?.has(EVAL) ? EVAL : undefined);
   if (renderKey !== undefined) {
-    const edge = (node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge;
     if (edge?.has(renderKey)) {
       return edge.get(renderKey);
     }
+  }
+  if (edge?.has(CANONICAL)) {
+    return edge.get(CANONICAL);
   }
   return node.sourceParent;
 }
