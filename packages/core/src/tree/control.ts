@@ -9,7 +9,6 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
 import { appendScopedOutputNodes, createCounterNode, evaluateScopedBodyWithBindings } from './util/scoped-body-eval.js';
@@ -47,10 +46,12 @@ function getBindingNames(vars: VarDeclaration | VarDeclaration[]): string[] {
 }
 
 function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
-  if (Array.isArray(vars)) {
-    return new Block(new List([...vars.map(v => v.clone(true))], { sep: ',' }), { type: 'square' });
+  if (!Array.isArray(vars)) {
+    return vars;
   }
-  return vars;
+  const wrapper = new List<VarDeclaration>([], { sep: ',' });
+  wrapper.value = [...vars];
+  return wrapper;
 }
 
 async function resolveLoopEntryKey(
@@ -307,11 +308,13 @@ export class For extends Node<ForValue, any, ForChildData> {
     makeDirectiveRulesPublic(this.rules);
   }
 
-  override preEval(_context: Context): MaybePromise<Node> {
+  override preEval(context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
-      const node = this.clone() as For;
-      node.preEvaluated = true;
-      return node;
+      this.preEvaluated = true;
+      const out = this.forEachNode(n => n.preEval(context), context);
+      if (out && typeof (out as PromiseLike<unknown>).then === 'function') {
+        return (out as Promise<void>).then(() => this);
+      }
     }
     return this;
   }

@@ -9,20 +9,20 @@ import type { Ruleset } from '../ruleset.js';
 import type { AtRule } from '../at-rule.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { VarDeclaration as VarDeclarationCtor } from '../declaration-var.js';
-import type { List } from '../list.js';
+import { list, type List } from '../list.js';
 import { Sequence } from '../sequence.js';
 import { Any } from '../any.js';
 import { N } from '../node-type.js';
 import { CANONICAL, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
-import { freezeChildren } from './cloning.js';
 import { comparePosition } from './compare.js';
-import { getDependency, getParent, getSourceParent, mergeDependencies, setChildren, setDependency, setParent, setSourceParent } from './field-helpers.js';
+import { getParent, getSourceParent, setChildren, setParent, setSourceParent } from './field-helpers.js';
 import type { Mixin } from '../mixin.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
 import { isPlainObject } from './collections.js';
 import type { MixinEntry } from '../rules.js';
+import type { RenderKey } from '../node-base.js';
 
 export const enum MixinDefaultGroup {
   FalseEither = -1,
@@ -143,7 +143,8 @@ export function bindMixinParamValue(
  * getFunctionFromMixins().
  */
 export function createMixinParamScope(
-  index: number
+  index: number,
+  renderKey: RenderKey
 ): Rules {
   const scope = Rules.create([], {
     rulesVisibility: {
@@ -154,7 +155,23 @@ export function createMixinParamScope(
     }
   });
   scope.index = index;
+  scope.renderKey = renderKey;
   return scope;
+}
+
+function createRenderOwnedSequence(
+  items: readonly Node[],
+  renderKey: RenderKey,
+  context: Context
+): Sequence {
+  const sequence = new Sequence([], undefined, undefined, context.treeContext);
+  sequence.renderKey = renderKey;
+  (sequence as unknown as { value: Node[] }).value = [...items];
+  const edgeContext = { ...context, renderKey };
+  for (const item of items) {
+    setParent(item, sequence, edgeContext);
+  }
+  return sequence;
 }
 
 /**
@@ -197,35 +214,32 @@ export function defineMixinArgumentsInScope(
   nodeArgs: readonly Node[],
   context: Context
 ): void {
-  if (!context.treeContext?.file) {
-    return;
-  }
-
-  const argumentsArgs: Node[] = [];
-  const argumentsDecl = new VarDeclarationCtor({
-    name: new Any('arguments', { role: 'property' }),
-    value: new Sequence(argumentsArgs)
-  }, { readonly: true, paramVar: true });
-  argumentsDecl.removeFlag(F_VISIBLE);
-  scope.push(argumentsDecl);
-
-  const paramValues = params?.get('value')
+  const renderKey = scope.renderKey;
+  const paramValues = params?.get('value', renderKey)
     .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
-    .map(p => (p as any).value);
+    .map(p => p.get('value', renderKey))
+    .filter((value): value is Node => value instanceof Node);
   const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
+  const argumentsArgs: Node[] = [];
   for (const argNode of argumentNodes) {
-    if (isNode(argNode, N.Sequence) && (argNode as Sequence).get('value').length > 1) {
-      for (const item of (argNode as Sequence).get('value')) {
-        const cloned = item.copy(true, freezeChildren);
-        cloned.frozen = true;
-        argumentsArgs.push(cloned);
-      }
+    if (isNode(argNode, N.Sequence) && (argNode as Sequence).get('value', renderKey).length > 1) {
+      argumentsArgs.push(...(argNode as Sequence).get('value', renderKey));
     } else {
-      const cloned = argNode.copy(true, freezeChildren);
-      cloned.frozen = true;
-      argumentsArgs.push(cloned);
+      argumentsArgs.push(argNode);
     }
   }
+
+  const argumentsDecl = new VarDeclarationCtor({
+    name: new Any('arguments', { role: 'property' }),
+    value: createRenderOwnedSequence(argumentsArgs, renderKey, context)
+  }, { readonly: true, paramVar: true });
+  argumentsDecl.removeFlag(F_VISIBLE);
+  argumentsDecl.renderKey = renderKey;
+  argumentsDecl.preEvaluated = true;
+  argumentsDecl.evaluated = true;
+  const registrationContext = { ...context, renderKey };
+  setParent(argumentsDecl, scope, registrationContext);
+  scope.registerNode(argumentsDecl, undefined, registrationContext);
 }
 
 /**
@@ -266,6 +280,7 @@ export function prepareMixinInvocationScope(
   definitionParent: Node | undefined,
   placementParent: Node | undefined,
   index: number,
+  renderKey: RenderKey,
   params: List<Node> | undefined,
   nodeArgs: readonly Node[],
   context: Context
@@ -273,7 +288,7 @@ export function prepareMixinInvocationScope(
   if (!params) {
     return undefined;
   }
-  const scope = createMixinParamScope(index);
+  const scope = createMixinParamScope(index, renderKey);
   populateMixinParamScope(scope, params, context);
   defineMixinArgumentsInScope(scope, params, nodeArgs, context);
   scope.parent = placementParent ?? definitionParent;
@@ -285,9 +300,9 @@ export function createMixinInvocationRules(
   lookupParent: Node | undefined,
   sourceParent: Node | undefined,
   index: number,
-  context: Context
+  context: Context,
+  renderKey: RenderKey
 ): Rules {
-  const renderKey = context.nextRenderKey();
   const wrapper = body.createShallowBodyWrapper(undefined, renderKey);
   wrapper.index = index;
   wrapper.parent = lookupParent;
@@ -353,6 +368,117 @@ export function normalizeMixinInvocationParams(
   return params;
 }
 
+function buildBoundMixinParams(
+  params: List<Node> | undefined,
+  nodeArgs: readonly Node[],
+  bindingSourceParent: Node | undefined,
+  renderKey: RenderKey,
+  context: Context
+): List<Node> | undefined {
+  if (!params) {
+    return undefined;
+  }
+
+  const namedArgs = new Map<string, Node>();
+  const positionalArgs: Node[] = [];
+  for (const arg of nodeArgs) {
+    if (isNode(arg, N.VarDeclaration)) {
+      const argName = String((arg as VarDeclaration).get('name').valueOf());
+      const argValue = (arg as VarDeclaration).get('value') as Node;
+      namedArgs.set(argName, argValue);
+    } else {
+      positionalArgs.push(arg);
+    }
+  }
+
+  const bindingContext = { ...context, renderKey };
+  const boundParams = list([], params.options ? { ...params.options } : undefined);
+  let positionalIndex = 0;
+
+  for (let index = 0; index < params.get('value').length; index++) {
+    const param = params.get('value')[index]!;
+
+    if (isNode(param, N.VarDeclaration)) {
+      const name = String((param as VarDeclaration).get('name').valueOf());
+      const boundParam = new VarDeclarationCtor({
+        name: new Any(name, { role: 'property' }),
+        value: new Nil()
+      }, { ...((param as VarDeclaration).options ?? {}), paramVar: true }, param.location, context.treeContext);
+      boundParam.index = param.index ?? -(index + 1);
+
+      const boundValue = namedArgs.has(name)
+        ? namedArgs.get(name)!
+        : positionalIndex < positionalArgs.length
+          ? positionalArgs[positionalIndex++]!
+          : (param as VarDeclaration).get('value');
+      if (bindingSourceParent && (isNode(boundValue, N.Reference) || isNode(boundValue, N.Mixin))) {
+        setSourceParent(boundValue, bindingSourceParent, bindingContext);
+      }
+      boundParam.renderKey = renderKey;
+      (boundParam as unknown as { value: Node }).value = boundValue;
+      setParent(boundValue, boundParam, bindingContext);
+      boundParam.preEvaluated = true;
+      boundParam.evaluated = true;
+      boundParams.push(boundParam);
+      namedArgs.delete(name);
+      continue;
+    }
+
+    if (isNode(param, N.Any) && param.role === 'property') {
+      const name = String(param.valueOf());
+      const boundParam = new VarDeclarationCtor({
+        name: new Any(name, { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true }, param.location, context.treeContext);
+      boundParam.index = -(index + 1);
+      const boundValue = namedArgs.has(name)
+        ? namedArgs.get(name)!
+        : positionalIndex < positionalArgs.length
+          ? positionalArgs[positionalIndex++]!
+          : undefined;
+      if (boundValue) {
+        if (bindingSourceParent && (isNode(boundValue, N.Reference) || isNode(boundValue, N.Mixin))) {
+          setSourceParent(boundValue, bindingSourceParent, bindingContext);
+        }
+        (boundParam as unknown as { value: Node }).value = boundValue;
+        setParent(boundValue, boundParam, bindingContext);
+      }
+      boundParam.renderKey = renderKey;
+      boundParam.preEvaluated = true;
+      boundParam.evaluated = true;
+      boundParams.push(boundParam);
+      namedArgs.delete(name);
+      continue;
+    }
+
+    if (param.type === 'Rest') {
+      const restName = typeof (param as unknown as { value?: string }).value === 'string'
+        ? String((param as unknown as { value: string }).value)
+        : 'rest';
+      const restValues = positionalArgs.slice(positionalIndex);
+      positionalIndex = positionalArgs.length;
+      const restValue = restValues.length > 0
+        ? createRenderOwnedSequence(restValues, renderKey, context)
+        : (
+            context.treeContext?.file
+              ? createRenderOwnedSequence([], renderKey, context)
+              : new Any(restName, { role: 'property' })
+          );
+      const restVarDecl = new VarDeclarationCtor({
+        name: new Any(restName, { role: 'property' }),
+        value: restValue
+      }, { paramVar: true }, param.location, context.treeContext);
+      restVarDecl.index = -(index + 1);
+      restVarDecl.renderKey = renderKey;
+      restVarDecl.preEvaluated = true;
+      restVarDecl.evaluated = true;
+      boundParams.push(restVarDecl);
+    }
+  }
+
+  return boundParams;
+}
+
 /**
  * Prepare the normal mixin-candidate body for direct invocation.
  *
@@ -370,13 +496,22 @@ export function prepareMixinCandidateInvocation(
   context: Context
 ): PreparedMixinCandidateInvocation {
   const placementParent = context.rulesContext ?? parent;
-  const normalizedParams = normalizeMixinInvocationParams(params, context);
-  const outerRules = normalizedParams
+  const renderKey = context.nextRenderKey();
+  const bindingSourceParent = context.caller ?? sourceParent;
+  const boundParams = buildBoundMixinParams(
+    params,
+    nodeArgs,
+    bindingSourceParent,
+    renderKey,
+    context
+  );
+  const outerRules = boundParams
     ? prepareMixinInvocationScope(
         parent,
         placementParent,
         index,
-        normalizedParams,
+        renderKey,
+        boundParams,
         nodeArgs,
         context
       )
@@ -387,12 +522,13 @@ export function prepareMixinCandidateInvocation(
     lookupParent,
     sourceParent,
     index,
-    context
+    context,
+    renderKey
   );
 
   return {
     rules: invocationRules,
-    params: normalizedParams,
+    params: boundParams,
     outerRules,
     guardScopeChildren: outerRules
       ? [...outerRules.value]
@@ -800,45 +936,7 @@ export function getCandidateParent(node: Node<any, any>, context: Context): Node
 // -- Arg evaluation --
 
 /**
- * Normalize leading whitespace in bound List/Sequence values.
- */
-function normalizeBoundLeadingItemWhitespace(node: Node): void {
-  if (!isNode(node, N.List | N.Sequence)) {
-    return;
-  }
-  const items = (node as unknown as { value: Node[] }).value;
-  if (items.length > 0) {
-    items[0]!.pre = 0;
-  }
-  for (const item of items) {
-    if (isNode(item, N.List | N.Sequence)) {
-      normalizeBoundLeadingItemWhitespace(item as Node);
-    }
-  }
-}
-
-/**
- * Copy dependency tracking from source to target node.
- */
-function copyDependency(source: Node, target: Node, context: Context): void {
-  const dependency = getDependency(source, context);
-  if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-    setDependency(target, {
-      dependsOn: new Set(dependency.dependsOn),
-      sourceExpr: dependency.sourceExpr
-    }, context);
-  }
-}
-
-function materializeMixinOutputNode<T extends Node>(node: T, context: Context): T {
-  if (node === node.sourceNode) {
-    return node.clone(false, undefined, context) as T;
-  }
-  return node;
-}
-
-/**
- * Evaluate raw call args into a flat array of frozen Node values.
+ * Evaluate raw call args into a flat array of current Node values.
  */
 export async function evaluateMixinArgs(
   args: any[],
@@ -849,11 +947,16 @@ export async function evaluateMixinArgs(
   const callerSourceNode = (caller as any)?.name instanceof Node
     ? (caller as any).name
     : caller;
+  const callerSourceParent = callerSourceNode
+    ? getSourceParent(callerSourceNode, context)
+    : undefined;
   const savedRulesContext = context.rulesContext;
+  const savedRenderKey = context.renderKey;
   const argEvalRulesContext = findRulesAncestor(caller, context)
     ?? findSourceRulesAncestor(callerSourceNode, context)
     ?? savedRulesContext;
   context.rulesContext = argEvalRulesContext;
+  context.renderKey = argEvalRulesContext?.renderKey ?? savedRenderKey;
   try {
     for (const arg of args) {
       if (isNode(arg)) {
@@ -861,15 +964,26 @@ export async function evaluateMixinArgs(
           // Evaluate the value, keep the VarDeclaration structure
           const value = (arg as VarDeclaration).get('value');
           if (value instanceof Node) {
+            if (callerSourceParent && (isNode(value, N.Reference) || isNode(value, N.Mixin))) {
+              setSourceParent(value, callerSourceParent, context);
+            }
             const evaldValue = await value.eval(context);
-            const bound = arg.clone(false);
+            const argName = String((arg as VarDeclaration).get('name').valueOf());
+            const bound = new VarDeclarationCtor({
+              name: new Any(argName, { role: 'property' }),
+              value: new Nil()
+            }, { ...((arg as VarDeclaration).options ?? {}) }, arg.location, context.treeContext);
+            bound.renderKey = context.renderKey ?? bound.renderKey;
             (bound as VarDeclaration).value = evaldValue;
-            (bound as VarDeclaration).adopt(evaldValue, context);
+            bound.adopt(evaldValue, context);
             nodeArgs.push(bound);
           } else {
             nodeArgs.push(arg);
           }
           continue;
+        }
+        if (callerSourceParent && (isNode(arg, N.Reference) || isNode(arg, N.Mixin))) {
+          setSourceParent(arg, callerSourceParent, context);
         }
         const evald = await arg.eval(context);
         if (evald.type === 'Rest') {
@@ -891,6 +1005,7 @@ export async function evaluateMixinArgs(
     }
   } finally {
     context.rulesContext = savedRulesContext;
+    context.renderKey = savedRenderKey;
   }
   return nodeArgs;
 }
@@ -932,8 +1047,8 @@ export async function matchMixinCandidates(
       }
       mixinCandidates.push(mixin);
     } else {
-      const params = ((mixin as any).params as List<Node>).copy(true);
-      const hasRestParamOriginal = ((mixin as any).params as List<Node>).get('value').some(
+      const params = (mixin as any).params as List<Node>;
+      const hasRestParamOriginal = params.get('value').some(
         (p: Node) => p.type === 'Rest'
       );
       const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
@@ -991,56 +1106,14 @@ export async function matchMixinCandidates(
           break;
         }
 
-        if (isNode(param, N.VarDeclaration)) {
-          const boundValue = argValue.copy(true, freezeChildren);
-          boundValue.frozen = true;
-          if (bindingSourceParent) {
-            setSourceParent(boundValue, bindingSourceParent, context);
+        if (
+          isNode(param, N.VarDeclaration)
+          || (isNode(param, N.Any) && param.role === 'property')
+          || param.type === 'Rest'
+        ) {
+          if (bindingSourceParent && (isNode(argValue, N.Reference) || isNode(argValue, N.Mixin))) {
+            setSourceParent(argValue, bindingSourceParent, context);
           }
-          normalizeBoundLeadingItemWhitespace(boundValue);
-          copyDependency(argValue, boundValue, context);
-          param.value = boundValue;
-          param.adopt(boundValue, context);
-        } else if (isNode(param, N.Any) && param.role === 'property') {
-          const boundValue = argValue.copy(true, freezeChildren);
-          boundValue.frozen = true;
-          if (bindingSourceParent) {
-            setSourceParent(boundValue, bindingSourceParent, context);
-          }
-          normalizeBoundLeadingItemWhitespace(boundValue);
-          copyDependency(argValue, boundValue, context);
-          const varDecl = new VarDeclarationCtor({
-            name: param as Any<'property'>,
-            value: boundValue
-          }, { paramVar: true });
-          params.value[pi] = varDecl;
-          params.adopt(varDecl, context);
-        } else if (param.type === 'Rest') {
-          const rest = nodeArgs.slice(argPos).map((restArg) => {
-            const cloned = restArg.copy(true, freezeChildren);
-            cloned.frozen = true;
-            copyDependency(restArg, cloned, context);
-            return cloned;
-          });
-          const restValue = new Sequence(rest);
-          const dependency = mergeDependencies(rest, context);
-          if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
-            setDependency(restValue, {
-              dependsOn: new Set(dependency.dependsOn),
-              sourceExpr: dependency.sourceExpr
-            }, context);
-          }
-          const restVarDecl = new VarDeclarationCtor({
-            name: new Any(
-              (param as unknown as { value: string | undefined }).value
-                ? `${(param as unknown as { value: string }).value}`
-                : `rest${pi}`,
-              { role: 'property' }
-            ) as Any<'property'>,
-            value: restValue
-          });
-          params.value[pi] = restVarDecl;
-          params.adopt(restVarDecl, context);
         } else {
           const originalPatternParam = !isNode(arg, N.VarDeclaration)
             ? ((mixin as any).params as List<Node> | undefined)?.get('value')[pi]
@@ -1069,11 +1142,6 @@ export async function matchMixinCandidates(
         continue;
       }
       if (match) {
-        const originalMixin = mixin;
-        mixin = mixin.clone();
-        getCandidateParent(originalMixin, context).adopt(mixin);
-        mixin.params = params;
-        mixin.adopt(params, context);
         mixinCandidates.push(mixin);
       }
     }
@@ -1209,7 +1277,7 @@ export type EvaluateCandidateOutputOptions = {
 /**
  * Evaluate a single mixin candidate's body and push the result to outputRules.
  *
- * Handles recursion detection, position creation, body eval, output
+ * Handles explicit recursion guarding, position creation, body eval, output
  * finalization, param scope projection, and eval state subtree association.
  */
 export async function evaluateCandidateOutput(
@@ -1263,15 +1331,7 @@ export async function evaluateCandidateOutput(
       context.rulesContext = newRules;
       try {
         for (const child of [...newRules.getRegistryChildren(context)]) {
-          const emittedChild = materializeMixinOutputNode(child, context);
-          outputContainer.push(emittedChild);
-          const previousChildRenderKey = context.renderKey;
-          context.renderKey = newRules.renderKey;
-          try {
-            setParent(emittedChild, outputContainer, context);
-          } finally {
-            context.renderKey = previousChildRenderKey;
-          }
+          outputContainer.push(context, child);
         }
       } finally {
         context.renderKey = previousRenderKey;
@@ -1287,11 +1347,6 @@ export async function evaluateCandidateOutput(
       newRules.options.rulesVisibility.VarDeclaration = 'private';
     }
     outputRules.push(newRules);
-  } catch (error) {
-    if (error instanceof ReferenceError && error.message?.includes('Recursive mixin call')) {
-      return;
-    }
-    throw error;
   } finally {
     if (currentCall) {
       context.callMap.delete(currentCall);

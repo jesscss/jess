@@ -47,6 +47,21 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - if a node is already non-canonical (`EVAL` or any other non-canonical
   `RenderKey`), it is ephemeral: mutate or replace it directly and do not keep
   the displaced derived node alive unless some edge still points to it
+- treat every clone/materialize helper as temporary debt, not neutral
+  infrastructure
+- the end-state is to remove generic `Node.clone()` / `Node.copy()` as ordinary
+  runtime tools from `node-base`; until then, every production callsite is
+  suspect and must justify itself in `node-update-status.md`
+- every remaining clone/materialize seam must be tracked in
+  `node-update-status.md` with:
+  - why it still exists
+  - what exact blocker keeps it alive
+  - what change should delete it
+- if a deep clone still exists in a hot runtime path, prove the blocker first.
+  Current known examples:
+  - JS-function arg isolation is blocked on the lack of an immutable/view model
+  - mixin arg normalization still has legacy frozen-copy paths around
+    `@arguments` / rest aggregation
 - do not add new generic `childEdges` maps as target architecture
 - when iterating, prefer one narrow component proof over broad suite churn
 

@@ -1,8 +1,10 @@
 import {
+  CANONICAL,
   Node,
   F_STATIC,
   defineType,
   type OptionalLocation,
+  type RenderKey,
   type TreeContext
 } from './node.js';
 import { isNode } from './util/is-node.js';
@@ -103,6 +105,38 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   value!: Node;
   important: Any<'flag'> | undefined;
 
+  private _getAssignmentRenderKey(context?: Context): RenderKey | undefined {
+    return context?.renderKey
+      ?? context?.rulesContext?.renderKey
+      ?? (this.renderKey !== CANONICAL ? this.renderKey : undefined);
+  }
+
+  private _setFieldOverride<K extends keyof DeclarationChildData & ('name' | 'value' | 'important')>(
+    key: K,
+    value: DeclarationChildData[K],
+    context?: Context
+  ): void {
+    const renderKey = this._getAssignmentRenderKey(context);
+    const effectiveContext = renderKey !== undefined && context?.renderKey !== renderKey
+      ? { ...context, renderKey }
+      : context;
+
+    if (value instanceof Node) {
+      this.adopt(value, effectiveContext);
+    }
+
+    if (renderKey !== undefined && renderKey !== CANONICAL && this.renderKey !== renderKey) {
+      const edgeKey = `${key}Edge` as const;
+      const edge = ((this as unknown as Record<string, unknown>)[edgeKey] as Map<RenderKey, DeclarationChildData[K]> | undefined)
+        ?? new Map<RenderKey, DeclarationChildData[K]>();
+      edge.set(renderKey, value);
+      (this as unknown as Record<string, unknown>)[edgeKey] = edge;
+      return;
+    }
+
+    (this as unknown as Record<string, unknown>)[key] = value;
+  }
+
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value as any, options, location, treeContext);
     this.name = value.name;
@@ -139,10 +173,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   setCurrentValue(value: Node, context?: Context): void {
-    if (value instanceof Node) {
-      this.adopt(value, context);
-    }
-    this.value = value;
+    this._setFieldOverride('value', value, context);
   }
 
   getCurrentName(context?: Context): NameValue {
@@ -150,10 +181,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   setCurrentName(name: NameValue, context?: Context): void {
-    if (name instanceof Node) {
-      this.adopt(name, context);
-    }
-    this.name = name;
+    this._setFieldOverride('name', name, context);
   }
 
   getCurrentImportant(context?: Context): Any<'flag'> | undefined {
@@ -161,10 +189,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   setCurrentImportant(important: Any<'flag'> | undefined, context?: Context): void {
-    if (important instanceof Node) {
-      this.adopt(important, context);
-    }
-    this.important = important;
+    this._setFieldOverride('important', important, context);
   }
 
   protected declTrimmedString(options?: PrintOptions) {

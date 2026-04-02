@@ -206,7 +206,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
   /** @removal-target — node-copy-reduction: clone(true) on prelude nodes.
    * Prelude should be read from canonical + position patches. */
-  private materializePostludePrelude(current: Node): {
+  private materializePostludePrelude(current: Node, context: Context): {
     atRuleName: '@media' | '@supports' | '@layer';
     prelude: Node;
   } {
@@ -218,7 +218,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         if (prelude) {
           return {
             atRuleName: `@${callName}` as '@media' | '@supports' | '@layer',
-            prelude: prelude.clone(true)
+            prelude: prelude.clone(false, undefined, context)
           };
         }
       }
@@ -226,7 +226,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
     return {
       atRuleName: '@media',
-      prelude: current.clone(true)
+      prelude: current.clone(false, undefined, context)
     };
   }
 
@@ -390,7 +390,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = new Any(source, { role: 'any' });
-          rules = this.wrapInlineSourceWithPostlude(sourceNode, importOptions!.postlude);
+          rules = this.wrapInlineSourceWithPostlude(sourceNode, importOptions!.postlude, context);
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
@@ -645,7 +645,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
         let finalRules = node.getFinalRules(rules, context);
         if (importOptions!.postlude && !isInlineImport) {
-          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
+          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude, context);
         }
         // configuredWithCanonicalParents restore removed — canonical parents are not mutated.
 
@@ -720,7 +720,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
    * Applies CSS import postlude wrappers around inline source content.
    * Falls back to `@media <postlude>` for plain query nodes.
    */
-  private wrapInlineSourceWithPostlude(sourceNode: Node, postlude?: Node): Rules {
+  private wrapInlineSourceWithPostlude(sourceNode: Node, postlude: Node | undefined, context: Context): Rules {
     if (!postlude) {
       return Rules.create([sourceNode]);
     }
@@ -731,7 +731,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       const body = Rules.create([wrapped]);
-      const { atRuleName, prelude } = this.materializePostludePrelude(current);
+      const { atRuleName, prelude } = this.materializePostludePrelude(current, context);
       wrapped = new AtRule({
         name: new Any(atRuleName, { role: 'atkeyword' }),
         prelude,
@@ -746,7 +746,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
    * Applies CSS import postlude wrappers around evaluated stylesheet rules.
    * Used for Less-style imports with media/layer/supports postludes.
    */
-  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
+  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude: Node | undefined, context: Context): Rules {
     if (!postlude) {
       return rules;
     }
@@ -754,7 +754,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
-      const { atRuleName, prelude } = this.materializePostludePrelude(current);
+      const { atRuleName, prelude } = this.materializePostludePrelude(current, context);
       const wrappedAtRule = new AtRule({
         name: new Any(atRuleName, { role: 'atkeyword' }),
         prelude,

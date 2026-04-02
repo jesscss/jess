@@ -1,13 +1,13 @@
 import type { Context } from '../../context.js';
 import { Any } from '../any.js';
-import { CANONICAL, type Node, type RenderKey } from '../node.js';
+import { type Node, type RenderKey } from '../node.js';
 import { Num } from '../number.js';
 import { Rules } from '../rules.js';
 import { Sequence } from '../sequence.js';
 import { VarDeclaration } from '../declaration-var.js';
 import { AssignmentType } from '../declaration.js';
 import { List } from '../list.js';
-import { getChildren } from './field-helpers.js';
+import { getChildren, getParent, setParent } from './field-helpers.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 
@@ -66,15 +66,17 @@ export function createScopedBodyRules(
   renderKey: RenderKey,
   context: Context
 ): Rules {
-  // Keep the current deep-clone behavior until child replacement/render-key
-  // inheritance is fully aligned for repeated body evaluation.
-  const scopedRules = bodyTemplate.clone(true, undefined, context);
-  scopedRules.inherit(bodyTemplate);
-  if (scopedRules.renderKey === CANONICAL) {
-    scopedRules.renderKey = renderKey;
+  const scopedRules = bodyTemplate.createShallowBodyWrapper(context, renderKey);
+  const bodyOwner = bodyTemplate.parent;
+  if (bodyOwner) {
+    const ownerParent = getParent(bodyOwner, context);
+    if (ownerParent) {
+      setParent(bodyOwner, ownerParent, { ...context, renderKey });
+    }
   }
   if (priorScope) {
-    (scopedRules as unknown as { parent?: Node }).parent = priorScope;
+    scopedRules.parent = priorScope;
+    setParent(scopedRules, priorScope, { ...context, renderKey });
   }
   return scopedRules;
 }

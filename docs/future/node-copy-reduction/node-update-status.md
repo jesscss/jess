@@ -174,6 +174,62 @@ Only listed here when it directly blocks edge/cursor work:
 - `packages/core/src/tree/util/legacy-node-ops.ts` as quarantined returned-result shaping
 - `Rules.renderParent` as an undocumented scope-parent side channel
 
+## Clone / Materialize Debt
+
+These seams are not acceptable end-state architecture. Each item should be
+deleted, not normalized.
+
+### Active Deep-Clone Seams
+
+| Seam | Why It Exists Today | Blocker To Delete |
+| --- | --- | --- |
+| `packages/core/src/tree/util/mixin-instance-primitives.ts` `freezeChildren` / `copy(true, freezeChildren)` paths | Param binding and rest/arguments normalization still assume detached copied values in some mixin argument flows. | Finish converting arg binding/rest aggregation to wrapper + edge ownership and remove frozen-copy fallback. |
+| `packages/core/src/tree/interpolated.ts` deep clone of replacements | Deep clone support still exists in generic clone implementation for interpolated replacement trees. | Once runtime callsites stop depending on deep clone semantics, collapse `Interpolated.clone(deep)` to shallow/container-only behavior or delete deep mode entirely. |
+
+### Suspicious Shallow-Clone / Materialize Seams
+
+These are smaller than deep clones, but still need explicit justification and
+should be deleted when their blockers clear.
+
+| Seam | Why It Exists Today | Blocker To Delete |
+| --- | --- | --- |
+| `packages/core/src/tree/rules.ts` `createShallowBodyWrapper()` / `createPlacementWrapper()` | Thin wrapper owners currently carry placement-local registries and child-edge ownership. | Replace remaining wrapper-only registry/state behavior with direct cursor/edge traversal where container identity does not actually diverge. |
+| `packages/core/src/tree/import-style.ts` postlude wrapper path | Import postlude wrapping still detaches prelude/container nodes instead of reading the authored postlude shape directly through placement state. | Inline postlude shape decoding into the wrapper loop and attach only the new owning `AtRule` containers. |
+| `packages/core/src/tree/util/scoped-body-eval.ts` scoped body wrapper creation | `$for`/scoped eval still allocates a wrapper owner for each placement. Deep clone is gone from this hot seam, but wrapper ownership is still broader than the target model. | Finish control conversion so loop bindings/placement can attach directly to canonical body structure without a scoped-body helper. |
+| `packages/core/src/tree/ruleset.ts` / selector utilities `clone(false)` snapshots | Selector recomposition still uses detached selector shells in a few ownership-sensitive paths. | Convert selector composition to parent-edge/cursor-owned container replacement so selector snapshots are not needed as a safety rail. |
+
+### Tracking Rule
+
+When a clone/materialize seam is removed:
+
+1. delete it from this section
+2. note the focused proof file that now protects the replacement model
+3. do not replace it with a differently named clone/materialize helper
+
+Recent removal:
+
+- `packages/core/src/tree/call.ts` fallback-call arg deep clone was deleted.
+  Proof: `packages/core/src/tree/__tests__/call.test.ts`
+- `packages/core/src/tree/call.ts` JS-function arg deep clone was deleted.
+  Proof: `packages/core/src/tree/__tests__/call.test.ts`
+- `packages/core/src/tree/function.ts` no longer routes stylesheet-defined
+  functions through temporary mixins or `freezeChildren()`.
+  Proof: `packages/core/src/tree/__tests__/func.test.ts`
+
+### End-State
+
+The desired destination is to remove generic `.clone()` / `.copy()` from
+`packages/core/src/tree/node-base.ts` as normal runtime escape hatches.
+
+That should happen in this order:
+
+1. delete production deep-clone callsites
+2. delete production shallow-clone/materialize callsites that only exist for
+   eval isolation
+3. replace any remaining legitimate uses with explicit derived-node/container
+   constructors
+4. only then remove generic clone/copy from `node-base`
+
 No longer active baggage in core test files:
 
 - direct `activeState` / `EvalState` test setup

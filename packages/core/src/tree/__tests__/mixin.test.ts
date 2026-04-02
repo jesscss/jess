@@ -299,7 +299,16 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
+      const evald = await root.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $b: 20px;
+          margin: 10px 20px;
+        }
+      `);
     });
 
     it('preEval sets private rulesVisibility on mixin body', async () => {
@@ -976,7 +985,16 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      await expectRejects(root.eval(context), ReferenceError, /'rest' is not defined/);
+      const evald = await root.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        .test {
+          $a: 10px;
+          $rest: 20px 30px;
+          margin: 20px 30px;
+        }
+      `);
     });
 
     it('should call a mixin with multiple nested compound selectors', async () => {

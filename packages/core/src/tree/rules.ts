@@ -650,6 +650,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     wrapper._setValueArray(this.value as Node[]);
     wrapper.inherit(this);
     wrapper.renderKey = renderKey;
+    if (this.functionRegistry) {
+      wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
+    }
     wrapper._connectSharedChildren(wrapper.renderKey);
     const sourceValueEdges = (this as unknown as { valueEdges?: Array<Map<RenderKey, Node> | undefined> }).valueEdges;
     if (sourceValueEdges) {
@@ -689,6 +692,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     wrapper.inherit(this);
     wrapper.renderKey = renderKey;
+    if (this.functionRegistry) {
+      wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
+    }
     wrapper._connectSharedChildren(wrapper.renderKey);
     return wrapper;
   }
@@ -707,6 +713,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     wrapper._setValueArray([...children] as Node[]);
     wrapper.inherit(this);
     wrapper.renderKey = renderKey;
+    if (this.functionRegistry) {
+      wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
+    }
     wrapper._connectSharedChildren(wrapper.renderKey);
     return wrapper;
   }
@@ -1252,10 +1261,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override preEval(context: Context) {
     if (!this.preEvaluated) {
       context.depth++;
-      /** @removal-target — node-copy-reduction: maybeClone → return this.
-       * Registry population, child indexing, and prelude eval should
-       * all work against canonical nodes + position patches. */
-      let rules = this.clone(false, undefined, context);
+      let rules = this;
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);

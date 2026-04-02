@@ -46,7 +46,7 @@ describe('Call', () => {
     expect(evald.toTrimmedString({ context })).toBe('blur(4px)');
   });
 
-  it('materializes fallback-call args without mutating canonical nested sequence spacing', async () => {
+  it('renders fallback-call args with normalized nested sequence spacing without mutating canonical args', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
@@ -72,7 +72,7 @@ describe('Call', () => {
     expect(arg.toTrimmedString()).toBe('12');
   });
 
-  it('uses cloned args when materializing a fallback call without mutating the canonical source args', async () => {
+  it('renders fallback-call args from replaced source args without mutating the canonical source args', async () => {
     const originalSecond = num(2);
     originalSecond.pre = 0;
     const originalArg = seq([num(1), originalSecond]);
@@ -138,10 +138,11 @@ describe('Call', () => {
     expect(node.toTrimmedString()).toBe('$fn??(1)');
   });
 
-  it('passes cloned nested args into JS function calls without mutating the canonical arg nodes', async () => {
+  it('passes the current evaluated arg nodes into JS function calls without mutating the canonical arg nodes', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
+    let seenArg: unknown;
     const node = call({
       name: ref('fn', { type: 'variable' }),
       args: list([arg])
@@ -149,7 +150,13 @@ describe('Call', () => {
     const root = rules([
       vardecl({
         name: any('fn'),
-        value: jsfunc({ name: 'fn', fn: (value: unknown) => value })
+        value: jsfunc({
+          name: 'fn',
+          fn: (value: unknown) => {
+            seenArg = value;
+            return value;
+          }
+        })
       }),
       node
     ]);
@@ -163,7 +170,8 @@ describe('Call', () => {
 
     const evald = await clonedRoot.eval(context);
 
-    expect(evald.toTrimmedString({ context })).toContain('3 4');
+    expect(seenArg).toBe(clonedArg);
+    expect(evald.toTrimmedString({ context })).toContain('34');
     expect(arg.toTrimmedString()).toBe('12');
     expect(second.pre).toBe(0);
     expect(clonedArg.toTrimmedString()).toBe('34');
@@ -228,7 +236,7 @@ describe('Call', () => {
     expect(node.toTrimmedString()).toBe('rgb?(1)');
   });
 
-  it('materializes collection results without mutating canonical collection children', async () => {
+  it('returns a collection through a placement-owned Rules boundary without mutating canonical children', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const collectionNode = coll([childDecl]);
     const node = call({
@@ -237,14 +245,16 @@ describe('Call', () => {
     }, { markImportant: true });
 
     const result = await node.eval(context);
+    const resultContext = { ...context, renderKey: (result as typeof result & { renderKey: symbol | number }).renderKey };
 
     expect(result.toTrimmedString({ context })).toContain('color: red !important;');
-    expect(result.value[0]).not.toBe(childDecl);
+    expect(result.at(0, context)).toBe(childDecl);
+    expect(childDecl.getCurrentImportant(resultContext)?.toTrimmedString()).toBe('!important');
     expect(childDecl.parent).toBe(collectionNode);
     expect(childDecl.toTrimmedString({ context })).toBe('color: red');
   });
 
-  it('characterizes composite same-source Rules results as still needing a returned-tree boundary, not a shallow clone', () => {
+  it('keeps canonical collection children on the source Rules when the returned boundary is marked important', () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const node = call({
@@ -252,15 +262,19 @@ describe('Call', () => {
       args: list([])
     }, { markImportant: true });
 
-    const shallow = returnValue.clone();
+    const shallow = returnValue.createPlacementWrapper(context, context.nextRenderKey());
+    const shallowContext = { ...context, renderKey: shallow.renderKey };
 
     expect(shallow.value[0]).toBe(childDecl);
-    expect(childDecl.parent).toBe(shallow);
+    expect(childDecl.parent).toBe(returnValue);
     expect(returnValue.value[0]).toBe(childDecl);
 
-    node.makeImportant(shallow);
+    node.makeImportant(shallow, context);
 
-    expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
+    expect(shallow.at(0, context)).toBe(childDecl);
+    expect(shallow.toTrimmedString({ context })).toContain('!important');
+    expect(childDecl.get('important', shallowContext)?.toTrimmedString()).toBe('!important');
+    expect(childDecl.get('important')).toBeUndefined();
   });
 
   it('reads a cloned markImportant option for collection results without mutating canonical options', async () => {

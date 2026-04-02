@@ -775,7 +775,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ) {
         selector = getImplicitSelectorUtil(selector as Selector, parentSelector as Selector, false);
         {
-          const selectorSourceNode = node === this ? selector.clone(true) : selector;
+          const selectorSourceNode = node === this
+            ? selector.clone(false, undefined, context)
+            : selector;
           if (selector instanceof Node) {
             selector.sourceNode = selectorSourceNode;
           }
