@@ -424,8 +424,8 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
-                if (typeof (s as any).value === 'string') {
-                  (s as { value: string }).value = (s as { value: string }).value + template;
+                if ('value' in s && typeof s.value === 'string') {
+                  s.setData(s.value + template);
                   appended = true;
                   break;
                 }

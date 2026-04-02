@@ -36,7 +36,7 @@ export class Nil extends Node<''> {
     options?: NodeOptions,
     location?: OptionalLocation,
     treeContext?: TreeContext) {
-    super('' as any, options, location, treeContext);
+    super('', options, location, treeContext);
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlag(F_STATIC);

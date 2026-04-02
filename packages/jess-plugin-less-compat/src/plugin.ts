@@ -58,7 +58,7 @@ function addToJessRegistry(jessRegistry: any, name: string, func: any): void {
       const convertResult = (r: unknown) =>
         fromLessPluginReturnValue(r, { statementContext });
 
-      return isThenable(result) ? (result as Promise<unknown>).then(convertResult) : convertResult(result);
+      return isThenable(result) ? result.then(convertResult) : convertResult(result);
     };
     Object.assign(wrapped, func);
     jessRegistry.add(name, wrapped);
@@ -284,13 +284,13 @@ export class LessCompatPlugin extends AbstractPlugin {
         },
 
         inherit(): any {
-          const child = createFunctionRegistry() as any;
+          const child = createFunctionRegistry();
           child._base = this;
           return child;
         },
 
         create(base: any): any {
-          const newRegistry = createFunctionRegistry() as any;
+          const newRegistry = createFunctionRegistry();
           newRegistry._base = base;
           return newRegistry;
         }
@@ -402,7 +402,7 @@ export class LessCompatPlugin extends AbstractPlugin {
 
     const loadPluginSource = (fullPath: string, registerPlugin: (plugin: any) => void, targetJessRegistry?: any) => {
       const contents = fs.readFileSync(fullPath, 'utf8');
-      const localModule = { exports: {} as any };
+      const localModule: { exports: Record<string, unknown> } = { exports: {} };
       // When loading from an @plugin directive, pass a mock that registers to the Rules containing that @plugin
       const functions = targetJessRegistry != null
         ? createScopedFunctionRegistry(targetJessRegistry)
@@ -654,7 +654,8 @@ export class LessCompatPlugin extends AbstractPlugin {
           const isPlugin = nameValue === 'plugin' || nameValue === '@plugin';
 
           if (isPlugin) {
-            const pluginDirectiveNode = (getJessNodeFromProxy(node) || node) as object;
+            const rawDirective = getJessNodeFromProxy(node) ?? node;
+            const pluginDirectiveNode: object = typeof rawDirective === 'object' && rawDirective !== null ? rawDirective : {};
             if (processedPluginDirectives.has(pluginDirectiveNode)) {
               return node;
             }
@@ -1009,7 +1010,7 @@ export class LessCompatPlugin extends AbstractPlugin {
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
-          const atRuleResult = visitor.atRule(node as any, undefined);
+          const atRuleResult = visitor.atRule(node as import('@jesscss/core').AtRule, undefined);
           // Use the result if atRule() returned a different node (and it's not a symbol)
           if (atRuleResult && typeof atRuleResult !== 'symbol' && atRuleResult !== node) {
             node = atRuleResult;
@@ -1089,7 +1090,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 // If result is undefined, a replacing visitor wants to remove this node
                 // (Non-replacing visitors can't return undefined - Less.js ignores their return value)
                 if (result === undefined) {
-                  return undefined as any;
+                  return undefined as unknown as Node;
                 }
 
                 // Get next visitor - if new visitors were added during this iteration,

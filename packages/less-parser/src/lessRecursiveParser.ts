@@ -132,7 +132,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
       ...rest
     } = config;
     legacyMode = legacyMode ?? looseMode;
-    super(T as any, { legacyMode, ...rest });
+    super(T, { legacyMode, ...rest });
 
     this.T = T;
     this.looseMode = looseMode;
@@ -153,14 +153,14 @@ export class LessRecursiveParser extends CssRecursiveParser {
       }
     }
 
-    if ((this.constructor as typeof LessRecursiveParser) === LessRecursiveParser) {
+    if (this.constructor === LessRecursiveParser) {
       this.performSelfAnalysis();
     }
   }
 
   protected override processValueToken(token: IToken, ctx?: RuleContext): Node {
     let tokenType = token.tokenType;
-    const T = this.T as any;
+    const T = this.T;
 
     if (tokenType.name === 'AtKeyword' || tokenMatcher(token, T.AtKeyword)) {
       if (ctx?.inCustomPropertyValue) {

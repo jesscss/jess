@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
@@ -40,13 +41,13 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
   right!: Node;
 
   override clone(deep?: boolean): this {
-    const options = (this as any)._meta?.options;
+    const options = this._meta?.options;
     const value: OperationValue = [
       deep ? this.left.clone(deep) : this.left,
       this.operator,
       deep ? this.right.clone(deep) : this.right
     ];
-    const newNode = new (this.constructor as any)(
+    const newNode = new (this.constructor as Class<this>)(
       value,
       options ? { ...options } : undefined,
       this.location,

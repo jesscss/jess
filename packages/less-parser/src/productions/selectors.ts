@@ -111,7 +111,8 @@ const { isArray } = Array;
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 function getAllowedExtendSelectors(context: TreeContext): ExtendSelectorKind[] | undefined {
-  return context.opts.allowExtendSelectors as ExtendSelectorKind[] | undefined;
+  const val: ExtendSelectorKind[] | undefined = context.opts.allowExtendSelectors;
+  return val;
 }
 
 function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: Selector } | undefined {
@@ -263,8 +264,8 @@ function isSelectorLikeListItem(node: Node): boolean {
   if (isNode(node, N.Reference)) {
     return node.options.type === 'mixin-ruleset';
   }
-  if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 0 && (node as List).value.every(isSelectorLikeListItem);
+  if (node instanceof List || node instanceof Sequence) {
+    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -275,10 +276,10 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false;
   }
   if (isNode(node, N.Reference)) {
-    return false; // Single mixin reference is valid.
+    return false;
   }
-  if (isNode(node, N.List | N.Sequence)) {
-    return (node as List).value.length > 1 && (node as List).value.every(isSelectorLikeListItem);
+  if (node instanceof List || node instanceof Sequence) {
+    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -299,7 +300,8 @@ export function relativeSelector(this: P, T: TokenMap) {
           let co = $.CONSUME(T.Combinator);
           let node: ComplexSelector | Extend = $.SUBRULE2($.complexSelector, { ARGS: [ctx] });
 
-          let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context);
+          const coImage: Combinators = co.image;
+          let combinator = new Combinator(coImage, undefined, $.getLocationInfo(co), $.context);
           let targetNode =
             node instanceof Extend
               ? node.selector
@@ -424,19 +426,19 @@ export function compoundSelector(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       selectors = [];
     }
-    let sel = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
+    let sel: SimpleSelector = $.SUBRULE($.simpleSelector, { ARGS: [ctx] });
     if (!RECORDING_PHASE) {
-      selectors!.push(sel as SimpleSelector);
+      selectors!.push(sel);
     }
     $.MANY({
       /** Make sure we don't ignore space combinators */
       GATE: () => !$.hasWS() && !(ctx.inExtend && $.isType(T.All)),
       DEF: () => {
-        let sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
+        let sel: SimpleSelector = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
           /** Make sure we don't add implicit whitespace */
-          (sel as SimpleSelector).pre = 0;
-          selectors!.push(sel as SimpleSelector);
+          sel.pre = 0;
+          selectors!.push(sel);
         }
       }
     });
@@ -461,7 +463,8 @@ export function complexSelector(this: P, T: TokenMap) {
 
     let selectors: ComplexSelectorValue | undefined;
     if (!RECORDING_PHASE) {
-      selectors = [$.SUBRULE($.compoundSelector, { ARGS: [ctx] }) as ComplexSelectorComponent];
+      const first: ComplexSelectorComponent = $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
+      selectors = [first];
     } else {
       $.SUBRULE($.compoundSelector, { ARGS: [ctx] });
     }
@@ -483,8 +486,9 @@ export function complexSelector(this: P, T: TokenMap) {
 
         if (!RECORDING_PHASE) {
           if (co) {
+            const coImg = co.image as Combinators;
             combinator = $.wrap(
-              new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), $.context),
+              new Combinator(coImg, undefined, $.getLocationInfo(co), $.context),
               'both'
             );
           } else {
@@ -503,9 +507,9 @@ export function complexSelector(this: P, T: TokenMap) {
           }
         }
 
-        const compound = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
+        const compound: ComplexSelectorComponent = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          selectors!.push(combinator!, compound as ComplexSelectorComponent);
+          selectors!.push(combinator!, compound);
         }
       }
     });
@@ -682,7 +686,7 @@ export function simpleSelector(this: P, T: TokenMap) {
               {
                 GATE: () => $.isType(T.QuoteStart),
                 ALT: () => {
-                  const quoted = $.SUBRULE($.string, { ARGS: [ctx] }) as Quoted;
+                  const quoted: Quoted = $.SUBRULE($.string, { ARGS: [ctx] });
                   parts.push(quoted.valueOf());
                   sawQuoted = true;
                 }
@@ -772,7 +776,8 @@ export function simpleSelector(this: P, T: TokenMap) {
       }
       return new BasicSelector(selector.image, undefined, $.getLocationInfo(selector), $.context);
     }
-    return selector as Node;
+    const result: Node = selector;
+    return result;
   };
 }
 
@@ -922,7 +927,7 @@ export function importAtRule(this: P, T: TokenMap) {
 
     let extraNodes: Node[] | undefined;
     $.OPTION2(() => {
-      extraNodes = $.SUBRULE($.importPostlude, { ARGS: [{}] }) as Node[];
+      extraNodes = $.SUBRULE($.importPostlude, { ARGS: [{}] });
     });
 
     $.CONSUME(T.Semi);
@@ -1057,9 +1062,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     if (!value) {
       // When @variable() is called, look up the variable first
       // The variable's value (which may be a Call node) will be executed
-      const nameRef = nameNode instanceof Interpolated
-        ? new Reference({ key: nameNode }, { type: 'variable', role: 'name' })
-        : new Reference({ key: nameNode as any }, { type: 'variable', role: 'name' });
+      const nameRef = new Reference({ key: nameNode }, { type: 'variable', role: 'name' });
       // Pass markImportant in options if !important is present
       const callOptions = important ? { markImportant: true } : undefined;
       const callNode = new Call({ name: nameRef, args }, callOptions, location, $.context);

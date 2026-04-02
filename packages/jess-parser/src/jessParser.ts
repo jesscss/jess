@@ -1,4 +1,4 @@
-import { Lexer, type IToken } from 'chevrotain';
+import { Lexer, type IRecognitionException } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
 
@@ -21,14 +21,14 @@ export class JessParser {
 
   constructor(config: JessParserConfig = {}) {
     const { lexer, T } = createLexerDefinition(
-      jessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
+      jessFragments(),
       jessTokens()
     );
     this.lexer = new Lexer(lexer, {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new JessRecursiveParser(T as TokenMap, config);
+    this.parser = new JessRecursiveParser(T as unknown as TokenMap, config);
     this.parse = this.parse.bind(this);
   }
 
@@ -42,15 +42,19 @@ export class JessParser {
     if (options?.context) {
       parser.context = options.context;
     }
-    parser.input = lexerResult.tokens as IToken[];
-    const tree = (parser as any)[rule]() as Node;
+    parser.input = lexerResult.tokens;
+    const ruleMethod = parser[rule as keyof JessRecursiveParser];
+    if (typeof ruleMethod !== 'function') {
+      throw new Error(`Unknown rule: ${rule}`);
+    }
+    const tree = (ruleMethod as (() => Node)).call(parser);
 
     const warnings = [...parser.warnings];
 
     return {
       tree,
       lexerResult,
-      errors: parser.errors as any,
+      errors: parser.errors as IRecognitionException[],
       warnings
     };
   }

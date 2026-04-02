@@ -44,7 +44,7 @@ function getNodeType(value: any): Node {
   if (typeof value === 'function') {
     // Hmm, the LLM added this, is it needed?
     // Preserve function options (e.g., params metadata from getFunctionFromMixins)
-    const options = (value as any)?.options;
+    const options = (value as Function & { options?: Record<string, unknown> }).options;
     return new JsFunction(value, options);
   }
   if (isPlainObject(value)) {

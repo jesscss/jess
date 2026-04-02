@@ -67,7 +67,7 @@ export function processLeadingIs(
     if (isNode(node, N.Quoted) && Boolean(node.escaped)) {
       return true;
     }
-    const value = (node as any).value;
+    const value = 'value' in node ? node.value : undefined;
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item && typeof item === 'object' && 'type' in (item as Record<string, unknown>)) {
@@ -324,7 +324,7 @@ export function processLeadingIs(
     const first = value[firstSelIndex];
     if (
       isNode(first, N.CompoundSelector)
-      && isNode((first as CompoundSelector).value?.[0] as any, N.PseudoSelector)
+      && isNode((first as CompoundSelector).value?.[0], N.PseudoSelector)
       && ((first as CompoundSelector).value?.[0] as PseudoSelector).name === ':is'
       && ((first as CompoundSelector).value?.[0] as PseudoSelector).generated
     ) {

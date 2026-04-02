@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { CANONICAL, Node, F_STATIC, defineType, type NodeEdge, type RenderKey } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
@@ -56,8 +57,8 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
     const clonedValue = deep
       ? value.map(child => cloneChild(child))
       : [...value];
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       [],
       options ? { ...options } : undefined,
       this.location,

@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND, type NodeOptions } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
@@ -70,7 +71,7 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
     const namespace = this.get('namespace', ctx);
     const flag = this.get('flag', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
-    const options = (this as any)._meta?.options;
+    const options = this._meta?.options;
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
     if (!deep) {
       priorChildParents = [];
@@ -81,7 +82,7 @@ export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
         priorChildParents.push([target, target.parent]);
       }
     }
-    const newNode = new (this.constructor as any)(
+    const newNode = new (this.constructor as Class<this>)(
       {
         selector: deep && selector instanceof Node ? cloneChild(selector) : selector,
         target: deep ? cloneChild(target) : target,
@@ -370,7 +371,7 @@ function materializeImplicitAmpersands(
         const repl = materialize(part);
         parts.push(repl);
       }
-      return ComplexSelector.create(parts as any).inherit(node) as Selector;
+      return ComplexSelector.create(parts as ComplexSelectorComponent[]).inherit(node) as Selector;
     }
 
     const value = (node as Selector & { value?: Selector[] }).value;

@@ -15,7 +15,7 @@ export class DefaultGuard extends Node<string> {
   readonly value!: string;
 
   constructor(value: string, options?: any, location?: any, treeContext?: any) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
   }
 

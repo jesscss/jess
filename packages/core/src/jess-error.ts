@@ -131,6 +131,7 @@ export type JessErrorInit = {
  */
 type Template = { summary: string; reason: string; fix: string };
 
+/* eslint-disable @typescript-eslint/naming-convention */
 const TEMPLATES = {
   // Parse/Lex
   'parse/unexpected-token': {
@@ -219,6 +220,9 @@ const TEMPLATES = {
     fix: 'Consolidate rules or remove the duplicate.'
   }
 } satisfies Record<string, Template>;
+/* eslint-enable @typescript-eslint/naming-convention */
+
+export type JessErrorCode = keyof typeof TEMPLATES;
 
 /**
  * Replaces `${key}` with values from `meta`. Unset keys render as `<key>`.
@@ -666,28 +670,26 @@ export function getErrorFromParser(
     return new JessError({ code: 'parse/syntax-error', phase: 'parse', filePath, source, ctx });
   }
 
-  const isLex =
-    (error as any).name === 'LexerError'
-    || ('token' in error && (error as any).lexer);
+  const isLex = !('token' in error);
 
   const line =
     'token' in error
-      ? error.token?.startLine ?? (error as any).line
-      : (error as any).line;
+      ? error.token?.startLine
+      : error.line;
 
   const column =
     'token' in error
-      ? error.token?.startColumn ?? (error as any).column
-      : (error as any).column;
+      ? error.token?.startColumn
+      : error.column;
 
-  const message = (error as any).message || '';
+  const message = error.message || '';
 
   let code: keyof typeof TEMPLATES = 'parse/syntax-error';
   let meta: Record<string, unknown> = {};
 
   if (isLex) {
     code = 'parse/unexpected-token';
-    meta = { token: (error as any).char ?? '/' };
+    meta = { token: ('char' in error ? String(error.char) : undefined) ?? '/' };
   } else if (/unterminated|string not closed/i.test(message)) {
     code = 'parse/unterminated-string';
   } else if (/expecting/i.test(message)) {

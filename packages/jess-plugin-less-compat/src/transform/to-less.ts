@@ -43,10 +43,8 @@ export function toLessNode(
 
   // Check if already being proxied (prevent recursion)
   // Only return node as-is if there's no cached proxy
-  if ((jessNode as any)[IS_PROXYING_SYMBOL]) {
-    // Return the node as-is to prevent recursion
-    // This should only happen if cache doesn't have it (checked above)
-    return jessNode as any;
+  if ((jessNode as unknown as Record<symbol, unknown>)[IS_PROXYING_SYMBOL]) {
+    return jessNode;
   }
 
   // Get transformer for this node type
@@ -68,8 +66,8 @@ export function toLessNode(
 
     // For child nodes, convert them lazily
     // Use instance field `.value` (the canonical accessor for leaf nodes)
-    if (prop === 'value' && (target as any).value !== undefined) {
-      const nodeValue = (target as any).value;
+    if (prop === 'value' && 'value' in target && target.value !== undefined) {
+      const nodeValue = target.value;
       // If value is a Node, convert it
       if (nodeValue instanceof Node) {
         return toLessNode(nodeValue, options);
@@ -156,7 +154,7 @@ export function toLessTree(
     // Rules is a container - we need to find the root ruleset
     // For now, create a synthetic root ruleset
     // TODO: Handle this properly based on how Less structures its root
-    return toLessNode(jessRules as any, options);
+    return toLessNode(jessRules, options);
   }
 
   // Otherwise, convert the node directly

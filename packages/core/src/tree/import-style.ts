@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
@@ -5,6 +6,8 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
+import { EvalState } from '../eval-state.js';
+import { JessError } from '../jess-error.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -153,8 +156,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
   private withType: 'with' | 'set' | undefined;
 
   override clone(deep?: boolean): this {
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       {
         path: deep ? this.path.clone(deep) : this.path,
         withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,

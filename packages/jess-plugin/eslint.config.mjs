@@ -6,11 +6,14 @@ export default tseslint.config([
   {
     files: ['*.ts', '*.tsx'],
     languageOptions: {
-          parser: tseslint.parser,
-          parserOptions: {
-            projectService: true,
-            tsconfigRootDir: import.meta.dirname,
-          },
-        },
+      parser: tseslint.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
+      }
+    },
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'error'
+    }
   }
 ]);

@@ -35,7 +35,8 @@ import {
   INTERPOLATION_PLACEHOLDER,
   Declaration,
   CustomDeclaration,
-  List
+  List,
+  AssignmentType
 } from '@jesscss/core';
 import colors from 'color-name';
 import type { TokenMap } from './jessActionsParser.js';
@@ -464,14 +465,14 @@ export function jessComposeAtRule(this: P, T: TokenMap) {
       DEF: () => {
         // Consume "as" keyword (just a PlainIdent)
         const asTok = ($.LA(1).tokenType === T.Ident)
-          ? ($.CONSUME(T.Ident) as unknown as IToken)
-          : ($.CONSUME(T.PlainIdent) as unknown as IToken);
+          ? ($.CONSUME(T.Ident))
+          : ($.CONSUME(T.PlainIdent));
         if (!RECORDING_PHASE && asTok.image !== 'as') {
           throw new Error('Expected "as" keyword');
         }
         const nsTok = ($.LA(1).tokenType === T.Ident)
-          ? ($.CONSUME2(T.Ident) as unknown as IToken)
-          : ($.CONSUME2(T.PlainIdent) as unknown as IToken);
+          ? ($.CONSUME2(T.Ident))
+          : ($.CONSUME2(T.PlainIdent));
         if (!RECORDING_PHASE) {
           namespace = nsTok.image;
         }
@@ -527,14 +528,14 @@ export function jessFromAtRule(this: P, T: TokenMap) {
           $.CONSUME(T.Star);
           // Consume "as" keyword (just a PlainIdent)
           const asTok = ($.LA(1).tokenType === T.Ident)
-            ? ($.CONSUME(T.Ident) as unknown as IToken)
-            : ($.CONSUME(T.PlainIdent) as unknown as IToken);
+            ? ($.CONSUME(T.Ident))
+            : ($.CONSUME(T.PlainIdent));
           if (!RECORDING_PHASE && asTok.image !== 'as') {
             throw new Error('Expected "as" keyword');
           }
           const nsTok = ($.LA(1).tokenType === T.Ident)
-            ? ($.CONSUME2(T.Ident) as unknown as IToken)
-            : ($.CONSUME2(T.PlainIdent) as unknown as IToken);
+            ? ($.CONSUME2(T.Ident))
+            : ($.CONSUME2(T.PlainIdent));
           if (!RECORDING_PHASE) {
             imports.push({ name: '*', alias: nsTok.image });
           }
@@ -545,8 +546,8 @@ export function jessFromAtRule(this: P, T: TokenMap) {
             SEP: T.Comma,
             DEF: () => {
               const nameTok = ($.LA(1).tokenType === T.Ident)
-                ? ($.CONSUME3(T.Ident) as unknown as IToken)
-                : ($.CONSUME3(T.PlainIdent) as unknown as IToken);
+                ? ($.CONSUME3(T.Ident))
+                : ($.CONSUME3(T.PlainIdent));
               let alias: string | undefined;
               $.OPTION({
                 GATE: () => {
@@ -556,14 +557,14 @@ export function jessFromAtRule(this: P, T: TokenMap) {
                 DEF: () => {
                   // Consume "as" keyword (just a PlainIdent)
                   const asTok = ($.LA(1).tokenType === T.Ident)
-                    ? ($.CONSUME4(T.Ident) as unknown as IToken)
-                    : ($.CONSUME4(T.PlainIdent) as unknown as IToken);
+                    ? ($.CONSUME4(T.Ident))
+                    : ($.CONSUME4(T.PlainIdent));
                   if (!RECORDING_PHASE && asTok.image !== 'as') {
                     throw new Error('Expected "as" keyword');
                   }
                   const aliasTok = ($.LA(1).tokenType === T.Ident)
-                    ? ($.CONSUME5(T.Ident) as unknown as IToken)
-                    : ($.CONSUME5(T.PlainIdent) as unknown as IToken);
+                    ? ($.CONSUME5(T.Ident))
+                    : ($.CONSUME5(T.PlainIdent));
                   if (!RECORDING_PHASE) {
                     alias = aliasTok.image;
                   }
@@ -578,8 +579,8 @@ export function jessFromAtRule(this: P, T: TokenMap) {
         } else {
           // Simple name [as alias]
           const nameTok = ($.LA(1).tokenType === T.Ident)
-            ? ($.CONSUME6(T.Ident) as unknown as IToken)
-            : ($.CONSUME6(T.PlainIdent) as unknown as IToken);
+            ? ($.CONSUME6(T.Ident))
+            : ($.CONSUME6(T.PlainIdent));
           let alias: string | undefined;
           $.OPTION2({
             GATE: () => {
@@ -589,14 +590,14 @@ export function jessFromAtRule(this: P, T: TokenMap) {
             DEF: () => {
               // Consume "as" keyword (just a PlainIdent)
               const asTok = ($.LA(1).tokenType === T.Ident)
-                ? ($.CONSUME7(T.Ident) as unknown as IToken)
-                : ($.CONSUME7(T.PlainIdent) as unknown as IToken);
+                ? ($.CONSUME7(T.Ident))
+                : ($.CONSUME7(T.PlainIdent));
               if (!RECORDING_PHASE && asTok.image !== 'as') {
                 throw new Error('Expected "as" keyword');
               }
               const aliasTok = ($.LA(1).tokenType === T.Ident)
-                ? ($.CONSUME8(T.Ident) as unknown as IToken)
-                : ($.CONSUME8(T.PlainIdent) as unknown as IToken);
+                ? ($.CONSUME8(T.Ident))
+                : ($.CONSUME8(T.PlainIdent));
               if (!RECORDING_PHASE) {
                 alias = aliasTok.image;
               }
@@ -647,14 +648,14 @@ export function jessExportAtRule(this: P, T: TokenMap) {
       DEF: () => {
         // Consume "as" keyword (just a PlainIdent)
         const asTok = ($.LA(1).tokenType === T.Ident)
-          ? ($.CONSUME(T.Ident) as unknown as IToken)
-          : ($.CONSUME(T.PlainIdent) as unknown as IToken);
+          ? ($.CONSUME(T.Ident))
+          : ($.CONSUME(T.PlainIdent));
         if (!RECORDING_PHASE && asTok.image !== 'as') {
           throw new Error('Expected "as" keyword');
         }
         const nsTok = ($.LA(1).tokenType === T.Ident)
-          ? ($.CONSUME2(T.Ident) as unknown as IToken)
-          : ($.CONSUME2(T.PlainIdent) as unknown as IToken);
+          ? ($.CONSUME2(T.Ident))
+          : ($.CONSUME2(T.PlainIdent));
         if (!RECORDING_PHASE) {
           namespace = nsTok.image;
         }
@@ -886,7 +887,7 @@ function getInterpolationParser(): { lexer: Lexer; parser: P } {
     ensureOptimizations: true,
     skipValidations: process.env.TEST !== 'true'
   });
-  const parser = new P(lexer, T as any, {
+  const parser = new P(lexer, T as unknown as TokenMap, {
     skipValidations: process.env.TEST !== 'true'
   });
   interpolationParser = { lexer: chevLexer, parser };
@@ -902,7 +903,7 @@ function parseInterpolationExpression(expr: string): Node {
   const lexed = lexer.tokenize(expr);
   parser.input = lexed.tokens;
   // Parse as a value sequence (expression-ish).
-  return parser.valueSequence({} as any) as unknown as Node;
+  return parser.valueSequence({}) as Node;
 }
 
 /**
@@ -1007,7 +1008,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
                       GATE: () => $.legacyMode,
                       ALT: () => $.CONSUME(T.LegacyPropIdent)
                     }
-                  ]) as unknown as IToken;
+                  ]);
                   if (!RECORDING_PHASE) {
                     source += tok.image;
                   }
@@ -1090,16 +1091,14 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
     let value: Node | undefined;
     let important: IToken | undefined;
 
-    const picked = $.OR(alt!(ctx) as any);
+    const picked: unknown = $.OR(alt!(ctx));
 
     if (!RECORDING_PHASE) {
       if (Array.isArray(picked)) {
         if (picked.length === 3) {
-          // Custom property: [name, assign, value]
-          [name, assign, value] = picked as any;
+          [name, assign, value] = picked as [typeof name, typeof assign, typeof value];
         } else {
-          // Regular declaration: [name, assign, value, important]
-          [name, assign, value, important] = picked as any;
+          [name, assign, value, important] = picked as [typeof name, typeof assign, typeof value, typeof important];
         }
       }
     }
@@ -1113,7 +1112,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
         name: name!,
         value: $.wrap(value!, 'both'),
         important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both') : undefined
-      }, { assign: assign!.image as any }, location, $.context);
+      }, { assign: assign!.image as unknown as AssignmentType }, location, $.context);
     }
   };
 }
@@ -1129,7 +1128,7 @@ export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
       ALT: () => {
         const RECORDING_PHASE = $.RECORDING_PHASE;
         $.startRule();
-        const quote = $.CONSUME(T.SingleQuoteStart);
+        $.CONSUME(T.SingleQuoteStart);
 
         let contents: IToken | undefined;
         $.OPTION(() => contents = $.CONSUME(T.SingleQuoteStringContents));
@@ -1139,7 +1138,7 @@ export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
           const location = $.endRule();
           const raw = contents?.image ?? '';
           const inner = processJessStringInterpolation(raw, location, $.context);
-          return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+          return new Quoted(inner, { quote: '\'' }, location, $.context);
         }
       }
     },
@@ -1147,7 +1146,7 @@ export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
       ALT: () => {
         const RECORDING_PHASE = $.RECORDING_PHASE;
         $.startRule();
-        const quote = $.CONSUME2(T.DoubleQuoteStart);
+        $.CONSUME2(T.DoubleQuoteStart);
 
         let contents: IToken | undefined;
         $.OPTION2(() => contents = $.CONSUME2(T.DoubleQuoteStringContents));
@@ -1157,7 +1156,7 @@ export function string(this: P, T: TokenMap, stringAlt?: AltContext) {
           const location = $.endRule();
           const raw = contents?.image ?? '';
           const inner = processJessStringInterpolation(raw, location, $.context);
-          return new Quoted(inner as any, { quote: quote.image as '"' | '\'' }, location, $.context);
+          return new Quoted(inner, { quote: '"' }, location, $.context);
         }
       }
     }

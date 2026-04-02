@@ -1,6 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { IToken } from '@chevrotain/types';
-import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
+import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecursiveParser.js';
 import { tokenMatcher } from '../cssRecursiveParser.js';
 import { EMPTY_ALT } from 'chevrotain';
 import {
@@ -12,12 +12,15 @@ import {
 
 type C = CssRecursiveParser;
 
-type PreludeRule = unknown;
+type PreludeRule = Rule | string | undefined;
 
-function resolvePreludeRule($: C, preludeRule: PreludeRule): unknown {
+function resolvePreludeRule($: C, preludeRule: PreludeRule): Rule | undefined {
   if (typeof preludeRule === 'string') {
-    const rec = $ as unknown as Record<string, unknown>;
-    return rec[preludeRule];
+    const resolved: unknown = Reflect.get($, preludeRule);
+    if (typeof resolved === 'function') {
+      return resolved as Rule;
+    }
+    return undefined;
   }
   return preludeRule;
 }
@@ -94,7 +97,7 @@ export function atRuleBody(this: C, T: TokenMap) {
 // mediaAtRule
 //   : MEDIA_RULE WS* mediaQuery WS* LCURLY main RCURLY
 //   ;
-type PreludeRuleLocal = unknown;
+type PreludeRuleLocal = PreludeRule;
 
 export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRuleLocal) {
   const $ = this;
@@ -105,8 +108,8 @@ export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRuleLocal
     let name = $.CONSUME(T.AtMedia);
     let rules: Rules;
     const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
-    const prelude: Node = typeof resolvedPreludeRule === 'function'
-      ? $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] })
+    const prelude: Node = resolvedPreludeRule
+      ? $.SUBRULE(resolvedPreludeRule, { ARGS: [ctx] })
       : $.SUBRULE($.mediaQueryList, { ARGS: [ctx] });
     $.CONSUME(T.LCurly);
     rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
@@ -129,7 +132,10 @@ export function mediaQueryList(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let queries: Node[] = RECORDING_PHASE ? undefined as unknown as Node[] : [];
+    let queries!: Node[];
+    if (!RECORDING_PHASE) {
+      queries = [];
+    }
     $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
       DEF: () => {
@@ -895,8 +901,8 @@ export function containerAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule)
 
     if (preludeRule) {
       const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
-      if (typeof resolvedPreludeRule === 'function') {
-        prelude = $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] });
+      if (resolvedPreludeRule) {
+        prelude = $.SUBRULE(resolvedPreludeRule, { ARGS: [ctx] });
       }
     } else {
       $.OR([
@@ -976,7 +982,10 @@ export function containerQueryList(this: C, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     $.startRule();
-    let queries: Node[] = RECORDING_PHASE ? undefined as unknown as Node[] : [];
+    let queries!: Node[];
+    if (!RECORDING_PHASE) {
+      queries = [];
+    }
     $.AT_LEAST_ONE_SEP({
       SEP: T.Comma,
       DEF: () => {
@@ -1023,7 +1032,10 @@ export function containerQuery(this: C, T: TokenMap) {
           // Parse first function call
           const funcStart = $.CONSUME(T.FunctionStart);
           const funcName = funcStart.image.slice(0, -1);
-          let args: Node[] = !$.RECORDING_PHASE ? [] : undefined as unknown as Node[];
+          let args!: Node[];
+          if (!$.RECORDING_PHASE) {
+            args = [];
+          }
           $.AT_LEAST_ONE_SEP({
             SEP: T.Comma,
             DEF: () => {
@@ -1245,7 +1257,10 @@ export function containerAnd(this: C, T: TokenMap) {
           // Parse function call (reuse containerQuery logic)
           const funcStart = $.CONSUME(T.FunctionStart);
           const funcName = funcStart.image.slice(0, -1);
-          let args: Node[] = !$.RECORDING_PHASE ? [] : undefined as unknown as Node[];
+          let args!: Node[];
+          if (!$.RECORDING_PHASE) {
+            args = [];
+          }
           $.AT_LEAST_ONE_SEP({
             SEP: T.Comma,
             DEF: () => {
@@ -1349,7 +1364,10 @@ export function containerOr(this: C, T: TokenMap) {
           // Parse function call (reuse containerQuery logic)
           const funcStart = $.CONSUME(T.FunctionStart);
           const funcName = funcStart.image.slice(0, -1);
-          let args: Node[] = !$.RECORDING_PHASE ? [] : undefined as unknown as Node[];
+          let args!: Node[];
+          if (!$.RECORDING_PHASE) {
+            args = [];
+          }
           $.AT_LEAST_ONE_SEP({
             SEP: T.Comma,
             DEF: () => {
@@ -1459,8 +1477,8 @@ export function scopeAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
     let prelude: Node | undefined;
     if (preludeRule) {
       const resolvedPreludeRule = resolvePreludeRule($, preludeRule);
-      if (typeof resolvedPreludeRule === 'function') {
-        prelude = $.SUBRULE(resolvedPreludeRule as any, { ARGS: [ctx] });
+      if (resolvedPreludeRule) {
+        prelude = $.SUBRULE(resolvedPreludeRule, { ARGS: [ctx] });
       }
     } else {
       const preludeNodes: Node[] = [];

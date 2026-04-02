@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
 import type { IParseResult } from './types/index.js';
 import type { ILexingResult } from '@chevrotain/types';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError, type JessErrorCode } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**
@@ -132,7 +132,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     try {
       const result = await readFile(absoluteFilePath, 'utf8');
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
   }
@@ -149,7 +149,7 @@ export abstract class AbstractPlugin implements PluginInterface {
   }
 
   parse(filePath: string, source: string, options?: PluginParseOptions): Rules {
-    const safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
+    const safeParse: PluginInterface['safeParse'] = (this as PluginInterface).safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }
@@ -157,7 +157,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     if (errors.length > 0) {
       const firstError = errors[0]!;
       throw new JessError({
-        code: firstError.code as any,
+        code: firstError.code as JessErrorCode,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,

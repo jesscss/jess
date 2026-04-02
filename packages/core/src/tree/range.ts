@@ -39,7 +39,7 @@ export class Range extends Node<RangeValue, RangeOptions, RangeChildData> {
   step: Node | undefined;
 
   constructor(value: RangeValue, options?: RangeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.start = value.start;
     this.end = value.end;
     this.step = value.step;

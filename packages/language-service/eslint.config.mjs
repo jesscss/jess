@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config([
   ...rootConfig,
   {
-    files: ['*.ts', '*.tsx'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {

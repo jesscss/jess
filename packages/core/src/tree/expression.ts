@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -28,9 +29,9 @@ export class Expression extends Node<Node, NodeOptions, ExpressionChildData> {
     const value = this.get('value', ctx);
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const clonedValue = deep ? cloneChild(value) : value;
-    const options = (this as any)._meta?.options;
+    const options = this._meta?.options;
     const priorParent = !deep && ctx ? clonedValue.parent : undefined;
-    const newNode = new (this.constructor as any)(
+    const newNode = new (this.constructor as Class<this>)(
       clonedValue,
       options ? { ...options } : undefined,
       this.location,
@@ -45,7 +46,7 @@ export class Expression extends Node<Node, NodeOptions, ExpressionChildData> {
   }
 
   constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {
       this.adopt(value);

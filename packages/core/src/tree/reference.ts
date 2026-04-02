@@ -97,7 +97,7 @@ const { isArray } = Array;
  * so that MixinRegistry lookup uses the correct startKey.
  */
 function getSelectorReferenceKeys(selector: Selector): string[] {
-  const value = (selector as any).value;
+  const value = 'value' in selector ? selector.value : undefined;
   if (isArray(value)) {
     const keys: string[] = [];
     for (const child of value) {
@@ -211,7 +211,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
     if (typeof value === 'string') {
       value = { key: value };
     }
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.target = value.target;
     this.key = value.key;
     if (this.target instanceof Node) {
@@ -379,7 +379,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         let out: any;
         try {
           out = isNode(key) ? key.eval(context) : key;
-        } catch (err: any) {
+        } catch (err: unknown) {
           throw err;
         }
         if (isThenable(out)) {

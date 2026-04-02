@@ -152,7 +152,7 @@ export function fromLessPluginReturnValue(
   options?: FromLessOptions
 ): Node | undefined {
   if (value === null || value === undefined) {
-    return value as undefined;
+    return undefined;
   }
   if (typeof value === 'number') {
     return new Any(String(value));
@@ -164,18 +164,20 @@ export function fromLessPluginReturnValue(
     return new Any(String(value));
   }
   if (typeof value === 'object' && value !== null) {
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.type === 'string') {
-      return fromLessNode(value as LessNode, options);
+    if ('type' in value && typeof value.type === 'string') {
+      return fromLessNode(value, options);
     }
-    if (typeof obj.toCSS === 'function') {
+    if ('toCSS' in value && typeof value.toCSS === 'function') {
       try {
-        const css = (obj.toCSS as () => string)();
+        const css: unknown = value.toCSS();
         return new Any(typeof css === 'string' ? css : String(css));
       } catch {
         // ignore
       }
     }
+  }
+  if (value instanceof Node) {
+    return value;
   }
   return value as Node;
 }

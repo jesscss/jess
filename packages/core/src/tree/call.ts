@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { CANONICAL, Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -102,8 +103,8 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       }
     }
 
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       cloneData,
       options ? { ...options } : undefined,
       this.location,

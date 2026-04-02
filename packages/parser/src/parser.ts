@@ -616,6 +616,7 @@ export class RecursiveDescentParser {
       if (this.pos < this.tokens.length) {
         this.pos++;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- error recovery: intentionally returns undefined in place of T
       return undefined as T;
     }
     if (this.speculating) {

@@ -97,8 +97,8 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
     return Boolean(
       value
       && typeof value === 'object'
-      && typeof (value as any).type === 'string'
-      && typeof (value as any).valueOf === 'function'
+      && 'type' in value && typeof value.type === 'string'
+      && 'valueOf' in value && typeof value.valueOf === 'function'
     );
   };
   const queue: unknown[] = [node];
@@ -112,42 +112,63 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
     if (current.type === 'DefaultGuard') {
       return true;
     }
-    if (current.type === 'Call') {
-      const callName = (current as Call).name;
+    if (isNode(current, N.Call)) {
+      const callName = current.name;
       const callNameStr = String(
-        (callName as any)?.valueOf?.() ?? callName ?? ''
+        (typeof callName === 'object' && callName !== null && 'valueOf' in callName)
+          ? callName.valueOf()
+          : callName ?? ''
       );
       if (callNameStr === 'default' || callNameStr === '??') {
         return true;
       }
-      const key = (callName as any)?.key;
-      const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
-      if (keyStr === 'default' || keyStr === '??') {
-        return true;
+      if (callName instanceof Reference) {
+        const key = callName.key;
+        const keyStr = String(
+          (typeof key === 'object' && key !== null && 'valueOf' in key)
+            ? key.valueOf()
+            : key ?? ''
+        );
+        if (keyStr === 'default' || keyStr === '??') {
+          return true;
+        }
       }
     }
-    const value = (current as any).data;
-    if (Array.isArray(value)) {
-      queue.push(...value);
-    } else if (value && typeof value === 'object') {
-      queue.push(...Object.values(value));
+    if ('data' in current) {
+      const value = current.data;
+      if (Array.isArray(value)) {
+        queue.push(...value);
+      } else if (value && typeof value === 'object') {
+        queue.push(...Object.values(value));
+      }
     }
   }
   return false;
 }
 
 function isDefaultGuardCall(node: Node | undefined): node is Call {
-  if (!node || node.type !== 'Call') {
+  if (!node || !isNode(node, N.Call)) {
     return false;
   }
-  const callName = (node as Call).name;
-  const callNameStr = String((callName as any)?.valueOf?.() ?? callName ?? '');
+  const callName = node.name;
+  const callNameStr = String(
+    (typeof callName === 'object' && callName !== null && 'valueOf' in callName)
+      ? callName.valueOf()
+      : callName ?? ''
+  );
   if (callNameStr === 'default' || callNameStr === '??') {
     return true;
   }
-  const key = (callName as any)?.key;
-  const keyStr = String((key as any)?.valueOf?.() ?? key ?? '');
-  return keyStr === 'default' || keyStr === '??';
+  if (callName instanceof Reference) {
+    const key = callName.key;
+    const keyStr = String(
+      (typeof key === 'object' && key !== null && 'valueOf' in key)
+        ? key.valueOf()
+        : key ?? ''
+    );
+    return keyStr === 'default' || keyStr === '??';
+  }
+  return false;
 }
 
 function loc(node: Node): LocationInfo | undefined {
@@ -384,16 +405,14 @@ export function stylesheet(this: P, T: TokenMap) {
       });
     }
 
-    const ctx: RuleContext = { isRoot: true } as any;
+    const ctx: RuleContext = { isRoot: true };
 
     let root: Node = $.SUBRULE($.main, { ARGS: [ctx] });
 
-    let rules = (root as any)?.value as any[];
-
-    if (charset) {
+    if (charset && isNode(root, N.Rules)) {
       let charsetLoc = $.getLocationInfo(charset);
       let rootLoc = root.location;
-      rules.unshift(new Any(charset.image, { role: 'charset' }, charsetLoc, context!));
+      root.setData([new Any(charset.image, { role: 'charset' }, charsetLoc, context!), ...root.value]);
       rootLoc[0] = charsetLoc[0];
       rootLoc[1] = charsetLoc[1];
       rootLoc[2] = charsetLoc[2];
@@ -1164,13 +1183,13 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     let selector!: Selector;
     let isSelectorList: boolean | undefined;
-    selector = ctx.selector as Selector;
-    isSelectorList = (ctx.isSelectorList as boolean | undefined) ?? selector instanceof SelectorList;
+    selector = ctx.selector!;
+    isSelectorList = typeof ctx.isSelectorList === 'boolean' ? ctx.isSelectorList : selector instanceof SelectorList;
 
     let guard: Condition | undefined;
     if (!isSelectorList) {
       $.OPTION(() => {
-        guard = $.SUBRULE($.guard, { ARGS: [ctx] }) as Condition;
+        guard = $.SUBRULE($.guard, { ARGS: [ctx] });
       });
     }
     $.CONSUME(T.LCurly);
@@ -1212,7 +1231,10 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
           rules.setData([...extend, ...rules.value]);
           ctx.extendNodes = undefined;
         } else {
-          const selectorList = selector as SelectorList;
+          const selectorList = selector instanceof SelectorList ? selector : undefined;
+          if (!selectorList) {
+            return;
+          }
           const selectorCount = selectorList.value.length;
           const extendCount = extend.length;
 
@@ -1321,7 +1343,7 @@ export function qualifiedRule(this: P, T: TokenMap) {
       // Set the Extend nodes' selector to the ruleset's selector (not &)
       // This allows the extends to work correctly when evaluated in the wrapper Rules context
       for (const extendNode of ctx.extendNodes) {
-        if (extendNode.selector === undefined || (extendNode.selector as any)?.type === 'Ampersand') {
+        if (extendNode.selector === undefined || extendNode.selector instanceof Ampersand) {
           extendNode.setData('selector', selector);
         }
       }
@@ -1372,7 +1394,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
         if (node instanceof Any && node.role === 'name') {
           // Create a new Any node with role 'property' for the name
-          const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' as any }, node.location, $.context);
+          const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location, $.context);
           args.setData(i, new VarDeclaration({
             name: nameNode,
             value: new Nil(undefined, undefined, location, $.context)
@@ -1395,9 +1417,11 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
         if (node instanceof Any && node.role === 'name') {
           args.setData(i, new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context));
-        } else if (node instanceof Rest && typeof node.get('value') === 'string') {
-          // If it's a Rest node with a string value, convert it to Rest with Reference for mixin call arguments
-          args.setData(i, new Rest(new Reference({ key: node.get('value') as string }, { type: 'variable' }, location, $.context), undefined, location, $.context));
+        } else if (node instanceof Rest) {
+          const restValue = node.get('value');
+          if (typeof restValue === 'string') {
+            args.setData(i, new Rest(new Reference({ key: restValue }, { type: 'variable' }, location, $.context), undefined, location, $.context));
+          }
         }
       }
     };
@@ -1407,7 +1431,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     //   ;
     $.startRule();
 
-    let selector = $.OR([
+    let selector: Selector = $.OR([
       {
         GATE: () => !ctx.inner,
         ALT: () => {
@@ -1435,7 +1459,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
           }
         }
       }
-    ]) as Selector;
+    ]);
 
     let isSelectorList = selector instanceof SelectorList;
     let guard: Condition | undefined;
@@ -1461,7 +1485,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         // iterate through selector nodes and create nested references
         for (let s of selector.nodes()) {
           if (s instanceof BasicSelector) {
-            leftNode = new Reference({ target: leftNode as Reference, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, $.context);
+            const target = leftNode instanceof Reference ? leftNode : leftNode instanceof Call ? leftNode : undefined;
+            leftNode = new Reference({ target, key: s.valueOf() }, { type: 'mixin-ruleset', role: 'name' }, undefined, $.context);
           }
         }
       }
@@ -1506,7 +1531,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
               /** Mixin definition */
               ALT: () => {
                 $.OPTION(() => {
-                  guard = $.SUBRULE4($.guard, { ARGS: [ctx] }) as Condition;
+                  guard = $.SUBRULE4($.guard, { ARGS: [ctx] });
                 });
                 $.CONSUME(T.LCurly);
 
@@ -1518,7 +1543,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: selector.valueOf() as any, params: args, rules, guard },
+                    { name: selector.valueOf() as unknown as Any<'name'>, params: args, rules, guard },
                     hasDefault ? { hasDefault: true } : undefined,
                     $.endRule(),
                     $.context
@@ -1595,7 +1620,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             // Set the Extend nodes' selector to the ruleset's selector (not &)
             // This allows the extends to work correctly when evaluated in the wrapper Rules context
             for (const extendNode of ctx.extendNodes) {
-              if (extendNode.selector === undefined || (extendNode.selector as any)?.type === 'Ampersand') {
+              if (extendNode.selector === undefined || extendNode.selector instanceof Ampersand) {
                 extendNode.setData('selector', selector);
               }
             }

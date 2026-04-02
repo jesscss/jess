@@ -21,7 +21,7 @@ export class Negative extends Node<Node, NodeOptions, NegativeChildData> {
   readonly value!: Node;
 
   constructor(value: Node, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     if (value instanceof Node) {
       this.adopt(value);

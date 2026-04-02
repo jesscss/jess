@@ -24,7 +24,7 @@ export class BasicSelector extends SimpleSelector<string> {
     location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     this.addFlag(F_STATIC);
   }

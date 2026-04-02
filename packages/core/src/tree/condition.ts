@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { Bool } from './bool.js';
@@ -45,7 +46,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
     const operator = this.get('operator', ctx);
     const right = this.get('right', ctx);
     const negate = this.get('negate', ctx);
-    const options = (this as any)._meta?.options;
+    const options = this._meta?.options;
     const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const value: ConditionValue = operator !== undefined && right !== undefined
       ? [deep ? cloneChild(left) : left, operator, deep ? cloneChild(right) : right]
@@ -56,7 +57,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
     } else if (clonedOptions) {
       delete clonedOptions.negate;
     }
-    const newNode = new (this.constructor as any)(
+    const newNode = new (this.constructor as Class<this>)(
       value,
       clonedOptions,
       this.location,
@@ -67,7 +68,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
   }
 
   constructor(value: ConditionValue, options?: ConditionOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];

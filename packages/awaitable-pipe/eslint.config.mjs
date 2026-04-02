@@ -4,33 +4,25 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config([
   ...rootConfig,
   {
-    files: ['*.ts', '*.tsx'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname
       }
-    }
-  },
-  {
-    files: ['src/**/*.ts'],
+    },
     rules: {
       '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
   },
   {
-    files: [
-      'src/cssParser.ts',
-      'src/cssRecursiveParser.ts',
-      'src/productions/atRules.ts',
-      'src/productions/misc.ts',
-      'src/productions/selectors.ts',
-      'src/productions/values.ts',
-      'src/util/index.ts'
-    ],
+    // pipe/safePipe overload implementations use `as any` throughout
+    // (type safety from overload signatures); tryStep uses fallback
+    // casts that TS can't narrow because R may itself be a function.
+    files: ['src/pipe.ts', 'src/helpers.ts'],
     rules: {
-      '@typescript-eslint/no-unsafe-type-assertion': 'warn'
+      '@typescript-eslint/no-unsafe-type-assertion': 'off'
     }
   }
 ]);

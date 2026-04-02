@@ -659,7 +659,7 @@ export abstract class Node<
   ) {
     (this as any).parent = undefined;
     (this as any).renderKey = CANONICAL;
-    this.index = undefined as any;
+    this.index = undefined!;
     this._location = location;
     if (options !== undefined || treeContext !== undefined) {
       this._meta = {

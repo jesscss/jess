@@ -30,7 +30,7 @@ const { isArray } = Array;
 
 /** Fast replacement for lodash isPlainObject — checks constructor === Object */
 export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && (value as any).constructor === Object;
+  typeof value === 'object' && value !== null && value.constructor === Object;
 
 export function atIndex<T>(array: readonly T[], index: number = -1): T | undefined {
   if (index >= 0) {
@@ -131,7 +131,7 @@ export function* getEntries<T>(collection: T, reverse = false): Generator<GetEnt
       if (!isNode(value, N.Declaration)) {
         throw new Error('We can\'t iterate over rules with non-declarations');
       }
-      yield [(value as any).value, (value as any).name, rules!] as unknown as GetEntriesOf<T>;
+      yield [value.value, value.name, rules!] as unknown as GetEntriesOf<T>;
     }
   } else if (isNode(collection) && isArray((collection as Rules).value)) {
     yield* getEntries((collection as Rules).value as unknown[], reverse) as Generator<GetEntriesOf<T>>;
@@ -189,7 +189,7 @@ function collectDirectNodes(
     for (const key of keyList) {
       // Read from instance field directly (node[key]) instead of node.data[key],
       // because array containers' .data getter returns the array itself, not { value: array }.
-      const nodeVal = (node as any)[key!];
+      const nodeVal = (node as unknown as Record<string, unknown>)[key!];
       if (isArray(nodeVal)) {
         const items = reverse ? [...nodeVal].reverse() : nodeVal;
         for (const item of items) {

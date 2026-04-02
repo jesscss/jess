@@ -523,7 +523,8 @@ export function ifFunction(this: P, T: TokenMap) {
     } else {
       isCssBranch = false;
       let node: Node = firstNode;
-      const condNode = node instanceof Paren && node.get('value') instanceof Node ? node.get('value') as Node : node;
+      const parenValue = node instanceof Paren ? node.get('value') : undefined;
+      const condNode = parenValue instanceof Node ? parenValue : node;
       args = new List([condNode]);
 
       $.OR([
@@ -574,7 +575,8 @@ export function booleanFunction(this: P, T: TokenMap) {
     $.CONSUME(T.RParen);
 
     let location = $.endRule();
-    const conditionNode = arg instanceof Paren && arg.get('value') instanceof Node ? arg.get('value') as Node : arg;
+    const argValue = arg instanceof Paren ? arg.get('value') : undefined;
+    const conditionNode = argValue instanceof Node ? argValue : arg;
     const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
     return exprNode;
   };
@@ -927,7 +929,7 @@ export function value(this: P, T: TokenMap) {
       { ALT: () => $.CONSUME(T.Dimension) },
       { ALT: () => $.CONSUME(T.Number) },
       {
-        GATE: () => (ctx as any).currentFunctionName === 'unit',
+        GATE: () => ctx.currentFunctionName === 'unit',
         ALT: () => $.CONSUME(T.Percent)
       },
       { ALT: () => $.CONSUME(T.UnicodeRange) },
@@ -972,11 +974,11 @@ export function string(this: P, T: TokenMap) {
         GATE: () => $.isType(T.SingleQuoteStart),
         ALT: () => {
           $.startRule();
-          let quote = $.CONSUME(T.SingleQuoteStart);
+          let quote: IToken = $.CONSUME(T.SingleQuoteStart);
           let contents: IToken | undefined;
           $.OPTION2(() => contents = $.CONSUME(T.SingleQuoteStringContents));
           $.CONSUME(T.SingleQuoteEnd);
-          let quoteImg = quote.image;
+          let quoteImg: string = quote.image;
           let escaped = false;
           if (quoteImg.startsWith('~')) {
             escaped = true;
@@ -988,23 +990,23 @@ export function string(this: P, T: TokenMap) {
             value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
           }
 
-          // Handle interpolation in string contents
+          const quoteChar = quoteImg as '"' | '\'';
           if (value && (value.includes('@{') || value.includes('${'))) {
-            return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
+            return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteChar, escaped }, location, $.context);
           }
 
-          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
+          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteChar, escaped }, location, $.context);
         }
       },
       {
         GATE: () => $.isType(T.DoubleQuoteStart),
         ALT: () => {
           $.startRule();
-          let quote = $.CONSUME(T.DoubleQuoteStart);
+          let quote: IToken = $.CONSUME(T.DoubleQuoteStart);
           let contents: IToken | undefined;
           $.OPTION3(() => contents = $.CONSUME(T.DoubleQuoteStringContents));
           $.CONSUME(T.DoubleQuoteEnd);
-          let quoteImg = quote.image;
+          let quoteImg: string = quote.image;
           let escaped = false;
           if (quoteImg.startsWith('~')) {
             escaped = true;
@@ -1016,12 +1018,12 @@ export function string(this: P, T: TokenMap) {
             value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
           }
 
-          // Handle interpolation in string contents
+          const quoteChar = quoteImg as '"' | '\'';
           if (value && (value.includes('@{') || value.includes('${'))) {
-            return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
+            return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteChar, escaped }, location, $.context);
           }
 
-          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteImg as '"' | '\'', escaped }, location, $.context);
+          return new Quoted(new Any(value ?? '', { role: 'any' }), { quote: quoteChar, escaped }, location, $.context);
         }
       }
     ];
@@ -1143,13 +1145,14 @@ export function mathProduct(this: P, T: TokenMap) {
     let left: Node = $.SUBRULE($.mathValue, { ARGS: [ctx] });
 
     while ($.isType(T.Star) || $.isType(T.Divide)) {
-      const op = $.isType(T.Star)
+      const op: IToken = $.isType(T.Star)
         ? $.CONSUME(T.Star)
         : $.CONSUME(T.Divide);
       const right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
-        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+        const opStr = op.image as Operator;
+        left = new Operation([left, opStr, right], { inCalc: true }, undefined, $.context);
       }
     }
 
@@ -1170,11 +1173,12 @@ export function mathSum(this: P, T: TokenMap) {
     let left: Node = $.SUBRULE($.mathProduct, { ARGS: [ctx] });
 
     $.MANY(() => {
-      const op = $.CONSUME(T.AdditionOperator);
+      const op: IToken = $.CONSUME(T.AdditionOperator);
       const right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
-        left = new Operation([left, op.image as Operator, right], { inCalc: true }, undefined, $.context);
+        const opStr = op.image as Operator;
+        left = new Operation([left, opStr, right], { inCalc: true }, undefined, $.context);
       }
     });
 

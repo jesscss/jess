@@ -21,7 +21,7 @@ export class Comment extends Node<string, CommentOptions> {
   readonly lineComment: boolean;
 
   constructor(value: string, options?: CommentOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     this.lineComment = !!options?.lineComment;
     this.allowRoot = true;

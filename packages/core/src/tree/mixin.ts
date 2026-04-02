@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { CANONICAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
@@ -125,8 +126,8 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
       }
     }
 
-    const options = (this as any)._meta?.options;
-    const newNode = new (this.constructor as any)(
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
       cloneData,
       options ? { ...options } : undefined,
       this.location,

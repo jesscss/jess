@@ -541,7 +541,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       return;
     }
-    const v = (sel as any).value;
+    const v = 'value' in sel ? sel.value : undefined;
     if (Array.isArray(v)) {
       for (const c of v) {
         Ruleset.ensureSelectorVisible(c);
@@ -593,9 +593,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         return ComplexSelector.create(parts).inherit(node) as Selector;
       }
-      const arr = (node as any).value;
+      const arr = 'value' in node ? node.value : undefined;
       if (Array.isArray(arr)) {
-        const cloned = node.copy(true) as any;
+        const cloned = node.copy(true) as Selector & { value?: Selector[] };
         cloned.value = arr.map(item => materialize(item as Selector));
         return cloned as Selector;
       }
@@ -877,7 +877,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         (sel) => {
           // If this ruleset shares its value with a descendant ruleset, give descendants
           // their own value before we overwrite value.selector so they keep their selector.
-          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as any);
+          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as RulesetValue);
           // Store the evaluated selector - this is what will be in the frame
           node.selector = sel as Selector | Nil;
           if (sel instanceof Node) {

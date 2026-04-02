@@ -1,3 +1,4 @@
+import type { Class } from 'type-fest';
 import { defineType, type OptionalLocation, Node, type NodeOptions } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -42,7 +43,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
   private mod: string | undefined;
 
   override clone(deep?: boolean): this {
-    const newNode = new (this.constructor as any)(
+    const newNode = new (this.constructor as Class<this>)(
       {
         name: deep && this.name instanceof Node ? this.name.clone(deep) : this.name,
         op: this.op,
@@ -58,7 +59,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
   }
 
   constructor(data: AttributeSelectorValue, options?: undefined, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(data as any, options, location, treeContext);
+    super(data, options, location, treeContext);
     this.name = data.name;
     this.op = data.op;
     this.value = data.value;

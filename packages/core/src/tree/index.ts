@@ -104,7 +104,7 @@ import { selectorMatch } from './util/selector-match-core.js';
 Selector.prototype.compare = function(other: Node, context?: Context) {
   // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
   // if the same file is loaded via different specifiers.
-  if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
+  if (!!other && typeof other === 'object' && 'isSelector' in other && other.isSelector === true) {
     const otherSelector = other as unknown as Selector;
     const forward = selectorMatch(this, otherSelector, undefined, context);
     if (forward.fullMatch) {

@@ -57,7 +57,7 @@ export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
   body!: Node;
 
   constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.name = value.name;
     this.params = value.params;
     this.body = value.body;

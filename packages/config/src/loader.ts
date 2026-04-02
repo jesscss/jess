@@ -103,10 +103,17 @@ export function loadConfigFromPathSync(filePath: string): StylesConfig {
 /**
  * Normalize config object - handle default exports and ensure proper type
  */
-function normalizeConfig(config: any): StylesConfig {
+function isStylesConfig(value: unknown): value is StylesConfig {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeConfig(config: unknown): StylesConfig {
   // Handle default export (common in ES modules)
-  if (typeof config === 'object' && config !== null && 'default' in config) {
-    return config.default as StylesConfig;
+  if (isStylesConfig(config) && 'default' in config) {
+    return normalizeConfig(config.default);
   }
-  return config as StylesConfig;
+  if (isStylesConfig(config)) {
+    return config;
+  }
+  return {};
 }
