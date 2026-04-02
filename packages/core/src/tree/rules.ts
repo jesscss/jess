@@ -902,6 +902,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const value = this._getRenderChildren(options.context);
       const referenceMode = Boolean(options.referenceMode);
       const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
+      const isOptionalReferenceBoundary = this.options.rulesVisibility?.Ruleset === 'optional';
       const items = value.filter(n => isVisibleInContext(n, options.context));
 
       const isInlineSourceRules = (node: Node): boolean => {
@@ -939,27 +940,54 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
         const isChildRules = n.type === 'Rules';
         const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
+        if (
+          referenceMode
+          && !referenceRenderEnabled
+          && !isOptionalReferenceBoundary
+          && (isChildRules || isRulesetOrAtRule)
+        ) {
+          continue;
+        }
         if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
           w.add(space);
         }
 
         let childOptions = { ...options, depth };
         if (isChildRules) {
-          const ownReferenceMode = (n.options as any)?.referenceMode === true;
-          const childReferenceMode = referenceMode || ownReferenceMode;
-          const enteringReferenceMode = !referenceMode && ownReferenceMode;
-          const childReferenceRenderEnabled = childReferenceMode
-            ? (enteringReferenceMode ? false : referenceRenderEnabled)
-            : true;
+          if (referenceMode && referenceRenderEnabled && !isOptionalReferenceBoundary) {
+            childOptions = {
+              ...childOptions,
+              referenceMode: false,
+              referenceRenderEnabled: true
+            };
+          } else {
+            const ownReferenceMode = (n.options as any)?.referenceMode === true;
+            const childReferenceMode = referenceMode || ownReferenceMode;
+            const enteringReferenceMode = !referenceMode && ownReferenceMode;
+            const childReferenceRenderEnabled = childReferenceMode
+              ? (enteringReferenceMode ? false : referenceRenderEnabled)
+              : true;
+            childOptions = {
+              ...childOptions,
+              referenceMode: childReferenceMode,
+              referenceRenderEnabled: childReferenceRenderEnabled
+            };
+          }
+        } else if (
+          referenceMode
+          && referenceRenderEnabled
+          && isRulesetOrAtRule
+          && !isOptionalReferenceBoundary
+        ) {
           childOptions = {
             ...childOptions,
-            referenceMode: childReferenceMode,
-            referenceRenderEnabled: childReferenceRenderEnabled
+            referenceMode: false,
+            referenceRenderEnabled: true
           };
         } else if (
           referenceMode
           && isRulesetOrAtRule
-          && this.options.rulesVisibility?.Ruleset === 'optional'
+          && isOptionalReferenceBoundary
         ) {
           childOptions = {
             ...childOptions,
@@ -999,6 +1027,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let n of rules._getRenderChildren(context)) {
         if (isNode(n, N.Rules)) {
           if ((n.options as RulesOptions)?.referenceMode === true) {
+            const nodeRenderKey = (n as Rules).renderKey ?? renderKey;
+            if (positionMap && nodeRenderKey !== CANONICAL) {
+              positionMap.set(n, { renderKey: nodeRenderKey });
+            }
             finalRules.push(n);
           } else {
             iterateRules(n, renderKey);

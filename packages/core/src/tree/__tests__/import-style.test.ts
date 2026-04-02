@@ -98,11 +98,12 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const importedRules = evald.at(1, context) as Rules;
       const importedRuleset = importedRules.at(0, context);
+      const importedCtx = asRulesContext(context, (importedRuleset as any).rules);
 
       // The imported ruleset should be able to reference the parent variable
       // The declaration should already be evaluated as part of the ruleset evaluation
-      const importedDecl = (importedRuleset as any).rules.at(0, context);
-      expect(importedDecl.toTrimmedString({ context })).toBe('color: red');
+      const importedDecl = (importedRuleset as any).rules.at(0, importedCtx);
+      expect(importedDecl.toTrimmedString({ context: importedCtx })).toBe('color: red');
     });
 
     it('import placements can reuse canonical imported rulesets while resolving different parent vars', async () => {
@@ -212,12 +213,13 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(1, context) as Rules;
       const composedRuleset = composedRules.at(0, context);
+      const composedCtx = asRulesContext(context, (composedRuleset as any).rules);
 
       // The composed ruleset should NOT be able to reference the parent variable
       // It should use the fallback value instead
-      const composedDecl = (composedRuleset as any).rules.at(0, context);
-      const resolved = await composedDecl.eval(context);
-      expect(resolved.toTrimmedString({ context })).toBe('color: blue');
+      const composedDecl = (composedRuleset as any).rules.at(0, composedCtx);
+      const resolved = await composedDecl.eval(composedCtx);
+      expect(resolved.toTrimmedString({ context: composedCtx })).toBe('color: blue');
     });
 
     it('import type variables are visible to parent', async () => {
@@ -241,9 +243,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1, context);
-      const parentDecl = (parentRuleset as any).rules.at(0, context);
-      const resolved = await parentDecl.eval(context);
-      expect(resolved.toTrimmedString({ context })).toBe('color: green');
+      const parentCtx = asRulesContext(context, (parentRuleset as any).rules);
+      const parentDecl = (parentRuleset as any).rules.at(0, parentCtx);
+      const resolved = await parentDecl.eval(parentCtx);
+      expect(resolved.toTrimmedString({ context: parentCtx })).toBe('color: green');
     });
 
     it('compose type variables are visible to parent', async () => {
@@ -269,10 +272,11 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1, context);
-      const parentDecl = (parentRuleset as any).rules.at(0, context);
-      const resolved = await parentDecl.eval(context);
+      const parentCtx = asRulesContext(context, (parentRuleset as any).rules);
+      const parentDecl = (parentRuleset as any).rules.at(0, parentCtx);
+      const resolved = await parentDecl.eval(parentCtx);
       // Should use composedVar from the compose
-      expect(resolved.toTrimmedString({ context })).toBe('color: purple');
+      expect(resolved.toTrimmedString({ context: parentCtx })).toBe('color: purple');
     });
   });
 
@@ -650,10 +654,11 @@ describe('Style import', () => {
         node => isNode(node, N.Ruleset)
       );
       expect(foundRuleset).toBeDefined();
-      const foundDecl = (foundRuleset as any).rules.at(0, context);
+      const foundCtx = asRulesContext(context, (foundRuleset as any).rules);
+      const foundDecl = (foundRuleset as any).rules.at(0, foundCtx);
       expect(foundDecl).toBeDefined();
-      const resolved = await foundDecl.eval(context);
-      expect(resolved.toTrimmedString({ context })).toBe('color: purple');
+      const resolved = await foundDecl.eval(foundCtx);
+      expect(resolved.toTrimmedString({ context: foundCtx })).toBe('color: purple');
     });
 
     it('configured compose returned trees already preserve descendant parent chains to the returned Rules', async () => {
@@ -735,10 +740,11 @@ describe('Style import', () => {
         node => isNode(node, N.Ruleset)
       );
       expect(foundRuleset).toBeDefined();
-      const foundDecl = (foundRuleset as any).rules.at(0, context);
+      const foundCtx = asRulesContext(context, (foundRuleset as any).rules);
+      const foundDecl = (foundRuleset as any).rules.at(0, foundCtx);
       expect(foundDecl).toBeDefined();
-      const resolved = await foundDecl.eval(context);
-      expect(resolved.toTrimmedString({ context })).toBe('color: orange');
+      const resolved = await foundDecl.eval(foundCtx);
+      expect(resolved.toTrimmedString({ context: foundCtx })).toBe('color: orange');
     });
 
     it('updates computed variables with "with" type - scope lookup', async () => {
@@ -1516,8 +1522,9 @@ describe('Style import', () => {
       ]);
       const evald = await node.eval(context);
       const declaration = evald.at(1, context) as any;
-      const resolved = await declaration.eval(context);
-      expect(resolved.toTrimmedString({ context })).toBe('value: 42');
+      const evaldCtx = asRulesContext(context, evald);
+      const resolved = await declaration.eval(evaldCtx);
+      expect(resolved.toTrimmedString({ context: evaldCtx })).toBe('value: 42');
     });
 
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {

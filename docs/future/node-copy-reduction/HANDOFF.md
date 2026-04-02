@@ -76,18 +76,21 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 
 ## Current Narrow Frontier
 
-- `packages/core/src/tree/__tests__/rules.test.ts` is green again after aligning
-  its shallow-clone characterization with canonical-parent plus render-key-edge
-  behavior.
-- `packages/core/src/tree/__tests__/extend-roots.test.ts` is green again:
-  nested `@layer` root naming now follows the eval frame path, and active
-  selector assertions now target the evaluated placement rather than the parsed
-  source node.
-- The open extend/runtime seam is now narrower:
-  explicit `reference: true` import branches are still failing to activate
-  imported rulesets into rendered output when an external extend hits them.
-  Treat that as a reference-import activation/render-path bug, not a generic
-  extend-match bug.
+- `packages/core/src/tree/__tests__/import-style.test.ts` is green again
+  aside from intentional skips. Import evaluation now runs through
+  placement-owned top-level wrappers before eval, and compose `set` baselines
+  are reused without canonically reparenting imported trees.
+- Recursive live ampersand resolution in extend matching now stops at the
+  current selector path boundary instead of recursing back into itself.
+  Treat that as a selector-match ownership fix, not a reason to add more
+  clone/materialize helpers.
+- The open runtime seams are now narrower:
+  - extend exact-match output still leaves a stray nested `&&` wrapper in the
+    `extend-exact.less` path
+  - extend propagation across nested `@media` still misses the root `.all`
+    selector in one integration case
+  - one lazy nested mixin lookup still prefers the outer same-name var over the
+    param-bound value
 
 ## What To Delete Over Time
 

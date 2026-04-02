@@ -1,4 +1,4 @@
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
+import { CANONICAL, Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type RenderKey } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
@@ -230,6 +230,42 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     };
   }
 
+  private createPlacementChild(node: Node, context: Context, renderKey: RenderKey): Node {
+    const placementContext = { ...context, renderKey } as Context;
+    const child = node.clone(false, undefined, placementContext);
+    if (child.renderKey === CANONICAL) {
+      child.renderKey = renderKey;
+    }
+
+    if (isNode(child, N.Ruleset)) {
+      const ruleset = child as Ruleset;
+      ruleset.enterRules(placementContext);
+      return ruleset;
+    }
+
+    if (isNode(child, N.AtRule)) {
+      const atRule = child as AtRule;
+      atRule.enterRules(placementContext);
+      return atRule;
+    }
+
+    if (isNode(child, N.Mixin)) {
+      const mixinRules = (child as any).get('rules', placementContext).withRenderOwner(child, renderKey, placementContext);
+      if ((child as any).rules !== mixinRules) {
+        (child as any).rules = mixinRules;
+      }
+    }
+
+    return child;
+  }
+
+  private createPlacementRules(rules: Rules, context: Context): Rules {
+    const placementRenderKey = context.nextRenderKey();
+    const placementChildren = getChildren(rules, context)
+      .map(child => this.createPlacementChild(child, context, placementRenderKey));
+    return rules.createPlacementWrapperWithChildren(placementChildren, placementRenderKey);
+  }
+
   getFinalRules(evaluatedRules: Rules, context: Context) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
@@ -276,11 +312,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     const materializeConfiguredComposeChildren = type === 'compose' && this.get('withNode', context) != null;
     // Every import placement gets its own render-owned Rules wrapper so the same
     // source module can be imported multiple times without clone-driven cleanup.
-    const out = evaluatedRules.createPlacementWrapper(context, context.nextRenderKey());
+    const out = evaluatedRules.sourceNode === this
+      ? evaluatedRules
+      : evaluatedRules.createPlacementWrapper(context, context.nextRenderKey());
     if (materializeConfiguredComposeChildren) {
-      const children = getChildren(out, context);
+      const placementContext = { ...context, renderKey: out.renderKey, rulesContext: out } as Context;
+      const children = getChildren(out, placementContext);
       for (let i = 0; i < children.length; i++) {
-        setIndex(children[i]!, i, context);
+        setIndex(children[i]!, i, placementContext);
       }
     }
     // Import type: variables are visible and re-exported (not local)
@@ -327,7 +366,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     const path = node.get('path', context);
     const withNode = node.get('withNode', context);
     const withType = node.get('withType', context);
-    const withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
+    let withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
@@ -416,12 +455,19 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         // - Subsequent compose imports default to "reference" mode unless `multiple: true` is set,
         //   so rulesets / at-rules are not output again.
         const cachedSetValues = context.composeSetValues.get(resolvedPath);
+        const needsFreshSetBaselinePlacement = (
+          type === 'compose'
+          && evaldRules != null
+          && cachedSetValues != null
+          && withValues == null
+          && importOptions!.multiple === true
+        );
         if (type === 'compose' && evaldRules) {
           if (withValues?.type === 'set') {
             // `set` establishes the cached module baseline and cannot be applied twice.
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          if (withValues?.type !== 'with') {
+          if (withValues?.type !== 'with' && !needsFreshSetBaselinePlacement) {
             // Reuse cached evaluated rules tree for plain compose re-imports and `set` baselines.
             rules = evaldRules;
           }
@@ -429,6 +475,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           if (!importOptions!.multiple) {
             importOptions!.reference = true;
           }
+        }
+        if (needsFreshSetBaselinePlacement) {
+          withValues = { node: cachedSetValues!, type: 'with' };
         }
         const inMultipleImportBranch = context.inMultipleImportScope;
         if (type === 'import' && importOptions!.once !== false && !importOptions!.multiple && !inMultipleImportBranch && evaldRules) {
@@ -588,6 +637,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             if (shouldIsolateSelectorFrames) {
               context.rulesetFrames = [];
               context.frames = [];
+            }
+            if (withValues || !evaldRules) {
+              rules = this.createPlacementRules(rules, context);
             }
             // Call preEval first to get the cloned Rules (if cloning occurs)
             // sourceNode is already set above, so the cloned Rules will have it

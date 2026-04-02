@@ -826,65 +826,75 @@ export function processExtends(context: Context): void {
           continue;
         }
 
-        const visibleInstructions = instructions.filter(instruction =>
-          isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
-        );
-        if (!visibleInstructions.length) {
-          continue;
-        }
+        const savedRenderKey = context.renderKey;
+        const savedRulesContext = context.rulesContext;
+        context.renderKey = rootRules.renderKey;
+        context.rulesContext = rootRules;
 
-        for (const ruleset of rulesetSet) {
-          let rulesetMatched = false;
-          for (const instruction of visibleInstructions) {
-            const appliedInstructions = appliedRulesetInstructions.get(ruleset);
-            if (appliedInstructions?.has(instruction)) {
-              instructionMatched.add(instruction);
-              rulesetMatched = true;
-              continue;
-            }
-
-            const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
-            const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
-            if (
-              signatureBefore !== undefined
-              && perInstructionStates?.get(instruction) === signatureBefore
-            ) {
-              instructionMatched.add(instruction);
-              rulesetMatched = true;
-              continue;
-            }
-
-            const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
-            if (outcome.matched) {
-              instructionMatched.add(instruction);
-              rulesetMatched = true;
-
-              let nextStates = perInstructionStates;
-              if (!nextStates) {
-                nextStates = new Map<RecordedExtendInstruction, string>();
-                seenRulesetInstructionStates.set(ruleset, nextStates);
-              }
-              nextStates.set(
-                instruction,
-                getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
-              );
-            }
-            if (outcome.changed) {
-              invalidateTargetInfoCacheTree(targetInfoCache, ruleset);
-              targetInfoCache = new WeakMap();
-              let nextAppliedInstructions = appliedInstructions;
-              if (!nextAppliedInstructions) {
-                nextAppliedInstructions = new Set<RecordedExtendInstruction>();
-                appliedRulesetInstructions.set(ruleset, nextAppliedInstructions);
-              }
-              nextAppliedInstructions.add(instruction);
-              changed = true;
-            }
+        try {
+          const visibleInstructions = instructions.filter(instruction =>
+            isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+          );
+          if (!visibleInstructions.length) {
+            continue;
           }
 
-          if (!rulesetMatched) {
-            clearExtendedRuleset(ruleset, context);
+          for (const ruleset of rulesetSet) {
+            let rulesetMatched = false;
+            for (const instruction of visibleInstructions) {
+              const appliedInstructions = appliedRulesetInstructions.get(ruleset);
+              if (appliedInstructions?.has(instruction)) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+                continue;
+              }
+
+              const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
+              const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
+              if (
+                signatureBefore !== undefined
+                && perInstructionStates?.get(instruction) === signatureBefore
+              ) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+                continue;
+              }
+
+              const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
+              if (outcome.matched) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+
+                let nextStates = perInstructionStates;
+                if (!nextStates) {
+                  nextStates = new Map<RecordedExtendInstruction, string>();
+                  seenRulesetInstructionStates.set(ruleset, nextStates);
+                }
+                nextStates.set(
+                  instruction,
+                  getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
+                );
+              }
+              if (outcome.changed) {
+                invalidateTargetInfoCacheTree(targetInfoCache, ruleset);
+                targetInfoCache = new WeakMap();
+                let nextAppliedInstructions = appliedInstructions;
+                if (!nextAppliedInstructions) {
+                  nextAppliedInstructions = new Set<RecordedExtendInstruction>();
+                  appliedRulesetInstructions.set(ruleset, nextAppliedInstructions);
+                }
+                nextAppliedInstructions.add(instruction);
+                changed = true;
+              }
+            }
+
+            if (!rulesetMatched) {
+              clearExtendedRuleset(ruleset, context);
+            }
           }
+        } finally {
+          context.renderKey = savedRenderKey;
+          context.rulesContext = savedRulesContext;
         }
       }
     }

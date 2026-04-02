@@ -68,6 +68,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   })();
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
+  const isOptionalReferenceBoundary = isNode(node, N.Rules)
+    && ((node as unknown as { options?: { rulesVisibility?: Record<string, string> } }).options?.rulesVisibility?.Ruleset === 'optional');
   options.referenceMode = inReferenceMode;
   options.referenceRenderEnabled = renderEnabled;
   if (node.type === 'Ruleset' && inReferenceMode && renderEnabled) {
@@ -198,6 +200,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       if (!isVisibleInContext(n, options.context) && !n.fullRender) {
         return true;
       }
+      if (inReferenceMode && !renderEnabled && !isOptionalReferenceBoundary && isContainer) {
+        return true;
+      }
       if (inReferenceMode && !renderEnabled && !isContainer) {
         return true;
       }
@@ -280,7 +285,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         }
         const childOptions = {
           ...options,
-          referenceMode: inReferenceMode,
+          referenceMode: (inReferenceMode && renderEnabled && !isOptionalReferenceBoundary) ? false : inReferenceMode,
           referenceRenderEnabled: renderEnabled
         } as FinalPrintOptions;
         const childOut = w.capture(() => n.toTrimmedString(childOptions));

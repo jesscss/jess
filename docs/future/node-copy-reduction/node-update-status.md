@@ -147,8 +147,8 @@ This section tracks only edge/cursor conversion status.
 | `Rest` | `converted` | Simple child surface converted to direct field + render-key read path. |
 | `Sequence` | `converted` | Canonical container stays in place for same-length render-path child replacement; `valueEdges` carry indexed alternates and only shape changes return a different node. |
 | `Rules` | `in_progress` | Major render-key entry/exit owner. Wrapper registry seeding indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation updates/removes `parentEdges` directly on wrapper-owned paths. Main blocker now is scope ownership still leaking through `renderParent` instead of a pure parent-edge / cursor model. |
-| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Recent progress: `extend-roots` is green again after moving active-selector proofs onto evaluated placements. Remaining blocker is reference/import activation and hoist/scope ownership, not the field API itself. |
-| `AtRule` | `in_progress` | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Recent progress: nested `@layer` root naming now follows the eval frame path and `extend-roots` is green again. Current blocker is explicit reference-import activation/render behavior, not raw `AtRule` field access. |
+| `Ruleset` | `in_progress` | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Recent progress: import-style is green again after placement-owned top-level import wrappers and render-key-aware `enterRules()` body ownership fixes. Remaining blockers are the exact-extend `&&` materialization seam and one lazy nested mixin var-lookup preference bug. |
+| `AtRule` | `in_progress` | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Recent progress: nested `@layer` root naming follows the eval frame path and explicit reference-import activation is no longer the main extend blocker. Current blocker is nested extend propagation across `@media`, not raw `AtRule` field access. |
 | `Reference` | `in_progress` | Current lookup-parent walk still depends on `context.rulesContext` and `Rules.renderParent` as side channels. This now directly blocks nested `@media` param lookup and caller-context mixin selector composition. |
 | `Call` | `not_converted` | Test-side field-patch cases were removed. Remaining production seam is returned-result shaping plus `setData`-style mutation inside call-time result processing instead of direct edge/cursor ownership. |
 | `Mixin` | `not_converted` | Test-side overlay proofs were removed. Invocation/output scope still depends on thin `Rules` wrappers plus `renderParent`; not yet expressed as a pure edge/cursor-owned placement model. |
@@ -159,9 +159,9 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 ## Immediate Next Work
 
 1. Stay on narrow production surfaces only: pick one component, convert one owner/path seam, and verify it with a focused proof test.
-2. Finish the explicit `reference: true` import activation/render path so externally-extended imported rulesets become render-visible without leaking ordinary reference output.
-3. Keep replacing render-time canonical flag/field reads with context-aware render-key reads where activation is supposed to stay placement-local.
-4. Revisit remaining extend/import integration only after the explicit reference-import activation seam is resolved.
+2. Fix the remaining exact-extend output seam so derived selector composition does not serialize as a stray nested `&&` wrapper.
+3. Fix the remaining nested `@media` extend propagation gap where the root `.all` selector is not carried into deeper descendants.
+4. Revisit the final lazy nested same-name mixin var lookup only after the extend integration path is stable again.
 
 ## Transitional Baggage To Remove
 
@@ -197,6 +197,7 @@ should be deleted when their blockers clear.
 | `packages/core/src/tree/import-style.ts` postlude wrapper path | Import postlude wrapping still detaches prelude/container nodes instead of reading the authored postlude shape directly through placement state. | Inline postlude shape decoding into the wrapper loop and attach only the new owning `AtRule` containers. |
 | `packages/core/src/tree/util/scoped-body-eval.ts` scoped body wrapper creation | `$for`/scoped eval still allocates a wrapper owner for each placement. Deep clone is gone from this hot seam, but wrapper ownership is still broader than the target model. | Finish control conversion so loop bindings/placement can attach directly to canonical body structure without a scoped-body helper. |
 | `packages/core/src/tree/ruleset.ts` / selector utilities `clone(false)` snapshots | Selector recomposition still uses detached selector shells in a few ownership-sensitive paths. | Convert selector composition to parent-edge/cursor-owned container replacement so selector snapshots are not needed as a safety rail. |
+| `packages/core/src/tree/import-style.ts` top-level placement wrappers | Import evaluation still needs thin top-level wrappers to give each import site its own render-owned registry and parent edges before eval. | Finish direct parent-edge/cursor traversal for import-owned registries so imported top-level children do not need a dedicated placement wrapper owner. |
 
 ### Tracking Rule
 

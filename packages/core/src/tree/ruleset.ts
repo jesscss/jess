@@ -226,14 +226,29 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * this ruleset. This is intentionally explicit because it may wrap/adopt.
    */
   enterRules(context?: Context): Rules {
-    const rules = this.getRules(this._resolveRenderKey(context));
+    const renderKey = this._resolveRenderKey(context);
+    const rules = this.getRules(renderKey);
+    if (
+      renderKey !== undefined
+      && renderKey !== CANONICAL
+      && rules === this.rules
+      && this.rules.renderKey !== CANONICAL
+      && this.rules.renderKey !== renderKey
+    ) {
+      const wrappedRules = this.rules.createShallowBodyWrapper(undefined, renderKey);
+      addEdge(this, 'rules', renderKey, wrappedRules);
+      if (context && getCurrentParentNode(wrappedRules, { ...context, renderKey }) !== this) {
+        this.adopt(wrappedRules, { ...context, renderKey });
+      }
+      return wrappedRules;
+    }
     if (rules !== this.rules) {
       if (context && getCurrentParentNode(rules, context) !== this) {
         this.adopt(rules, context);
       }
       return rules;
     }
-    return rules.withRenderOwner(this, this._resolveRenderKey(context), context);
+    return rules.withRenderOwner(this, renderKey, context);
   }
 
   getRules(renderKey?: RenderKey): Rules {
@@ -385,7 +400,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         parentSelector
         && !(parentSelector instanceof Nil)
         && parentRs?.getSelectorBeforeExtend(parentRs._resolveRenderKey(context))
-        && Ruleset.isInReferenceScope(parentRs, context)
+        && Ruleset.hasReferenceBoundaryParent(parentRs, context)
       ) {
         parentSelector = Ruleset.filterReferenceVisibleSelectorItems(
           parentSelector as Selector,
@@ -603,15 +618,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return false;
   }
 
-  private static isInReferenceScope(node: Node, context?: Context): boolean {
-    let current: Node | undefined = node;
-    while (current) {
-      if (isNode(current, N.Rules) && (current as Rules).options?.referenceMode === true) {
-        return true;
-      }
-      current = getCurrentParentNode(current, context);
-    }
-    return false;
+  private static hasReferenceBoundaryParent(node: Node, context?: Context): boolean {
+    const parent = getCurrentParentNode(node, context);
+    return Boolean(
+      parent
+      && isNode(parent, N.Rules)
+      && (parent as Rules).options?.referenceMode === true
+    );
   }
 
   static hasExtendedTopLevelSelector(sel: Selector | Nil): boolean {
