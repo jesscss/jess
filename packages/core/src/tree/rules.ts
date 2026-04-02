@@ -31,7 +31,7 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { addEdge, addEdgeAt, addParentEdge, getEdgeAt } from './util/cursor.js';
-import { getCurrentParentNode, isBareAmpersandOwnSelector } from './util/selector-utils.js';
+import { getCurrentParentNode } from './util/selector-utils.js';
 import {
   getChildren,
   getParent,
@@ -1030,25 +1030,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             iterateRules(n, renderKey);
           }
           continue;
-        }
-        if (isNode(n, N.Ruleset)) {
-          const parentNode = getCurrentParentNode(rules, context);
-          if (parentNode && isNode(parentNode, N.Ruleset)) {
-            const childRuleset = n as Ruleset;
-            const ownSelector = childRuleset.getOwnSelector();
-            if (ownSelector && !(ownSelector instanceof Nil) && isBareAmpersandOwnSelector(ownSelector)) {
-              const parentSelector = (parentNode as Ruleset).getEffectiveSelector(true, context);
-              const childSelector = childRuleset.getEffectiveSelector(true, context);
-              if (
-                !(parentSelector instanceof Nil)
-                && !(childSelector instanceof Nil)
-                && parentSelector.valueOf() === childSelector.valueOf()
-              ) {
-                iterateRules(childRuleset.enterRules(context), renderKey);
-                continue;
-              }
-            }
-          }
         }
         if (
           visibleOnly
