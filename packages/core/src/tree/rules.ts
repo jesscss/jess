@@ -31,7 +31,7 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
 import { addEdge, addEdgeAt, addParentEdge, getEdgeAt } from './util/cursor.js';
-import { getCurrentParentNode } from './util/selector-utils.js';
+import { getCurrentParentNode, isBareAmpersandOwnSelector } from './util/selector-utils.js';
 import {
   getChildren,
   getParent,
@@ -972,9 +972,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           && referenceRenderEnabled
           && isRulesetOrAtRule
         ) {
+          const keepReferenceFiltering = (
+            isNode(n, N.Ruleset)
+            && (() => {
+              const ownSelector = (n as Ruleset).getOwnSelector();
+              return Boolean(
+                ownSelector
+                && !(ownSelector instanceof Nil)
+                && isBareAmpersandOwnSelector(ownSelector)
+              );
+            })()
+          );
           childOptions = {
             ...childOptions,
-            referenceMode: false,
+            referenceMode: keepReferenceFiltering,
             referenceRenderEnabled: true
           };
         }
@@ -1018,6 +1029,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           } else {
             iterateRules(n, renderKey);
           }
+          continue;
+        }
+        if (isNode(n, N.Ruleset)) {
+          const parentNode = getCurrentParentNode(rules, context);
+          if (parentNode && isNode(parentNode, N.Ruleset)) {
+            const childRuleset = n as Ruleset;
+            const ownSelector = childRuleset.getOwnSelector();
+            if (ownSelector && !(ownSelector instanceof Nil) && isBareAmpersandOwnSelector(ownSelector)) {
+              const parentSelector = (parentNode as Ruleset).getEffectiveSelector(true, context);
+              const childSelector = childRuleset.getEffectiveSelector(true, context);
+              if (
+                !(parentSelector instanceof Nil)
+                && !(childSelector instanceof Nil)
+                && parentSelector.valueOf() === childSelector.valueOf()
+              ) {
+                iterateRules(childRuleset.enterRules(context), renderKey);
+                continue;
+              }
+            }
+          }
+        }
+        if (
+          visibleOnly
+          && isNode(n, N.Ruleset)
+          && !isVisibleInContext(n, context)
+          && !n.fullRender
+        ) {
+          iterateRules((n as Ruleset).enterRules(context), renderKey);
           continue;
         }
         if (!visibleOnly || isVisibleInContext(n, context) || n.fullRender) {
@@ -1292,7 +1331,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
       const activeParent = getCurrentParentNode(this, context);
-      const parentAtRule = activeParent?.type === 'AtRule' ? activeParent : null;
+      const sourceParent = getSourceParent(this, context);
+      const parentAtRule = activeParent?.type === 'AtRule'
+        ? activeParent
+        : (sourceParent?.type === 'AtRule' ? sourceParent : null);
       const isNestableAtRuleBody =
         parentAtRule
         && nestableAtRuleNames.has(String((parentAtRule as any).name?.valueOf?.() ?? ''));

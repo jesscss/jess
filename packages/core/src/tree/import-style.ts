@@ -11,6 +11,7 @@ import { N } from './node-type.js';
 import { getParent, getChildren, setIndex } from './util/field-helpers.js';
 import type { Collection } from './collection.js';
 import { Any } from './any.js';
+import { AtRule } from './at-rule.js';
 import type { Sequence } from './sequence.js';
 import type { VarDeclaration } from './declaration-var.js';
 
@@ -687,7 +688,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
             && importOptions!.reference !== true
             && !importOptions!.multiple
           );
-          const shouldReRegisterLocalRootRulesets = isImportProtected || isImplicitReferenceModeForRegistration;
+          const shouldReRegisterLocalRootRulesets = (
+            isImportProtected
+            || isImplicitReferenceModeForRegistration
+            || importOptions!.reference === true
+          );
           context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
             isProtected: isImportProtected,
             namespace: node.options.namespace

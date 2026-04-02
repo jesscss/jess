@@ -786,8 +786,13 @@ export async function evaluateRulesetMixinCandidateOutput(
 ): Promise<Rules> {
   const renderKey = context.nextRenderKey();
   let rules = sourceRules.createShallowBodyWrapper(undefined, renderKey);
-  rules.parent = placementParent;
-  rules.sourceParent = definitionParent;
+  const placementContext = {
+    ...context,
+    renderKey,
+    rulesContext: rules
+  } as Context;
+  setParent(rules, placementParent, placementContext);
+  setSourceParent(rules, definitionParent, placementContext);
   const previousRulesContext = context.rulesContext;
   const previousRenderKey = context.renderKey;
   const previousFrames = context.frames;
@@ -814,15 +819,15 @@ export async function evaluateRulesetMixinCandidateOutput(
     context.frames = previousFrames;
     context.rulesetFrames = previousRulesetFrames;
   }
-  rules.sourceParent = definitionParent;
-  rules.parent = placementParent;
-  rebindInvocationOutputStructuralChildren(rules, context);
+  setSourceParent(rules, definitionParent, placementContext);
+  setParent(rules, placementParent, placementContext);
+  finalizeInvocationOutputRules(rules, context);
   rules.index = candidateIndex;
   rules.options.isMixinOutput = restrictMixinOutputLookup;
   return rules;
 }
 
-function rebindInvocationOutputStructuralChildren(
+export function finalizeInvocationOutputRules(
   rules: Rules,
   context: Context
 ): void {
@@ -842,8 +847,19 @@ function rebindInvocationOutputStructuralChildren(
     }
 
     if (isNode(child, N.Ruleset)) {
-      rebindInvocationOutputStructuralChildren(
-        (child as Ruleset).enterRules(scopedContext),
+      const childRuleset = child as Ruleset;
+      if (
+        childRuleset.getOwnSelector()
+        && childRuleset.getExtendedSelector(rules.renderKey)
+        && !childRuleset.getSelectorBeforeExtend(rules.renderKey)
+      ) {
+        childRuleset.setExtendedSelector(
+          childRuleset.getSelector(rules.renderKey),
+          scopedContext
+        );
+      }
+      finalizeInvocationOutputRules(
+        childRuleset.enterRules(scopedContext),
         scopedContext
       );
       continue;
@@ -852,7 +868,7 @@ function rebindInvocationOutputStructuralChildren(
     if (isNode(child, N.AtRule)) {
       const childRules = (child as AtRule).enterRules(scopedContext);
       if (childRules) {
-        rebindInvocationOutputStructuralChildren(childRules, scopedContext);
+        finalizeInvocationOutputRules(childRules, scopedContext);
       }
     }
   }
@@ -870,9 +886,14 @@ export function unlockDetachedRulesetMixinCandidateOutput(
   context: Context
 ): Rules {
   const unlocked = sourceRules.cloneDetachedUnlockWrapper(context);
-  unlocked.parent = placementParent;
-  unlocked.sourceParent = definitionParent;
-  rebindInvocationOutputStructuralChildren(unlocked, context);
+  const placementContext = {
+    ...context,
+    renderKey: unlocked.renderKey,
+    rulesContext: unlocked
+  } as Context;
+  setParent(unlocked, placementParent, placementContext);
+  setSourceParent(unlocked, definitionParent, placementContext);
+  finalizeInvocationOutputRules(unlocked, placementContext);
   unlocked.options.isMixinOutput = false;
   unlocked.index = candidateIndex;
   return unlocked;

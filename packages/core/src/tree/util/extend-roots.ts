@@ -16,7 +16,7 @@ import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
-import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
+import { getCurrentParentNode, getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -84,13 +84,44 @@ function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context
   }
 }
 
+function hasReferenceBoundaryParent(ruleset: Ruleset, context?: Context): boolean {
+  const parent = getCurrentParentNode(ruleset, context);
+  return Boolean(
+    parent
+    && isNode(parent, N.Rules)
+    && (parent as Rules).options?.referenceMode === true
+  );
+}
+
+function parentRulesetOwnsDerivedSelectorState(parentRuleset: Ruleset, context?: Context): boolean {
+  const extendedSelector = context
+    ? parentRuleset.get('_extendedSelector', context)
+    : parentRuleset.getExtendedSelector();
+  if (extendedSelector !== undefined) {
+    return true;
+  }
+  const selectorBeforeExtend = context
+    ? parentRuleset.get('selectorBeforeExtend', context)
+    : parentRuleset.getSelectorBeforeExtend();
+  if (selectorBeforeExtend !== undefined) {
+    return true;
+  }
+  return getRulesetHoistToRoot(parentRuleset, context) === true;
+}
+
 function getDerivedSelectorFromParent(ruleset: Ruleset, context?: Context): Selector | Nil | undefined {
   const ownSelector = ruleset.getOwnSelector(context);
   if (!ownSelector || isNode(ownSelector, N.Nil)) {
     return undefined;
   }
+  if (isBareAmpersandOwnSelector(ownSelector) && hasReferenceBoundaryParent(ruleset, context)) {
+    return undefined;
+  }
 
   const parentRuleset = getParentRuleset(ruleset, context);
+  if (!parentRuleset || !parentRulesetOwnsDerivedSelectorState(parentRuleset, context)) {
+    return undefined;
+  }
   const parentSelector = parentRuleset?.getEffectiveSelector(false, context);
   if (!parentSelector || isNode(parentSelector, N.Nil)) {
     return undefined;
@@ -569,8 +600,16 @@ function getRulesetExtendTarget(
     && !isNode(parentSelector, N.Nil)
   ) {
     const ownMatch = selectorMatch(find, ownSelector, parentSelector, context);
+    const rawOwnMatch = partial
+      ? selectorMatch(find, ownSelector, undefined, context)
+      : undefined;
     const shouldUseOwnSelector = partial
-      ? (ownMatch.fullMatch || ownMatch.partialMatch)
+      ? (
+          ownMatch.fullMatch
+          || ownMatch.partialMatch
+          || Boolean(rawOwnMatch?.fullMatch)
+          || Boolean(rawOwnMatch?.partialMatch)
+        )
       : (ownMatch.fullMatch && ownMatch.crossesAmpersand);
 
     if (shouldUseOwnSelector) {
@@ -704,8 +743,15 @@ function applyInstructionToRuleset(
   }
 
   const currentSelector = ruleset.get('selector', context);
-  if (!(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend()) && currentSelector && !isNode(currentSelector, N.Nil)) {
-    ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context!);
+  const selectorBeforeExtend = targetInfo.usingOwnSelector
+    ? targetInfo.selector
+    : currentSelector;
+  if (
+    !(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend())
+    && selectorBeforeExtend
+    && !isNode(selectorBeforeExtend, N.Nil)
+  ) {
+    ruleset.setSelectorBeforeExtend(selectorBeforeExtend.copy(true) as Selector, context!);
   }
 
   if (

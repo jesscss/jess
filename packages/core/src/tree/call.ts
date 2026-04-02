@@ -12,6 +12,7 @@ import { Any } from './any.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
 import { getParent, mergeDependencies, setDependency, setParent, setSourceParent } from './util/field-helpers.js';
+import { finalizeInvocationOutputRules } from './util/mixin-instance-primitives.js';
 
 export type CallValue = {
   /**
@@ -349,10 +350,16 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           throw new ReferenceError(`Cannot call ${n.type} with arguments`);
         }
         let rules = n.createPlacementWrapper(context, context.nextRenderKey()) as Rules;
+        const placementContext = {
+          ...context,
+          renderKey: rules.renderKey,
+          rulesContext: rules
+        } as Context;
         // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
         // to this call so leaky fallback can resolve call-site variables (e.g. @d).
-        rules.sourceParent = this;
+        setSourceParent(rules, this, placementContext);
         rules = await rules.eval(context);
+        finalizeInvocationOutputRules(rules, placementContext);
         context.callStack.pop();
         context.parenFrames.pop();
         // Apply markImportant if needed
