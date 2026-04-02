@@ -194,7 +194,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   protected _valueOf: string | undefined;
 
   private _resolveRenderKey(context?: Context): RenderKey {
-    return context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
+    const renderKey = context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
+    if (renderKey === CANONICAL) {
+      const nonCanonicalParentEdgeKeys = this.parentEdges
+        ? [...this.parentEdges.keys()].filter(key => key !== CANONICAL)
+        : [];
+      if (nonCanonicalParentEdgeKeys.length === 1) {
+        return nonCanonicalParentEdgeKeys[0]!;
+      }
+    }
+    return renderKey;
   }
 
   getOwnSelector(): Selector | Nil | undefined {
@@ -310,6 +319,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.adopt(selector, { ...context, renderKey });
     }
     addEdge(this, '_extendedSelector', renderKey, selector as Selector | Nil);
+    this.invalidateSelectorValueCache();
   }
 
   /**
@@ -690,8 +700,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const selector = this.getRenderableSelector(options.collapseNesting, options.context);
-    const renderKey = this._resolveRenderKey(options.context);
+    const renderKey = this.renderKey !== CANONICAL
+      ? this.renderKey
+      : this._resolveRenderKey(options.context);
+    const selector = this.getRenderableSelector(
+      options.collapseNesting,
+      options.context ? { ...options.context, renderKey } : options.context
+    );
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
@@ -744,7 +759,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && !disableTargetFilteringForTopLevelList
     );
     Ruleset.ensureSelectorVisible(renderSelector);
+    const ctx = options.context;
+    const previousRenderKey = ctx?.renderKey;
+    if (ctx && renderKey !== undefined) {
+      ctx.renderKey = renderKey;
+    }
     const selOut = w.capture(() => renderSelector.toString(options));
+    if (ctx) {
+      ctx.renderKey = previousRenderKey;
+    }
     options.referenceFilterTargets = prevReferenceFilterTargets;
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
@@ -956,6 +979,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     let pushedFrames = false;
     const renderKey = this._resolveRenderKey(context);
+    const previousRenderKey = context.renderKey;
+    if (renderKey !== undefined && renderKey !== CANONICAL) {
+      context.renderKey = renderKey;
+    }
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
@@ -965,7 +992,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.frames = [...context.frames];
     }
 
-    return pipe(
+    const out = pipe(
       () => {
         const selectorText = String(this.getSelector(renderKey)?.valueOf?.() ?? '');
         if (
@@ -1077,6 +1104,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return this;
       }
     );
+
+    if (isThenable(out)) {
+      return (out as Promise<Ruleset | Rules | Nil>).then(
+        (result) => {
+          context.renderKey = previousRenderKey;
+          return result;
+        },
+        (error) => {
+          context.renderKey = previousRenderKey;
+          throw error;
+        }
+      );
+    }
+    context.renderKey = previousRenderKey;
+    return out;
   }
 
   /** @todo move to ToCssVisitor */

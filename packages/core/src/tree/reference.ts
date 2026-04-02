@@ -747,7 +747,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           context.addToSearchScope(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).get('important');
           const declValue = (returnVal as Declaration).get('value', context);
-          const scopeRenderKey = context.lookupScope?.renderKey ?? context.renderKey;
+          let scopeRenderKey = context.lookupScope?.renderKey ?? context.renderKey;
+          if (scopeRenderKey === undefined || scopeRenderKey === CANONICAL) {
+            const nonCanonicalParentEdgeKeys = (returnVal as Node).parentEdges
+              ? [...(returnVal as Node).parentEdges!.keys()].filter(key => key !== CANONICAL)
+              : [];
+            if (nonCanonicalParentEdgeKeys.length === 1) {
+              scopeRenderKey = nonCanonicalParentEdgeKeys[0];
+            }
+          }
           const declarationParent = scopeRenderKey !== undefined
             ? getCurrentParentNode(returnVal as Node, scopeRenderKey)
             : getCurrentParentNode(returnVal as Node, context);
@@ -774,7 +782,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               if (declarationRulesScope) {
                 context.rulesContext = declarationRulesScope;
                 context.lookupScope = declarationRulesScope;
-                context.renderKey = declarationRulesScope.renderKey ?? previousRenderKey;
+                context.renderKey = scopeRenderKey ?? declarationRulesScope.renderKey ?? previousRenderKey;
               }
               try {
                 return declValue.eval(context);

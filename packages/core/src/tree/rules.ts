@@ -2062,14 +2062,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (rest.length === 0) {
-        setDeclField(node, 'value', new Nil());
+        setDeclValue(node, new Nil());
         return;
       }
       if (rest.length === 1) {
-        setDeclField(node, 'value', rest[0]!);
+        setDeclValue(node, rest[0]!);
         return;
       }
-      setDeclField(node, 'value', new List(rest));
+      setDeclValue(node, new List(rest));
     };
 
     const lastVisibleByName = new Map<string, Node>();
@@ -2126,9 +2126,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // pre/post comments from merged values). Need a position-aware
         // alternative: either a serialization-time comment suppression flag
         // or field patches on pre/post.
-        setDeclField(existingAnchor, 'value', getDeclValue(node));
+        setDeclValue(existingAnchor, getDeclValue(node));
         if (!getDeclImportant(existingAnchor) && getDeclImportant(node)) {
-          setDeclField(existingAnchor, 'important', getDeclImportant(node));
+          setDeclImportant(existingAnchor, getDeclImportant(node));
         }
         removeVisibleFlag(node);
         if (isVisibleInContext(existingAnchor, context)) {

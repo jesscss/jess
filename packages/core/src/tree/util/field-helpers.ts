@@ -27,7 +27,7 @@ export function setParent(
   parent: Node | undefined,
   ctx: Context
 ): void {
-  if (ctx.renderKey !== undefined) {
+  if (ctx.renderKey !== undefined && ctx.renderKey !== CANONICAL) {
     if (parent) {
       addParentEdge(node, ctx.renderKey, parent);
     } else {
@@ -132,7 +132,8 @@ export function setChildren(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  const renderKey = ctx.renderKey ?? rules.renderKey;
+  const resolvedRenderKey = ctx.renderKey ?? rules.renderKey;
+  const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
   if (renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === renderKey) {
     const previous = rules.value;
     (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray([...nodes]);
@@ -183,7 +184,8 @@ export function setChildAt(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  const renderKey = ctx.renderKey ?? rules.renderKey;
+  const resolvedRenderKey = ctx.renderKey ?? rules.renderKey;
+  const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
   if (renderKey !== undefined) {
     if (rules.renderKey !== undefined && rules.renderKey === renderKey) {
       const currentChildren = rules.value;

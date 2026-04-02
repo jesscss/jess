@@ -78,11 +78,13 @@ describe('Rules extend', () => {
 
       const evald = await node.eval(context);
       const css = evald.render(context);
+      const evaluatedBase = evald.get('value').find(child => child.sourceNode === base);
 
       expect(css).toContain('.base,');
       expect(css).toContain('.child {');
       expect(base.hasFlag(F_EXTENDED)).toBe(false);
-      expect(base._hasFlag(F_EXTENDED, context)).toBe(true);
+      expect(evaluatedBase).toBeDefined();
+      expect(evaluatedBase?.hasFlag(F_EXTENDED)).toBe(true);
     });
 
     it('does not re-parent canonical selector or target during a shallow clone', () => {

@@ -926,6 +926,15 @@ export function getMixinCandidateLookupScope(
  * for typed subclasses like Mixin or Ruleset.
  */
 export function getCandidateParent(node: Node<any, any>, context: Context): Node {
+  const nonCanonicalParentEdgeKeys = node.parentEdges
+    ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL)
+    : [];
+  if (nonCanonicalParentEdgeKeys.length === 1) {
+    const keyedParent = node.parentEdges!.get(nonCanonicalParentEdgeKeys[0]!);
+    if (keyedParent) {
+      return keyedParent;
+    }
+  }
   const parent = getParent(node as Node, context);
   if (!parent) {
     throw new ReferenceError(`${node.type} candidate must have a parent during mixin evaluation`);
@@ -1397,7 +1406,6 @@ export async function dispatchMixinEvalCandidates(
     evaluateCandidateOutput
   } = dispatch;
   const pendingDefaultCandidates: PendingMixinDefaultCandidate<any>[] = [];
-
   for (const candidate of evalCandidates) {
     if (isNode(candidate, N.Ruleset)) {
       if ((candidate as Ruleset).get('guard') instanceof Nil) {

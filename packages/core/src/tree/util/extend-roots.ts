@@ -16,7 +16,7 @@ import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
-import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
+import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -597,6 +597,16 @@ function getRulesetExtendTarget(
       }
     }
 
+    if (!partial && selectorHasAuthoredAmpersand(ownSelector as Selector)) {
+      const composedMatch = selectorMatch(find, selector, undefined, context);
+      if (composedMatch.fullMatch) {
+        return {
+          selector,
+          usingOwnSelector: false
+        };
+      }
+    }
+
     // Target doesn't match ownSelector (with parent context). Don't fall
     // through to the full composed selector — any match there would be in
     // the parent-prefix portion, which is handled when the parent ruleset
@@ -736,7 +746,7 @@ function applyInstructionToRuleset(
   const normalizedResult = normalizeGeneratedIsOrder(result.value);
   const after = normalizedResult.valueOf();
   activateExtendedRuleset(ruleset, normalizedResult, context);
-  if (!result.isChanged || before === after) {
+  if (before === after) {
     return { matched: true, changed: false };
   }
 
@@ -747,6 +757,11 @@ function applyInstructionToRuleset(
       && targetMatch.fullMatch
       && targetMatch.crossesAmpersand
       && normalizedResult !== targetInfo.selector
+    )
+    || (
+      !targetInfo.usingOwnSelector
+      && Boolean(ruleset.getOwnSelector() && !isNode(ruleset.getOwnSelector()!, N.Nil))
+      && selectorHasAuthoredAmpersand(ruleset.getOwnSelector() as Selector)
     )
   );
 

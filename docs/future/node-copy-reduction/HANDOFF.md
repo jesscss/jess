@@ -89,8 +89,12 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
     `extend-exact.less` path
   - extend propagation across nested `@media` still misses the root `.all`
     selector in one integration case
-  - one lazy nested mixin lookup still prefers the outer same-name var over the
-    param-bound value
+- `Reference` resolution now has one explicit guardrail in generic eval:
+  when a `Reference` resolves to a definition-like node (`Mixin`, `Ruleset`,
+  `Rules`, `Func`, `JsFunction`), generic eval inheritance must not overwrite
+  that resolved node's identity/source ancestry. This fixed the duplicated
+  `.bg()` candidate path in `media.less` without adding a new clone/materialize
+  helper.
 
 ## What To Delete Over Time
 

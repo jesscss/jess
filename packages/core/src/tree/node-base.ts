@@ -11,7 +11,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
-import { nodeTypeBits } from './node-type.js';
+import { N, nodeTypeBits } from './node-type.js';
 import { addParentEdge } from './util/cursor.js';
 export type { TreeContext };
 
@@ -1213,7 +1213,9 @@ export abstract class Node<
         }
         if (preEvaluatedNode !== evald) {
           Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
-          evald.inherit(preEvaluatedNode);
+          if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
+            evald.inherit(preEvaluatedNode);
+          }
         }
         return evald;
       }
@@ -1247,9 +1249,18 @@ export abstract class Node<
     }
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
       Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
-      evald.inherit(preEvaluatedNode);
+      if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
+        evald.inherit(preEvaluatedNode);
+      }
     }
     return evald;
+  }
+
+  private static _shouldInheritEvalResult(source: Node, result: Node): boolean {
+    if (source.type !== 'Reference') {
+      return true;
+    }
+    return (result.nodeType & (N.Mixin | N.Ruleset | N.Rules | N.Func | N.JsFunction)) === 0;
   }
 
   private static _inheritDerivedRenderKey(source: Node, derived: Node, context?: Context): void {
