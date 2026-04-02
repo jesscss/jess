@@ -4,6 +4,7 @@ import {
   rules,
   sel,
   el,
+  compound,
   sellist,
   decl,
   vardecl,
@@ -13,6 +14,9 @@ import {
   mixin,
   call,
   list,
+  amp,
+  co,
+  pseudo,
   quoted,
   url,
   Interpolated,
@@ -1525,6 +1529,96 @@ describe('Style import', () => {
       const evaldCtx = asRulesContext(context, evald);
       const resolved = await declaration.eval(evaldCtx);
       expect(resolved.toTrimmedString({ context: evaldCtx })).toBe('value: 42');
+    });
+
+    it('reference import call output rebinds nested rulesets to the caller instead of the definition', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-call-shape.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.z')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') }),
+            ruleset({
+              selector: sellist([sel([el('.c')])]),
+              rules: rules([decl({ name: any('color'), value: any('green') })])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.only-with-visible')]), sel([el('.z')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('green') }),
+            ruleset({
+              selector: sellist([compound([amp(), pseudo({ name: ':hover' })])]),
+              rules: rules([decl({ name: any('color'), value: any('green') })])
+            }),
+            ruleset({
+              selector: sellist([sel([amp(), co('+'), amp()])]),
+              rules: rules([
+                decl({ name: any('color'), value: any('green') }),
+                ruleset({
+                  selector: sellist([sel([el('.sub')])]),
+                  rules: rules([decl({ name: any('color'), value: any('green') })])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.zz')])]),
+          rules: rules([
+            ruleset({
+              selector: sellist([sel([el('.y')])]),
+              rules: rules([
+                decl({ name: any('pulled-in'), value: any('yes') })
+              ])
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-call-shape.jess')) }, {
+          type: 'import',
+          importOptions: { reference: true }
+        }),
+        ruleset({
+          selector: sellist([sel([el('.b')])]),
+          rules: rules([
+            call({ name: ref({ key: '.z' }, { type: 'mixin-ruleset' }) })
+          ])
+        }),
+        call({ name: ref({ key: '.zz' }, { type: 'mixin-ruleset' }) })
+      ]);
+
+      context.opts.collapseNesting = true;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .b {
+          color: red;
+        }
+        .b .c {
+          color: green;
+        }
+        .b {
+          color: green;
+        }
+        .b:hover {
+          color: green;
+        }
+        .b + .b {
+          color: green;
+        }
+        .b + .b .sub {
+          color: green;
+        }
+        .y {
+          pulled-in: yes;
+        }
+      `);
     });
 
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {

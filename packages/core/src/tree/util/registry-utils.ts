@@ -15,6 +15,7 @@ import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
 import { getParent, setParent } from './field-helpers.js';
+import { getCurrentParentNode } from './selector-utils.js';
 
 const { isArray } = Array;
 
@@ -410,7 +411,6 @@ export abstract class Registry<
         // Inline the filter logic into the loop to avoid creating an intermediate array
         for (let i = length - 1; i >= 0; i--) {
           let r = rulesSet.at(i)!;
-
           // --- inline filter logic ---
           const entryVisibility = r.rulesVisibility?.[filterType];
           const nodeVisibility = r.node.options.rulesVisibility?.[filterType];
@@ -1619,6 +1619,20 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // search originates from a descendant of this scope, so private does NOT block.
           // Private only blocks _searchRulesChildren (outside looking in).
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
+          const currentRulesOwner = getCurrentParentNode(rules, context);
+          const shouldPreferLexicalVar = (
+            filterType === 'VarDeclaration'
+            && (
+              currentRulesVisibility !== 'optional'
+              || currentRulesOwner?.type === 'Ruleset'
+            )
+          );
+          if (shouldPreferLexicalVar) {
+            if (options) {
+              options.readonly ||= newReadonly;
+            }
+            return result;
+          }
           if (currentRulesVisibility === 'optional') {
             optionalCandidates.add(result);
           } else {
@@ -1742,7 +1756,8 @@ export function getDirectDeclarationsByKey(
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {
       continue;
     }
-    if (key === undefined || (child as Declaration).get('name')?.toString() === key) {
+    const name = (child as Declaration).get('name', context);
+    if (key === undefined || name?.valueOf?.() === key) {
       matches.push(child as Declaration);
     }
   }

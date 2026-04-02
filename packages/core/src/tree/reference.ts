@@ -29,7 +29,6 @@ import {
   setDependency
 } from './util/field-helpers.js';
 import { getCurrentParentNode } from './util/selector-utils.js';
-import { getParentEdge } from './util/cursor.js';
 
 /**
  * The type is determined by syntax
@@ -149,10 +148,6 @@ function isInsideSelectorCapture(node: Node | undefined, context?: Context): boo
 }
 
 function getLookupParentNode(node: Node, context: Context): Node | undefined {
-  const renderKey = context.renderKey ?? context.rulesContext?.renderKey;
-  if (renderKey !== undefined && renderKey !== CANONICAL) {
-    return getParentEdge({ node, renderKey })?.node ?? node.parent;
-  }
   return getParent(node, context);
 }
 
@@ -164,6 +159,22 @@ function getStateRulesParent(node: Node, context: Context): Rules | undefined {
   return possibleRules as Rules | undefined;
 }
 
+function getNodeScopedParent(node: Node, context: Context): Node | undefined {
+  return getParent(node, {
+    ...context,
+    renderKey: undefined,
+    rulesContext: undefined
+  });
+}
+
+function getSourceRulesParent(node: Node, context: Context): Rules | undefined {
+  let possibleRules: Node | undefined = getNodeScopedParent(node, context);
+  while (possibleRules && possibleRules.type !== 'Rules') {
+    possibleRules = getNodeScopedParent(possibleRules, context);
+  }
+  return possibleRules as Rules | undefined;
+}
+
 function getStateSourceRulesParent(node: Node, context: Context): Rules | undefined {
   let current: Node | undefined = node;
   let sourceParent = getSourceParent(node, context);
@@ -171,7 +182,10 @@ function getStateSourceRulesParent(node: Node, context: Context): Rules | undefi
     current = getLookupParentNode(current, context);
     sourceParent = current ? getSourceParent(current, context) : undefined;
   }
-  return sourceParent ? getStateRulesParent(sourceParent, context) : undefined;
+  if (sourceParent && isNode(sourceParent, N.Rules)) {
+    return sourceParent as Rules;
+  }
+  return sourceParent ? getSourceRulesParent(sourceParent, context) : undefined;
 }
 
 export type ReferenceChildData = {
@@ -702,6 +716,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             returnVal = performLookup(context.lookupScope);
           }
 
+          if (
+            returnVal === undefined
+            && !target
+            && type === 'variable'
+            && context.callStack.length > 0
+            && activeSourceRulesParent
+            && activeSourceRulesParent !== lookupTarget
+          ) {
+            returnVal = performLookup(activeSourceRulesParent);
+          }
+
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
             returnVal = performLookup(activeRulesParent);
@@ -838,17 +863,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               return cast(undefined);
             }
           }
-          // When the parent is a Call and lookup resolved to a single mixin/ruleset
-          // candidate, return the entry directly so Call.evalNode keeps the
-          // candidate placement/renderKey instead of routing through the older
-          // JsFunction wrapper path.
+          // When the parent is a Call, return the resolved candidate(s) directly
+          // so Call.evalNode keeps candidate placement/renderKey and dispatches
+          // through the direct mixin path instead of the legacy JsFunction
+          // wrapper path.
           if (
-            returnVal.length === 1
-            && (type === 'mixin' || type === 'mixin-ruleset')
+            (type === 'mixin' || type === 'mixin-ruleset')
             && isNode(getLookupParentNode(this, context), N.Call)
           ) {
             context.popReference();
-            return returnVal[0] as Node;
+            return returnVal.length === 1
+              ? returnVal[0] as Node
+              : returnVal as unknown as Node;
           }
           // Multi-match, namespace, or non-Call consumer: use legacy function wrapper.
           const func = getFunctionFromMixins(returnVal as MixinEntry[]);

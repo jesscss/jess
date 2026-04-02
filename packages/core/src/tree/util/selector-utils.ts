@@ -176,7 +176,7 @@ function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
  */
 export function wrapParentSelectorForNestedContext(
   parentSelector: Selector,
-  collapseNesting: boolean = false
+  _collapseNesting: boolean = false
 ): Selector {
   let parentCopy = parentSelector.copy(true) as Selector;
   if (isNode(parentCopy, N.SelectorList)) {
@@ -647,12 +647,16 @@ export function localizeSelectorAgainstParent(
 }
 
 /** Returns true if the selector (or any top-level SelectorList item) has F_EXTENDED. */
-export function hasExtendedSelector(sel: Selector | Nil | undefined): boolean {
+export function hasExtendedSelector(sel: Selector | Nil | undefined, context?: Context): boolean {
   if (!sel || sel instanceof Nil) {
     return false;
   }
   if (isNode(sel, N.SelectorList)) {
-    return (sel as SelectorList).get('value').some(item => item.hasFlag(F_EXTENDED));
+    return (sel as SelectorList).get('value').some(item =>
+      context ? item._hasFlag(F_EXTENDED, context) : item.hasFlag(F_EXTENDED)
+    );
   }
-  return (sel as Selector).hasFlag(F_EXTENDED);
+  return context
+    ? (sel as Selector)._hasFlag(F_EXTENDED, context)
+    : (sel as Selector).hasFlag(F_EXTENDED);
 }

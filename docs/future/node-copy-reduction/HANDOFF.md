@@ -84,17 +84,18 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   current selector path boundary instead of recursing back into itself.
   Treat that as a selector-match ownership fix, not a reason to add more
   clone/materialize helpers.
-- The open runtime seams are now narrower:
-  - extend exact-match output still leaves a stray nested `&&` wrapper in the
-    `extend-exact.less` path
-  - extend propagation across nested `@media` still misses the root `.all`
-    selector in one integration case
+- The current live Less integration blocker is
+  `tests-unit/import/import-reference.less`. The source-side reference-import
+  proofs are green, but the real parser-generated fixture still fails to
+  activate the extended selector path cleanly. The remaining bug is the
+  reference-import activation / ruleset-as-mixin ancestry seam, not the older
+  exact-extend `&&` or nested `@media` storyline.
 - `Reference` resolution now has one explicit guardrail in generic eval:
   when a `Reference` resolves to a definition-like node (`Mixin`, `Ruleset`,
   `Rules`, `Func`, `JsFunction`), generic eval inheritance must not overwrite
-  that resolved node's identity/source ancestry. This fixed the duplicated
+  that resolved node's identity/source ancestry. That fixed the duplicated
   `.bg()` candidate path in `media.less` without adding a new clone/materialize
-  helper.
+  helper, and the same guardrail still applies to the reference-import path.
 
 ## What To Delete Over Time
 

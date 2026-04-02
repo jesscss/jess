@@ -133,6 +133,8 @@ export type RulesOptions = {
   forward?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
+  /** Explicit reference imports may render extended descendants; deduped imports may not. */
+  referenceRenderOnExtend?: boolean;
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
@@ -301,9 +303,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   cloneDetachedUnlockWrapper(ctx: Context): this {
     const wrapper = this.createShallowBodyWrapper(ctx) as this;
-    if (wrapper.renderKey === CANONICAL) {
-      wrapper.renderKey = EVAL;
-    }
     return wrapper;
   }
 
@@ -314,9 +313,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   cloneVisibilityIsolationWrapper(ctx: Context): this {
     const wrapper = this.createShallowBodyWrapper(ctx) as this;
-    if (wrapper.renderKey === CANONICAL) {
-      wrapper.renderKey = EVAL;
-    }
     return wrapper;
   }
 
@@ -634,11 +630,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * a mixin body with 100 declarations creates 1 Rules wrapper
    * instead of recursively cloning all 100+ nodes.
    */
-  createShallowBodyWrapper(ctx?: Context, renderKey: RenderKey = EVAL): Rules {
+  createShallowBodyWrapper(ctx?: Context, renderKey?: RenderKey): Rules {
     const options = this._cloneOptionsForContext(ctx);
     const location = Array.isArray(this.location) && this.location.length === 6
       ? this.location as LocationInfo
       : undefined;
+    const nextRenderKey = renderKey ?? EVAL;
     // Create a new Rules with empty children — bypass constructor adoption
     const wrapper = new (this.constructor as typeof Rules)(
       [],
@@ -650,7 +647,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // so adopt() is NOT called on canonical children.
     wrapper._setValueArray(this.value as Node[]);
     wrapper.inherit(this);
-    wrapper.renderKey = renderKey;
+    wrapper.renderKey = nextRenderKey;
     if (this.functionRegistry) {
       wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
     }
@@ -658,22 +655,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const sourceValueEdges = (this as unknown as { valueEdges?: Array<Map<RenderKey, Node> | undefined> }).valueEdges;
     if (sourceValueEdges) {
       for (let index = 0; index < sourceValueEdges.length; index++) {
-        const override = sourceValueEdges[index]?.get(renderKey);
+        const override = sourceValueEdges[index]?.get(nextRenderKey);
         if (!override) {
           continue;
         }
-        addEdgeAt(wrapper, 'value', index, renderKey, override);
-        addParentEdge(override, renderKey, wrapper);
+        addEdgeAt(wrapper, 'value', index, nextRenderKey, override);
+        addParentEdge(override, nextRenderKey, wrapper);
       }
     }
     return wrapper;
   }
 
-  createPlacementWrapper(ctx?: Context, renderKey: RenderKey = EVAL): Rules {
+  createPlacementWrapper(ctx?: Context, renderKey?: RenderKey): Rules {
     const options = this._cloneOptionsForContext(ctx);
     const location = Array.isArray(this.location) && this.location.length === 6
       ? this.location as LocationInfo
       : undefined;
+    const nextRenderKey = renderKey ?? EVAL;
     const wrapper = new (this.constructor as typeof Rules)(
       [],
       options ? { ...options } : undefined,
@@ -692,7 +690,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
     wrapper.inherit(this);
-    wrapper.renderKey = renderKey;
+    wrapper.renderKey = nextRenderKey;
     if (this.functionRegistry) {
       wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
     }
@@ -902,7 +900,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const value = this._getRenderChildren(options.context);
       const referenceMode = Boolean(options.referenceMode);
       const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
-      const isOptionalReferenceBoundary = this.options.rulesVisibility?.Ruleset === 'optional';
       const items = value.filter(n => isVisibleInContext(n, options.context));
 
       const isInlineSourceRules = (node: Node): boolean => {
@@ -940,21 +937,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
         const isChildRules = n.type === 'Rules';
         const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
-        if (
-          referenceMode
-          && !referenceRenderEnabled
-          && !isOptionalReferenceBoundary
-          && (isChildRules || isRulesetOrAtRule)
-        ) {
-          continue;
-        }
         if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
           w.add(space);
         }
 
         let childOptions = { ...options, depth };
         if (isChildRules) {
-          if (referenceMode && referenceRenderEnabled && !isOptionalReferenceBoundary) {
+          if (referenceMode && referenceRenderEnabled) {
             childOptions = {
               ...childOptions,
               referenceMode: false,
@@ -964,34 +953,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             const ownReferenceMode = (n.options as any)?.referenceMode === true;
             const childReferenceMode = referenceMode || ownReferenceMode;
             const enteringReferenceMode = !referenceMode && ownReferenceMode;
+            const ownReferenceRenderOnExtend = (n.options as RulesOptions | undefined)?.referenceRenderOnExtend !== false;
+            const childReferenceRenderOnExtend = childReferenceMode
+              ? (enteringReferenceMode ? ownReferenceRenderOnExtend : options.referenceRenderOnExtend !== false)
+              : true;
             const childReferenceRenderEnabled = childReferenceMode
               ? (enteringReferenceMode ? false : referenceRenderEnabled)
               : true;
             childOptions = {
               ...childOptions,
               referenceMode: childReferenceMode,
-              referenceRenderEnabled: childReferenceRenderEnabled
+              referenceRenderEnabled: childReferenceRenderEnabled,
+              referenceRenderOnExtend: childReferenceRenderOnExtend
             };
           }
         } else if (
           referenceMode
           && referenceRenderEnabled
           && isRulesetOrAtRule
-          && !isOptionalReferenceBoundary
         ) {
           childOptions = {
             ...childOptions,
             referenceMode: false,
-            referenceRenderEnabled: true
-          };
-        } else if (
-          referenceMode
-          && isRulesetOrAtRule
-          && isOptionalReferenceBoundary
-        ) {
-          childOptions = {
-            ...childOptions,
-            referenceMode: true,
             referenceRenderEnabled: true
           };
         }
@@ -2191,6 +2174,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rules._setChildren([...beforeNested, ...moved, ...remainder], context, false);
   }
 
+  private _evaluateQueuedTopImports(context: Context): MaybePromise<void> {
+    const queued = context.topImports;
+    if (!queued?.length) {
+      return;
+    }
+
+    const evaluated: Node[] = [];
+    const evaluateOne = (importRule: Node): MaybePromise<void> => {
+      if (!isNode(importRule, N.AtRule)) {
+        evaluated.push(importRule);
+        return;
+      }
+
+      const evaldImport = importRule.clone(false, undefined, context);
+      evaldImport.preEvaluated = true;
+      const out = evaldImport.eval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node | Nil>).then((result) => {
+          if (!(result instanceof Nil)) {
+            evaluated.push(result);
+          }
+        });
+      }
+      if (!(out instanceof Nil)) {
+        evaluated.push(out as Node);
+      }
+    };
+
+    const out = serialForEach(queued, evaluateOne);
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => {
+        context.topImports = evaluated;
+      });
+    }
+    context.topImports = evaluated;
+  }
+
   /**
    * After preEval: ensure root on extend stack, build eval queue, run evaluation.
    * Used by evalNode so that when eval() is called without preEval (e.g. jess compile()),
@@ -2203,7 +2223,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       && (context.renderKey === undefined || context.renderKey === CANONICAL)
       && getCurrentParentNode(rules, context) === undefined
     ) {
-      const evalRoot = rules.createShallowBodyWrapper(undefined, EVAL);
+      const evalRoot = rules.createShallowBodyWrapper(context, EVAL);
       context.root = evalRoot;
       context.rulesContext = evalRoot;
       context.renderKey = evalRoot.renderKey;
@@ -2229,13 +2249,32 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
     if (isThenable(maybeHoist)) {
       return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
-        this._normalizeCallDeclarationRulesOrder(rules, context);
-        this._coalesceMergedDeclarations(rules, context);
-        return {
-          rules,
-          rulesToHoist
+        const finalize = () => {
+          this._normalizeCallDeclarationRulesOrder(rules, context);
+          this._coalesceMergedDeclarations(rules, context);
+          return {
+            rules,
+            rulesToHoist
+          };
         };
+        if (rules === context.root && context.topImports?.length) {
+          const maybeEvalTopImports = this._evaluateQueuedTopImports(context);
+          if (isThenable(maybeEvalTopImports)) {
+            return (maybeEvalTopImports as Promise<void>).then(finalize);
+          }
+        }
+        return finalize();
       });
+    }
+    if (rules === context.root && context.topImports?.length) {
+      const maybeEvalTopImports = this._evaluateQueuedTopImports(context);
+      if (isThenable(maybeEvalTopImports)) {
+        return (maybeEvalTopImports as Promise<void>).then(() => {
+          this._normalizeCallDeclarationRulesOrder(rules, context);
+          this._coalesceMergedDeclarations(rules, context);
+          return { rules, rulesToHoist: maybeHoist as boolean };
+        });
+      }
     }
     this._normalizeCallDeclarationRulesOrder(rules, context);
     this._coalesceMergedDeclarations(rules, context);
@@ -2488,12 +2527,14 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const callerSourceNode = (caller as any)?.name instanceof Node
       ? (caller as any).name
       : caller;
-    let sourceParent = callerSourceNode
-      ? getSourceParent(callerSourceNode, thisContext)
-      : undefined;
-    const invocationParent = caller
-      ? getParent(caller, thisContext) ?? thisContext.rulesContext
-      : thisContext.rulesContext;
+    let sourceParent = caller
+      ?? (
+        callerSourceNode
+          ? getSourceParent(callerSourceNode, thisContext)
+          : undefined
+      );
+    const invocationParent = thisContext.rulesContext
+      ?? (caller ? getParent(caller, thisContext) : undefined);
 
     const nodeArgs = await evaluateMixinArgs(args, caller, thisContext);
     const mixinCandidates = await matchMixinCandidates(mixinArr, nodeArgs, caller, sourceParent, thisContext);
@@ -2546,12 +2587,14 @@ export async function evalMixinDirect(
   const callerSourceNode = caller && isNode(caller, N.Call) && caller.get('name') instanceof Node
     ? caller.get('name')
     : caller;
-  const sourceParent = callerSourceNode
-    ? getSourceParent(callerSourceNode as Node, context)
-    : undefined;
-  const invocationParent = caller
-    ? getParent(caller as Node, context) ?? context.rulesContext
-    : context.rulesContext;
+  const sourceParent = caller
+    ?? (
+      callerSourceNode
+        ? getSourceParent(callerSourceNode as Node, context)
+        : undefined
+    );
+  const invocationParent = context.rulesContext
+    ?? (caller ? getParent(caller as Node, context) : undefined);
 
   const nodeArgs = await evaluateMixinArgs(
     args ? [...args.get('value', context)] : [],

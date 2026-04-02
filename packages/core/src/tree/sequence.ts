@@ -18,6 +18,8 @@ export type SequenceOptions = {
   // spaced: boolean
   /** Used with custom properties */
   preserveWhitespace?: boolean;
+  /** Serialize children as a spaced value list without mutating child `pre` fields. */
+  forceSpacing?: boolean;
 };
 
 /**
@@ -172,7 +174,7 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
       const node = value[i]!;
       // For sequences, normalize spacing based on actual serialized output (including pre/post)
       // If direct child has explicit pre === 0, respect that (no space)
-      if (node.pre === 0) {
+      if (node.pre === 0 && !this.options?.forceSpacing) {
         // Explicitly no space - respect that, but still use toString() to preserve comments
         node.toString(options);
       } else {
@@ -188,8 +190,11 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
         const currentNodeOut = currentCaptured.text;
         const currentStartsWithSpace = currentNodeOut.startsWith(' ');
         const hasExplicitNoSpaceBoundary = (
-          prevTrailingIntent === 'explicit_none'
-          || currentCaptured.leadingIntent === 'explicit_none'
+          !this.options?.forceSpacing
+          && (
+            prevTrailingIntent === 'explicit_none'
+            || currentCaptured.leadingIntent === 'explicit_none'
+          )
         );
 
         if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {

@@ -13,7 +13,7 @@ import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import type { Selector } from './selector.js';
 import { isPreEvaluated } from './util/field-helpers.js';
-import { getCurrentParentNode, getImplicitSelector, getParentRuleset } from './util/selector-utils.js';
+import { getCurrentParentNode, getParentRuleset } from './util/selector-utils.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -205,7 +205,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions, AtRuleChildData> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
-      const node = this.clone();
+      const node = this.clone(false, undefined, context);
       node.preEvaluated = true;
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;

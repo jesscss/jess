@@ -301,6 +301,9 @@ function createAlternativeSelector(
   target: Selector,
   extendWith: Selector
 ): Selector {
+  if (target.valueOf() === extendWith.valueOf()) {
+    return target;
+  }
   const appended = appendAlternative(target, extendWith);
   if (appended) {
     return appended;
@@ -321,7 +324,11 @@ function wrapSelectorInIs(selector: Selector, extendWith: Selector): Selector {
   // instead of nesting :is(:is(...), extension).
   const selectorItems = expandGeneratedIsAlternatives(selector);
   const extendItems = expandGeneratedIsAlternatives(extendWith);
-  const allItems = [...selectorItems, ...extendItems];
+  const allItems = normalizeSelectorListAlternatives([...selectorItems, ...extendItems]);
+
+  if (allItems.length === 1) {
+    return selector;
+  }
 
   const arg = SelectorList.create(allItems).inherit(selector) as SelectorList;
   arg.pre = undefined;

@@ -693,8 +693,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     } else {
       originalValues.add(original.valueOf());
     }
-    return Ruleset.filterSelectorItems(current, item =>
+    const changedItems = Ruleset.filterSelectorItems(current, item =>
       !originalValues.has(item.valueOf())
+    );
+    if (!(changedItems instanceof Nil)) {
+      return changedItems;
+    }
+    return Ruleset.filterSelectorItems(current, item =>
+      (context ? item._hasFlag(F_EXTENDED, context) : item.hasFlag(F_EXTENDED))
+      && !(context ? item._hasFlag(F_EXTEND_TARGET, context) : item.hasFlag(F_EXTEND_TARGET))
     );
   }
 
@@ -738,18 +745,23 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && options.referenceRenderEnabled === true
       && !(renderSelector instanceof Nil)
     ) {
-      renderSelector = Ruleset.filterReferenceVisibleSelectorItems(
+      const filteredReferenceSelector = Ruleset.filterReferenceVisibleSelectorItems(
         renderSelector as Selector,
         this.getSelectorBeforeExtend(renderKey),
         options.context
       ) as typeof renderSelector;
-      if (renderSelector instanceof Nil) {
+      const rulesetExtended = options.context
+        ? this._hasFlag(F_EXTENDED, options.context)
+        : this.hasFlag(F_EXTENDED);
+      if (!(filteredReferenceSelector instanceof Nil)) {
+        renderSelector = filteredReferenceSelector;
+      } else if (!rulesetExtended) {
         return '';
       }
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
     const disableTargetFilteringForTopLevelList = (
-      this.hasFlag(F_EXTENDED)
+      (options.context ? this._hasFlag(F_EXTENDED, options.context) : this.hasFlag(F_EXTENDED))
       && !(renderSelector instanceof Nil)
       && isNode(renderSelector as Selector, N.SelectorList)
     );

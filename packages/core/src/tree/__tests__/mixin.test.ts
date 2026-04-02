@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, seq, amp, sellist } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, dimension, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { getParent, getSourceParent, setParent, setSourceParent } from '../util/field-helpers.js';
@@ -285,13 +285,14 @@ describe('Mixin', () => {
         ])
       });
 
-      // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px); }
+      // Use a real dimension node plus a unitless number so @arguments spacing
+      // is proven on actual numeric nodes.
       const testRuleset = ruleset({
         selector: el('.test'),
         rules: rules([
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
-            args: list([any('10px'), any('20px')])
+            args: list([dimension([10, 'px']), num(20)])
           })
         ])
       });
@@ -305,8 +306,8 @@ describe('Mixin', () => {
       expect(css).toBeString(`
         .test {
           $a: 10px;
-          $b: 20px;
-          margin: 10px 20px;
+          $b: 20;
+          margin: 10px 20;
         }
       `);
     });
@@ -1173,6 +1174,39 @@ describe('Mixin', () => {
       let evald = await node.eval(collapseContext);
       const css = evald.render(context);
       expect(css).toContain('background-color: grey');
+    });
+
+    it('top-level ruleset-as-mixin output keeps nested descendants unbound from definition selector', async () => {
+      const node = rules([
+        ruleset({
+          selector: el('.zz'),
+          rules: rules([
+            ruleset({
+              selector: el('.y'),
+              rules: rules([
+                decl({ name: 'pulled-in', value: any('yes') })
+              ])
+            })
+          ])
+        }),
+        call({
+          name: ref({ key: '.zz' }, { type: 'mixin-ruleset' })
+        })
+      ]);
+
+      context.opts.collapseNesting = true;
+
+      const evald = await node.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        .zz .y {
+          pulled-in: yes;
+        }
+        .y {
+          pulled-in: yes;
+        }
+      `);
     });
   });
 

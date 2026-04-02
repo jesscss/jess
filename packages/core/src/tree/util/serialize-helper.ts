@@ -1,5 +1,6 @@
 import type { AtRule } from '../at-rule.js';
 import type { Declaration } from '../declaration.js';
+import type { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, isVisibleInContext, type Node } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
@@ -41,6 +42,52 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
+function rulesetExtendsReference(node: Ruleset, options: FinalPrintOptions): boolean {
+  return (
+    (options.context ? node._hasFlag(F_EXTENDED, options.context) : node.hasFlag(F_EXTENDED))
+    || hasExtendedSelector(node.getRenderableSelector(options.collapseNesting, options.context), options.context)
+  );
+}
+
+function rulesHaveReferenceRenderableDescendant(rules: Rules, options: FinalPrintOptions): boolean {
+  for (const child of rules._getRenderChildren(options.context)) {
+    if (!isVisibleInContext(child, options.context) && !child.fullRender) {
+      continue;
+    }
+    if (isNode(child, N.Rules)) {
+      if (rulesHaveReferenceRenderableDescendant(child as Rules, options)) {
+        return true;
+      }
+      continue;
+    }
+    if (isNode(child, N.Ruleset)) {
+      if (rulesetExtendsReference(child as Ruleset, options)) {
+        return true;
+      }
+      const nestedRules = (child as Ruleset).enterRules(options.context);
+      if (nestedRules && rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
+        return true;
+      }
+      continue;
+    }
+    if (isNode(child, N.AtRule)) {
+      const nestedRules = (child as AtRule).enterRules(options.context);
+      if (nestedRules && rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function nodeExtendsReference(node: AtRule | Ruleset, options: FinalPrintOptions): boolean {
+  if (node.type === 'Ruleset') {
+    return rulesetExtendsReference(node as Ruleset, options);
+  }
+  const rules = (node as AtRule).enterRules(options.context);
+  return rules ? rulesHaveReferenceRenderableDescendant(rules, options) : false;
+}
+
 /**
  * Handles flattening and serializing of at-rules and rulesets
  */
@@ -60,23 +107,24 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const mark = w.mark();
   const previousReferenceMode = options.referenceMode === true;
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
+  const previousReferenceRenderOnExtend = options.referenceRenderOnExtend !== false;
   const inReferenceMode = previousReferenceMode;
   const enteringReferenceMode = false;
-  const nodeExtendsReference = node.type === 'Ruleset' && (() => {
-    const ruleset = node as Ruleset;
-    return ruleset.hasFlag(F_EXTENDED) || hasExtendedSelector(ruleset.getRenderableSelector(options.collapseNesting, options.context));
-  })();
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
-  const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
+  const renderEnabled = inReferenceMode
+    ? (inheritedRenderEnabled || (previousReferenceRenderOnExtend && nodeExtendsReference(node, options)))
+    : true;
   const isOptionalReferenceBoundary = isNode(node, N.Rules)
     && ((node as unknown as { options?: { rulesVisibility?: Record<string, string> } }).options?.rulesVisibility?.Ruleset === 'optional');
   options.referenceMode = inReferenceMode;
   options.referenceRenderEnabled = renderEnabled;
+  options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
   if (node.type === 'Ruleset' && inReferenceMode && renderEnabled) {
     const previewHeader = node.getHeaderString(options, false);
     if (!previewHeader) {
       options.referenceMode = previousReferenceMode;
       options.referenceRenderEnabled = previousReferenceRenderEnabled;
+      options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
       return '';
     }
   }
@@ -87,6 +135,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;
       options.referenceRenderEnabled = previousReferenceRenderEnabled;
+      options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
       return '';
     }
     // Leaf at-rules (no body) are not "frame headers". Always emit them with comments
@@ -94,6 +143,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     w.add(node.getHeaderString(options, false));
     options.referenceMode = previousReferenceMode;
     options.referenceRenderEnabled = previousReferenceRenderEnabled;
+    options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
     return w.getSince(mark);
   }
 
@@ -140,6 +190,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   if (rulesToRender.length === 0) {
     options.referenceMode = previousReferenceMode;
     options.referenceRenderEnabled = previousReferenceRenderEnabled;
+    options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
     return '';
   }
 
@@ -220,7 +271,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         const childOptions = {
           ...options,
           referenceMode: childRefMode,
-          referenceRenderEnabled: childRenderEnabled
+          referenceRenderEnabled: childRenderEnabled,
+          referenceRenderOnExtend: previousReferenceRenderOnExtend
         } as FinalPrintOptions;
         const childOut = w.capture(() => n.toTrimmedString(childOptions));
         if (childOut) {
@@ -283,10 +335,25 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             return true;
           }
         }
+        const childReferenceRenderEnabled = (
+          inReferenceMode
+          && node.type === 'AtRule'
+          && isNode(n, N.Ruleset | N.AtRule)
+        )
+          ? nodeExtendsReference(n as AtRule | Ruleset, options)
+          : renderEnabled;
+        const childReferenceMode = (
+          inReferenceMode
+          && node.type === 'AtRule'
+          && isNode(n, N.Ruleset | N.AtRule)
+        )
+          ? true
+          : (inReferenceMode && renderEnabled && !isOptionalReferenceBoundary) ? false : inReferenceMode;
         const childOptions = {
           ...options,
-          referenceMode: (inReferenceMode && renderEnabled && !isOptionalReferenceBoundary) ? false : inReferenceMode,
-          referenceRenderEnabled: renderEnabled
+          referenceMode: childReferenceMode,
+          referenceRenderEnabled: childReferenceRenderEnabled,
+          referenceRenderOnExtend: previousReferenceRenderOnExtend
         } as FinalPrintOptions;
         const childOut = w.capture(() => n.toTrimmedString(childOptions));
         if (!childOut) {
@@ -400,7 +467,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       treeFrames: [],
       inFrames: [],
       referenceMode: inReferenceMode,
-      referenceRenderEnabled: renderEnabled
+      referenceRenderEnabled: renderEnabled,
+      referenceRenderOnExtend: previousReferenceRenderOnExtend
     } as FinalPrintOptions;
     const childOut = withNodePosition(deferred, () => deferred.toTrimmedString(childOptions));
     if (!childOut) {
@@ -411,5 +479,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;
+  options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
   return w.getSince(mark);
 }

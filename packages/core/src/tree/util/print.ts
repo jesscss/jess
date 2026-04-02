@@ -22,6 +22,8 @@ export type PrintOptions = {
   referenceMode?: boolean;
   /** Effective render state while in referenceMode. */
   referenceRenderEnabled?: boolean;
+  /** Whether extended descendants can activate rendering while in referenceMode. */
+  referenceRenderOnExtend?: boolean;
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
   /** Skip Comment nodes during rendering (replaces copy(true) for comment suppression). */
@@ -79,6 +81,7 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   options.lastRenderedFrames ??= [];
   options.referenceMode ??= false;
   options.referenceRenderEnabled ??= true;
+  options.referenceRenderOnExtend ??= true;
   options.referenceFilterTargets ??= false;
   return options as FinalPrintOptions;
 }

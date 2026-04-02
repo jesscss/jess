@@ -1,4 +1,4 @@
-import { CANONICAL, Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type RenderKey } from './node.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
@@ -9,9 +9,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { getParent, getChildren, setIndex } from './util/field-helpers.js';
-import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
-import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import type { Sequence } from './sequence.js';
 import type { VarDeclaration } from './declaration-var.js';
@@ -230,40 +228,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     };
   }
 
-  private createPlacementChild(node: Node, context: Context, renderKey: RenderKey): Node {
-    const placementContext = { ...context, renderKey } as Context;
-    const child = node.clone(false, undefined, placementContext);
-    if (child.renderKey === CANONICAL) {
-      child.renderKey = renderKey;
-    }
-
-    if (isNode(child, N.Ruleset)) {
-      const ruleset = child as Ruleset;
-      ruleset.enterRules(placementContext);
-      return ruleset;
-    }
-
-    if (isNode(child, N.AtRule)) {
-      const atRule = child as AtRule;
-      atRule.enterRules(placementContext);
-      return atRule;
-    }
-
-    if (isNode(child, N.Mixin)) {
-      const mixinRules = (child as any).get('rules', placementContext).withRenderOwner(child, renderKey, placementContext);
-      if ((child as any).rules !== mixinRules) {
-        (child as any).rules = mixinRules;
-      }
-    }
-
-    return child;
-  }
-
   private createPlacementRules(rules: Rules, context: Context): Rules {
     const placementRenderKey = context.nextRenderKey();
-    const placementChildren = getChildren(rules, context)
-      .map(child => this.createPlacementChild(child, context, placementRenderKey));
-    return rules.createPlacementWrapperWithChildren(placementChildren, placementRenderKey);
+    return rules.createPlacementWrapper(context, placementRenderKey);
   }
 
   getFinalRules(evaluatedRules: Rules, context: Context) {
@@ -281,9 +248,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     let Mixin: RulesVisibility = 'public';
     let VarDeclaration: RulesVisibility = 'public';
 
+    const isImplicitDedupeReference = (
+      type === 'import'
+      && importOptions?._dedupe === true
+      && reference !== true
+      && !importOptions?.multiple
+    );
+
     if (isProtected) {
       Ruleset = 'private';
-    } else if (reference) {
+    } else if (reference || isImplicitDedupeReference) {
       /**
        * Not sure if this is true.
        * They won't be output, but that's not the same as being optional,
@@ -332,6 +306,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       local: isLocal,
       forward: isForward,
       referenceMode: isReferenceMode,
+      referenceRenderOnExtend: reference === true,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
     // Forwarded modules should never render output at this scope.
@@ -673,7 +648,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         } else {
         // Shallow-clone the cached rules BEFORE evaluation so registries are populated
         // on the clone, not on the cached evaldRules.
-          rules = rules.createShallowBodyWrapper(context) as Rules;
+          rules = rules.createShallowBodyWrapper(context, context.nextRenderKey()) as Rules;
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           try {

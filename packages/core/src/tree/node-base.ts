@@ -1211,7 +1211,7 @@ export abstract class Node<
         } else {
           (evald as Record<string, unknown>).evaluated = true;
         }
-        if (preEvaluatedNode !== evald) {
+        if (preEvaluatedNode !== evald && typeof (evald as Node).inherit === 'function') {
           Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
           if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
             evald.inherit(preEvaluatedNode);
