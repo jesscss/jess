@@ -95,13 +95,14 @@ export function createScopedBindings(
   return declarations;
 }
 
-function getControlDeclarationValue(node: Node): Node {
-  return (node as Node & { value: Node }).value;
+function getControlDeclarationValue(node: Node, context: Context): Node {
+  return (node as Node & { get(field: 'value', context?: Context): Node }).get('value', context);
 }
 
 function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
-  node.adopt(value, context);
-  (node as Node & { value: Node }).value = value;
+  (
+    node as Node & { setCurrentValue(value: Node, context?: Context): void }
+  ).setCurrentValue(value, context);
 }
 
 function cloneCurrentNodeForOutput<T extends Node>(node: T, context: Context): T {
@@ -139,8 +140,8 @@ function mergeScopedDeclarationValue(
   if (!isNode(prev, N.Declaration) || !isNode(outNode, N.Declaration)) {
     return;
   }
-  const prevValue = getControlDeclarationValue(prev);
-  const nextValue = getControlDeclarationValue(outNode);
+  const prevValue = getControlDeclarationValue(prev, context);
+  const nextValue = getControlDeclarationValue(outNode, context);
   if (
     normalizedFromAssign === AssignmentType.Add
     || normalizedFromAssign === AssignmentType.MergeList

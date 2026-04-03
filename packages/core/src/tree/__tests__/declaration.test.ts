@@ -1,4 +1,4 @@
-import { coll, decl, rules, ruleset, el, color, any, expr, num } from '../index.js';
+import { coll, decl, rules, ruleset, el, color, any, expr, num, ref, amp, sel } from '../index.js';
 import { Context } from '../../context.js';
 import { AssignmentType } from '../declaration.js';
 
@@ -162,6 +162,38 @@ describe('Declaration', () => {
 
     expect(rule.get('value', { ...context, renderKey }).toTrimmedString()).toBe('4');
     expect((rule as typeof rule & { valueEdge?: Map<number, ReturnType<typeof expr>> }).valueEdge).toBeUndefined();
+  });
+
+  it('preserves merged property declarations for later property lookups in nested output', async () => {
+    const node = rules([
+      ruleset({
+        selector: el('a'),
+        rules: rules([
+          decl({ name: 'background-color', value: any('red') }, { assign: AssignmentType.Add }),
+          decl({ name: 'background-color', value: any('foo') }, { assign: AssignmentType.Add }),
+          ruleset({
+            selector: sel([amp(), el('b')]),
+            rules: rules([
+              decl({
+                name: 'background',
+                value: ref({ key: 'background-color' }, { type: 'property' })
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(new Context({ collapseNesting: true }));
+
+    expect(evald.toString({ context: new Context({ collapseNesting: true }) })).toBeString(`
+      a {
+        background-color: red, foo;
+      }
+      ab {
+        background: red, foo;
+      }
+    `);
   });
 
   // it('should serialize to a module', () => {

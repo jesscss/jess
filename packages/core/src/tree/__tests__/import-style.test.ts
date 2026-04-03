@@ -1599,11 +1599,6 @@ describe('Style import', () => {
       expect(css).toBeString(`
         .b {
           color: red;
-        }
-        .b .c {
-          color: green;
-        }
-        .b {
           color: green;
         }
         .b:hover {
@@ -1613,6 +1608,9 @@ describe('Style import', () => {
           color: green;
         }
         :is(.b + .b) .sub {
+          color: green;
+        }
+        .b .c {
           color: green;
         }
         .y {

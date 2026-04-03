@@ -55,6 +55,7 @@ import {
   type EvaluateCandidateOutputOptions
 } from './util/mixin-instance-primitives.js';
 import type { Func } from './function.js';
+import type { Call } from './call.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -2028,6 +2029,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? value.clone(false, undefined, context)
         : value.clone(false);
     };
+    const collectAddMergeParts = (value: Node): Node[] => {
+      if (isNode(value, N.Nil)) {
+        return [];
+      }
+      if (isNode(value, N.List)) {
+        return value.get('value', context).map(part => cloneMergeValuePart(part as Node));
+      }
+      return [cloneMergeValuePart(value)];
+    };
     const rebaseLinearMergedValue = (anchor: Declaration, value: Node, assign: string): Node | undefined => {
       if (assign === '&_:') {
         if (!isNode(value, N.Sequence)) {
@@ -2165,9 +2175,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // alternative: either a serialization-time comment suppression flag
         // or field patches on pre/post.
         const currentValue = getDeclValue(node);
+        const nextAnchorValue = assign === '+:'
+          ? new List([
+            ...collectAddMergeParts(getDeclValue(existingAnchor)),
+            ...collectAddMergeParts(currentValue)
+          ])
+          : rebaseLinearMergedValue(existingAnchor, currentValue, assign) ?? currentValue;
         setDeclValue(
           existingAnchor,
-          rebaseLinearMergedValue(existingAnchor, currentValue, assign) ?? currentValue
+          nextAnchorValue
         );
         if (!getDeclImportant(existingAnchor) && getDeclImportant(node)) {
           setDeclImportant(existingAnchor, getDeclImportant(node));
@@ -2671,6 +2687,26 @@ export async function evalMixinDirect(
   );
 
   const outputRules: Rules[] = [];
+  if (process.env.JESS_DEBUG_LOCK === 'throw-direct') {
+    const callerName = caller && isNode(caller, N.Call) && (caller as Call).name instanceof Node
+      ? (caller as Call).name
+      : undefined;
+    const callerKey = isNode(callerName, N.Reference)
+      ? String(callerName.key?.valueOf?.() ?? '')
+      : '';
+    if (callerKey.includes('inner-locked-mixin')) {
+      throw new Error(`[lock-direct] ${JSON.stringify({
+        callerKey,
+        mixinCount: mixinArr.length,
+        matchedCount: mixinCandidates.length,
+        evalCandidateCount: evalCandidates.length,
+        hasDefault,
+        sourceParent: sourceParent?.type,
+        invocationParent: invocationParent?.type,
+        matchNames: mixinCandidates.map(candidate => String((candidate as Mixin).get?.('name')?.valueOf?.() ?? candidate.type))
+      })}`);
+    }
+  }
   const candidateOutputOpts: EvaluateCandidateOutputOptions = {
     sourceParent,
     invocationParent,

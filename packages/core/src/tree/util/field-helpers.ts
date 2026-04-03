@@ -26,15 +26,6 @@ function getParentEdgeRenderKeys(
   return keys;
 }
 
-function getSourceParentEdge(node: Node): Map<unknown, Node | undefined> | undefined {
-  const edge = Reflect.get(node, 'sourceParentEdge');
-  return edge instanceof Map ? edge : undefined;
-}
-
-function setSourceParentEdge(node: Node, edge: Map<unknown, Node | undefined> | undefined): void {
-  Reflect.set(node, 'sourceParentEdge', edge);
-}
-
 function setRulesValueArray(rules: Rules, nodes: Node[]): void {
   const setter = Reflect.get(rules, '_setValueArray');
   if (typeof setter === 'function') {
@@ -118,32 +109,16 @@ export function setIndex(
 
 export function getSourceParent(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): Node | undefined {
-  const edge = getSourceParentEdge(node);
-  for (const renderKey of getParentEdgeRenderKeys(node, ctx, edge)) {
-    if (edge?.has(renderKey)) {
-      return edge.get(renderKey);
-    }
-  }
-  if (edge?.has(CANONICAL)) {
-    return edge.get(CANONICAL);
-  }
   return node.sourceParent;
 }
 
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
-  ctx: Context
+  _ctx: Context
 ): void {
-  const renderKey = ctx.renderKey ?? ctx.rulesContext?.renderKey ?? node.renderKey;
-  if (renderKey !== undefined) {
-    const edge = getSourceParentEdge(node) ?? new Map<unknown, Node | undefined>();
-    edge.set(renderKey, parent);
-    setSourceParentEdge(node, edge);
-    return;
-  }
   node.sourceParent = parent;
 }
 

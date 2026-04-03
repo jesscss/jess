@@ -1,4 +1,4 @@
-import { CANONICAL, defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type OptionalLocation } from './node.js';
+import { CALLER, CANONICAL, defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type OptionalLocation } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';
@@ -24,6 +24,7 @@ import {
   isTopLevelVarDeclaration,
   getDependency,
   getParent,
+  setParent,
   getSourceParent,
   setSourceParent,
   setDependency
@@ -188,6 +189,26 @@ function getStateSourceRulesParent(node: Node, context: Context): Rules | undefi
     return sourceParent as Rules;
   }
   return sourceParent ? getSourceRulesParent(sourceParent, context) : undefined;
+}
+
+function getCallerParentNode(node: Node, context: Context): Node | undefined {
+  let current: Node | undefined = node;
+  while (current) {
+    const callerParent = current.parentEdges?.get(CALLER);
+    if (callerParent) {
+      return callerParent;
+    }
+    current = getLookupParentNode(current, context);
+  }
+  return undefined;
+}
+
+function getCallerRulesParent(node: Node, context: Context): Rules | undefined {
+  const callerParent = getCallerParentNode(node, context);
+  if (callerParent && isNode(callerParent, N.Rules)) {
+    return callerParent as Rules;
+  }
+  return callerParent ? getStateRulesParent(callerParent, context) : undefined;
 }
 
 function shouldAnchorResolvedReferenceResult(
@@ -379,6 +400,39 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
+    const stripBoundaryPathInPlace = (
+      node: Node,
+      boundary: 'leading' | 'trailing'
+    ): void => {
+      if (boundary === 'leading') {
+        node.pre = undefined;
+      } else {
+        node.post = undefined;
+      }
+      if (!isNode(node, N.Sequence | N.List)) {
+        return;
+      }
+      const value = (node as unknown as { value: Node[] }).value;
+      const index = boundary === 'leading' ? 0 : value.length - 1;
+      const child = value[index];
+      if (!(child instanceof Node)) {
+        return;
+      }
+      const childClone = child.clone(false, undefined, context);
+      value[index] = childClone;
+      setParent(childClone, node, context);
+      stripBoundaryPathInPlace(childClone, boundary);
+    };
+
+    const materializeResolvedValue = <T extends Node>(node: T): T => {
+      const out = node.clone(false, undefined, context) as T;
+      if (isNode(out, N.Sequence | N.List)) {
+        stripBoundaryPathInPlace(out, 'leading');
+        stripBoundaryPathInPlace(out, 'trailing');
+      }
+      return out;
+    };
+
     let target = this.get('target', context);
     let key = this.get('key', context);
     let { type, fallbackValue, filter: originalFilter } = this.options;
@@ -389,8 +443,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
     // wrapper `Rules` and should be visible inside nested at-rule preludes.
     const activeRulesParent = getStateRulesParent(this, context);
     const activeSourceRulesParent = getStateSourceRulesParent(this, context);
+    const activeCallerRulesParent = getCallerRulesParent(this, context);
     const lookupSourceRulesParent = context.lookupScope
       ? getStateSourceRulesParent(context.lookupScope, context)
+      : undefined;
+    const lookupCallerRulesParent = context.lookupScope
+      ? getCallerRulesParent(context.lookupScope, context)
       : undefined;
     const sourceReference = this.sourceNode as Node;
     let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? activeRulesParent;
@@ -505,30 +563,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         const isInterpolatedVariable =
           this.options.type === 'variable'
           && getLookupParentNode(this, context)?.type === 'Interpolated';
-        /**
-         * @removal-target — node-copy-reduction: paramVar filtering
-         * Mixin param vars should be naturally scoped by the position-aware
-         * parent chain. This walk-up check becomes redundant once per-call
-         * positions are fully wired.
-         */
-        const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
-          let cursor: Node | undefined = activeRules;
-          while (cursor) {
-            if (cursor === paramParent) {
-              return true;
-            }
-            cursor = getLookupParentNode(cursor, context);
-          }
-          return false;
-        };
         const filter = (n: Node) => {
           const passesOriginal = originalFilter!(n);
-          /** @removal-target — see isWithinParamVarScope above */
-          const blockedParamVar = isNode(n, N.VarDeclaration)
-            && Boolean(n.options?.paramVar)
-            && !isWithinParamVarScope(getLookupParentNode(n, context), context.rulesContext);
           const blockedBySearchScope = context.hasInSearchScope(n);
-          return passesOriginal && !blockedBySearchScope && !blockedParamVar;
+          return passesOriginal && !blockedBySearchScope;
         };
         const hasTarget = !!target;
 
@@ -772,10 +810,33 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             && !target
             && type === 'variable'
             && context.callStack.length > 0
+            && lookupCallerRulesParent
+            && lookupCallerRulesParent !== lookupTarget
+            && lookupCallerRulesParent !== context.lookupScope
+          ) {
+            returnVal = performLookup(lookupCallerRulesParent);
+          }
+
+          if (
+            returnVal === undefined
+            && !target
+            && type === 'variable'
+            && context.callStack.length > 0
             && activeSourceRulesParent
             && activeSourceRulesParent !== lookupTarget
           ) {
             returnVal = performLookup(activeSourceRulesParent);
+          }
+
+          if (
+            returnVal === undefined
+            && !target
+            && type === 'variable'
+            && context.callStack.length > 0
+            && activeCallerRulesParent
+            && activeCallerRulesParent !== lookupTarget
+          ) {
+            returnVal = performLookup(activeCallerRulesParent);
           }
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
@@ -784,12 +845,30 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             if (returnVal === undefined) {
               returnVal = performLookup(activeSourceRulesParent);
             }
+            if (returnVal === undefined) {
+              returnVal = performLookup(activeCallerRulesParent);
+            }
           }
         }
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
         const valueKeyStr2 = isArray(valueKey) ? valueKey.join('') : String(valueKey);
+        if (
+          process.env.JESS_DEBUG_LOCK === 'throw-ref'
+          && valueKeyStr2.includes('inner-locked-mixin')
+        ) {
+          throw new Error(`[lock-ref] ${JSON.stringify({
+            valueKey: valueKeyStr2,
+            type,
+            returnValType: returnVal?.type,
+            returnValIsArray: Array.isArray(returnVal),
+            rulesContext: context.rulesContext?.type,
+            lookupScope: context.lookupScope?.type,
+            sourceParent: getSourceParent(this, context)?.type,
+            parent: getParent(this, context)?.type
+          })}`);
+        }
         if (returnVal === undefined) {
           if (!fallbackValue) {
             if (
@@ -822,15 +901,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
           context.addToSearchScope(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).get('important');
-          let scopeRenderKey = context.lookupScope?.renderKey ?? context.renderKey;
-          if (scopeRenderKey === undefined || scopeRenderKey === CANONICAL) {
-            const nonCanonicalParentEdgeKeys = (returnVal as Node).parentEdges
-              ? [...(returnVal as Node).parentEdges!.keys()].filter(key => key !== CANONICAL)
-              : [];
-            if (nonCanonicalParentEdgeKeys.length === 1) {
-              scopeRenderKey = nonCanonicalParentEdgeKeys[0];
-            }
-          }
+          const scopeRenderKey = context.lookupScope?.renderKey ?? context.renderKey;
           const declarationValueContext = scopeRenderKey !== undefined && context.renderKey !== scopeRenderKey
             ? { ...context, renderKey: scopeRenderKey }
             : context;
@@ -875,7 +946,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               context.deleteFromSearchScope(returnVal as Node);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
-              let out = evald;
+              let out = materializeResolvedValue(evald);
               out.pre = this.pre;
               out.post = this.post;
               setSourceParent(out, sourceReference, context);

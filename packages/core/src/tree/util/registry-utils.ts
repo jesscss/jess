@@ -5,7 +5,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
 import { Nil } from '../nil.js';
-import { CANONICAL, EVAL, Node } from '../node.js';
+import { CALLER, CANONICAL, EVAL, Node } from '../node.js';
 import { JsFunction } from '../js-function.js';
 import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
@@ -51,8 +51,8 @@ function isSelectorLikeOrNil(value: unknown): value is Selector | Nil {
   return isSelectorLikeNode(value) || isNode(value, N.Nil);
 }
 
-function getRulesetSelector(ruleset: Ruleset): Selector | Nil | undefined {
-  const selector = ruleset.get('selector');
+function getRulesetSelector(ruleset: Ruleset, context?: Context): Selector | Nil | undefined {
+  const selector = ruleset.get('selector', context);
   return isSelectorLikeOrNil(selector) ? selector : undefined;
 }
 
@@ -175,13 +175,14 @@ export type MixinRegistryEntry = {
 function addRulesetToIndex(
   index: Map<string, Set<Ruleset>>,
   rules: Rules,
-  ruleset: Ruleset
+  ruleset: Ruleset,
+  context?: Context
 ): void {
-  if (!isSelectorLikeNode(ruleset.get('selector'))) {
+  if (!isSelectorLikeNode(ruleset.get('selector', context))) {
     return;
   }
 
-  const selector = ruleset.get('selector');
+  const selector = ruleset.get('selector', context);
   if (!isSelectorLikeNode(selector)) {
     return;
   }
@@ -224,7 +225,7 @@ function addMixinToIndex(
 ): void {
   if (isNode(mixin, N.Ruleset)) {
     const ruleset = mixin;
-    let selector = getRulesetSelector(ruleset);
+    let selector = getRulesetSelector(ruleset, context);
     if (isNode(selector, N.Nil)) {
       return;
     }
@@ -268,7 +269,7 @@ function addMixinToIndex(
         ? (context ? getParent(parentRules, context) : parentRules.parent)
         : undefined;
       const parentSelector = isNode(parentRuleset, N.Ruleset)
-        ? parentRuleset.get('selector')
+        ? parentRuleset.get('selector', context)
         : undefined;
       const parentKeys = (
         parentSelector && !isNode(parentSelector, N.Nil)
@@ -633,7 +634,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
    * Add a ruleset to be indexed later
    */
   override add(ruleset: Ruleset) {
-    addRulesetToIndex(this.index, this.rules, ruleset);
+    addRulesetToIndex(this.index, this.rules, ruleset, this.context);
   }
 
   /**
@@ -781,7 +782,7 @@ export class MixinRegistry extends Registry<
   private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
     for (const child of rules.getRegistryChildren(this.context)) {
       if (isNode(child, N.Ruleset)) {
-        const sel = child.get('selector');
+        const sel = child.get('selector', this.context);
         if (isSelectorLikeNode(sel) && selectorBits && !sel.keySetLibrary) {
           sel.keySetLibrary = selectorBits;
           const selValue = Reflect.get(sel, 'value');
@@ -828,7 +829,7 @@ export class MixinRegistry extends Registry<
     // Get the selector's keySet and extract indexable keys (same as _indexSelectorStart)
     let indexableKeys: string[] = [];
     if (isNode(value, N.Ruleset)) {
-      const selector = value.get('selector');
+      const selector = value.get('selector', this.context);
       if (isNode(selector, N.Nil)) {
         return false;
       }
@@ -936,7 +937,7 @@ export class MixinRegistry extends Registry<
     };
     const getCandidateScore = (node: Node, ctx?: Context): [number, number, number] => {
       const nonCanonicalParentEdgeKeys = node.parentEdges
-        ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL)
+        ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL && key !== CALLER)
         : [];
       const ctxRenderKey = ctx?.renderKey;
       const matchesContextKey = ctxRenderKey !== undefined && nonCanonicalParentEdgeKeys.includes(ctxRenderKey) ? 1 : 0;
@@ -1031,7 +1032,7 @@ export class MixinRegistry extends Registry<
       let nodeRenderKey = node.renderKey;
       if (nodeRenderKey === undefined || nodeRenderKey === CANONICAL || nodeRenderKey === baseContext.renderKey) {
         const nonCanonicalParentEdgeKeys = node.parentEdges
-          ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL)
+          ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL && key !== CALLER)
           : [];
         if (nonCanonicalParentEdgeKeys.length === 1) {
           nodeRenderKey = nonCanonicalParentEdgeKeys[0]!;
@@ -1606,7 +1607,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
     const getDeclarationCandidateScore = (node: Declaration, activeRules: Rules): [number, number, number, number] => {
       const activeRenderKey = context?.renderKey ?? activeRules.renderKey;
       const nonCanonicalParentEdgeKeys = node.parentEdges
-        ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL)
+        ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL && key !== CALLER)
         : [];
       const matchesActiveKey = activeRenderKey !== undefined && nonCanonicalParentEdgeKeys.includes(activeRenderKey) ? 1 : 0;
       const isDerived = node !== getCandidateIdentity(node) ? 1 : 0;

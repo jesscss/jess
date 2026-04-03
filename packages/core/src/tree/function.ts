@@ -154,8 +154,9 @@ export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
       throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must evaluate to rules`);
     }
 
-    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined
-      ?? evaluated.find('declaration', returnName, 'VarDeclaration', { searchParents: false }) as VarDeclaration | undefined;
+    const returnLookupOptions = { searchParents: false, context };
+    const decl = evaluated.find('declaration', returnName, 'Declaration', returnLookupOptions) as Declaration | undefined
+      ?? evaluated.find('declaration', returnName, 'VarDeclaration', returnLookupOptions) as VarDeclaration | undefined;
     if (!decl) {
       throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
@@ -190,6 +191,7 @@ export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
         Mixin: 'public'
       }
     });
+    scope.renderKey = renderKey;
     scope.parent = parent;
 
     const invocationContext = {

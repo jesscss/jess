@@ -82,6 +82,7 @@ export type RenderKey = number | symbol;
 
 export const CANONICAL: unique symbol = Symbol('CANONICAL');
 export const EVAL: unique symbol = Symbol('EVAL');
+export const CALLER: unique symbol = Symbol('CALLER');
 
 export type NodeEdge<T> = Map<RenderKey, T>;
 
@@ -92,6 +93,35 @@ export type Cursor = {
 
 function isContextArg(value: Context | RenderKey | undefined): value is Context {
   return typeof value === 'object' && value !== null && 'rulesetFrames' in value;
+}
+
+function getActiveParentFromContext(
+  node: Node,
+  context?: Context
+): Node | undefined {
+  if (!context) {
+    return node.parent;
+  }
+  const keys: RenderKey[] = [];
+  const push = (key: RenderKey | undefined): void => {
+    if (key === undefined || key === CANONICAL || keys.includes(key)) {
+      return;
+    }
+    keys.push(key);
+  };
+  push(context.renderKey);
+  push(context.rulesContext?.renderKey);
+  push(node.renderKey);
+  if (node.parentEdges?.has(EVAL)) {
+    push(EVAL);
+  }
+  for (const key of keys) {
+    const parent = node.parentEdges?.get(key);
+    if (parent !== undefined) {
+      return parent;
+    }
+  }
+  return node.parent;
 }
 
 function hasTypeProperty(value: unknown): value is { type?: string } {
@@ -1168,6 +1198,7 @@ export abstract class Node<
     }
 
     newNode.inherit(this);
+    Node._inheritDerivedParent(this, newNode, ctx);
     return newNode;
   }
 
@@ -1308,6 +1339,7 @@ export abstract class Node<
         if (preEvald !== node) {
           Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
           preEvaluatedNode.inherit(node);
+          Node._inheritDerivedParent(node, preEvaluatedNode, context);
         }
         if (!preEvaluatedNode.evaluated || !canReuseEvalState(preEvaluatedNode, context)) {
           return preEvaluatedNode.evalNode(context);
@@ -1320,6 +1352,7 @@ export abstract class Node<
           Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
           if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
             evald.inherit(preEvaluatedNode);
+            Node._inheritDerivedParent(preEvaluatedNode, evald, context);
           }
         }
         return evald;
@@ -1342,6 +1375,7 @@ export abstract class Node<
     if (preEvaluatedNode !== node) {
       Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
       preEvaluatedNode.inherit(node);
+      Node._inheritDerivedParent(node, preEvaluatedNode, context);
     }
 
     let evald: Node;
@@ -1355,6 +1389,7 @@ export abstract class Node<
       Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
       if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
         evald.inherit(preEvaluatedNode);
+        Node._inheritDerivedParent(preEvaluatedNode, evald, context);
       }
     }
     return evald;
@@ -1374,6 +1409,13 @@ export abstract class Node<
     derived.renderKey = source.renderKey === CANONICAL
       ? (context?.renderKey ?? EVAL)
       : source.renderKey;
+  }
+
+  private static _inheritDerivedParent(source: Node, derived: Node, context?: Context): void {
+    if (source === derived) {
+      return;
+    }
+    setNodeField(derived, 'parent', getActiveParentFromContext(source, context));
   }
 
   /**

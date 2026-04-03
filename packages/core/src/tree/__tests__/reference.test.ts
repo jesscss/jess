@@ -388,7 +388,7 @@ describe('reference', () => {
 
       expect(resolved.type).toBe('JsFunction');
       expect(getSourceParent(theme, context)).toBe(themeLookup);
-      expect(theme.sourceParent).toBeUndefined();
+      expect(theme.sourceParent).toBe(themeLookup);
     });
 
     it('should register and resolve escaped class selector via string key', async () => {

@@ -17,6 +17,8 @@ The target runtime shape is:
 - every node instance starts with `renderKey = CANONICAL`
 - eval only assigns `EVAL` when evaluation returns a different node object
 - canonical child fields stay the canonical value
+- `parent` is the primary lookup path for the current placement
+- `sourceParent` is canonical definition provenance
 - canonical static-field mutation must return or install a derived
   non-canonical node instead of mutating the canonical node in place
 - alternate child links are field-aligned edges:
@@ -34,6 +36,35 @@ The target runtime shape is:
   displaced derived node unless an edge still references it
 - path selection uses `RenderKey`
 - traversal uses a cursor: `{ node, renderKey }`
+
+The target model is not:
+
+- `sourceParent` varying by eval placement
+- `sourceParentEdge` acting as a hidden invocation-scope channel
+- raw child field reads in eval code bypassing render-key-aware state
+
+Discipline rule:
+
+- if code needs the current placement, read through `get(...)`, typed field
+  getters, `getParent(...)`, `getChildren(...)`, or a cursor
+- if code intentionally needs the canonical field, make that explicit
+- when the read is intentionally canonical, prefer the direct field
+  (`node.value`, `node.rules`, `node.params`, etc.) over `.get('value')` or
+  other generic getters
+- do not read `node.params`, `node.guard`, `node.rules`, `node.value`, or
+  similar fields directly in converted/hybrid eval paths just because it is
+  convenient
+- `leakyRules` caller fallback should be modeled as an extra parent-edge lookup
+  lane, not by changing the meaning of `sourceParent`
+- if that caller fallback needs its own edge identity, prefer an explicit
+  `CALLER` symbol key in `parentEdges` instead of pretending it is the primary
+  render-key parent edge
+- write-side discipline matters as much as read-side discipline:
+  `.parent` should always be the current primary lookup path for that node's
+  placement, while caller fallback is additive and belongs on
+  `parentEdges.get(CALLER)`
+- do not rewrite `sourceParent` during call/invocation output shaping just to
+  smuggle caller ancestry into lookup
 
 This file does not track:
 
@@ -164,6 +195,7 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 2. Fix the real live Less integration blocker in `tests-unit/import/import-reference.less`: reference-import activation and ruleset-as-mixin ancestry still need to render through the activated selector path instead of the reference-only source path.
 3. Keep the extend/import frontier grounded in the actual failing fixture output, not the older exact-extend `&&` / nested `@media` storyline that is no longer the top-line blocker.
 4. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
+5. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
 
 ## Transitional Baggage To Remove
 
@@ -189,6 +221,51 @@ follow-on runtime cleanup once the active correctness bugs are stable.
 
 ## Active Less Fixture Seams
 
+- Workflow rule for Jess parity:
+  when a red shows up only in `packages/jess/test/less/all-less.test.ts`,
+  prefer adding a parser-accurate focused core repro first when practical.
+  Use the core repro as the fast debugging loop and keep the Jess fixture as the
+  outer parity confirmation.
+
+- `tests-unit/property-accessors/property-accessors.less`
+  Fixed.
+  A focused core repro now exists in
+  `packages/core/src/tree/__tests__/declaration.test.ts` proving that merged
+  property declarations must remain visible both to later nested property
+  lookups and to the parent declaration chain itself.
+  The actual fix was in post-eval declaration coalescing:
+  `Rules._coalesceMergedDeclarations()` now appends `+:` anchor values instead
+  of replacing the earlier anchor with the later scalar.
+
+- `tests-unit/mixins-interpolated/mixins-interpolated.less`
+  Current narrowing:
+  a parser-accurate core repro now exists in
+  `packages/core/src/tree/__tests__/mixin.test.ts` for the final
+  `.Person(person, "Male"); .person.sayGender();` case.
+  The repro fails with the same real runtime error:
+  `ReferenceError: 'gender_' is not defined`.
+  Important findings from this pass:
+  - the Less parser shape matters here:
+    - `.@{name}` parses as `InterpolatedSelector(Interpolated source: '.%%')`
+    - `.person.sayGender()` parses as a single compound `mixin-ruleset`
+      reference path, not as nested target/key references
+  - selector/mixin registry reads now use context-aware selector access in
+    `registry-utils.ts`; that did not fix the closure failure by itself
+  - caller-scope lookup in `reference.ts` now treats a `CALLER` edge that
+    already points at `Rules` as the rules scope directly; that also was not
+    sufficient by itself
+  - keep the lookup model disciplined while debugging this:
+    - `.parent` is the current primary lookup path
+    - `sourceParent` is stable definition provenance only
+    - caller fallback is additive on `parentEdges.get(CALLER)`
+    - canonical reads should use direct fields, while placement-sensitive reads
+      must stay on edge-aware accessors
+  The live seam is narrower now:
+  invocation-time scope/parent propagation inside
+  `util/mixin-instance-primitives.ts` is still letting the emitted nested
+  `.person` subtree lose access to the outer mixin param scope while the outer
+  mixin body is being evaluated.
+
 - `tests-unit/mixins-guards/mixins-guards.less`
   Current narrowing:
   the old lock-closure and recursive-mixin failures are fixed in reduced repros
@@ -207,9 +284,14 @@ follow-on runtime cleanup once the active correctness bugs are stable.
   repeated guarded calls produce missing spaces in emitted `content:` values and
   drop the later `.call-lock-mixin .call-inner-lock-mixin` block inside the full
   fixture, even though `mixins-closure.less` still passes in isolation.
-  Next step: inspect reuse/mutation of evaluated call arg `Sequence` values
-  across repeated guarded candidates, especially when later candidate prep sees
-  arg nodes already carrying non-canonical render keys/source ancestry.
+  Current narrower repro finding:
+  the emitted nested `.inner-locked-mixin(@x: @a)` definition survives, but its
+  sibling call still reevaluates to `Nil`. The eval mixin wrapper already carries
+  the outer param scope on its current placement, but some downstream reads still
+  bypass that placement state and observe canonical child fields instead.
+  Next step:
+  remove direct child-field reads in the guarded mixin path before adding more
+  source-parent repair logic.
 
 ## Clone / Materialize Debt
 

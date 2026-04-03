@@ -1,4 +1,4 @@
-import { CANONICAL, Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
+import { CALLER, CANONICAL, Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -12,6 +12,7 @@ import { Any } from './any.js';
 import { List, list } from './list.js';
 import { getParent, mergeDependencies, setDependency, setParent, setSourceParent } from './util/field-helpers.js';
 import { finalizeInvocationOutputRules } from './util/mixin-instance-primitives.js';
+import { addParentEdge } from './util/cursor.js';
 
 export type CallValue = {
   /**
@@ -254,7 +255,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       const adoptCallWhitespace = <T extends Node>(node: T): T => {
         node.pre = this.pre;
         node.post = this.post;
-        node.sourceParent = this;
+        node.sourceParent ??= this;
         return node;
       };
       const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
@@ -304,7 +305,50 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       context.callStack.push(this);
       context.parenFrames.push(false);
 
+      if (process.env.JESS_DEBUG_LOCK === 'throw-call') {
+        const rawName = String(name?.valueOf?.() ?? '');
+        if (rawName.includes('.inner-locked-mixin')) {
+          throw new Error(`[lock-call:raw] ${JSON.stringify({
+            rawName,
+            parent: this.parent?.type,
+            sourceParent: this.sourceParent?.type,
+            renderKey: String(this.renderKey),
+            rulesContext: context.rulesContext?.type,
+            lookupScope: context.lookupScope?.type
+          })}`);
+        }
+      }
       let n = typeof name === 'string' ? name : await name.eval(context);
+      const debugRawKey = isNode(name, N.Reference)
+        ? String(name.key?.valueOf?.() ?? '')
+        : '';
+      if (process.env.JESS_DEBUG_LOCK === 'log-call' && debugRawKey.includes('inner-locked-mixin')) {
+        console.log('[lock-call]', {
+          debugRawKey,
+          resolvedType: Array.isArray(n) ? 'array' : n?.type ?? typeof n,
+          resolvedName: typeof n === 'string' ? n : n?.valueOf?.(),
+          parent: this.parent?.type,
+          sourceParent: this.sourceParent?.type,
+          rulesContext: context.rulesContext?.type,
+          lookupScope: context.lookupScope?.type
+        });
+      }
+      if (process.env.JESS_DEBUG_LOCK === 'throw-call-resolved') {
+        const resolvedName = String(n?.valueOf?.() ?? '');
+        const rawName = String(name?.valueOf?.() ?? '');
+        if (rawName.includes('.inner-locked-mixin') || resolvedName.includes('.inner-locked-mixin')) {
+          throw new Error(`[lock-call:resolved] ${JSON.stringify({
+            rawName,
+            resolvedName,
+            resolvedType: Array.isArray(n) ? 'array' : n?.type,
+            parent: this.parent?.type,
+            sourceParent: this.sourceParent?.type,
+            renderKey: String(this.renderKey),
+            rulesContext: context.rulesContext?.type,
+            lookupScope: context.lookupScope?.type
+          })}`);
+        }
+      }
       // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
       if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
         n = await n.eval(context);
@@ -331,6 +375,16 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         context.caller = this;
         try {
           const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
+          if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(result, N.Nil)) {
+            throw new Error(`[lock-call:direct-nil] ${JSON.stringify({
+              debugRawKey,
+              resolvedType: Array.isArray(n) ? 'array' : n?.type,
+              parent: this.parent?.type,
+              sourceParent: this.sourceParent?.type,
+              rulesContext: context.rulesContext?.type,
+              lookupScope: context.lookupScope?.type
+            })}`);
+          }
           // Result is already fully evaluated by the dispatch primitives — no re-eval.
           if (markImportant && isNode(result, N.Rules)) {
             this.makeImportant(result, context);
@@ -349,6 +403,16 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         context.caller = this;
         try {
           const result = await n.evalCall(context, argNodes, contentNode);
+          if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(result, N.Nil)) {
+            throw new Error(`[lock-call:func-nil] ${JSON.stringify({
+              debugRawKey,
+              resolvedType: n.type,
+              parent: this.parent?.type,
+              sourceParent: this.sourceParent?.type,
+              rulesContext: context.rulesContext?.type,
+              lookupScope: context.lookupScope?.type
+            })}`);
+          }
           context.callStack.pop();
           context.parenFrames.pop();
           return applyDependencyToResult(
@@ -373,9 +437,10 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           renderKey: rules.renderKey,
           rulesContext: rules
         };
-        // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
-        // to this call so leaky fallback can resolve call-site variables (e.g. @d).
-        setSourceParent(rules, this, placementContext);
+        // Detached-ruleset invocation keeps the definition-owned `.parent` /
+        // `.sourceParent` chain and exposes caller ancestry through an
+        // explicit secondary edge.
+        addParentEdge(rules, CALLER, this);
         rules = await rules.eval(context);
         finalizeInvocationOutputRules(rules, placementContext);
         context.callStack.pop();
@@ -411,6 +476,16 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
                 )
               : callWithContext(context, fn)
           );
+          if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(result, N.Nil)) {
+            throw new Error(`[lock-call:jsfn-nil] ${JSON.stringify({
+              debugRawKey,
+              resolvedType: typeof fn,
+              parent: this.parent?.type,
+              sourceParent: this.sourceParent?.type,
+              rulesContext: context.rulesContext?.type,
+              lookupScope: context.lookupScope?.type
+            })}`);
+          }
           context.caller = originalCaller;
           context.callStack.pop();
           didPopCallStack = true;
@@ -418,6 +493,16 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
             let evald = result.eval(context);
             if (isThenable(evald)) {
               evald = await evald;
+            }
+            if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(evald, N.Nil)) {
+              throw new Error(`[lock-call:jsfn-post-eval-nil] ${JSON.stringify({
+                debugRawKey,
+                resultType: result.type,
+                parent: this.parent?.type,
+                sourceParent: this.sourceParent?.type,
+                rulesContext: context.rulesContext?.type,
+                lookupScope: context.lookupScope?.type
+              })}`);
             }
             if (markImportant && isNode(evald, N.Rules)) {
               this.makeImportant(evald, context);

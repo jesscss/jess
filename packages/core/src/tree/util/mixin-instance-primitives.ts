@@ -13,10 +13,11 @@ import { list, type List } from '../list.js';
 import { Sequence } from '../sequence.js';
 import { Any } from '../any.js';
 import { N } from '../node-type.js';
-import { CANONICAL, F_VISIBLE } from '../node.js';
+import { CALLER, CANONICAL, F_VISIBLE } from '../node.js';
 import { isNode } from './is-node.js';
 import { comparePosition } from './compare.js';
 import { getParent, getSourceParent, setChildren, setParent, setSourceParent } from './field-helpers.js';
+import { addParentEdge } from './cursor.js';
 import type { Mixin } from '../mixin.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { cast } from './cast.js';
@@ -72,6 +73,26 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
     params: List<Node> | undefined,
   ) => MaybePromise<void>;
 };
+
+function getCurrentRulesetGuard(
+  ruleset: Ruleset,
+  context: Context
+): Node | undefined {
+  return ruleset.get('guard', context) as Node | undefined;
+}
+
+function getCurrentMixinParams(
+  mixin: Mixin,
+  context: Context | RenderKey | undefined
+): List<Node> | undefined {
+  return mixin.get('params', context) as List<Node> | undefined;
+}
+
+function getCanonicalSourceParent(
+  node: Node | undefined
+): Node | undefined {
+  return node?.sourceParent;
+}
 
 /**
  * Follow a Rules node back to its canonical source root. Mixin/ruleset
@@ -272,6 +293,24 @@ export function seedMixinGuardScope(
   return nextScope;
 }
 
+function captureMixinScopeSnapshot(
+  scope: Rules | undefined,
+  scopeChildren: readonly Node[] | undefined,
+  context: Context
+): Rules | undefined {
+  if (!scope) {
+    return undefined;
+  }
+  const capturedChildren = scopeChildren ?? scope.getRegistryChildren(context);
+  const captured = scope.createPlacementWrapperWithChildren(
+    capturedChildren,
+    scope.renderKey
+  );
+  captured.parent = getParent(scope, context);
+  captured.sourceParent = scope.sourceParent;
+  return captured;
+}
+
 /**
  * Prepare the transient scope used by a single mixin invocation. This is the
  * smallest complete lookup-ready scope primitive for direct canonical-body eval:
@@ -333,25 +372,26 @@ function bindStructuralSourceParent(
     return;
   }
   seen.add(node);
-  if (isNode(node, N.Rules | N.Ruleset | N.AtRule | N.Mixin)) {
-    setSourceParent(node, sourceParent, context);
-    if (
-      node.renderKey !== undefined
-      && node.renderKey !== CANONICAL
-      && node.renderKey !== context.renderKey
-    ) {
-      setSourceParent(node, sourceParent, {
-        ...context,
-        renderKey: node.renderKey
-      } as Context);
-    }
+  node.sourceParent = sourceParent;
+  setSourceParent(node, sourceParent, context);
+  if (
+    node.renderKey !== undefined
+    && node.renderKey !== CANONICAL
+    && node.renderKey !== context.renderKey
+  ) {
+    setSourceParent(node, sourceParent, {
+      ...context,
+      renderKey: node.renderKey
+    } as Context);
   }
   const childKeys = (node.constructor as typeof Node).childKeys;
   if (!childKeys) {
     return;
   }
   for (const key of childKeys) {
-    const value = (node as unknown as Record<string, unknown>)[key];
+    const value = typeof (node as unknown as { get?: (k: string, ctx?: Context) => unknown }).get === 'function'
+      ? (node as unknown as { get: (k: string, ctx?: Context) => unknown }).get(key, context)
+      : (node as unknown as Record<string, unknown>)[key];
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item instanceof Node) {
@@ -362,6 +402,39 @@ function bindStructuralSourceParent(
     }
     if (value instanceof Node) {
       bindStructuralSourceParent(value, sourceParent, context, seen);
+    }
+  }
+}
+
+function bindStructuralParentTree(
+  node: Node,
+  parent: Node,
+  context: Context,
+  seen: Set<Node> = new Set()
+): void {
+  if (seen.has(node)) {
+    return;
+  }
+  seen.add(node);
+  setParent(node, parent, context);
+  const childKeys = (node.constructor as typeof Node).childKeys;
+  if (!childKeys) {
+    return;
+  }
+  for (const key of childKeys) {
+    const value = typeof (node as unknown as { get?: (k: string, ctx?: Context) => unknown }).get === 'function'
+      ? (node as unknown as { get: (k: string, ctx?: Context) => unknown }).get(key, context)
+      : (node as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item instanceof Node) {
+          bindStructuralParentTree(item, node, context, seen);
+        }
+      }
+      continue;
+    }
+    if (value instanceof Node) {
+      bindStructuralParentTree(value, node, context, seen);
     }
   }
 }
@@ -465,6 +538,9 @@ function buildBoundMixinParams(
   const bindingContext = { ...context, renderKey };
   const boundParams = list([], params.options ? { ...params.options } : undefined);
   let positionalIndex = 0;
+  const cloneDefaultParamValue = (value: Node): Node => {
+    return value.clone(false, undefined, bindingContext);
+  };
 
   for (let index = 0; index < params.get('value').length; index++) {
     const param = params.get('value')[index]!;
@@ -483,11 +559,9 @@ function buildBoundMixinParams(
         ? namedArgs.get(name)!
         : hasPositionalArg
           ? positionalArgs[positionalIndex++]!
-          : (param as VarDeclaration).get('value');
-      const cameFromCallSite = hasNamedArg || hasPositionalArg;
+          : cloneDefaultParamValue((param as VarDeclaration).get('value'));
       if (
-        cameFromCallSite
-        && bindingSourceParent
+        bindingSourceParent
         && isNode(boundValue)
       ) {
         anchorCallSiteValue(boundValue, bindingSourceParent, bindingContext);
@@ -1002,7 +1076,8 @@ export async function processPreparedMixinCandidate<TCandidate>(
   } = options;
 
   let nextOuterRules = outerRules;
-  const pendingLookupScope = () => nextOuterRules ?? getMixinCandidateLookupScope(parent, rules, context);
+  const getCapturedOuterRules = () => captureMixinScopeSnapshot(nextOuterRules, guardScopeChildren, context);
+  const pendingLookupScope = () => getCapturedOuterRules() ?? getMixinCandidateLookupScope(parent, rules, context);
   if (guard) {
     const evaluatedGuard = await evaluateMixinGuardCandidate(
       guard,
@@ -1017,10 +1092,11 @@ export async function processPreparedMixinCandidate<TCandidate>(
       return undefined;
     }
     if (hasAnyDefault) {
+      const capturedOuterRules = getCapturedOuterRules();
       return {
         candidate,
         rules,
-        outerRules: nextOuterRules,
+        outerRules: capturedOuterRules,
         params,
         group: candidateHasDefault ? evaluatedGuard.defaultGroup! : MixinDefaultGroup.None,
         lookupScope: pendingLookupScope()
@@ -1029,21 +1105,23 @@ export async function processPreparedMixinCandidate<TCandidate>(
   }
 
   if (hasAnyDefault) {
+    const capturedOuterRules = getCapturedOuterRules();
     return {
       candidate,
       rules,
-      outerRules: nextOuterRules,
+      outerRules: capturedOuterRules,
       params,
       group: MixinDefaultGroup.None,
       lookupScope: pendingLookupScope()
     };
   }
 
+  const capturedOuterRules = getCapturedOuterRules();
   await withMixinLookupScope(
-    nextOuterRules ?? rules,
+    capturedOuterRules ?? rules,
     pendingLookupScope(),
     context,
-    () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
+    () => evaluateCandidateOutput(candidate, rules, capturedOuterRules, params)
   );
   return undefined;
 }
@@ -1092,15 +1170,6 @@ export function getMixinCandidateLookupScope(
  * for typed subclasses like Mixin or Ruleset.
  */
 export function getCandidateParent(node: Node<any, any>, context: Context): Node {
-  const nonCanonicalParentEdgeKeys = node.parentEdges
-    ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL)
-    : [];
-  if (nonCanonicalParentEdgeKeys.length === 1) {
-    const keyedParent = node.parentEdges!.get(nonCanonicalParentEdgeKeys[0]!);
-    if (keyedParent) {
-      return keyedParent;
-    }
-  }
   const parent = getParent(node as Node, context);
   if (!parent) {
     throw new ReferenceError(`${node.type} candidate must have a parent during mixin evaluation`);
@@ -1213,13 +1282,46 @@ export async function matchMixinCandidates(
   sourceParent: Node | undefined,
   context: Context
 ): Promise<MixinEntry[]> {
+  if (process.env.JESS_DEBUG_LOCK === 'throw-match') {
+    const callerName = caller && isNode(caller, N.Call)
+      ? (caller as unknown as { name?: Node }).name
+      : undefined;
+    const callerKey = isNode(callerName, N.Reference)
+      ? String(callerName.key?.valueOf?.() ?? '')
+      : '';
+    const candidateNames = mixinArr.map(mixin => {
+      if (isNode(mixin, N.Mixin)) {
+        return String(mixin.get('name')?.valueOf?.() ?? '');
+      }
+      if (isNode(mixin, N.Ruleset)) {
+        return String(mixin.get('selector')?.valueOf?.() ?? '');
+      }
+      return mixin.type;
+    });
+    if (
+      callerKey.includes('inner-locked-mixin')
+      || candidateNames.some(name => name.includes('inner-locked-mixin'))
+    ) {
+      throw new Error(`[lock-match] ${JSON.stringify({
+        callerKey,
+        candidateNames,
+        sourceParent: sourceParent?.type,
+        rulesContext: context.rulesContext?.type,
+        lookupScope: context.lookupScope?.type,
+        argTypes: nodeArgs.map(arg => arg.type)
+      })}`);
+    }
+  }
   const mixinCandidates: MixinEntry[] = [];
   const bindingSourceParent = sourceParent ?? caller;
 
   for (let i = 0; i < mixinArr.length; i++) {
     let mixin = mixinArr[i]!;
     const isPlainRule = isNode(mixin, N.Rules);
-    const paramLength = isPlainRule ? 0 : ((mixin as any).params?.length ?? 0);
+    const currentParams = !isPlainRule && isNode(mixin, N.Mixin)
+      ? getCurrentMixinParams(mixin as Mixin, mixin.renderKey ?? context)
+      : undefined;
+    const paramLength = isPlainRule ? 0 : (currentParams?.length ?? 0);
 
     if (!paramLength) {
       if (nodeArgs.length) {
@@ -1227,7 +1329,7 @@ export async function matchMixinCandidates(
       }
       mixinCandidates.push(mixin);
     } else {
-      const params = (mixin as any).params as List<Node>;
+      const params = currentParams!;
       const hasRestParamOriginal = params.get('value').some(
         (p: Node) => p.type === 'Rest'
       );
@@ -1296,7 +1398,7 @@ export async function matchMixinCandidates(
           }
         } else {
           const originalPatternParam = !isNode(arg, N.VarDeclaration)
-            ? ((mixin as any).params as List<Node> | undefined)?.get('value')[pi]
+            ? currentParams?.get('value')[pi]
             : undefined;
           const preparedParam = isNode(originalPatternParam as Node | undefined, N.Selector)
             ? await preparePatternOperand(originalPatternParam as Node, context)
@@ -1382,7 +1484,7 @@ function hasFailedGuardAncestor(node: Node<any, any>, context: Context): boolean
   let current: Node | undefined = getParent(node as Node, context);
   while (current) {
     if (isNode(current, N.Ruleset)) {
-      const guardNode = (current as unknown as { guard: unknown }).guard;
+      const guardNode = getCurrentRulesetGuard(current as Ruleset, context);
       if (guardNode instanceof Nil) {
         return true;
       }
@@ -1481,19 +1583,38 @@ export async function evaluateCandidateOutput(
   try {
     const callerParent = getParentFn(candidate);
     const candidateSourceParent = getUsableInvocationSourceParent(
-      getSourceParent(candidate as Node, context),
+      getCanonicalSourceParent(candidate as Node),
       getUsableInvocationSourceParent(
-        getSourceParent(callerParent, context),
+        getCanonicalSourceParent(callerParent),
         sourceParent
       )
     );
     const lexicalSourceParent = candidateSourceParent ?? callerParent;
-    rules.parent ??= outerRules ?? callerParent;
+    const capturedOuterSourceParent = outerRules
+      ? (() => {
+          const captured = outerRules.createPlacementWrapper(undefined, outerRules.renderKey);
+          captured.parent = getParent(outerRules, context);
+          captured.sourceParent = outerRules.sourceParent;
+          return captured;
+        })()
+      : undefined;
+    setParent(rules, outerRules ?? callerParent, {
+      ...context,
+      renderKey: rules.renderKey
+    } as Context);
     rules.sourceParent = candidateSourceParent ?? lexicalSourceParent;
     const previousRenderKey = context.renderKey;
     context.renderKey = rules.renderKey;
     let newRules: Rules;
     try {
+      const evalContext = {
+        ...context,
+        renderKey: rules.renderKey,
+        rulesContext: rules
+      } as Context;
+      for (const child of rules.getRegistryChildren(evalContext)) {
+        bindStructuralParentTree(child, rules, evalContext);
+      }
       newRules = await rules.eval(context);
     } finally {
       context.renderKey = previousRenderKey;
@@ -1528,12 +1649,28 @@ export async function evaluateCandidateOutput(
         rulesContext: outputContainer
       } as Context;
       for (const child of outputChildren) {
-        bindStructuralSourceParent(child, outerRules, outputContext);
+        bindStructuralParentTree(child, outputContainer, outputContext);
+        bindStructuralSourceParent(child, capturedOuterSourceParent ?? outerRules, outputContext);
       }
       outputContainer.parent = invocationParent ?? callerParent;
-      outputContainer.sourceParent = candidateSourceParent ?? lexicalSourceParent;
+      addParentEdge(outputContainer, CALLER, outerRules);
+      outputContainer.sourceParent = capturedOuterSourceParent ?? outerRules ?? candidateSourceParent ?? lexicalSourceParent;
       outputContainer.index = candidate.index;
       outputContainer.options.isMixinOutput = false;
+      if (process.env.JESS_DEBUG_LOCK === 'throw-output') {
+        const candidateName = String((candidate as Mixin).get('name')?.valueOf?.() ?? '');
+        if (candidateName.includes('lock-mixin')) {
+          throw new Error(`[lock-output] ${JSON.stringify({
+            candidateName,
+            hasOuterRules: Boolean(outerRules),
+            outerRulesChildren: outerRules?.value?.map((child: Node) => child.type) ?? [],
+            candidateSourceParent: candidateSourceParent?.type,
+            lexicalSourceParent: lexicalSourceParent?.type,
+            outputContainerSourceParent: outputContainer.sourceParent?.type,
+            outputContainerSourceParentChildren: outputContainer.sourceParent?.value?.map((child: Node) => child.type) ?? []
+          })}`);
+        }
+      }
       outputRules.push(outputContainer);
       return;
     }
@@ -1623,6 +1760,31 @@ export async function dispatchMixinEvalCandidates(
     if (!isNode(candidate, N.Mixin)) {
       continue;
     }
+    if (process.env.JESS_DEBUG_LOCK) {
+      const candidateName = String(candidate.get('name')?.valueOf?.() ?? '');
+      if (candidateName.includes('inner-locked-mixin')) {
+        const candidateParent = getParent(candidate, context);
+        const candidateSourceParent = getSourceParent(candidate, context);
+        const lockInfo = {
+          candidateName,
+          candidateParent: candidateParent?.type,
+          candidateParentIndex: candidateParent?.index,
+          candidateSourceParent: candidateSourceParent?.type,
+          candidateSourceParentIndex: candidateSourceParent?.index,
+          candidateSourceParentName: isNode(candidateSourceParent, N.Mixin)
+            ? String(candidateSourceParent.get('name')?.valueOf?.() ?? '')
+            : undefined,
+          sourceParent: sourceParent?.type,
+          invocationParent: invocationParent?.type,
+          lookupScope: context.lookupScope?.type,
+          rulesContext: context.rulesContext?.type
+        };
+        if (process.env.JESS_DEBUG_LOCK === 'throw') {
+          throw new Error(`[lock-dispatch] ${JSON.stringify(lockInfo)}`);
+        }
+        console.log('[lock-dispatch]', lockInfo);
+      }
+    }
     if (!candidate.get('name') && !candidate.get('params') && !candidate.get('guard')) {
       const sourceRules = getRootSourceRules(candidate.get('rules'));
       const definitionParent = getCandidateParent(candidate);
@@ -1641,12 +1803,12 @@ export async function dispatchMixinEvalCandidates(
     let rules = candidate
       .get('rules', candidateRenderKey ?? context)
       .withRenderOwner(candidate, candidateRenderKey, context);
-    let params = candidate.params;
+    let params = getCurrentMixinParams(candidate, candidateRenderKey ?? context);
     const definitionParent = getCandidateParent(candidate);
     const candidateSourceParent = getUsableInvocationSourceParent(
-      getSourceParent(candidate as Node, context),
+      getCanonicalSourceParent(candidate as Node),
       getUsableInvocationSourceParent(
-        getSourceParent(definitionParent, context),
+        getCanonicalSourceParent(definitionParent),
         sourceParent
       )
     );

@@ -15,6 +15,13 @@ The branch should move toward:
 - field-aligned child edge storage (`fooEdge` / `fooEdges`)
 - cursor-based traversal: `{ node, renderKey }`
 - shallow `Rules` wrappers as the owners of local declaration/mixin/ruleset registries
+- `parent` as the primary lookup path for the current placement
+- `sourceParent` as stable definition provenance, not invocation scope
+- `parentEdges` as the place to carry additional placement-specific lookup lanes
+  such as `leakyRules` caller fallback
+- `.parent` writes must stay disciplined too: derived/output nodes should keep
+  their current primary lookup path there, while secondary caller ancestry goes
+  in `parentEdges` under an explicit key such as `CALLER`
 
 The branch should move away from:
 
@@ -32,6 +39,16 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - preserve Jess behavior
 - prefer smaller targeted changes over broad rewrites
 - do not introduce new detached overlay concepts
+- keep `sourceParent` canonical/definition-owned; do not repurpose it as a per-eval scope channel
+- let eval scope vary through `parentEdges`, field child edges, and explicit lookup context
+- when `leakyRules` needs a secondary caller lookup lane, represent that through
+  placement parent edges, not through `sourceParent`
+- if caller fallback needs to be represented explicitly, prefer a dedicated
+  `CALLER` symbol entry in `parentEdges` rather than overloading the render-key
+  parent lane or `sourceParent`
+- detached-ruleset and similar call-produced wrappers should keep their
+  definition-owned `.parent` / `.sourceParent` chain intact; caller ancestry is
+  additive and belongs on `parentEdges.get(CALLER)`
 - if a node cannot answer a parent question without a render key, use a cursor
 - if a lookup only needs path selection, pass `renderKey` or cursor, not full
   `Context`
@@ -44,6 +61,20 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - if a canonical node's static field changes, do not mutate it in place:
   create or return a derived non-canonical replacement and let eval/edge wiring
   own that new placement
+- normal lookup should walk the current placement first; any `leakyRules`
+  caller-parent fallback is secondary and should be visibly modeled as such
+- ordinary `getParent()` should keep returning the primary placement parent;
+  caller fallback should be a separate explicit lookup lane, not silently mixed
+  into the primary parent walk
+- in eval/runtime code, treat raw child field reads such as `node.params`,
+  `node.guard`, `node.rules`, `node.value`, and `node.parent` as suspect unless
+  the code is intentionally reading the canonical field. Current placement reads
+  should go through edge-aware accessors (`get(...)`, `getParent(...)`,
+  `getChildren(...)`, typed field getters, or a cursor).
+- for intentional direct canonical reads, prefer the direct field
+  (`node.value`, `node.rules`, `node.params`, etc.). Do not route canonical
+  reads back through generic `.get('value')` / `.get('rules')` calls just for
+  uniformity; those add indirection without adding placement information.
 - if a node is already non-canonical (`EVAL` or any other non-canonical
   `RenderKey`), it is ephemeral: mutate or replace it directly and do not keep
   the displaced derived node alive unless some edge still points to it
@@ -76,6 +107,9 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
     `@arguments` / rest aggregation
 - do not add new generic `childEdges` maps as target architecture
 - when iterating, prefer one narrow component proof over broad suite churn
+- when a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer
+  reproducing it in a focused core test first when practical; use the Jess
+  fixture only as the outer parity proof
 
 ## Work Loop
 
@@ -92,11 +126,30 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   activation model simple: print suppression defaults off under reference
   boundaries, and only explicit activation paths opt specific descendants back
   in.
+- `tests-unit/property-accessors/property-accessors.less` is fixed.
+  The useful permanent proof is now the focused core repro in
+  `packages/core/src/tree/__tests__/declaration.test.ts`; keep debugging on the
+  core proof first when property-merge behavior regresses again.
 - Two narrow guarded-mixin proofs are green again:
   - `tests-unit/mixins-closure/mixins-closure.less`
   - `tests-unit/mixins/mixins-advanced.less`
+- The remaining real runtime red that now has the best focused repro is
+  `tests-unit/mixins-interpolated/mixins-interpolated.less`.
+  Current parser-accurate core repro lives in
+  `packages/core/src/tree/__tests__/mixin.test.ts` and fails with
+  `ReferenceError: 'gender_' is not defined` for the
+  `.Person(person, "Male"); .person.sayGender();` case.
+  Treat that as the active closure/invocation-scope seam:
+  emitted interpolated nested rulesets are reachable, but outer param scope is
+  still being lost while the outer mixin body is evaluated.
+  The working model to preserve while debugging it is:
+  - `.parent` is the current primary lookup path for the placement
+  - `sourceParent` remains the canonical definition owner
+  - caller fallback stays additive on `parentEdges.get(CALLER)`
+  - direct canonical reads should use direct fields, while current-placement
+    reads must stay on edge-aware accessors
 - Minimal production-shaped repros for nested lock capture and recursive mixins
-  are green. The remaining live Less blocker is
+  are green. The remaining live Less blocker in that family is still
   `tests-unit/mixins-guards/mixins-guards.less`.
 - The current reduced repro for that fixture is:
   - shared `.generic(...)` guarded overloads
@@ -109,6 +162,40 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   issue in that same fixture is smaller but still real: repeated guarded calls
   are leaving output/closure regressions (missing spaces in emitted `content:`
   values and a dropped `.call-lock-mixin .call-inner-lock-mixin` block).
+  Current narrowing: the emitted nested `.inner-locked-mixin(@x: @a)` definition
+  survives, but its later sibling call still collapses to `Nil`. The live seam
+  is closure ancestry for emitted nested mixin definitions: current lookup
+  should come from placement edges, while `sourceParent` should remain the
+  canonical definition owner.
+
+## Current Jess Red Set
+
+After the latest rebuild and runtime fixes, `packages/jess/test/less/all-less.test.ts`
+is down to 12 reds.
+
+Likely exact-output / fixture-drift cases:
+
+- `tests-unit/css-3/css-3.less`
+- `tests-unit/css-grid/css-grid.less`
+- `tests-unit/extend-nest/extend-nest.less`
+- `tests-unit/rulesets/rulesets.less`
+- `tests-unit/whitespace/whitespace.less`
+
+Still-real runtime / semantic cases:
+
+- `tests-unit/extend-selector/extend-selector.less`
+- `tests-unit/extend/extend.less`
+- `tests-unit/mixins-guards/mixins-guards.less`
+- `tests-unit/mixins-interpolated/mixins-interpolated.less`
+- `tests-unit/starting-style/starting-style.less`
+- `tests-unit/urls/urls.less`
+
+Borderline / mixed:
+
+- `tests-unit/import/import-reference.less`
+  now mostly reflects selector-shape / ordering differences again rather than
+  the earlier activation failure, so treat it carefully before spending more
+  runtime effort there.
 
 ## What To Delete Over Time
 

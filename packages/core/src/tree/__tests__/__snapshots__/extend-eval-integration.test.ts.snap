@@ -713,8 +713,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.a')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -727,9 +728,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.b')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -771,9 +773,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.e')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -796,8 +799,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.f')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Comment '//extend with all')
     (Ruleset
@@ -826,8 +830,14 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.g')
+            (BasicSelector '.h')
+          ]
+        )
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -853,8 +863,14 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.i')
+            (BasicSelector '.j')
+          ]
+        )
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -892,8 +908,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.l')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -906,9 +923,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.m')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -921,9 +939,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.n')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -936,9 +955,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.o')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -951,9 +971,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.p')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -966,9 +987,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.q')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -981,9 +1003,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.r')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -996,9 +1019,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.s')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1036,8 +1060,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.u')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1056,9 +1081,16 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (BasicSelector '.u')
+            (BasicSelector '.v')
+          ]
+        )
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Comment '// circular reference because the new extend product will match the existing extend')
     (Ruleset
@@ -1085,8 +1117,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.w')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1105,9 +1138,16 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (CompoundSelector
+          [
+            (BasicSelector '.v')
+            (BasicSelector '.w')
+            (BasicSelector '.v')
+          ]
+        )
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Comment '// classic circular references')
     (Ruleset
@@ -1129,8 +1169,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.x')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1151,8 +1192,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.y')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1173,8 +1215,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.z')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Comment '//very simple chaining, but with the extend inside the ruleset')
     (Ruleset
@@ -1198,8 +1241,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.va')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1223,8 +1267,9 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.vb')
       parentEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 
@@ -1386,9 +1431,10 @@ exports[`extend integration (eval -> toString) > extend-chaining.less AST shape:
             )
           ]
         )
+      selectorBeforeExtend: 
+        (BasicSelector '.mb')
       parentEdges: {}
       stateEdges: {}
-      selectorBeforeExtendEdge: {}
     )
     (Ruleset
       selector: 

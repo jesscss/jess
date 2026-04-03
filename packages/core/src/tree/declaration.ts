@@ -307,6 +307,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (assign && assign !== AssignmentType.Default) {
         const normalizedAssign = assign;
         value = value.clone();
+        const cloneWithDependency = (source: Node): Node => {
+          const cloned = source.clone(true, undefined, context);
+          const dependency = getDependency(source, context);
+          if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+            setDependency(cloned, {
+              dependsOn: new Set(dependency.dependsOn),
+              sourceExpr: dependency.sourceExpr
+            }, context);
+          }
+          return cloned;
+        };
         const createAssignmentReference = (options: ConstructorParameters<typeof Reference>[1]) => {
           const ref = new Reference({ key }, options);
           if (node.index !== undefined) {
@@ -376,14 +387,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
               node.setCurrentValue(new List([
-                createAssignmentReference({
-                  type,
-                  fallbackValue: new Nil(),
-                  resolution: 'linear',
-                  respectStart: true,
-                  // Prevent self-referential reads while normalizing this node.
-                  filter: excludesSelf
-                }),
+                cloneWithDependency(previousDeclaration.getCurrentValue(context)),
                 value
               ]), context);
             } else {

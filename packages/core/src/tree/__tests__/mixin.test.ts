@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, nil, num, dimension, seq, amp, sellist } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, interpolatedSelector, nil, num, dimension, seq, amp, sellist } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { getParent, getSourceParent, setParent, setSourceParent } from '../util/field-helpers.js';
@@ -172,7 +172,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           color: blue;
         }
       `);
@@ -221,11 +220,9 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
-          $color: red;
           color: red;
         }
         .test2 {
-          $color: blue;
           color: blue;
         }
       `);
@@ -264,8 +261,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $size: 16px;
           color: blue;
           font-size: 16px;
         }
@@ -305,8 +300,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $b: 20;
           margin: 10px 20;
         }
       `);
@@ -377,7 +370,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
-          $color: red;
           color: red;
         }
       `);
@@ -415,7 +407,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: red;
           color: red;
         }
       `);
@@ -501,7 +492,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           color: blue;
         }
       `);
@@ -534,7 +524,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           color: blue;
         }
       `);
@@ -572,7 +561,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           .inner {
             color: blue;
           }
@@ -613,7 +601,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           background: blue;
           .inner {
             color: blue;
@@ -709,8 +696,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $color: blue;
           color: blue;
         }
       `);
@@ -758,9 +743,66 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $color: blue;
           color: blue;
+        }
+      `);
+    });
+
+    it('keeps outer mixin params available to nested emitted mixins through ruleset closure', async () => {
+      const personMixin = mixin({
+        name: any('.Person'),
+        params: list([
+          vardecl({ name: 'name', value: nil() }, { paramVar: true }),
+          vardecl({ name: 'gender_', value: nil() }, { paramVar: true })
+        ]),
+        rules: rules([
+          ruleset({
+            selector: sellist([
+              sel([
+                interpolatedSelector(interpolated({
+                  source: '.%%',
+                  replacements: [ref({ key: 'name' }, { type: 'variable' })]
+                }))
+              ])
+            ]),
+            rules: rules([
+              vardecl({
+                name: 'gender',
+                value: ref({ key: 'gender_' }, { type: 'variable' })
+              }),
+              mixin({
+                name: any('.sayGender'),
+                rules: rules([
+                  decl({ name: 'gender', value: ref({ key: 'gender' }, { type: 'variable' }) })
+                ])
+              })
+            ])
+          })
+        ])
+      });
+
+      const testRuleset = ruleset({
+        selector: el('mi-test-d'),
+        rules: rules([
+          call({
+            name: ref({ key: '.Person' }, { type: 'mixin' }),
+            args: list([any('person'), any('"Male"')])
+          }),
+          call({
+            name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
+          })
+        ])
+      });
+
+      const root = rules([personMixin, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        mi-test-d {
+          gender: "Male";
         }
       `);
     });
@@ -951,8 +993,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
         }
       `);
@@ -991,8 +1031,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
         }
       `);
@@ -1243,8 +1281,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: rest;
           padding: rest;
         }
       `);
@@ -1282,8 +1318,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px;
           margin: 20px;
         }
       `);
@@ -1321,8 +1355,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px 40px;
           padding: 20px 30px 40px;
         }
       `);
@@ -1361,9 +1393,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $b: 20px;
-          $rest: 30px 40px;
           margin: 30px 40px;
         }
       `);
@@ -1402,8 +1431,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
           padding: 20px 30px;
         }
@@ -1465,16 +1492,10 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
-          $a: 10px;
-          $b: 20px;
           color: red;
-          $a: 10px;
-          $rest: 20px;
           color: blue;
         }
         .test2 {
-          $a: 10px;
-          $rest: 20px 30px;
           color: blue;
         }
       `);

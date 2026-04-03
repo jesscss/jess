@@ -1,4 +1,5 @@
 import {
+  CALLER,
   CANONICAL,
   Node,
   F_VISIBLE,
@@ -194,16 +195,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   protected _valueOf: string | undefined;
 
   private _resolveRenderKey(context?: Context): RenderKey {
-    const renderKey = context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
-    if (renderKey === CANONICAL) {
-      const nonCanonicalParentEdgeKeys = this.parentEdges
-        ? [...this.parentEdges.keys()].filter(key => key !== CANONICAL)
-        : [];
-      if (nonCanonicalParentEdgeKeys.length === 1) {
-        return nonCanonicalParentEdgeKeys[0]!;
-      }
-    }
-    return renderKey;
+    return context?.renderKey ?? context?.rulesContext?.renderKey ?? this.renderKey;
   }
 
   getOwnSelector(): Selector | Nil | undefined {
@@ -789,6 +781,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const node = this.clone(false, undefined, context);
       node.preEvaluated = true;
       const renderKey = node._resolveRenderKey(context);
+      const selectorText = String(this.getSelector(renderKey)?.valueOf?.() ?? '');
+      if (process.env.JESS_DEBUG_LOCK === 'throw-pre-ruleset' && selectorText.includes('.call-inner-lock-mixin')) {
+        throw new Error(`[lock-pre-ruleset] ${JSON.stringify({
+          selectorText,
+          parent: this.parent?.type,
+          sourceParent: this.sourceParent?.type,
+          renderKey: String(renderKey)
+        })}`);
+      }
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
       const rulesetOptions = node.options;
@@ -1014,6 +1015,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const out = pipe(
       () => {
         const selectorText = String(this.getSelector(renderKey)?.valueOf?.() ?? '');
+        if (process.env.JESS_DEBUG_LOCK === 'throw-ruleset' && selectorText.includes('.call-inner-lock-mixin')) {
+          throw new Error(`[lock-ruleset] ${JSON.stringify({
+            selectorText,
+            parent: this.parent?.type,
+            sourceParent: this.sourceParent?.type,
+            renderKey: String(renderKey),
+            childCount: this.enterRules(context).get('value', context).length
+          })}`);
+        }
         if (
           selectorText.includes('.call-lock-mixin')
           || selectorText.includes('#guarded-caller')
