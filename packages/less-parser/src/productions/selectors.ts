@@ -20,6 +20,7 @@ import {
   AtRule,
   Interpolated,
   InterpolatedSelector,
+  AttributeSelector,
   Reference,
   Extend,
   Mixin,
@@ -85,6 +86,77 @@ const getInterpolated = (name: string, location: LocationInfo, context: TreeCont
   }
   return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
 };
+
+export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
+  const $ = this;
+
+  valueAlt ??= () => [
+    {
+      GATE: () => !$.isType(T.InterpolatedIdent),
+      ALT: () => {
+        const token = $.CONSUME5(T.Ident);
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        return new Any(token.image, { role: 'ident' }, $.getLocationInfo(token), $.context);
+      }
+    },
+    {
+      GATE: () => $.isType(T.InterpolatedIdent),
+      ALT: () => {
+        const token = $.CONSUME(T.InterpolatedIdent);
+        if ($.RECORDING_PHASE) {
+          return;
+        }
+        const match = interpolatedRegex.exec(token.image);
+        interpolatedRegex.lastIndex = 0;
+        if (match && match[0] === token.image) {
+          return createInterpolatedReference(
+            match[1]!,
+            match[2]!,
+            $.getLocationInfo(token),
+            $.context
+          );
+        }
+        const result = getInterpolatedOrString(token.image, $.getLocationInfo(token), $.context);
+        return typeof result === 'string'
+          ? new Any(result, { role: 'ident' }, $.getLocationInfo(token), $.context)
+          : result;
+      }
+    },
+    { ALT: () => $.SUBRULE($.string) }
+  ];
+
+  return (ctx: RuleContext = {}) => {
+    const RECORDING_PHASE = $.RECORDING_PHASE;
+    $.startRule();
+
+    $.CONSUME2(T.LSquare);
+    const key: Any = $.SUBRULE2($.attributeName);
+    let op: IToken | undefined;
+    let value: Node | undefined;
+    let mod: IToken | undefined;
+    $.OPTION(() => {
+      op = $.OR([
+        { ALT: () => $.CONSUME4(T.Eq) },
+        { ALT: () => $.CONSUME6(T.AttrMatch) }
+      ]);
+      value = $.OR2(valueAlt!(ctx));
+    });
+    $.OPTION2(() => mod = $.CONSUME7(T.AttrFlag));
+    $.CONSUME8(T.RSquare);
+
+    if (!RECORDING_PHASE) {
+      const location = $.endRule();
+      return new AttributeSelector({
+        name: key.valueOf(),
+        op: op?.image,
+        value,
+        mod: mod?.image
+      }, undefined, location, $.context);
+    }
+  };
+}
 
 // ── Helper: getAmpersandTemplateValue ────────────────────────────────
 

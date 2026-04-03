@@ -9,7 +9,7 @@ export {
 
 export {
   relativeSelector, forgivingSelectorList, selectorList, compoundSelector, complexSelector, ampersandExtend,
-  extend, simpleSelector, anonymousMixinDefinition, importAtRule,
+  extend, simpleSelector, attributeSelector, anonymousMixinDefinition, importAtRule,
   varDeclarationOrCall, selectorCapture, valueSequence, squareValue
 } from './selectors.js';
 

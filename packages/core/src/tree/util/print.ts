@@ -28,6 +28,8 @@ export type PrintOptions = {
   referenceFilterTargets?: boolean;
   /** Skip Comment nodes during rendering (replaces copy(true) for comment suppression). */
   suppressComments?: boolean;
+  /** Internal: allow a captured child container to keep its own frame open for sibling continuation. */
+  preserveCapturedContainerFrame?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {

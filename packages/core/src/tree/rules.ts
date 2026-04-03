@@ -445,7 +445,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       while (parent && parent.type !== 'Rules') {
         parent = getCurrentParentNode(parent, context);
       }
-      return parent as Rules | undefined;
+      if (parent) {
+        return parent as Rules | undefined;
+      }
+      let sourceParent = getSourceParent(this, context);
+      while (sourceParent && sourceParent.type !== 'Rules') {
+        sourceParent = getCurrentParentNode(sourceParent, context);
+      }
+      return sourceParent as Rules | undefined;
     });
   }
 
@@ -1018,8 +1025,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       inheritedRenderKey?: RenderKey
     ) => {
       const renderKey = rules.renderKey ?? inheritedRenderKey;
+      const scopedContext = context
+        ? (
+            renderKey !== undefined
+            && context.renderKey !== renderKey
+              ? { ...context, renderKey, rulesContext: rules } as Context
+              : (context.rulesContext !== rules
+                  ? { ...context, rulesContext: rules } as Context
+                  : context)
+          )
+        : undefined;
 
-      for (let n of rules._getRenderChildren(context)) {
+      for (let n of rules._getRenderChildren(scopedContext)) {
         if (isNode(n, N.Rules)) {
           if ((n.options as RulesOptions)?.referenceMode === true) {
             const nodeRenderKey = (n as Rules).renderKey ?? renderKey;
@@ -1035,13 +1052,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (
           visibleOnly
           && isNode(n, N.Ruleset)
-          && !isVisibleInContext(n, context)
+          && !isVisibleInContext(n, scopedContext)
           && !n.fullRender
         ) {
-          iterateRules((n as Ruleset).enterRules(context), renderKey);
+          iterateRules((n as Ruleset).enterRules(scopedContext), renderKey);
           continue;
         }
-        if (!visibleOnly || isVisibleInContext(n, context) || n.fullRender) {
+        if (!visibleOnly || isVisibleInContext(n, scopedContext) || n.fullRender) {
           if (positionMap && renderKey !== CANONICAL) {
             positionMap.set(n, { renderKey });
           }
@@ -2072,6 +2089,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ...parts.slice(1).map(part => cloneMergeValuePart(part as Node))
       ]);
     };
+    const appendMergedValue = (anchor: Declaration, value: Node, assign: string): Node => {
+      if (assign === '&_:') {
+        return isNode(value, N.Sequence)
+          ? spaced([getDeclValue(anchor), ...value.get('value', context).map(part => cloneMergeValuePart(part as Node))])
+          : spaced([getDeclValue(anchor), cloneMergeValuePart(value)]);
+      }
+      return isNode(value, N.List)
+        ? new List([
+            ...collectAddMergeParts(getDeclValue(anchor)),
+            ...value.get('value', context).map(part => cloneMergeValuePart(part as Node))
+          ])
+        : new List([
+            ...collectAddMergeParts(getDeclValue(anchor)),
+            cloneMergeValuePart(value)
+          ]);
+    };
     const isDeclarationOnlyRules = (node: Node): node is Rules => (
       isNode(node, N.Rules)
       && node._getRenderChildren(context).length > 0
@@ -2180,7 +2213,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             ...collectAddMergeParts(getDeclValue(existingAnchor)),
             ...collectAddMergeParts(currentValue)
           ])
-          : rebaseLinearMergedValue(existingAnchor, currentValue, assign) ?? currentValue;
+          : rebaseLinearMergedValue(existingAnchor, currentValue, assign)
+            ?? appendMergedValue(existingAnchor, currentValue, assign);
         setDeclValue(
           existingAnchor,
           nextAnchorValue

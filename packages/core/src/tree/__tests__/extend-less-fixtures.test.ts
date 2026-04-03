@@ -19,6 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
+import { LessParser } from '../../../../less-parser/src/index.ts';
 import {
   any,
   amp,
@@ -483,6 +484,40 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }`.trim());
   });
 
+  it('3b. parser-backed nested wrapped extend keeps parent context for &:hover', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+.button {
+  color: black;
+  &:hover {
+    color: inherit;
+  }
+}
+.submit {
+  &:extend(.button);
+  &:hover:extend(.button:hover) {}
+}
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    const context = new Context({ collapseNesting });
+    context.root = tree;
+    const evald = await tree.eval(context);
+    const css = evald.render(context);
+
+    expect(css.trim()).toBeString(`
+.button,
+.submit {
+  color: black;
+}
+:is(.button, .submit):hover,
+.submit:hover {
+  color: inherit;
+}
+    `.trim());
+  });
+
   /**
    * 4. extend-selector.less – full fixture parity for all-less failing shape.
    */
@@ -699,10 +734,40 @@ div:is(.ext5, .ext7),
 `.trim());
   });
 
+  it('4b. parser-backed extend-selector attribute interpolation resolves before extend matching', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      .attributes {
+        @attr-data: "test3";
+        [data=@{attr-data}] {
+          extend: attributes2;
+        }
+        .attribute-test {
+          &:extend([data="test3"] all);
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    const context = new Context({ collapseNesting: false });
+    context.root = tree;
+    const evald = await tree.eval(context);
+    const css = evald.render(context);
+
+    expect(css.trim()).toBeString(`
+.attributes {
+  [data="test3"],
+  .attribute-test {
+    extend: attributes2;
+  }
+}
+    `.trim());
+  });
+
   /**
    * 5. extend.less – .aa .dd, .bb .bb, .cc:extend(.aa,.bb), .ee:extend(.dd all,.bb), .ff:extend(.dd,.bb all)
    * Expected: .aa,.cc { .dd,.ee,.ff { background: red } }; .bb,.cc,.ee,.ff { .bb,.ff { color: black } }
-   * Current: .ee missing from first block; .cc wrongly in second inner
    */
   it('5. extend.less – .aa/.cc .dd/.ee/.ff and .bb/.cc/.ee/.ff .bb/.ff', async () => {
     const root = rules([

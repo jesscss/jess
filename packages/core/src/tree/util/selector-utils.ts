@@ -6,6 +6,7 @@ import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { BasicSelector } from '../selector-basic.js';
 import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './ampersand-template.js';
+import type { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Node, RenderKey } from '../node.js';
 import { isNode } from './is-node.js';
@@ -123,11 +124,44 @@ export function getCurrentParentNode(node: Node, context?: Context | RenderKey):
 
 /** Walk node.parent → Rules → Ruleset to find the containing Ruleset, if any. */
 export function getParentRuleset(node: Node, context?: Context): Ruleset | undefined {
-  const rules = getCurrentParentNode(node, context);
-  const parent = rules && getCurrentParentNode(rules, context);
-  return parent && isNode(parent, N.Ruleset)
-    ? parent
-    : undefined;
+  const visited = new Set<Node>();
+  let current = getCurrentParentNode(node, context);
+
+  while (current && !visited.has(current)) {
+    if (isNode(current, N.Ruleset)) {
+      return current;
+    }
+    visited.add(current);
+    current = getCurrentParentNode(current, context);
+  }
+
+  return undefined;
+}
+
+export function hasSourceExtendWrapperParent(node: Node): boolean {
+  const parent = node.parent;
+  if (!isNode(parent, N.Rules)) {
+    return false;
+  }
+
+  const sourceRules = isNode(parent.sourceNode, N.Rules)
+    ? parent.sourceNode as Rules
+    : parent;
+  const sourceChildren = sourceRules.value;
+
+  let sawExtend = false;
+  let sawRuleset = false;
+  for (const child of sourceChildren) {
+    if (isNode(child, N.Extend)) {
+      sawExtend = true;
+      continue;
+    }
+    if (isNode(child, N.Ruleset)) {
+      sawRuleset = true;
+    }
+  }
+
+  return sawExtend && sawRuleset;
 }
 
 function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
@@ -541,12 +575,10 @@ function composeSelectorRouteWithParent(
   if (selectorHasAuthoredAmpersand(childCopy)) {
     return resolveAuthoredAmpersands(childCopy, parentSelector);
   }
-  const parentFragment = wrapParentSelectorForNestedContext(parentSelector, collapseNesting);
+  const parentParts = getParentReplacementForAmpersand(parentSelector, true);
 
   if (isNode(childCopy, N.ComplexSelector)) {
-    const nextData = isNode(parentFragment, N.ComplexSelector)
-      ? [...parentFragment.get('value')]
-      : [parentFragment];
+    const nextData = [...parentParts];
 
     if (!isNode(childCopy.get('value')[0], N.Combinator)) {
       nextData.push(Combinator.create(' '));
@@ -557,7 +589,7 @@ function composeSelectorRouteWithParent(
   }
 
   return ComplexSelector.create([
-    parentFragment,
+    ...parentParts,
     Combinator.create(' '),
     childCopy
   ]).inherit(selector);
@@ -570,11 +602,13 @@ function composeSelectorRouteWithParent(
  * The historical `getImplicitSelector()` name is kept for compatibility with
  * callers and tests, but the implementation is now pure selector composition.
  *
- * - Selector-list children keep their list shape when each item can be
- *   independently prefixed by the parent.
+ * - Start-position parent composition follows the same rule as authored `&`:
+ *   selector-list parents stay one fragment via generated `:is(...)`, while
+ *   non-list parents splice directly.
+ * - Selector-list children keep their list shape after composition.
  * - Selector-list children containing complex items are grouped under one
  *   generated `:is(...)` before the parent is composed so the common parent
- *   does not have to be duplicated across every alternate.
+ *   stays shared.
  * @param collapseNesting - Whether to collapse nesting (affects visibility flags)
  * @returns The composed selector
  */

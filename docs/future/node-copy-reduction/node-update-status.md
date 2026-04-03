@@ -160,6 +160,15 @@ Primary files:
 - `packages/core/src/tree/at-rule.ts`
 - `packages/core/src/tree/util/serialize-helper.ts`
 
+Current warning:
+
+- `Rules` / `Ruleset` serialization still has too much shape recovery through
+  rendered-text inspection.
+- Checks based on string prefixes, start characters, or already-serialized
+  selector text should be treated as temporary migration debt.
+- The target cleanup is node-shape-driven serialization scheduling, not more
+  text comparisons in `serialize-helper.ts`.
+
 ## Node Conversion Status
 
 This section tracks only edge/cursor conversion status.
@@ -183,7 +192,7 @@ This section tracks only edge/cursor conversion status.
 | `AtRule`               | `in_progress`   | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. The remaining live issue is not raw `AtRule` field access; it is the parser-generated reference-import activation / ancestry path that still fails in real Less integration.                                                            |
 | `Reference`            | `in_progress`   | Lookup-parent walk still depends on `context.rulesContext` and `Rules.renderParent` as side channels, but `Reference` no longer re-identifies resolved definition-like nodes through generic eval inheritance. That guard now protects mixin/ruleset/function lookups from being re-registered as bogus `EVAL` definitions. Remaining work is to make reference-import activation and ruleset-as-mixin ancestry use the render-owned path directly instead of the side channels.                                                                                                                                       |
 | `Call`                 | `in_progress`   | Direct dispatch and render-key-owned result shaping are in place. The remaining production seam is narrower: function/mixin call-time result processing still has a few ownership-sensitive branches, but the old “not converted” wrapper model is gone.                                                                                                                                                                                                                                                                                                                                          |
-| `Mixin`                | `in_progress`   | Direct mixin invocation primitives and render-key scopes are in place. Remaining work is the last wrapper/ownership seams around output placement, not the old temporary-mixin architecture.                                                                                                                                                                                                                                                                                                                                                         |
+| `Mixin`                | `in_progress`   | Direct mixin invocation primitives and render-key scopes are in place. A real child-edge bug was fixed here: `Mixin.preEval()` now reattaches `rules` / `params` / `guard` children on the active render-key path, and guarded dispatch now reads the current guard surface instead of a canonical `candidate.get('guard')` read. That removed the old emitted-nested-mixin closure failure in `mixins-guards.less`. The selector-composition follow-up for `mixins-interpolated.less` is also green again after restoring the start-aware parent-selector path for explicit leading ampersands. Remaining work is output/selector ownership cleanup, not the old temporary-mixin architecture.                                                                                                                                                                     |
 | `Control`              | `in_progress`   | Runtime-generated numeric render keys landed for loop placements, and narrow loop proofs now exist. The remaining work is final production conversion of loop/output ownership, not more test-side patching.                                                                                                                                                                                                                                                                                                                                      |
 
 
@@ -192,10 +201,12 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 ## Immediate Next Work
 
 1. Stay on narrow production surfaces only: pick one component, convert one owner/path seam, and verify it with a focused proof test.
-2. Fix the real live Less integration blocker in `tests-unit/import/import-reference.less`: reference-import activation and ruleset-as-mixin ancestry still need to render through the activated selector path instead of the reference-only source path.
-3. Keep the extend/import frontier grounded in the actual failing fixture output, not the older exact-extend `&&` / nested `@media` storyline that is no longer the top-line blocker.
-4. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
-5. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
+2. Keep the extend/import frontier grounded in the actual failing fixture output. Current live extend work is split between:
+   - selector-shape-only output in `extend-nest.less`
+   - a parser-backed exact/local extend seam in `extend.less`
+   - selector ordering / activation behavior in `import-reference.less`
+3. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
+4. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
 
 ## Transitional Baggage To Remove
 

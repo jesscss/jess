@@ -476,16 +476,15 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
 
       let result: Selector | Nil;
       const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (hoistToRoot || template !== undefined);
-      const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
 
-      if (shouldWrapSelectorList || shouldWrapComplexSelector) {
+      if (shouldWrapSelectorList) {
         result = PseudoSelector.create({ name: ':is', arg: selector });
         result.generated = true;
       } else {
         result = selector;
       }
 
-      if (template !== undefined || shouldWrapSelectorList || shouldWrapComplexSelector || hoistToRoot) {
+      if (template !== undefined || shouldWrapSelectorList || hoistToRoot) {
         result.hoistToRoot = true;
       }
       return result;

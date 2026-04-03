@@ -1,4 +1,4 @@
-import { CANONICAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
+import { CANONICAL, EVAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
 import type { Any, AnyRole } from './any.js';
@@ -229,9 +229,14 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    let node = this.clone();
+    const edgeContext = {
+      ...context,
+      renderKey: context.renderKey ?? EVAL
+    } as Context;
+    let node = this.clone(false, undefined, edgeContext);
     node.preEvaluated = true;
     node.sourceNode ??= this;
+    node.renderKey = edgeContext.renderKey;
 
     const name = node.get('name', context);
     let rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);

@@ -16,7 +16,7 @@ import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
-import { getCurrentParentNode, getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
+import { getCurrentParentNode, getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, hasSourceExtendWrapperParent, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -574,6 +574,12 @@ function getRulesetExtendTarget(
   }
 
   const ownSelector = ruleset.getOwnSelector(context);
+  if (hasSourceExtendWrapperParent(ruleset)) {
+    return {
+      selector,
+      usingOwnSelector: false
+    };
+  }
   // Bare `&` rulesets are pure mirrors of their parent selector and are updated
   // by refreshNestedRulesetSelectors when the parent is extended. Skip direct
   // extend processing so selectorBeforeExtend is not incorrectly set on them.

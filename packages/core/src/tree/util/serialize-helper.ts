@@ -408,12 +408,19 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         if (isRulesetNode(node) && isRulesetNode(n)) {
           const parentSelector = getRenderableSelectorString(node, options.collapseNesting, options.context);
           const childSelector = getRenderableSelectorString(n, options.collapseNesting, options.context);
+          const childContinuation = parentSelector !== '' && childSelector.startsWith(parentSelector)
+            ? childSelector[parentSelector.length]
+            : undefined;
           const isExpandedDescendant = parentSelector !== '' && (
-            childSelector.startsWith(`${parentSelector} `)
-            || childSelector.startsWith(`${parentSelector}.`)
-            || childSelector.startsWith(`${parentSelector}#`)
-            || childSelector.startsWith(`${parentSelector}:`)
-            || childSelector.startsWith(`${parentSelector}[`)
+            childContinuation === ' '
+            || childContinuation === '.'
+            || childContinuation === '#'
+            || childContinuation === ':'
+            || childContinuation === '['
+            || childContinuation === '>'
+            || childContinuation === '+'
+            || childContinuation === '~'
+            || childContinuation === '|'
           );
           const isSelfWrappedDescendant = parentSelector !== ''
             && (
@@ -421,8 +428,14 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
               || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
             );
           const hasLaterExternalNonContainer = Boolean(getLaterExternalNonContainer(n, childSelector));
+          const shouldDeferExpandedDescendant = (
+            options.collapseNesting === true
+            && isExpandedDescendant
+            && !isSelfWrappedDescendant
+            && hasLaterExternalNonContainer
+          );
           if (
-            hasLaterExternalNonContainer
+            (shouldDeferExpandedDescendant || hasLaterExternalNonContainer)
             && (
               isExpandedDescendant
               || isAtRuleNode(n)
@@ -468,7 +481,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
           ...options,
           referenceMode: childReferenceMode,
           referenceRenderEnabled: childReferenceRenderEnabled,
-          referenceRenderOnExtend: previousReferenceRenderOnExtend
+          referenceRenderOnExtend: previousReferenceRenderOnExtend,
+          preserveCapturedContainerFrame: true
         };
         const childOut = w.capture(() => n.toTrimmedString(childOptions));
         if (!childOut) {
@@ -565,24 +579,26 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
   inFrames.pop();
   frameHeaders.pop();
+  const frameCloseBase = options.preserveCapturedContainerFrame
+    ? treeFrames.length + 1
+    : treeFrames.length;
+  while (lastRenderedFrames.length > frameCloseBase) {
+    w.add(indent(lastRenderedFrames.length - 1) + '}\n');
+    options.depth = Math.max(frameCloseBase, options.depth - 1);
+    lastRenderedFrames.pop();
+  }
   if (prevTreeFrames) {
     treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
-  }
-  let renderedLength = lastRenderedFrames.length;
-  if (treeFrames.length < renderedLength) {
-    w.add(indent(renderedLength - 1) + '}\n');
-    options.depth--;
-    lastRenderedFrames.pop();
   }
   for (const deferred of deferredExpandedChildren) {
     const deferredWriter = new OutputWriter();
     const childOptions: FinalPrintOptions = {
       ...options,
       writer: deferredWriter,
-      frameHeaders: [],
-      lastRenderedFrames: [],
-      treeFrames: [],
-      inFrames: [],
+      frameHeaders,
+      lastRenderedFrames,
+      treeFrames,
+      inFrames: treeFrames,
       referenceMode: inReferenceMode,
       referenceRenderEnabled: renderEnabled,
       referenceRenderOnExtend: previousReferenceRenderOnExtend

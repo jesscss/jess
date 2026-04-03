@@ -1,6 +1,8 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, amp } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, amp, interpolated, interpolatedSelector, ref, co } from '../index.js';
 import { Context } from '../../context.js';
 import { getParentEdge } from '../util/cursor.js';
+import { LessParser } from '../../../../less-parser/src/index.ts';
+import { getImplicitSelector as getImplicitSelectorUtil } from '../util/selector-utils.js';
 
 let context: Context;
 
@@ -32,6 +34,310 @@ describe('Rule', () => {
         color: red;
       }
     `);
+  });
+
+  it('collapses an interpolated child selector under a relative parent selector without wrapping a single parent complex in :is()', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      @c1: foo;
+      @c2: bar;
+      @c3: baz;
+
+      #@{c1}-foo {
+        > .@{c2} {
+          .@{c3} {
+            c: c;
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      #foo-foo > .bar .baz {
+        c: c;
+      }
+    `);
+  });
+
+  it('composes a source relative interpolated parent selector without wrapping a single parent complex in :is()', () => {
+    const parentSelector = sel([
+      co('>'),
+      interpolatedSelector(interpolated({
+        source: '.%%',
+        replacements: [ref('c2')]
+      }))
+    ]);
+    const childSelector = interpolatedSelector(interpolated({
+      source: '.%%',
+      replacements: [ref('c3')]
+    }));
+
+    const composed = getImplicitSelectorUtil(childSelector, parentSelector, true);
+
+    expect(composed.valueOf()).toBe('>.%% .%%');
+  });
+
+  it('parser-backed collapse keeps the parent declaration block before descendant outputs', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      .parent {
+        .child {
+          color: red;
+        }
+        content: "done";
+        prop: red;
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      .parent {
+        content: "done";
+        prop: red;
+      }
+      .parent .child {
+        color: red;
+      }
+    `);
+  });
+
+  it('parser-backed collapse keeps parent blocks before combinator-prefixed expanded descendants', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      #first > .one {
+        > #second .two > #deux {
+          width: 50%;
+        }
+        font-size: 2em;
+        hasOwnProperty: blue;
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      #first > .one {
+        font-size: 2em;
+        hasOwnProperty: blue;
+      }
+      #first > .one > #second .two > #deux {
+        width: 50%;
+      }
+    `);
+  });
+
+  it('parser-backed collapse hoists authored ampersand descendants out of nested parent blocks', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      #first > .one {
+        > #second .two > #deux {
+          width: 50%;
+          #third {
+            &:focus {
+              color: black;
+            }
+            height: 100%;
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      #first > .one > #second .two > #deux {
+        width: 50%;
+      }
+      #first > .one > #second .two > #deux #third {
+        height: 100%;
+      }
+      #first > .one > #second .two > #deux #third:focus {
+        color: black;
+      }
+    `);
+  });
+
+  it('parser-backed deferred expanded descendants preserve enclosing at-rule frames', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      @media screen {
+        .container {
+          color: red;
+          .child {
+            color: blue;
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      @media screen {
+        .container {
+          color: red;
+        }
+        .container .child {
+          color: blue;
+        }
+      }
+    `);
+  });
+
+  it('parser-backed deferred descendants close inherited at-rule frames before sibling outputs', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      @supports (sandwitch: bread) {
+        .in1 {
+          .in2 {
+            property: value;
+          }
+        }
+      }
+
+      .top {
+        .inside & {
+          @supports (sandwitch: ham) {
+            property: value;
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      @supports (sandwitch: bread) {
+        .in1 .in2 {
+          property: value;
+        }
+      }
+      @supports (sandwitch: ham) {
+        .inside .top {
+          property: value;
+        }
+      }
+    `);
+  });
+
+  it('parser-backed collapse keeps expanded descendants in source order before later nested at-rules', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      .body {
+        @media print {
+          padding: 20px;
+
+          header {
+            background-color: red;
+          }
+
+          @media (orientation: landscape) {
+            margin-left: 20px;
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      @media print {
+        .body {
+          padding: 20px;
+        }
+        .body header {
+          background-color: red;
+        }
+        @media (orientation: landscape) {
+          .body {
+            margin-left: 20px;
+          }
+        }
+      }
+    `);
+  });
+
+  it('parser-backed collapse merges adjacent sibling rulesets with the same expanded selector', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      .parent {
+        &-2 { a: 1; }
+        &-2 { b: 2; }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      .parent-2 {
+        a: 1;
+        b: 2;
+      }
+    `);
+  });
+
+  it('expands implicit nesting under a selector-list parent instead of grouping the parent with :is()', () => {
+    const parentSelector = sellist([
+      el('#fourth'),
+      el('#five'),
+      el('#six')
+    ]);
+    const childSelector = el('#ten');
+
+    const composed = getImplicitSelectorUtil(childSelector, parentSelector, true);
+
+    expect(composed.valueOf()).toBe('#fourth #ten,#five #ten,#six #ten');
+  });
+
+  it('expands each child route against each selector-list parent alternative', () => {
+    const parentSelector = sellist([
+      el('#fourth'),
+      el('#five'),
+      el('#six')
+    ]);
+    const childSelector = sellist([
+      el('.seven'),
+      sel([el('.eight'), co('>'), el('#nine')])
+    ]);
+
+    const composed = getImplicitSelectorUtil(childSelector, parentSelector, true);
+
+    expect(composed.valueOf()).toBe('#fourth .seven,#five .seven,#six .seven,#fourth .eight>#nine,#five .eight>#nine,#six .eight>#nine');
   });
 
   it('should serialize to CSS', () => {

@@ -144,6 +144,32 @@ describe('Ampersand', () => {
     );
   });
 
+  it('does not wrap a hoisted leading implicit ampersand when the resolved parent is a single complex selector', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('#foo-foo'), co('>'), el('.bar')]),
+        rules: rules([
+          ruleset({
+            selector: el('.baz'),
+            rules: rules([
+              decl({ name: 'c', value: any('c') })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    context = new Context({ collapseNesting: true });
+    const evald = await node.eval(context);
+    const css = evald.render(context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      #foo-foo > .bar .baz {
+        c: c;
+      }
+    `);
+  });
+
   it('should render explicit ampersand template forms', () => {
     expect(amp().toTrimmedString()).toBe('&');
     expect(amp({ template: '' }).toTrimmedString()).toBe('&()');

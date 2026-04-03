@@ -84,14 +84,14 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   `defineFunction()` should eventually stop using a `Proxy` for metadata
   exposure and attach stable metadata (`name`, `options`, `_internal`)
   directly to the callable instead
-- recent guard debugging narrowed one live Less seam:
-  `tests-unit/mixins-guards/mixins-guards.less` is no longer blocked on the old
-  lock-closure / recursive-mixin failures. The live failure is now
-  `ReferenceError: 'space-list' is not defined`, and the reduced repro only
-  fails when the earlier `.variouse-types-comparison` guarded-mixin calls run
-  before `.list-comparison`. Treat that as runtime state leakage / reuse across
-  repeated guarded mixin evaluation until proven otherwise; do not go back to
-  broad parser-shape or mixin-output rewrites first.
+- recent guard debugging produced two durable rules:
+  - emitted nested mixin definitions must keep their current-placement
+    `rules/params/guard` children attached on the active render-key path during
+    `Mixin.preEval()`
+  - guarded mixin evaluation must use the current guard read surface, not a
+    canonical `candidate.get('guard')` read with no context
+  Those fixes removed the old lock-closure regression and brought
+  `tests-unit/mixins-guards/mixins-guards.less` back to green.
 - the end-state is to remove generic `Node.clone()` / `Node.copy()` as ordinary
   runtime tools from `node-base`; until then, every production callsite is
   suspect and must justify itself in `node-update-status.md`
@@ -133,45 +133,22 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - Two narrow guarded-mixin proofs are green again:
   - `tests-unit/mixins-closure/mixins-closure.less`
   - `tests-unit/mixins/mixins-advanced.less`
-- The remaining real runtime red that now has the best focused repro is
-  `tests-unit/mixins-interpolated/mixins-interpolated.less`.
-  Current parser-accurate core repro lives in
-  `packages/core/src/tree/__tests__/mixin.test.ts` and fails with
-  `ReferenceError: 'gender_' is not defined` for the
-  `.Person(person, "Male"); .person.sayGender();` case.
-  Treat that as the active closure/invocation-scope seam:
-  emitted interpolated nested rulesets are reachable, but outer param scope is
-  still being lost while the outer mixin body is evaluated.
-  The working model to preserve while debugging it is:
-  - `.parent` is the current primary lookup path for the placement
-  - `sourceParent` remains the canonical definition owner
-  - caller fallback stays additive on `parentEdges.get(CALLER)`
-  - direct canonical reads should use direct fields, while current-placement
-    reads must stay on edge-aware accessors
-- Minimal production-shaped repros for nested lock capture and recursive mixins
-  are green. The remaining live Less blocker in that family is still
-  `tests-unit/mixins-guards/mixins-guards.less`.
-- The current reduced repro for that fixture is:
-  - shared `.generic(...)` guarded overloads
-  - `.variouse-types-comparison { ... }`
-  - `.list-comparison { ... }`
-  with the failure only appearing when the earlier guarded calls run first.
-  The hard `ReferenceError: 'space-list' is not defined` has now been removed by
-  normalizing invocation source-parent selection away from reference/call
-  pseudo-owners and by anchoring call-site container arg values. The remaining
-  issue in that same fixture is smaller but still real: repeated guarded calls
-  are leaving output/closure regressions (missing spaces in emitted `content:`
-  values and a dropped `.call-lock-mixin .call-inner-lock-mixin` block).
-  Current narrowing: the emitted nested `.inner-locked-mixin(@x: @a)` definition
-  survives, but its later sibling call still collapses to `Nil`. The live seam
-  is closure ancestry for emitted nested mixin definitions: current lookup
-  should come from placement edges, while `sourceParent` should remain the
-  canonical definition owner.
+- `tests-unit/mixins-interpolated/mixins-interpolated.less` is green again.
+  The fix came from restoring the start-aware ampersand / parent-selector
+  composition path so explicit leading parent selectors no longer get wrapped
+  in unnecessary generated `:is(...)`.
+- Focused core proofs now cover the formerly-live closure seam directly in
+  `packages/core/src/tree/__tests__/mixin.test.ts`:
+  - emitted namespace rules stay lookup-visible but render-hidden
+  - emitted nested mixins keep closure/default-param behavior
+  - same-named globals do not shadow emitted nested mixin closure
 
 ## Current Jess Red Set
 
-After the latest rebuild and runtime fixes, `packages/jess/test/less/all-less.test.ts`
-is down to 12 reds.
+After the latest rebuild and runtime fixes, the guarded-mixin runtime red is
+gone and `mixins-interpolated.less` is green. The remaining reds in
+`packages/jess/test/less/all-less.test.ts` should be treated as the new
+frontier.
 
 Likely exact-output / fixture-drift cases:
 
@@ -183,19 +160,41 @@ Likely exact-output / fixture-drift cases:
 
 Still-real runtime / semantic cases:
 
-- `tests-unit/extend-selector/extend-selector.less`
 - `tests-unit/extend/extend.less`
-- `tests-unit/mixins-guards/mixins-guards.less`
-- `tests-unit/mixins-interpolated/mixins-interpolated.less`
-- `tests-unit/starting-style/starting-style.less`
-- `tests-unit/urls/urls.less`
+- `tests-unit/import/import-reference.less`
 
 Borderline / mixed:
 
-- `tests-unit/import/import-reference.less`
-  now mostly reflects selector-shape / ordering differences again rather than
-  the earlier activation failure, so treat it carefully before spending more
-  runtime effort there.
+- `tests-unit/extend-selector/extend-selector.less`
+- `tests-unit/starting-style/starting-style.less`
+- `tests-unit/urls/urls.less`
+
+Current extend-specific state:
+
+- `tests-unit/extend-nest/extend-nest.less`
+  no longer leaks a raw `&:hover` branch. The remaining diff is selector shape
+  only: Jess emits `:is(.button, .submit):hover, .submit:hover` where the Less
+  fixture expects `.button:hover, .submit:hover`.
+- `tests-unit/extend/extend.less`
+  is still a real parser-backed/runtime seam. The hand-built core proof is
+  green, but the parser-backed Less fixture still drops `.ff` from the nested
+  `.dd` branch. The live bug appears after earlier local `all` extension has
+  widened a nested own-selector list, so the later exact `.ff:extend(.dd, ...)`
+  instruction no longer lands on the local nested target.
+
+Serialization note:
+
+- `Rules` / `Ruleset` serialization still carries too much ad-hoc control flow,
+  especially in `packages/core/src/tree/util/serialize-helper.ts`.
+- Current text-prefix / start-character checks are transitional debugging debt,
+  not acceptable target architecture.
+- Future cleanup should move those decisions onto node shape and explicit
+  ownership state:
+  - container kind
+  - selector structure
+  - hoist / defer ownership
+  - reference-boundary behavior
+  rather than string inspection of already-rendered selectors.
 
 ## What To Delete Over Time
 

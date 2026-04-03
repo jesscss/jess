@@ -340,12 +340,31 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (!rulesScope) {
             return undefined;
           }
-          return rulesScope.find('declaration', `${key.valueOf()}`, 'Declaration', {
+          const found = rulesScope.find('declaration', `${key.valueOf()}`, 'Declaration', {
             context,
             local: true,
             start: node.index,
             filter: isPriorMergedDeclaration
           });
+          if (found) {
+            return found;
+          }
+          const children = rulesScope.getRegistryChildren(context);
+          const start = Math.min(
+            Math.max((node.index ?? children.length) - 1, -1),
+            children.length - 1
+          );
+          for (let i = start; i >= 0; i--) {
+            const candidate = children[i];
+            if (
+              candidate
+              && String((candidate as Declaration).name?.valueOf?.() ?? '') === key.valueOf()
+              && isPriorMergedDeclaration(candidate)
+            ) {
+              return candidate;
+            }
+          }
+          return undefined;
         };
         /** Reference type */
         let type: 'property' | 'variable' =

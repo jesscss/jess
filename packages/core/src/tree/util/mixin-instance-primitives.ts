@@ -1,5 +1,5 @@
 import { Context } from '../../context.js';
-import { Node } from '../node-base.js';
+import { EVAL, Node } from '../node-base.js';
 
 import { Bool } from '../bool.js';
 import type { Condition } from '../condition.js';
@@ -308,6 +308,14 @@ function captureMixinScopeSnapshot(
   );
   captured.parent = getParent(scope, context);
   captured.sourceParent = scope.sourceParent;
+  const capturedContext = {
+    ...context,
+    renderKey: captured.renderKey,
+    rulesContext: captured
+  } as Context;
+  for (const child of capturedChildren) {
+    captured.registerNode(child, undefined, capturedContext);
+  }
   return captured;
 }
 
@@ -389,9 +397,7 @@ function bindStructuralSourceParent(
     return;
   }
   for (const key of childKeys) {
-    const value = typeof (node as unknown as { get?: (k: string, ctx?: Context) => unknown }).get === 'function'
-      ? (node as unknown as { get: (k: string, ctx?: Context) => unknown }).get(key, context)
-      : (node as unknown as Record<string, unknown>)[key];
+    const value = (node as unknown as Record<string, unknown>)[key];
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item instanceof Node) {
@@ -422,9 +428,7 @@ function bindStructuralParentTree(
     return;
   }
   for (const key of childKeys) {
-    const value = typeof (node as unknown as { get?: (k: string, ctx?: Context) => unknown }).get === 'function'
-      ? (node as unknown as { get: (k: string, ctx?: Context) => unknown }).get(key, context)
-      : (node as unknown as Record<string, unknown>)[key];
+    const value = (node as unknown as Record<string, unknown>)[key];
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item instanceof Node) {
@@ -437,6 +441,30 @@ function bindStructuralParentTree(
       bindStructuralParentTree(value, node, context, seen);
     }
   }
+}
+
+function projectParentChainForRenderKey(
+  node: Node | undefined,
+  sourceContext: Context,
+  targetContext: Context,
+  seen: Set<Node> = new Set()
+): void {
+  if (!node || seen.has(node)) {
+    return;
+  }
+  seen.add(node);
+  const nodeSourceContext = {
+    ...sourceContext,
+    renderKey: node.renderKey ?? sourceContext.renderKey
+  } as Context;
+  const parent = getParent(node, nodeSourceContext);
+  if (!parent) {
+    return;
+  }
+  if (getParent(node, targetContext) !== parent) {
+    setParent(node, parent, targetContext);
+  }
+  projectParentChainForRenderKey(parent, sourceContext, targetContext, seen);
 }
 
 function anchorCallSiteValue(
@@ -1116,12 +1144,11 @@ export async function processPreparedMixinCandidate<TCandidate>(
     };
   }
 
-  const capturedOuterRules = getCapturedOuterRules();
   await withMixinLookupScope(
-    capturedOuterRules ?? rules,
+    nextOuterRules ?? rules,
     pendingLookupScope(),
     context,
-    () => evaluateCandidateOutput(candidate, rules, capturedOuterRules, params)
+    () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
   );
   return undefined;
 }
@@ -1577,8 +1604,11 @@ export async function evaluateCandidateOutput(
     getCandidateParent: getParentFn
   } = opts;
   const currentCall = context.callStack.at(-1);
-  if (currentCall && context.callMap.add(currentCall, params, context)) {
-    return;
+  if (currentCall) {
+    const isRecursive = context.callMap.add(currentCall, params, context);
+    if (isRecursive) {
+      return;
+    }
   }
   try {
     const callerParent = getParentFn(candidate);
@@ -1591,17 +1621,18 @@ export async function evaluateCandidateOutput(
     );
     const lexicalSourceParent = candidateSourceParent ?? callerParent;
     const capturedOuterSourceParent = outerRules
-      ? (() => {
-          const captured = outerRules.createPlacementWrapper(undefined, outerRules.renderKey);
-          captured.parent = getParent(outerRules, context);
-          captured.sourceParent = outerRules.sourceParent;
-          return captured;
-        })()
+      ? captureMixinScopeSnapshot(outerRules, undefined, {
+          ...context,
+          renderKey: outerRules.renderKey,
+          rulesContext: outerRules
+        } as Context)
       : undefined;
-    setParent(rules, outerRules ?? callerParent, {
+    const rulesContext = {
       ...context,
-      renderKey: rules.renderKey
-    } as Context);
+      renderKey: rules.renderKey,
+      rulesContext: rules
+    } as Context;
+    setParent(rules, outerRules ?? callerParent, rulesContext);
     rules.sourceParent = candidateSourceParent ?? lexicalSourceParent;
     const previousRenderKey = context.renderKey;
     context.renderKey = rules.renderKey;
@@ -1613,7 +1644,7 @@ export async function evaluateCandidateOutput(
         rulesContext: rules
       } as Context;
       for (const child of rules.getRegistryChildren(evalContext)) {
-        bindStructuralParentTree(child, rules, evalContext);
+        addParentEdge(child, EVAL, rules);
       }
       newRules = await rules.eval(context);
     } finally {
@@ -1623,9 +1654,16 @@ export async function evaluateCandidateOutput(
     if (newRules.renderKey === CANONICAL) {
       newRules.renderKey = rules.renderKey;
     }
-    newRules.parent = invocationParent ?? callerParent;
+    const newRulesContext = {
+      ...context,
+      renderKey: newRules.renderKey,
+      rulesContext: newRules
+    } as Context;
+    setParent(newRules, invocationParent ?? callerParent, newRulesContext);
+    projectParentChainForRenderKey(invocationParent ?? callerParent, context, newRulesContext);
     newRules.sourceParent = candidateSourceParent ?? lexicalSourceParent;
     newRules.index = candidate.index;
+    finalizeInvocationOutputRules(newRules, newRulesContext);
 
     if (outerRules) {
       const previousRenderKey = context.renderKey;
@@ -1649,11 +1687,13 @@ export async function evaluateCandidateOutput(
         rulesContext: outputContainer
       } as Context;
       for (const child of outputChildren) {
-        bindStructuralParentTree(child, outputContainer, outputContext);
+        setParent(child, outputContainer, outputContext);
         bindStructuralSourceParent(child, capturedOuterSourceParent ?? outerRules, outputContext);
       }
-      outputContainer.parent = invocationParent ?? callerParent;
-      addParentEdge(outputContainer, CALLER, outerRules);
+      setParent(outputContainer, outerRules, outputContext);
+      if (invocationParent ?? callerParent) {
+        addParentEdge(outputContainer, CALLER, (invocationParent ?? callerParent)!);
+      }
       outputContainer.sourceParent = capturedOuterSourceParent ?? outerRules ?? candidateSourceParent ?? lexicalSourceParent;
       outputContainer.index = candidate.index;
       outputContainer.options.isMixinOutput = false;
@@ -1823,15 +1863,15 @@ export async function dispatchMixinEvalCandidates(
     );
     rules = prepared.rules;
     params = prepared.params;
-    const canonicalGuard = candidate.get('guard');
+    const currentGuard = getCurrentRulesetGuard(candidate, candidateRenderKey ?? context) as Condition | Bool | undefined;
     const candidateHasDefault = Boolean(candidate.options?.hasDefault)
-      || guardContainsDefault(canonicalGuard as Node | undefined);
+      || guardContainsDefault(currentGuard as Node | undefined);
     const pendingDefaultCandidate = await processPreparedMixinCandidate({
       candidate,
       rules,
       params,
       outerRules: prepared.outerRules,
-      guard: canonicalGuard,
+      guard: currentGuard,
       parent: getCandidateParent(candidate),
       guardScopeChildren: prepared.guardScopeChildren,
       hasAnyDefault: hasDefault,

@@ -1,6 +1,7 @@
-import { coll, decl, rules, ruleset, el, color, any, expr, num, ref, amp, sel } from '../index.js';
+import { atrule, coll, decl, rules, ruleset, el, color, any, expr, num, ref, amp, sel } from '../index.js';
 import { Context } from '../../context.js';
 import { AssignmentType } from '../declaration.js';
+import { isVisibleInContext } from '../node-base.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -192,6 +193,52 @@ describe('Declaration', () => {
       }
       ab {
         background: red, foo;
+      }
+    `);
+  });
+
+  it('preserves merge-sequence declarations inside nested @starting-style blocks', async () => {
+    const node = rules([
+      ruleset({
+        selector: el('.x'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              decl({ name: 'padding', value: any('10px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: 'padding', value: any('8px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: 'padding', value: any('6px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: 'padding', value: any('4px') }, { assign: AssignmentType.MergeSequence })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evalContext = new Context();
+    const evald = await node.eval(evalContext);
+    const outerRuleset = evald.at(0, evalContext) as ReturnType<typeof ruleset>;
+    const outerRules = outerRuleset.enterRules(evalContext)!;
+    const startingStyle = outerRules.at(0, evalContext) as ReturnType<typeof atrule>;
+    const startingStyleRules = startingStyle.enterRules(evalContext)!;
+    const startingStyleContext = {
+      ...evalContext,
+      renderKey: startingStyleRules.renderKey,
+      rulesContext: startingStyleRules
+    } as Context;
+    const startingStyleChildren = startingStyleRules.getRegistryChildren(startingStyleContext);
+
+    expect(startingStyleChildren).toHaveLength(4);
+    expect(startingStyleChildren[0]!.toTrimmedString({ context: startingStyleContext })).toBe('padding: 10px 8px 6px 4px');
+    expect(isVisibleInContext(startingStyleChildren[0]!, startingStyleContext)).toBe(true);
+    expect(startingStyleChildren.slice(1).every(child => !isVisibleInContext(child!, startingStyleContext))).toBe(true);
+    expect(startingStyleChildren.every(child => child.options?.normalizedFromAssign === AssignmentType.MergeSequence)).toBe(true);
+
+    expect(evald.toString({ context: new Context() })).toBeString(`
+      .x {
+        @starting-style {
+          padding: 10px 8px 6px 4px;
+        }
       }
     `);
   });

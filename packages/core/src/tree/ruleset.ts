@@ -29,8 +29,9 @@ import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
-import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector, selectorHasAuthoredAmpersand } from './util/selector-utils.js';
+import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector, hasSourceExtendWrapperParent, selectorHasAuthoredAmpersand } from './util/selector-utils.js';
 import { addEdge } from './util/cursor.js';
+import { processLeadingIs } from './util/process-leading-is.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -324,7 +325,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   getRenderableSelector(collapseNesting = this.treeContext?.opts?.collapseNesting ?? false, context?: Context): Selector | Nil {
     const ownSelector = this.getOwnSelector();
     if (
-      !this.hoistToRoot
+      !hasSourceExtendWrapperParent(this)
+      && !this.hoistToRoot
       && !collapseNesting
       && ownSelector
       && !(ownSelector instanceof Nil)
@@ -337,12 +339,32 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private _hasAncestorRuleset(context?: Context): boolean {
-    let current = getCurrentParentNode(this, context);
-    while (current) {
+    const seen = new Set<Node>();
+    const pending: Node[] = [];
+    const enqueue = (node: Node | undefined) => {
+      if (!node || seen.has(node)) {
+        return;
+      }
+      seen.add(node);
+      pending.push(node);
+    };
+
+    enqueue(getCurrentParentNode(this, context));
+    enqueue(this.parent);
+    for (const parent of this.parentEdges?.values?.() ?? []) {
+      enqueue(parent);
+    }
+
+    while (pending.length > 0) {
+      const current = pending.shift()!;
       if (isNode(current, N.Ruleset)) {
         return true;
       }
-      current = getCurrentParentNode(current, context);
+      enqueue(getCurrentParentNode(current, context));
+      enqueue(current.parent);
+      for (const parent of current.parentEdges?.values?.() ?? []) {
+        enqueue(parent);
+      }
     }
     return false;
   }
@@ -593,7 +615,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       return node;
     };
-    return materialize(sel as Selector);
+    const materialized = materialize(sel as Selector);
+    return processLeadingIs(materialized) as Selector;
   }
 
   static isBareAmpersandSelector(sel: Selector | Nil): boolean {
@@ -883,6 +906,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return sel;
         },
         (sel) => {
+          if (isNode(sel as Node, N.Selector)) {
+            sel = processLeadingIs(sel as Selector) as Selector | Nil;
+          }
           // If this ruleset shares its value with a descendant ruleset, give descendants
           // their own value before we overwrite value.selector so they keep their selector.
           Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, {} as RulesetValue);
