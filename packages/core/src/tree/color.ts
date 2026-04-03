@@ -71,6 +71,7 @@ export interface Color extends Node<ColorData, ColorOptions> {
   type: 'Color';
   shortType: 'color';
   eval(context: Context): Color;
+  node: string | Node | undefined;
 }
 
 /**
@@ -84,6 +85,14 @@ export class Color extends Node<ColorData, ColorOptions> {
   _hslChannels: HSLChannels | undefined;
   _alphaValue: AlphaValue | undefined;
   _nodeValue: string | Node | undefined;
+
+  get node(): string | Node | undefined {
+    return this._nodeValue;
+  }
+
+  set node(value: string | Node | undefined) {
+    this._nodeValue = value;
+  }
 
   constructor(
     value: ColorData | string | ColorValues,

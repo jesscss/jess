@@ -1,4 +1,4 @@
-import { coll, decl, rules, ruleset, el, color, any } from '../index.js';
+import { coll, decl, rules, ruleset, el, color, any, expr, num } from '../index.js';
 import { Context } from '../../context.js';
 import { AssignmentType } from '../declaration.js';
 
@@ -145,6 +145,23 @@ describe('Declaration', () => {
         background: red;
       }
     `);
+  });
+
+  it('clears stale same-render-key edges when a render-owned declaration updates a direct field', () => {
+    const rule = decl({
+      name: any('item-1', { role: 'property' }),
+      value: expr(any('stale'))
+    });
+    const nextValue = num(4);
+    const renderKey = 1;
+
+    rule.adopt(nextValue, context);
+    (rule as typeof rule & { renderKey: number }).renderKey = renderKey;
+    (rule as typeof rule & { valueEdge: Map<number, ReturnType<typeof expr>> }).valueEdge = new Map([[renderKey, expr(any('stale-edge'))]]);
+    rule.setCurrentValue(nextValue, { ...context, renderKey });
+
+    expect(rule.get('value', { ...context, renderKey }).toTrimmedString()).toBe('4');
+    expect((rule as typeof rule & { valueEdge?: Map<number, ReturnType<typeof expr>> }).valueEdge).toBeUndefined();
   });
 
   // it('should serialize to a module', () => {

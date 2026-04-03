@@ -1,4 +1,3 @@
-import type { Class } from 'type-fest';
 import { CANONICAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
@@ -101,12 +100,11 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     const rules = this.get('rules', ctx);
     const params = this.get('params', ctx);
     const guard = this.get('guard', ctx);
-    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const cloneData: MixinValue = {
-      name: deep && name instanceof Node ? cloneChild(name) as Any<'name'> | Interpolated<'name'> : name as Any<'name'> | Interpolated<'name'> | undefined,
-      rules: deep ? cloneChild(rules) as Rules : rules,
-      params: deep && params instanceof Node ? cloneChild(params) as List<Node> : params,
-      guard: deep && guard instanceof Node ? cloneChild(guard) as Condition : guard
+      name: deep && name instanceof Node ? name.clone(deep, cloneFn, ctx) : name,
+      rules: deep ? rules.clone(deep, cloneFn, ctx) : rules,
+      params: deep && params instanceof Node ? params.clone(deep, cloneFn, ctx) : params,
+      guard: deep && guard instanceof Node ? guard.clone(deep, cloneFn, ctx) : guard
     };
 
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
@@ -127,17 +125,17 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     }
 
     const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       cloneData,
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
 
     if (priorChildParents) {
       for (const [child, priorParent] of priorChildParents) {
         setParent(child, newNode, ctx!);
-        (child as unknown as { parent?: Node }).parent = priorParent;
+        Reflect.set(child, 'parent', priorParent);
       }
     }
 
@@ -257,12 +255,12 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
-        return (maybeKey as Promise<Any<'name'>>).then((key) => {
+        return maybeKey.then((key) => {
           node.name = key;
           return node;
         });
       }
-      node.name = maybeKey as Any<'name'>;
+      node.name = maybeKey;
     }
     return node;
   }

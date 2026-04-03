@@ -230,8 +230,10 @@ describe('Ampersand', () => {
     expect(css).toContain('.fruit-quoted-satsuma');
     expect(css).toContain('.fruit-quoted-banana');
     expect(css).toContain('.fruit-quoted-pear');
-    // Each item should get the prefix — verify no bare (unprefixed) items
-    expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
+    // The distributed child selector should not contain any bare unprefixed items.
+    const generatedList = css.match(/:is\(([^)]*)\)/)?.[1] ?? '';
+    expect(generatedList).toContain('.fruit-quoted-apple');
+    expect(generatedList).not.toMatch(/(^|,\s*)satsuma(,|$)/);
   });
 
   it('should validate each item individually when distributing template', async () => {

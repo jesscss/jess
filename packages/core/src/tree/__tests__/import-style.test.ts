@@ -1612,7 +1612,7 @@ describe('Style import', () => {
         .b + .b {
           color: green;
         }
-        .b + .b .sub {
+        :is(.b + .b) .sub {
           color: green;
         }
         .y {

@@ -1,5 +1,6 @@
-import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
+import { Node, any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { defineFunction } from '../../define-function.js';
 
 let context: Context;
 describe('Call', () => {
@@ -176,6 +177,44 @@ describe('Call', () => {
     expect(second.pre).toBe(0);
     expect(clonedArg.toTrimmedString()).toBe('34');
     expect(clonedSecond.pre).toBe(0);
+  });
+
+  it('defers lazy defineFunction args until callWithContext requests them', async () => {
+    const lazyFn = defineFunction(
+      'lazy-if',
+      async function(_condition: Node, thenValue: () => Promise<Node>, elseValue: () => Promise<Node>) {
+        return await elseValue();
+      },
+      {
+        params: [{
+          name: 'condition',
+          type: Node
+        }, {
+          name: 'thenValue',
+          type: Node,
+          lazy: true
+        }, {
+          name: 'elseValue',
+          type: Node,
+          lazy: true
+        }]
+      }
+    );
+    const node = call({
+      name: ref('fn', { type: 'variable' }),
+      args: list([any('ignored'), ref('missingThen'), num(2)])
+    });
+    const root = rules([
+      vardecl({
+        name: any('fn'),
+        value: jsfunc({ name: 'fn', fn: lazyFn })
+      }),
+      node
+    ]);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toTrimmedString({ context })).toContain('2');
   });
 
   it('does not clear canonical silentFail in the non-function branch during patch-only eval', async () => {

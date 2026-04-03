@@ -311,10 +311,7 @@ export class For extends Node<ForValue, any, ForChildData> {
   override preEval(context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
       this.preEvaluated = true;
-      const out = this.forEachNode(n => n.preEval(context), context);
-      if (out && typeof (out as PromiseLike<unknown>).then === 'function') {
-        return (out as Promise<void>).then(() => this);
-      }
+      return this;
     }
     return this;
   }

@@ -162,9 +162,13 @@ describe('Selector Productions', () => {
       expect(amp?.template).toBeInstanceOf(Nil);
     });
 
-    it('should not recognize &(nil) as Less ampersand syntax', () => {
-      const { lexerResult } = parser.parse('.parent { &(nil).utility { color: red; } }');
-      expect(lexerResult.errors.length).toBeGreaterThan(0);
+    it('should parse &(nil) as an explicit nil parent template', () => {
+      const { errors, tree } = parser.parse('.parent { &(nil).utility { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
+      expect(amp).toBeDefined();
+      expect(amp?.template).toBeInstanceOf(Nil);
     });
 
     it('should parse pseudo selector', () => {

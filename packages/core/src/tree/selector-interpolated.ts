@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, Node, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_NON_STATIC, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { Selector } from './selector.js';
 import type { BitSetLibrary } from './util/bitset.js';
@@ -50,6 +50,8 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
     if (this.value instanceof Node) {
       this.adopt(this.value);
     }
+    this.addFlag(F_NON_STATIC);
+    this.addFlag(F_MAY_ASYNC);
   }
 
   get isClass() {

@@ -1,22 +1,18 @@
-import type { Class } from 'type-fest';
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
-import { type Quoted } from './quoted.js';
+import { Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { EvalState } from '../eval-state.js';
-import { JessError } from '../jess-error.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { getParent, getChildren, setIndex } from './util/field-helpers.js';
 import type { Collection } from './collection.js';
 import { Any } from './any.js';
 import { AtRule } from './at-rule.js';
-import type { Sequence } from './sequence.js';
-import type { VarDeclaration } from './declaration-var.js';
+import { Sequence } from './sequence.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -139,6 +135,55 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions, 
   shortType: 'style';
   eval(context: Context): MaybePromise<Rules>;
 }
+
+function isWithRulesNode(value: Node): value is Rules | Collection {
+  return isNode(value, N.Rules | N.Collection);
+}
+
+function isPlainCssImportPath(finalPath: string, importOptions: ImportOptions | undefined): boolean {
+  if (importOptions?.inline === true) {
+    return false;
+  }
+  const explicitType = typeof importOptions?.type === 'string'
+    ? importOptions.type.toLowerCase()
+    : undefined;
+  if (explicitType === 'css') {
+    return true;
+  }
+  if (explicitType === 'less') {
+    return false;
+  }
+  if (explicitType) {
+    return false;
+  }
+  const normalizedPath = finalPath.split(/[?#]/)[0] ?? finalPath;
+  if (/\.less$/i.test(normalizedPath)) {
+    return false;
+  }
+  return /\.css$/i.test(normalizedPath) || /^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(finalPath);
+}
+
+function materializeCssImportPathNode(
+  resolvedPathNode: Quoted | Url,
+  finalPath: string,
+  context: Context
+): Quoted | Url {
+  if (resolvedPathNode instanceof Url) {
+    const rawValue = resolvedPathNode.get('value', context);
+    const nextValue = isNode(rawValue, N.Quoted)
+      ? new Quoted(finalPath, {
+          quote: rawValue.quote,
+          escaped: rawValue.escaped
+        }, rawValue.location, rawValue.treeContext)
+      : new Any(finalPath, { role: 'urlvalue' }, rawValue.location, rawValue.treeContext);
+    return new Url(nextValue, undefined, resolvedPathNode.location, resolvedPathNode.treeContext);
+  }
+
+  return new Quoted(finalPath, {
+    quote: resolvedPathNode.quote,
+    escaped: resolvedPathNode.escaped
+  }, resolvedPathNode.location, resolvedPathNode.treeContext);
+}
 /**
  * This is a generic class for:
  *   - Sass+ `@use` (for stylesheets)
@@ -157,7 +202,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
   override clone(deep?: boolean): this {
     const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       {
         path: deep ? this.path.clone(deep) : this.path,
         withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,
@@ -166,7 +211,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
     newNode.inherit(this);
     return newNode;
   }
@@ -294,7 +339,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       ? evaluatedRules
       : evaluatedRules.createPlacementWrapper(context, context.nextRenderKey());
     if (materializeConfiguredComposeChildren) {
-      const placementContext = { ...context, renderKey: out.renderKey, rulesContext: out } as Context;
+      const placementContext: Context = { ...context, renderKey: out.renderKey, rulesContext: out };
       const children = getChildren(out, placementContext);
       for (let i = 0; i < children.length; i++) {
         setIndex(children[i]!, i, placementContext);
@@ -373,7 +418,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
      * work.
      */
 
-    const finalize = async (finalPath: string) => {
+    const finalize = async (finalPath: string, resolvedPathNode: Quoted | Url) => {
       const previousTreeContext = context.treeContext;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
@@ -399,6 +444,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
         let resolvedPath: string;
+        if (type === 'import' && isPlainCssImportPath(finalPath, importOptions)) {
+          const pathPreludeNode = materializeCssImportPathNode(resolvedPathNode, finalPath, context);
+          const postlude = importOptions!.postlude;
+          const prelude = postlude
+            ? new Sequence(
+                [
+                  pathPreludeNode,
+                  ...(isNode(postlude, N.Sequence | N.List) ? postlude.get('value', context) : [postlude])
+                ],
+                undefined,
+                undefined,
+                context.treeContext
+              )
+            : pathPreludeNode;
+          const cssImport = new AtRule({
+            name: new Any('@import', { role: 'atkeyword' }),
+            prelude
+          });
+          await cssImport.preEval(context);
+          return Rules.create([]);
+        }
         if (isInlineImport) {
           const resolved = await context.resolveImportPath(finalPath);
           resolvedPath = resolved.resolvedPath;
@@ -472,19 +538,24 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           let withRulesNode = withValues.node;
           if (isNode(withRulesNode, N.Reference)) {
             const evaluated = await withRulesNode.eval(context);
-            if (!isNode(evaluated, N.Collection)) {
+            if (!isWithRulesNode(evaluated)) {
               throw new Error('with/set node must evaluate to a Collection');
             }
             withRulesNode = evaluated;
           }
-          let withRules = withRulesNode as Rules;
+          if (!isWithRulesNode(withRulesNode)) {
+            throw new Error('with/set node must evaluate to a Collection');
+          }
+          let withRules: Rules = isNode(withRulesNode, N.Rules)
+            ? withRulesNode
+            : Rules.create([...withRulesNode.value]);
           if (type === 'compose' && withValues.type === 'with' && cachedSetValues) {
             const mergedConfig = new Map<string, Node>();
             for (const configuredNode of cachedSetValues.value) {
               if (!isNode(configuredNode, N.VarDeclaration)) {
                 continue;
               }
-              const key = String((configuredNode as VarDeclaration).get('name')?.valueOf() ?? '');
+              const key = String(configuredNode.get('name')?.valueOf() ?? '');
               if (key) {
                 mergedConfig.set(key, configuredNode);
               }
@@ -493,7 +564,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
               if (!isNode(configuredNode, N.VarDeclaration)) {
                 continue;
               }
-              const key = String((configuredNode as VarDeclaration).get('name')?.valueOf() ?? '');
+              const key = String(configuredNode.get('name')?.valueOf() ?? '');
               if (key) {
                 mergedConfig.set(key, configuredNode);
               }
@@ -510,7 +581,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           for (let i = 0; i < rules.value.length; i++) {
             const n = rules.value[i]!;
             if (isNode(n, N.VarDeclaration)) {
-              const varName = String((n as VarDeclaration).get('name')?.valueOf() ?? '');
+              const varName = String(n.get('name')?.valueOf() ?? '');
               if (varName && !topLevelVarIndex.has(varName)) {
                 topLevelVarIndex.set(varName, i);
               }
@@ -523,7 +594,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
 
           for (const injectedNode of withRules.value) {
             if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = String((injectedNode as VarDeclaration).get('name')?.valueOf() ?? '');
+              const varName = String(injectedNode.get('name')?.valueOf() ?? '');
               if (varName) {
                 const existingIdx = topLevelVarIndex.get(varName);
                 if (existingIdx !== undefined) {
@@ -652,7 +723,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
         } else {
         // Shallow-clone the cached rules BEFORE evaluation so registries are populated
         // on the clone, not on the cached evaldRules.
-          rules = rules.createShallowBodyWrapper(context, context.nextRenderKey()) as Rules;
+          rules = rules.createShallowBodyWrapper(context, context.nextRenderKey());
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
           try {
@@ -707,9 +778,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
           // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
           // we need to re-register rulesets in finalRules' registry.
           if (shouldReRegisterLocalRootRulesets) {
-            for (const maybeRuleset of finalRules.nodes()) {
-              if (isNode(maybeRuleset, N.Ruleset)) {
-                finalRules.register('ruleset', maybeRuleset as Ruleset);
+            for (const maybeNode of finalRules.nodes()) {
+              if (isNode(maybeNode, N.Ruleset | N.Mixin)) {
+                finalRules.registerNode(maybeNode, undefined, context);
               }
             }
           }
@@ -732,23 +803,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
       if (resolvedPath instanceof Url) {
         return resolvedPath.pathValue(context);
       }
-      const quotedValue = resolvedPath.get('value', context) as string | Node;
+      const quotedValue = resolvedPath.get('value', context);
       if (isNode(quotedValue)) {
-        return String((quotedValue as Node).valueOf());
+        return String(quotedValue.valueOf());
       }
-      return quotedValue as string;
+      return String(quotedValue);
     };
 
-    if (isThenable(maybePath)) {
-      return (maybePath as Promise<Quoted | Url>).then(async (p) => {
-        const finalPath = getFinalPath(p);
-        context.depth = originalDepth;
-        return finalize(finalPath);
-      });
-    }
-    const finalPath = getFinalPath(maybePath as Quoted | Url);
-    context.depth = originalDepth;
-    return finalize(finalPath as string);
+    return Promise.resolve(maybePath).then(async (p: Quoted | Url) => {
+      const finalPath = getFinalPath(p);
+      context.depth = originalDepth;
+      return finalize(finalPath, p);
+    });
   }
 
   /**
@@ -761,7 +827,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     }
 
     let wrapped: Node = sourceNode;
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).get('value')] : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...postlude.get('value', context)] : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
@@ -785,7 +851,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions, Styl
     if (!postlude) {
       return rules;
     }
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...(postlude as Sequence).get('value')] : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...postlude.get('value', context)] : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;

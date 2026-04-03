@@ -1,4 +1,3 @@
-import type { Class } from 'type-fest';
 import { CANONICAL, Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -11,7 +10,6 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { List, list } from './list.js';
-import type { AtRule } from './at-rule.js';
 import { getParent, mergeDependencies, setDependency, setParent, setSourceParent } from './util/field-helpers.js';
 import { finalizeInvocationOutputRules } from './util/mixin-instance-primitives.js';
 
@@ -82,11 +80,10 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     const name = this.get('name', ctx);
     const args = this.get('args', ctx);
     const contentNode = this.get('contentNode', ctx);
-    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const cloneData: CallValue = {
-      name: deep && name instanceof Node ? cloneChild(name) : name,
-      args: deep && args instanceof Node ? cloneChild(args) as List<Node> : args,
-      contentNode: deep && contentNode instanceof Node ? cloneChild(contentNode) : contentNode
+      name: deep && name instanceof Node ? name.clone(deep, cloneFn, ctx) : name,
+      args: deep && args instanceof Node ? args.clone(deep, cloneFn, ctx) : args,
+      contentNode: deep && contentNode instanceof Node ? contentNode.clone(deep, cloneFn, ctx) : contentNode
     };
 
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
@@ -104,19 +101,19 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     }
 
     const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       cloneData,
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
 
     if (priorChildParents) {
       for (const [child, priorParent] of priorChildParents) {
         if (ctx) {
           setParent(child, newNode, ctx);
         }
-        (child as unknown as { parent?: Node }).parent = priorParent;
+        Reflect.set(child, 'parent', priorParent);
       }
     }
 
@@ -125,7 +122,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
   }
 
   constructor(value: CallValue, options?: CallOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
@@ -210,15 +207,21 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
     )
       ? { ...context, renderKey: rules.renderKey }
       : context;
-    let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+    const important: Any<'flag'> = new Any('!important', { role: 'flag' });
     for (const rule of rules.get('value', effectiveContext)) {
       if (isNode(rule, N.Declaration)) {
         rule.setCurrentImportant(important, effectiveContext);
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule, effectiveContext);
-      } else if (isNode(rule, N.AtRule | N.Ruleset)) {
-        if ((rule as AtRule).get('rules')) {
-          this.makeImportant((rule as AtRule).get('rules')!, effectiveContext);
+      } else if (isNode(rule, N.AtRule)) {
+        const nestedRules = rule.get('rules');
+        if (nestedRules) {
+          this.makeImportant(nestedRules, effectiveContext);
+        }
+      } else if (isNode(rule, N.Ruleset)) {
+        const nestedRules = rule.get('rules');
+        if (nestedRules) {
+          this.makeImportant(nestedRules, effectiveContext);
         }
       }
     }
@@ -255,11 +258,11 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         return node;
       };
       const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
-        return node.clone() as T;
+        return node.clone();
       };
       const materializeDownstreamResult = <T extends Node>(node: T): T => {
         if (node === node.sourceNode) {
-          const childKeys = (node.constructor as typeof Node).childKeys;
+          const childKeys = Reflect.get(node.constructor, 'childKeys');
           if (childKeys === null) {
             return cloneLeafDownstreamResult(node);
           }
@@ -269,7 +272,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
       };
       const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
         if (node === node.sourceNode && isNode(node, N.Rules)) {
-          return node.clone(false, undefined, context) as T;
+          return node.clone(false, undefined, context);
         }
         return materializeDownstreamResult(node);
       };
@@ -279,9 +282,23 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         }
         const out: Node[] = [];
         for (const node of nodes.get('value')) {
-          out.push(await node.eval(context) as Node);
+          out.push(await node.eval(context));
         }
         return list(out, nodes.options);
+      };
+      const anchorCallArgNodes = (nodes?: List<Node>) => {
+        if (!nodes) {
+          return;
+        }
+        for (const argNode of nodes.get('value')) {
+          // Anchor property refs and callback mixins to the call-site scope
+          // without cloning the arg tree.
+          if (isNode(argNode, N.Reference) && argNode.options?.type === 'property') {
+            setSourceParent(argNode, this, context);
+          } else if (isNode(argNode, N.Mixin)) {
+            setSourceParent(argNode, this, context);
+          }
+        }
       };
 
       context.callStack.push(this);
@@ -331,7 +348,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         const originalCaller = context.caller;
         context.caller = this;
         try {
-          const result = await (n as any).evalCall(context, argNodes, contentNode);
+          const result = await n.evalCall(context, argNodes, contentNode);
           context.callStack.pop();
           context.parenFrames.pop();
           return applyDependencyToResult(
@@ -350,12 +367,12 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           context.parenFrames.pop();
           throw new ReferenceError(`Cannot call ${n.type} with arguments`);
         }
-        let rules = n.createPlacementWrapper(context, context.nextRenderKey()) as Rules;
-        const placementContext = {
+        let rules: Rules = n.createPlacementWrapper(context, context.nextRenderKey());
+        const placementContext: Context = {
           ...context,
           renderKey: rules.renderKey,
           rulesContext: rules
-        } as Context;
+        };
         // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
         // to this call so leaky fallback can resolve call-site variables (e.g. @d).
         setSourceParent(rules, this, placementContext);
@@ -376,28 +393,23 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
         context.caller = this;
         let didPopCallStack = false;
         try {
+          const fnOptions = Reflect.get(fn, 'options');
+          const hasParamMetadata = Boolean(fnOptions && Reflect.get(fnOptions, 'params'));
           if (args) {
-            args = await evalArgNodes(args);
-            for (const argNode of args?.get('value') ?? []) {
-              // Anchor property refs and callback mixins to the call-site scope
-              // without cloning the arg tree.
-              if (isNode(argNode, N.Reference) && argNode.options?.type === 'property') {
-                setSourceParent(argNode, this, context);
-              } else if (isNode(argNode, N.Mixin)) {
-                setSourceParent(argNode, this, context);
-              }
+            anchorCallArgNodes(args);
+            if (!hasParamMetadata) {
+              args = await evalArgNodes(args);
+              anchorCallArgNodes(args);
             }
           }
-          const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
-          const fnCallable = fn as (...args: any[]) => any;
           const result = await (
             args
               ? (
-                  shouldPassListArgs
-                    ? callWithContext(context, fnCallable, args)
-                    : callWithContext(context, fnCallable, ...[...args.get('value')])
+                  hasParamMetadata
+                    ? callWithContext(context, fn, args)
+                    : callWithContext(context, fn, ...[...args.get('value')])
                 )
-              : callWithContext(context, fnCallable)
+              : callWithContext(context, fn)
           );
           context.caller = originalCaller;
           context.callStack.pop();

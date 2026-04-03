@@ -58,7 +58,7 @@ export class Any<
     location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.value = value;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
@@ -78,7 +78,7 @@ export class Any<
   }
 
   // Any values are static and don't need evaluation
-  override evalNode(context: Context): MaybePromise<Node> {
+  override evalNode(_context: Context): MaybePromise<Node> {
     return this;
   }
 
@@ -95,8 +95,8 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherNumber = (other as any).number;
-      const otherUnit = (other as any).unit;
+      const otherNumber = Reflect.get(other, 'number');
+      const otherUnit = Reflect.get(other, 'unit');
       if (typeof otherNumber !== 'number') {
         return undefined;
       }

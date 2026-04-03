@@ -280,11 +280,17 @@ export async function evalScopedRulesForOutput(
   context: Context
 ): Promise<Node[]> {
   const previousRenderKey = context.renderKey;
+  const previousRulesContext = context.rulesContext;
+  const previousLookupScope = context.lookupScope;
   try {
     context.renderKey = scopedRules.renderKey;
+    context.rulesContext = scopedRules;
+    context.lookupScope = scopedRules;
     const result = await scopedRules.eval(context);
     return collectScopedResultNodes(result, context);
   } finally {
+    context.lookupScope = previousLookupScope;
+    context.rulesContext = previousRulesContext;
     context.renderKey = previousRenderKey;
   }
 }

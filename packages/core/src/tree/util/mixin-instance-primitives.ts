@@ -62,7 +62,8 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
   guard?: Condition | Bool;
   parent: Node | undefined;
   guardScopeChildren?: readonly Node[];
-  hasDefault: boolean;
+  hasAnyDefault: boolean;
+  candidateHasDefault: boolean;
   context: Context;
   evaluateCandidateOutput: (
     candidate: TCandidate,
@@ -280,6 +281,7 @@ export function seedMixinGuardScope(
 export function prepareMixinInvocationScope(
   definitionParent: Node | undefined,
   placementParent: Node | undefined,
+  sourceParent: Node | undefined,
   index: number,
   renderKey: RenderKey,
   params: List<Node> | undefined,
@@ -293,6 +295,7 @@ export function prepareMixinInvocationScope(
   populateMixinParamScope(scope, params, context);
   defineMixinArgumentsInScope(scope, params, nodeArgs, context);
   scope.parent = placementParent ?? definitionParent;
+  scope.sourceParent = sourceParent;
   return scope;
 }
 
@@ -300,6 +303,7 @@ export function createMixinInvocationRules(
   body: Rules,
   lookupParent: Node | undefined,
   lexicalSourceParent: Node | undefined,
+  sourceParent: Node | undefined,
   index: number,
   context: Context,
   renderKey: RenderKey
@@ -307,7 +311,7 @@ export function createMixinInvocationRules(
   const wrapper = body.createShallowBodyWrapper(undefined, renderKey);
   wrapper.index = index;
   wrapper.parent = lookupParent;
-  wrapper.sourceParent = lexicalSourceParent;
+  wrapper.sourceParent = sourceParent ?? lexicalSourceParent;
 
   wrapper.options = {
     ...wrapper.options,
@@ -487,6 +491,13 @@ function buildBoundMixinParams(
       restVarDecl.preEvaluated = true;
       restVarDecl.evaluated = true;
       boundParams.push(restVarDecl);
+      continue;
+    }
+
+    // Non-binding pattern params still consume a positional argument slot
+    // when matched, so later bindable params line up with the correct arg.
+    if (positionalIndex < positionalArgs.length) {
+      positionalIndex++;
     }
   }
 
@@ -522,6 +533,7 @@ export function prepareMixinCandidateInvocation(
     ? prepareMixinInvocationScope(
         parent,
         parent,
+        sourceParent,
         index,
         renderKey,
         boundParams,
@@ -534,6 +546,7 @@ export function prepareMixinCandidateInvocation(
     rules,
     lookupParent,
     parent,
+    sourceParent,
     index,
     context,
     renderKey
@@ -681,20 +694,20 @@ export function resolveWinningMixinDefaultGroups(
   groups: readonly MixinDefaultGroup[]
 ): Set<MixinDefaultGroup> {
   let hasDefNoneCandidate = false;
-  let defTrueCount = 0;
-  let defFalseCount = 0;
+  let hasDefTrueCandidate = false;
+  let hasDefFalseCandidate = false;
 
   for (const group of groups) {
     if (group === MixinDefaultGroup.True) {
-      defTrueCount++;
+      hasDefTrueCandidate = true;
     } else if (group === MixinDefaultGroup.False) {
-      defFalseCount++;
+      hasDefFalseCandidate = true;
     } else if (group === MixinDefaultGroup.None) {
       hasDefNoneCandidate = true;
     }
   }
 
-  if (!hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1) {
+  if (!hasDefNoneCandidate && hasDefTrueCandidate && hasDefFalseCandidate) {
     throw new ReferenceError('Ambiguous use of default() while matching mixins.');
   }
 
@@ -915,12 +928,14 @@ export async function processPreparedMixinCandidate<TCandidate>(
     guard,
     parent,
     guardScopeChildren,
-    hasDefault,
+    hasAnyDefault,
+    candidateHasDefault,
     context,
     evaluateCandidateOutput
   } = options;
 
   let nextOuterRules = outerRules;
+  const pendingLookupScope = () => nextOuterRules ?? getMixinCandidateLookupScope(parent, rules, context);
   if (guard) {
     const evaluatedGuard = await evaluateMixinGuardCandidate(
       guard,
@@ -928,27 +943,38 @@ export async function processPreparedMixinCandidate<TCandidate>(
       parent,
       context,
       guardScopeChildren,
-      hasDefault
+      candidateHasDefault
     );
     nextOuterRules = evaluatedGuard.outerRules;
     if (!evaluatedGuard.passes) {
       return undefined;
     }
-    if (hasDefault) {
+    if (hasAnyDefault) {
       return {
         candidate,
         rules,
         outerRules: nextOuterRules,
         params,
-        group: evaluatedGuard.defaultGroup!,
-        lookupScope: nextOuterRules ?? getMixinCandidateLookupScope(parent, rules, context)
+        group: candidateHasDefault ? evaluatedGuard.defaultGroup! : MixinDefaultGroup.None,
+        lookupScope: pendingLookupScope()
       };
     }
   }
 
+  if (hasAnyDefault) {
+    return {
+      candidate,
+      rules,
+      outerRules: nextOuterRules,
+      params,
+      group: MixinDefaultGroup.None,
+      lookupScope: pendingLookupScope()
+    };
+  }
+
   await withMixinLookupScope(
     nextOuterRules ?? rules,
-    nextOuterRules ?? getMixinCandidateLookupScope(parent, rules, context),
+    pendingLookupScope(),
     context,
     () => evaluateCandidateOutput(candidate, rules, nextOuterRules, params)
   );
@@ -1308,9 +1334,8 @@ export function filterAndSortMixinEvalCandidates(
   let hasDefault = false;
   let evalCandidates = mixinCandidates
     .filter((candidate) => {
-      const inStack = context.rulesEvalStack.includes((candidate as Mixin).get('rules').sourceNode as Rules);
       const blockedByFailedGuard = hasFailedGuardAncestor(candidate, context);
-      return !inStack && !blockedByFailedGuard;
+      return !blockedByFailedGuard;
     })
     .map<MixinEntry>((candidate) => {
       const hasDefaultGuard = Boolean(candidate.options?.hasDefault)
@@ -1372,20 +1397,21 @@ export async function evaluateCandidateOutput(
   opts: EvaluateCandidateOutputOptions
 ): Promise<void> {
   const {
+    sourceParent,
     invocationParent,
     restrictMixinOutputLookup,
     outputRules,
     getCandidateParent: getParentFn
   } = opts;
   const currentCall = context.callStack.at(-1);
-  if (currentCall && context.callMap.add(currentCall, params)) {
+  if (currentCall && context.callMap.add(currentCall, params, context)) {
     return;
   }
   try {
     const callerParent = getParentFn(candidate);
     const lexicalSourceParent = callerParent;
     rules.parent ??= outerRules ?? callerParent;
-    rules.sourceParent = lexicalSourceParent;
+    rules.sourceParent = sourceParent ?? lexicalSourceParent;
     const previousRenderKey = context.renderKey;
     context.renderKey = rules.renderKey;
     let newRules: Rules;
@@ -1399,27 +1425,39 @@ export async function evaluateCandidateOutput(
       newRules.renderKey = rules.renderKey;
     }
     newRules.parent = invocationParent ?? callerParent;
-    newRules.sourceParent = lexicalSourceParent;
+    newRules.sourceParent = sourceParent ?? lexicalSourceParent;
     newRules.index = candidate.index;
 
     if (outerRules) {
-      const outputContainer = outerRules;
-      outputContainer.parent ??= invocationParent ?? callerParent;
-      outputContainer.sourceParent = lexicalSourceParent;
-      outputContainer.index = candidate.index;
-      outputContainer.options.isMixinOutput = false;
       const previousRenderKey = context.renderKey;
       const previousRulesContext = context.rulesContext;
       context.renderKey = newRules.renderKey;
       context.rulesContext = newRules;
+      let outputChildren: readonly Node[];
       try {
-        for (const child of [...newRules.getRegistryChildren(context)]) {
-          outputContainer.push(context, child);
-        }
+        outputChildren = [...newRules.getRegistryChildren(context)];
       } finally {
         context.renderKey = previousRenderKey;
         context.rulesContext = previousRulesContext;
       }
+      const outputContainer = newRules.createPlacementWrapperWithChildren(
+        outputChildren,
+        newRules.renderKey
+      );
+      const outputContext = {
+        ...context,
+        renderKey: newRules.renderKey,
+        rulesContext: outputContainer
+      } as Context;
+      for (const child of outputChildren) {
+        if (isNode(child, N.Ruleset | N.AtRule)) {
+          setSourceParent(child, outerRules, outputContext);
+        }
+      }
+      outputContainer.parent = invocationParent ?? callerParent;
+      outputContainer.sourceParent = sourceParent ?? lexicalSourceParent;
+      outputContainer.index = candidate.index;
+      outputContainer.options.isMixinOutput = false;
       outputRules.push(outputContainer);
       return;
     }
@@ -1479,6 +1517,7 @@ export async function dispatchMixinEvalCandidates(
     evaluateCandidateOutput
   } = dispatch;
   const pendingDefaultCandidates: PendingMixinDefaultCandidate<any>[] = [];
+  let skippedByRecursion = false;
   for (const candidate of evalCandidates) {
     if (isNode(candidate, N.Ruleset)) {
       if ((candidate as Ruleset).get('guard') instanceof Nil) {
@@ -1486,6 +1525,10 @@ export async function dispatchMixinEvalCandidates(
       }
       const currentRules = (candidate as Ruleset).enterRules(context);
       const sourceRules = getRootSourceRules(currentRules);
+      if (context.rulesEvalStack.includes(sourceRules)) {
+        skippedByRecursion = true;
+        continue;
+      }
       const definitionParent = getCandidateParent(candidate);
       const placementParent = invocationParent ?? definitionParent;
       const rules = await evaluateRulesetMixinCandidateOutput(
@@ -1535,6 +1578,8 @@ export async function dispatchMixinEvalCandidates(
     rules = prepared.rules;
     params = prepared.params;
     const canonicalGuard = candidate.get('guard');
+    const candidateHasDefault = Boolean(candidate.options?.hasDefault)
+      || guardContainsDefault(canonicalGuard as Node | undefined);
     const pendingDefaultCandidate = await processPreparedMixinCandidate({
       candidate,
       rules,
@@ -1543,7 +1588,8 @@ export async function dispatchMixinEvalCandidates(
       guard: canonicalGuard,
       parent: getCandidateParent(candidate),
       guardScopeChildren: prepared.guardScopeChildren,
-      hasDefault,
+      hasAnyDefault: hasDefault,
+      candidateHasDefault,
       context,
       evaluateCandidateOutput
     });
@@ -1562,6 +1608,14 @@ export async function dispatchMixinEvalCandidates(
       pending.params
     )
   );
+
+  if (
+    skippedByRecursion
+    && outputRules.length === 0
+    && pendingDefaultCandidates.length === 0
+  ) {
+    throw new ReferenceError('No matching mixins found.');
+  }
 
   const output = assembleMixinInvocationOutput(
     outputRules,

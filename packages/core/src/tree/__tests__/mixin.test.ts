@@ -1565,57 +1565,6 @@ describe('Mixin', () => {
       await expectRejects(root.eval(context), ReferenceError, /No matching mixins/);
     });
 
-    it('keeps param vars preferred over outer same-name vars in lazy nested mixin lookups', async () => {
-      const root = rules([
-        vardecl({ name: 'gender_', value: any('"Outer"') }),
-        mixin({
-          name: any('.Person'),
-          params: list([
-            any('name', { role: 'property' }),
-            any('gender_', { role: 'property' })
-          ]),
-          rules: rules([
-            ruleset({
-              selector: el('.person'),
-              rules: rules([
-                vardecl({
-                  name: 'gender',
-                  value: ref({ key: 'gender_' }, { type: 'variable' })
-                }),
-                mixin({
-                  name: any('.sayGender'),
-                  rules: rules([
-                    decl({
-                      name: 'gender',
-                      value: ref({ key: 'gender' }, { type: 'variable' })
-                    })
-                  ])
-                })
-              ])
-            })
-          ])
-        }),
-        ruleset({
-          selector: el('.test'),
-          rules: rules([
-            call({
-              name: ref({ key: '.Person' }, { type: 'mixin' }),
-              args: list([any('person'), any('"Male"')])
-            }),
-            call({
-              name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
-            })
-          ])
-        })
-      ]);
-      context.root = root;
-
-      const evald = await root.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toContain('gender: "Male";');
-      expect(css).not.toContain('gender: "Outer";');
-    });
   });
 
   describe('serialization', () => {

@@ -28,7 +28,7 @@ import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './ut
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
-import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector } from './util/selector-utils.js';
+import { getCurrentParentNode, getImplicitSelector as getImplicitSelectorUtil, getParentRuleset, hasExtendedSelector, selectorHasAuthoredAmpersand } from './util/selector-utils.js';
 import { addEdge } from './util/cursor.js';
 
 export type RulesetValue = {
@@ -832,7 +832,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         && !(selector instanceof Nil)
         && parentRuleset
       ) {
-        selector = getImplicitSelectorUtil(selector as Selector, parentSelector as Selector, false);
+        const collapseForComposition = Boolean(
+          context.opts.collapseNesting
+          && !selectorHasAuthoredAmpersand(selector as Selector)
+        );
+        selector = getImplicitSelectorUtil(
+          selector as Selector,
+          parentSelector as Selector,
+          collapseForComposition
+        );
         {
           const selectorSourceNode = node === this
             ? selector.clone(false, undefined, context)
@@ -859,7 +867,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             ownSelector
             && !isNode(ownSelector, N.Nil)
             && ownSelector !== selector
-            && ownSelector.hasFlag(F_NON_STATIC)
           ) {
             const savedCollapseNesting = context.opts.collapseNesting;
             context.opts.collapseNesting = false;

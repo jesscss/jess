@@ -723,7 +723,7 @@ describe('Style import extend behavior', () => {
         .visible + .visible {
           color: green;
         }
-        .visible + .visible .sub {
+        :is(.visible + .visible) .sub {
           color: green;
         }
       `);
@@ -855,7 +855,7 @@ describe('Style import extend behavior', () => {
           .visible + .visible {
             color: green;
           }
-          .visible + .visible .sub {
+          :is(.visible + .visible) .sub {
             color: green;
           }
           "
@@ -918,7 +918,7 @@ describe('Style import extend behavior', () => {
           .visible + .visible {
             color: green;
           }
-          .visible + .visible .sub {
+          :is(.visible + .visible) .sub {
             color: green;
           }
           "

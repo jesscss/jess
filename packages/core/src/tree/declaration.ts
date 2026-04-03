@@ -24,6 +24,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   getDependency,
+  getParent,
   mergeDependencies,
   setDependency
 } from './util/field-helpers.js';
@@ -135,6 +136,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return;
     }
 
+    if (renderKey !== undefined && renderKey !== CANONICAL) {
+      const edgeKey = `${key}Edge` as const;
+      const edge = ((this as unknown as Record<string, unknown>)[edgeKey] as Map<RenderKey, DeclarationChildData[K]> | undefined);
+      if (edge?.delete(renderKey) && edge.size === 0) {
+        delete (this as unknown as Record<string, unknown>)[edgeKey];
+      }
+    }
+
     (this as unknown as Record<string, unknown>)[key] = value;
   }
 
@@ -233,16 +242,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         throw error;
       }
       // Remove leading / trailing whitespace
-      const normalizedValue = valOut.replace(/^[ \t]+|\s+$/g, '');
+      const normalizedValue = valOut.replace(/^\s+|\s+$/g, '');
       // Ensure exactly one space after ':' by adding one space
       w.add(' ');
       w.add(normalizedValue, value);
       if (!isNode(value, N.Collection)) {
         if (important) {
           let imp = w.capture(() => important.toString(options));
-          imp = imp.replace(/^\s+|\s+$/g, '');
+          imp = imp.replace(/\s+$/g, '');
 
-          w.add(` ${imp}`, important);
+          if (important.pre === 0) {
+            imp = imp.replace(/^\s+/g, '');
+            w.add(imp, important);
+          } else if (important.pre !== undefined) {
+            w.add(imp, important);
+          } else {
+            w.add(` ${imp.trimStart()}`, important);
+          }
         }
       }
     }
@@ -265,6 +281,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
     let name = node.get('name', context);
     let value = node.get('value', context);
+    const excludesSelf = (candidate: Node): boolean => {
+      const currentSource = node.sourceNode ?? node;
+      const candidateSource = candidate.sourceNode ?? candidate;
+      return candidate !== node && candidateSource !== currentSource;
+    };
+    const isPriorMergedDeclaration = (candidate: Node): candidate is Declaration => (
+      excludesSelf(candidate)
+      && isNode(candidate, N.Declaration)
+      && candidate.options?.normalizedFromAssign !== undefined
+    );
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
@@ -278,23 +304,54 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else if (rawAssign === '+_:') {
         assign = AssignmentType.MergeSequence;
       }
-      if (assign) {
+      if (assign && assign !== AssignmentType.Default) {
         const normalizedAssign = assign;
         value = value.clone();
+        const createAssignmentReference = (options: ConstructorParameters<typeof Reference>[1]) => {
+          const ref = new Reference({ key }, options);
+          if (node.index !== undefined) {
+            ref.index = node.index;
+          }
+          return ref;
+        };
+        const findPreviousPropertyDeclaration = (): Declaration | undefined => {
+          if (node.type !== 'Declaration') {
+            return undefined;
+          }
+          let rulesScope = isNode(context.rulesContext, N.Rules) ? context.rulesContext as Rules : undefined;
+          if (!rulesScope) {
+            let cursor: Node | undefined = node;
+            while (cursor && !isNode(cursor, N.Rules)) {
+              cursor = getParent(cursor, context);
+            }
+            rulesScope = cursor as Rules | undefined;
+          }
+          if (!rulesScope) {
+            return undefined;
+          }
+          return rulesScope.find('declaration', `${key.valueOf()}`, 'Declaration', {
+            context,
+            local: true,
+            start: node.index,
+            filter: isPriorMergedDeclaration
+          });
+        };
         /** Reference type */
         let type: 'property' | 'variable' =
           node.type === 'Declaration' ? 'property' : 'variable';
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
-            const ref = new Reference({ key }, {
+            const ref = createAssignmentReference({
               type,
               fallbackValue: new Nil(),
               resolution: 'linear',
+              respectStart: true,
               // Assignment normalization clears `assign` to Default, so matching by
               // assignment flag prevents later merge iterations from seeing prior values.
-              // Exclude only the current node to avoid self-reference.
-              filter: n => n !== node
+              // Only chain merged declarations together; plain prior declarations
+              // remain independent output in Less.
+              filter: isPriorMergedDeclaration
             });
             /**
              * @note - It's up to Sequence and List to handle
@@ -310,16 +367,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           case AssignmentType.Add: {
             if (node.type === 'Declaration') {
+              const previousDeclaration = findPreviousPropertyDeclaration();
+              if (!previousDeclaration) {
+                node.setCurrentValue(value, context);
+                break;
+              }
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
               node.setCurrentValue(new List([
-                new Reference({ key }, {
+                createAssignmentReference({
                   type,
                   fallbackValue: new Nil(),
                   resolution: 'linear',
+                  respectStart: true,
                   // Prevent self-referential reads while normalizing this node.
-                  filter: n => n !== node
+                  filter: excludesSelf
                 }),
                 value
               ]), context);
@@ -344,7 +407,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         nextOptions.assign = AssignmentType.Default;
         node.options = nextOptions as Opts;
       }
-      const out = node.get('value', context).preEval(context);
+      const normalizedValue = node.get('value', context);
+      const shouldResolveNormalizedAssignment = (
+        assign !== undefined
+        && assign !== AssignmentType.Default
+      );
+      const out = shouldResolveNormalizedAssignment
+        ? normalizedValue.eval(context)
+        : normalizedValue.preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
           node.setCurrentValue(value, context);
@@ -524,14 +594,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return;
           }
           const first = listValue[0]!;
-          const isEmptyPlaceholder = (
-            isNode(first, N.Nil)
-            || (isNode(first, N.List) && first.get('value').length === 0)
-            || String(first.valueOf?.() ?? '') === ''
-          );
-          if (!isEmptyPlaceholder) {
-            return;
-          }
+        const isEmptyPlaceholder = (
+          isNode(first, N.Nil)
+          || (isNode(first, N.List) && first.get('value').length === 0)
+        );
+        if (!isEmptyPlaceholder) {
+          return;
+        }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
             node.setCurrentValue(new Nil(), context);

@@ -593,9 +593,9 @@ export function mixinArgs(this: P, T: TokenMap) {
       parenFrames: [...getParenFrames(ctx), false],
       detachedRulesetUsage: ctx.isDefinition ? 'default-param' : 'mixin-arg'
     };
-    $.OPTION(() => {
+    if (!$.isType(T.RParen)) {
       args = $.SUBRULE($.mixinArgList, { ARGS: [argCtx] });
-    });
+    }
     $.CONSUME(T.RParen);
 
     // Check for whitespace warning AFTER consuming closing paren

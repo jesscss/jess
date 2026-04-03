@@ -709,7 +709,9 @@ export function simpleSelector(this: P, T: TokenMap) {
           const value = parts.join('');
           const template: string | Nil = sawQuoted && value === ''
             ? new Nil()
-            : value;
+            : value === 'nil'
+              ? new Nil()
+              : value;
           return new Ampersand({ template }, undefined, location, $.context);
         }
       },

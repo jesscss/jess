@@ -176,6 +176,30 @@ Only listed here when it directly blocks edge/cursor work:
 - `packages/core/src/tree/util/legacy-node-ops.ts` as quarantined returned-result shaping
 - `Rules.renderParent` as an undocumented scope-parent side channel
 
+## Future Runtime Overhead
+
+These are not edge/cursor blockers by themselves, but they should be tracked as
+follow-on runtime cleanup once the active correctness bugs are stable.
+
+- `packages/core/src/define-function.ts` still exposes function metadata through
+  a `Proxy`.
+  Desired end-state: attach stable metadata (`name`, `options`, `_internal`)
+  directly to the callable with `defineProperty`/`defineProperties` instead of a
+  per-access trap wrapper.
+
+## Active Less Fixture Seams
+
+- `tests-unit/mixins-guards/mixins-guards.less`
+  Current narrowing:
+  the wrong `content:` lines are not behaving like normal late-opened variable
+  references. Temporary probes in `Declaration.eval()` / `Reference.eval()`
+  did not fire for the failing parser-backed fixture path, which strongly
+  suggests the mixed CSS-text-plus-Less-ref value is being shaped into a more
+  static/literal node form before ordinary declaration/reference eval ever runs.
+  Next step: inspect Less parser value/declaration shaping, especially the CSS
+  parser declaration/value path plus Less token overrides, before changing mixin
+  scope/runtime again.
+
 ## Clone / Materialize Debt
 
 These seams are not acceptable end-state architecture. Each item should be

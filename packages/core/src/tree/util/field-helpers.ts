@@ -5,15 +5,48 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { addEdgeAt, addParentEdge, removeParentEdge } from './cursor.js';
 
+function getParentEdgeRenderKeys(
+  node: Node,
+  ctx: Context,
+  edge?: Map<unknown, Node | undefined>
+): unknown[] {
+  const keys: unknown[] = [];
+  const push = (key: unknown): void => {
+    if (key === undefined || key === CANONICAL || keys.includes(key)) {
+      return;
+    }
+    keys.push(key);
+  };
+  push(ctx.renderKey);
+  push(ctx.rulesContext?.renderKey);
+  push(node.renderKey);
+  if (edge?.has(EVAL)) {
+    push(EVAL);
+  }
+  return keys;
+}
+
+function getSourceParentEdge(node: Node): Map<unknown, Node | undefined> | undefined {
+  const edge = Reflect.get(node, 'sourceParentEdge');
+  return edge instanceof Map ? edge : undefined;
+}
+
+function setSourceParentEdge(node: Node, edge: Map<unknown, Node | undefined> | undefined): void {
+  Reflect.set(node, 'sourceParentEdge', edge);
+}
+
+function setRulesValueArray(rules: Rules, nodes: Node[]): void {
+  const setter = Reflect.get(rules, '_setValueArray');
+  if (typeof setter === 'function') {
+    setter.call(rules, nodes);
+  }
+}
+
 export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const renderKey = ctx.renderKey
-    ?? ctx.rulesContext?.renderKey
-    ?? (node.renderKey !== CANONICAL ? node.renderKey : undefined)
-    ?? (node.parentEdges?.has(EVAL) ? EVAL : undefined);
-  if (renderKey !== undefined) {
+  for (const renderKey of getParentEdgeRenderKeys(node, ctx, node.parentEdges)) {
     const parent = node.parentEdges?.get(renderKey);
     if (parent !== undefined) {
       return parent;
@@ -87,12 +120,8 @@ export function getSourceParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  const edge = (node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> }).sourceParentEdge;
-  const renderKey = ctx.renderKey
-    ?? ctx.rulesContext?.renderKey
-    ?? (node.renderKey !== CANONICAL ? node.renderKey : undefined)
-    ?? (edge?.has(EVAL) ? EVAL : undefined);
-  if (renderKey !== undefined) {
+  const edge = getSourceParentEdge(node);
+  for (const renderKey of getParentEdgeRenderKeys(node, ctx, edge)) {
     if (edge?.has(renderKey)) {
       return edge.get(renderKey);
     }
@@ -110,10 +139,9 @@ export function setSourceParent(
 ): void {
   const renderKey = ctx.renderKey ?? ctx.rulesContext?.renderKey ?? node.renderKey;
   if (renderKey !== undefined) {
-    const edgeOwner = node as unknown as { sourceParentEdge?: Map<unknown, Node | undefined> };
-    const edge = edgeOwner.sourceParentEdge ?? new Map<unknown, Node | undefined>();
+    const edge = getSourceParentEdge(node) ?? new Map<unknown, Node | undefined>();
     edge.set(renderKey, parent);
-    edgeOwner.sourceParentEdge = edge;
+    setSourceParentEdge(node, edge);
     return;
   }
   node.sourceParent = parent;
@@ -136,7 +164,7 @@ export function setChildren(
   const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
   if (renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === renderKey) {
     const previous = rules.value;
-    (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray([...nodes]);
+    setRulesValueArray(rules, [...nodes]);
     for (const child of previous) {
       if (!nodes.includes(child)) {
         removeParentEdge(child, renderKey);
@@ -153,7 +181,7 @@ export function setChildren(
     return;
   }
   if (renderKey === undefined) {
-    (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray([...nodes]);
+    setRulesValueArray(rules, [...nodes]);
     for (const node of nodes) {
       rules.adopt(node, ctx);
     }
@@ -195,7 +223,7 @@ export function setChildAt(
       const previous = currentChildren[index];
       const nextValue = [...currentChildren];
       nextValue[index] = node;
-      (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(nextValue);
+      setRulesValueArray(rules, nextValue);
       if (previous && previous !== node) {
         removeParentEdge(previous, renderKey);
       }
@@ -227,7 +255,7 @@ export function setChildAt(
     return;
   }
   currentChildren[index] = node;
-  (rules as unknown as { _setValueArray(value: Node[]): void })._setValueArray(currentChildren);
+  setRulesValueArray(rules, currentChildren);
   rules.adopt(node, ctx);
   if (options.markDirty !== false) {
     markScopeDirty(rules, ctx);

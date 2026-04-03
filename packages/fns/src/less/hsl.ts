@@ -1,6 +1,7 @@
 import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Any } from '@jesscss/core';
 import { percentOf, toNumber, splitSequence, normalizeHue } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
+import { collectRawDimensions } from '../util/raw-color-args.js';
 
 function hueChannelFromNode(node: unknown, hueValue: number): number | [number, string] {
   if (!(node instanceof Dimension)) {
@@ -36,32 +37,12 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
   return alphaValue;
 }
 
-function collectDimensions(node: unknown, out: Dimension[]): void {
-  if (!node) {
-    return;
-  }
-  if (node instanceof Dimension) {
-    out.push(node);
-    return;
-  }
-  if (Array.isArray(node)) {
-    node.forEach(child => collectDimensions(child, out));
-    return;
-  }
-  if (typeof node === 'object' && node !== null && 'value' in node) {
-    const value = (node as { value?: unknown }).value;
-    if (Array.isArray(value)) {
-      value.forEach(child => collectDimensions(child, out));
-    }
-  }
-}
-
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
   if (!hasExplicitAlpha || !rawArgs?.value?.length) {
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.value, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);

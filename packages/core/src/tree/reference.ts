@@ -86,6 +86,8 @@ export type ReferenceOptions = {
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
   role?: AnyRole;
+  /** Internal: preserve lexical start-bound lookup for synthetic refs such as `+:` normalization. */
+  respectStart?: boolean;
 };
 const { isArray } = Array;
 
@@ -515,16 +517,25 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             opts.local = true;
           }
 
-          if (this.options.resolution === 'linear' && !isInterpolatedVariable) {
+          const shouldRespectStart = type !== 'property' || this.options.respectStart === true;
+          if (this.options.resolution === 'linear' && !isInterpolatedVariable && shouldRespectStart) {
             // For linear resolution, climb up the parent chain until we find a node with a Rules parent
             // and use that node's index for linear lookup
             let startIndex = this.index;
             let currentNode: Node | undefined = this;
+            const shouldDebugPropertyStart = type === 'property'
+              && (isArray(valueKey) ? valueKey[0] : valueKey) === 'background-color';
+            const debugChain: Array<{ type: string; index: number | undefined; renderKey: string }> = shouldDebugPropertyStart
+              ? [{ type: currentNode.type, index: currentNode.index, renderKey: String(currentNode.renderKey) }]
+              : [];
 
             // If this node doesn't have an index, climb up until we find one
             if (startIndex === undefined) {
               while (currentNode && startIndex === undefined) {
                 currentNode = getLookupParentNode(currentNode, context);
+                if (shouldDebugPropertyStart && currentNode) {
+                  debugChain.push({ type: currentNode.type, index: currentNode.index, renderKey: String(currentNode.renderKey) });
+                }
                 if (currentNode) {
                   startIndex = currentNode.index;
                 }
@@ -538,6 +549,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
                 break;
               }
               currentNode = currentParent;
+              if (shouldDebugPropertyStart) {
+                debugChain.push({ type: currentNode.type, index: currentNode.index, renderKey: String(currentNode.renderKey) });
+              }
               if (currentNode && currentNode.index !== undefined) {
                 startIndex = currentNode.index;
               }
@@ -546,7 +560,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             if (startIndex !== undefined) {
               opts.start = startIndex;
             }
-          } else if (this.options.resolution === 'call-time' && !isInterpolatedVariable) {
+          } else if (this.options.resolution === 'call-time' && !isInterpolatedVariable && shouldRespectStart) {
             // For call-time resolution, use the call site's position (context.callSiteIndex)
             // instead of the definition position. This allows mixins to resolve variables
             // at the time they're called, not when they're defined.
@@ -649,6 +663,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             case 'property':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                opts.local = true;
                 const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
                 if (declaration !== undefined) {
                   return declaration;
@@ -771,7 +786,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
           context.addToSearchScope(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).get('important');
-          const declValue = (returnVal as Declaration).get('value', context);
           let scopeRenderKey = context.lookupScope?.renderKey ?? context.renderKey;
           if (scopeRenderKey === undefined || scopeRenderKey === CANONICAL) {
             const nonCanonicalParentEdgeKeys = (returnVal as Node).parentEdges
@@ -781,6 +795,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               scopeRenderKey = nonCanonicalParentEdgeKeys[0];
             }
           }
+          const declarationValueContext = scopeRenderKey !== undefined && context.renderKey !== scopeRenderKey
+            ? { ...context, renderKey: scopeRenderKey }
+            : context;
+          const declValue = (returnVal as Declaration).get('value', declarationValueContext);
           const declarationParent = scopeRenderKey !== undefined
             ? getCurrentParentNode(returnVal as Node, scopeRenderKey)
             : getCurrentParentNode(returnVal as Node, context);

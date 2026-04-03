@@ -3,9 +3,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
-import type { IParseResult } from './types/index.js';
-import type { ILexingResult } from '@chevrotain/types';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError, type JessErrorCode } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**
@@ -157,7 +155,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     if (errors.length > 0) {
       const firstError = errors[0]!;
       throw new JessError({
-        code: firstError.code as JessErrorCode,
+        code: firstError.code,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,

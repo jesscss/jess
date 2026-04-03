@@ -1,4 +1,3 @@
-import type { Class } from 'type-fest';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
@@ -47,18 +46,18 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
       this.operator,
       deep ? this.right.clone(deep) : this.right
     ];
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       value,
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
     newNode.inherit(this);
     return newNode;
   }
 
   constructor(value: OperationValue, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(value as any, options, location, treeContext);
+    super(value, options, location, treeContext);
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
@@ -109,11 +108,11 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          const outOperation = n.clone(false) as Operation;
+          const outOperation = n.clone(false);
           outOperation.adopt(l, context);
           outOperation.adopt(r, context);
-          (outOperation as unknown as { left: Node }).left = l;
-          (outOperation as unknown as { right: Node }).right = r;
+          Reflect.set(outOperation, 'left', l);
+          Reflect.set(outOperation, 'right', r);
           return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -130,11 +129,11 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Preserve canonical operation state by materializing an isolated wrapper when needed.
-              const calcOperation = n.clone(false) as Operation;
+              const calcOperation = n.clone(false);
               calcOperation.adopt(l, context);
               calcOperation.adopt(r, context);
-              (calcOperation as unknown as { left: Node }).left = l;
-              (calcOperation as unknown as { right: Node }).right = r;
+              Reflect.set(calcOperation, 'left', l);
+              Reflect.set(calcOperation, 'right', r);
               setEvaluated(calcOperation, true, context);
               setEvaluated(l, true, context);
               setEvaluated(r, true, context);
@@ -161,11 +160,11 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
       if (l === n.left && r === n.right) {
         return applyMergedDependency(n, l, r);
       }
-      const outOperation = n.clone(false) as Operation;
+      const outOperation = n.clone(false);
       outOperation.adopt(l, context);
       outOperation.adopt(r, context);
-      (outOperation as unknown as { left: Node }).left = l;
-      (outOperation as unknown as { right: Node }).right = r;
+      Reflect.set(outOperation, 'left', l);
+      Reflect.set(outOperation, 'right', r);
       return applyMergedDependency(outOperation, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

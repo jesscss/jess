@@ -16,7 +16,7 @@ export {
 export {
   expressionSum, expressionProduct, expressionValue, nthValue, knownFunctions,
   customValue, innerCustomValue, customBlock, mathProduct, mathSum,
-  calcFunction, ifFunction, booleanFunction, varReference, valueReference,
+  calcFunction, ifFunction, booleanFunction, urlFunction, varReference, valueReference,
   functionCall, functionCallArgs, value, string, mathValue
 } from './values.js';
 

@@ -18,6 +18,7 @@ import {
   Quoted,
   Interpolated,
   Reference,
+  Url,
   Dimension,
   Num,
   Negative,
@@ -455,6 +456,47 @@ export function knownFunctions(this: P, T: TokenMap) {
     ];
 
     return cssKnownFunctions.call($, T, functions)(ctx);
+  };
+}
+
+export function urlFunction(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    $.CONSUME(T.UrlStart);
+    let node: Any | IToken | Node = $.OR([
+      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      { ALT: () => $.CONSUME(T.NonQuotedUrl) }
+    ]);
+    $.CONSUME(T.UrlEnd);
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const location = $.endRule();
+    if (!(node instanceof Node)) {
+      const rawValue = node.image;
+      const tokenLocation = $.getLocationInfo(node);
+      if (rawValue.startsWith('@') || rawValue.startsWith('$')) {
+        const resolved = getInterpolatedOrString(rawValue, tokenLocation, $.context);
+        if (resolved instanceof Interpolated) {
+          node = resolved;
+        } else {
+          node = new Reference(
+            resolved,
+            { type: rawValue.startsWith('$') ? 'property' : 'variable' },
+            tokenLocation,
+            $.context
+          );
+        }
+      } else {
+        node = new Any(rawValue, { role: 'urlvalue' }, tokenLocation, $.context);
+      }
+    }
+    return new Url(node, undefined, location, $.context);
   };
 }
 

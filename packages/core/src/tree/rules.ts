@@ -2023,6 +2023,45 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const isMergedAssign = (assign: unknown): boolean => (
       assign === '+:' || assign === '&,:' || assign === '&_:'
     );
+    const cloneMergeValuePart = (value: Node): Node => {
+      return context
+        ? value.clone(false, undefined, context)
+        : value.clone(false);
+    };
+    const rebaseLinearMergedValue = (anchor: Declaration, value: Node, assign: string): Node | undefined => {
+      if (assign === '&_:') {
+        if (!isNode(value, N.Sequence)) {
+          return undefined;
+        }
+        const parts = value.get('value', context);
+        if (
+          parts.length < 2
+          || !isNode(parts[0]!, N.Reference)
+          || parts[0]!.options?.resolution !== 'linear'
+        ) {
+          return undefined;
+        }
+        return spaced([
+          getDeclValue(anchor),
+          ...parts.slice(1).map(part => cloneMergeValuePart(part as Node))
+        ]);
+      }
+      if (!isNode(value, N.List)) {
+        return undefined;
+      }
+      const parts = value.get('value', context);
+      if (
+        parts.length < 2
+        || !isNode(parts[0]!, N.Reference)
+        || parts[0]!.options?.resolution !== 'linear'
+      ) {
+        return undefined;
+      }
+      return new List([
+        getDeclValue(anchor),
+        ...parts.slice(1).map(part => cloneMergeValuePart(part as Node))
+      ]);
+    };
     const isDeclarationOnlyRules = (node: Node): node is Rules => (
       isNode(node, N.Rules)
       && node._getRenderChildren(context).length > 0
@@ -2050,18 +2089,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const [first, ...rest] = current.get('value');
-      let firstIsEmptyString = false;
-      try {
-        firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
-      } catch {
-        firstIsEmptyString = false;
-      }
       const isEmptyPlaceholder = Boolean(
         first
         && (
           isNode(first, N.Nil)
           || (isNode(first, N.List) && first.get('value').length === 0)
-          || firstIsEmptyString
         )
       );
       if (!isEmptyPlaceholder) {
@@ -2132,7 +2164,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // pre/post comments from merged values). Need a position-aware
         // alternative: either a serialization-time comment suppression flag
         // or field patches on pre/post.
-        setDeclValue(existingAnchor, getDeclValue(node));
+        const currentValue = getDeclValue(node);
+        setDeclValue(
+          existingAnchor,
+          rebaseLinearMergedValue(existingAnchor, currentValue, assign) ?? currentValue
+        );
         if (!getDeclImportant(existingAnchor) && getDeclImportant(node)) {
           setDeclImportant(existingAnchor, getDeclImportant(node));
         }
@@ -2243,6 +2279,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (
       rules === context.root
       && rules.renderKey === CANONICAL
+      && !rules.hasFlag(F_STATIC)
       && (context.renderKey === undefined || context.renderKey === CANONICAL)
       && getCurrentParentNode(rules, context) === undefined
     ) {

@@ -31,10 +31,15 @@ import {
 const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
+    const context = this?.context;
     const rawMixinRules = mixin instanceof Rules ? mixin : mixin.get('rules');
-    // Preserve callback lexical scope for variable lookups used in each bodies.
-    let mixinRules = rawMixinRules.copy(true).inherit(rawMixinRules);
-    mixinRules.sourceParent = mixin.sourceParent ?? mixin.parent ?? mixinRules.sourceParent;
+    // Re-anchor the callback body to the current invocation scope instead of the
+    // parser's detached arg-list ancestry.
+    const mixinRules = rawMixinRules.createShallowBodyWrapper(context);
+    if (context) {
+      mixinRules.parent = context.rulesContext ?? rawMixinRules.parent;
+      mixinRules.sourceParent = this.caller ?? context.rulesContext ?? rawMixinRules.sourceParent;
+    }
     let keys = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
       let params = mixin.get('params');

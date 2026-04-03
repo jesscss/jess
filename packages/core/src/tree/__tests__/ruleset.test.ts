@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, amp } from '../index.js';
 import { Context } from '../../context.js';
 import { getParentEdge } from '../util/cursor.js';
 
@@ -51,6 +51,47 @@ describe('Rule', () => {
       foo {
         border: 1px solid black;
         color: #eee;
+      }
+    `);
+  });
+
+  it('keeps later declarations in the same parent block when nested rules render in between', async () => {
+    const node = rules([
+      ruleset({
+        selector: el('.parent'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') }),
+          ruleset({
+            selector: compound([amp(), pseudo({ name: ':hover' })]),
+            rules: rules([
+              decl({ name: 'color', value: any('green') })
+            ])
+          }),
+          ruleset({
+            selector: el('.child'),
+            rules: rules([
+              decl({ name: 'background', value: any('red') })
+            ])
+          }),
+          decl({ name: 'content', value: any('"done"') }),
+          decl({ name: 'prop', value: any('red') })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      .parent {
+        color: red;
+        content: "done";
+        prop: red;
+      }
+      .parent:hover {
+        color: green;
+      }
+      .parent .child {
+        background: red;
       }
     `);
   });

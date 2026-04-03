@@ -49,6 +49,16 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   the displaced derived node alive unless some edge still points to it
 - treat every clone/materialize helper as temporary debt, not neutral
   infrastructure
+- treat generic function-wrapper machinery as suspect runtime overhead too;
+  `defineFunction()` should eventually stop using a `Proxy` for metadata
+  exposure and attach stable metadata (`name`, `options`, `_internal`)
+  directly to the callable instead
+- recent guard debugging narrowed one live Less seam:
+  `tests-unit/mixins-guards/mixins-guards.less` does not currently look like a
+  mixin call-scope bug. The failing `content:` values appear to survive to final
+  render without hitting the ordinary `Declaration.eval()` / `Reference.eval()`
+  path, so the next pass should inspect parser/value shaping for mixed CSS text
+  plus Less refs before changing mixin output plumbing again.
 - the end-state is to remove generic `Node.clone()` / `Node.copy()` as ordinary
   runtime tools from `node-base`; until then, every production callsite is
   suspect and must justify itself in `node-update-status.md`

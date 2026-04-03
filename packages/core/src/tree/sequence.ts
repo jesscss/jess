@@ -1,4 +1,3 @@
-import type { Class } from 'type-fest';
 import { CANONICAL, Node, F_STATIC, defineType, type NodeEdge, type RenderKey } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
@@ -58,12 +57,12 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
       ? value.map(child => cloneChild(child))
       : [...value];
     const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       [],
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
     newNode.value = clonedValue;
     if (ctx) {
       for (const child of clonedValue) {
@@ -188,8 +187,16 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
         // Capture current node's output to check if it starts with space
         // This captures the serialized output including pre/post from child nodes
         const currentCaptured = w.captureWithMeta(() => node.toString(options));
-        const currentNodeOut = currentCaptured.text;
-        const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+        let currentNodeOut = currentCaptured.text;
+        const isNegativeValue = isNode(node, N.Negative);
+        if (
+          isNegativeValue
+          && !this.options?.preserveWhitespace
+          && /^\s+-/.test(currentNodeOut)
+        ) {
+          currentNodeOut = currentNodeOut.replace(/^\s+/, '');
+        }
+        const currentStartsWithSpace = /^\s/.test(currentNodeOut);
         const hasExplicitNoSpaceBoundary = (
           !this.options?.forceSpacing
           && (

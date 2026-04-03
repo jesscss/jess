@@ -6,6 +6,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { Reference } from './reference.js';
 
 export type UrlChildData = { value: Quoted | Any };
 
@@ -57,13 +58,22 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
 
   override evalNode(context: Context): MaybePromise<Url> {
     const value = this.value;
+    let effectiveValue: Quoted | Any = value;
+    if (isNode(value, N.Any)) {
+      const rawValue = String(value.valueOf());
+      if (/^@[\w-]+$/.test(rawValue)) {
+        effectiveValue = new Reference(rawValue.slice(1), { type: 'variable' });
+      } else if (/^\$[\w-]+$/.test(rawValue)) {
+        effectiveValue = new Reference(rawValue.slice(1), { type: 'property' });
+      }
+    }
     const finish = (nextValue: Quoted | Any): Url => {
       if (nextValue !== value) {
         this.value = nextValue;
       }
       return this;
     };
-    const maybeEvald = value.eval(context) as MaybePromise<Quoted | Any>;
+    const maybeEvald = effectiveValue.eval(context) as MaybePromise<Quoted | Any>;
     if (isThenable(maybeEvald)) {
       return (maybeEvald as Promise<Quoted | Any>).then(finish);
     }

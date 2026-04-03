@@ -10,6 +10,41 @@ import { Nil } from '../nil.js';
 import { hasExtendedSelector } from './selector-utils.js';
 import { isBareAmpersandOwnSelector } from './selector-utils.js';
 import type { FlatRulePosition } from '../rules.js';
+
+function isRulesNode(node: Node): node is Rules {
+  return isNode(node, N.Rules);
+}
+
+function isRulesetNode(node: Node): node is Ruleset {
+  return isNode(node, N.Ruleset);
+}
+
+function isAtRuleNode(node: Node): node is AtRule {
+  return isNode(node, N.AtRule);
+}
+
+function isDeclarationNode(node: Node): node is Declaration {
+  return isNode(node, N.Declaration);
+}
+
+function isContainerNode(node: Node): node is Rules | Ruleset | AtRule {
+  return isRulesNode(node) || isRulesetNode(node) || isAtRuleNode(node);
+}
+
+function getRulesVisibility(node: Rules | Ruleset): Record<string, string> | undefined {
+  return isRulesNode(node)
+    ? node.options.rulesVisibility
+    : node.options.rulesVisibility;
+}
+
+function getRenderableSelectorString(node: Ruleset, collapseNesting: boolean | undefined, context: FinalPrintOptions['context']): string {
+  return String(node.getRenderableSelector(collapseNesting, context)?.valueOf?.() ?? '');
+}
+
+function isReferenceModeRules(node: Node): node is Rules {
+  return isRulesNode(node) && node.options.referenceMode === true;
+}
+
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -52,38 +87,38 @@ function rulesetExtendsReference(node: Ruleset, options: FinalPrintOptions): boo
 
 function rulesHaveReferenceRenderableDescendant(rules: Rules, options: FinalPrintOptions): boolean {
   for (const child of rules._getRenderChildren(options.context)) {
-    if (isNode(child, N.Rules)) {
-      if (rulesHaveReferenceRenderableDescendant(child as Rules, options)) {
+    if (isRulesNode(child)) {
+      if (rulesHaveReferenceRenderableDescendant(child, options)) {
         return true;
       }
       continue;
     }
-    if (isNode(child, N.Ruleset)) {
+    if (isRulesetNode(child)) {
       if (!isVisibleInContext(child, options.context) && !child.fullRender) {
-        const nestedRules = (child as Ruleset).enterRules(options.context);
+        const nestedRules = child.enterRules(options.context);
         if (nestedRules && rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
           return true;
         }
         continue;
       }
-      if (rulesetExtendsReference(child as Ruleset, options)) {
+      if (rulesetExtendsReference(child, options)) {
         return true;
       }
-      const nestedRules = (child as Ruleset).enterRules(options.context);
+      const nestedRules = child.enterRules(options.context);
       if (nestedRules && rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
         return true;
       }
       continue;
     }
-    if (isNode(child, N.AtRule)) {
+    if (isAtRuleNode(child)) {
       if (!isVisibleInContext(child, options.context) && !child.fullRender) {
-        const nestedRules = (child as AtRule).enterRules(options.context);
+        const nestedRules = child.enterRules(options.context);
         if (nestedRules && rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
           return true;
         }
         continue;
       }
-      const nestedRules = (child as AtRule).enterRules(options.context);
+      const nestedRules = child.enterRules(options.context);
       if (nestedRules && rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
         return true;
       }
@@ -97,14 +132,14 @@ function rulesHaveReferenceRenderableDescendant(rules: Rules, options: FinalPrin
 }
 
 function nodeExtendsReference(node: AtRule | Ruleset, options: FinalPrintOptions): boolean {
-  if (node.type === 'Ruleset') {
-    if (rulesetExtendsReference(node as Ruleset, options)) {
+  if (isRulesetNode(node)) {
+    if (rulesetExtendsReference(node, options)) {
       return true;
     }
-    const rules = (node as Ruleset).enterRules(options.context);
+    const rules = node.enterRules(options.context);
     return rules ? rulesHaveReferenceRenderableDescendant(rules, options) : false;
   }
-  const rules = (node as AtRule).enterRules(options.context);
+  const rules = node.enterRules(options.context);
   return rules ? rulesHaveReferenceRenderableDescendant(rules, options) : false;
 }
 
@@ -116,10 +151,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (
-    node.type === 'Ruleset'
-    && (node as Ruleset).getRenderableSelector(options.collapseNesting, options.context) instanceof Nil
-  ) {
+  if (isRulesetNode(node) && node.getRenderableSelector(options.collapseNesting, options.context) instanceof Nil) {
     return '';
   }
   // let header = node.getHeaderString(options);
@@ -134,15 +166,15 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const renderEnabled = inReferenceMode
     ? (inheritedRenderEnabled || (previousReferenceRenderOnExtend && nodeExtendsReference(node, options)))
     : true;
-  const isOptionalReferenceBoundary = isNode(node, N.Rules)
-    && ((node as unknown as { options?: { rulesVisibility?: Record<string, string> } }).options?.rulesVisibility?.Ruleset === 'optional');
+  const isOptionalReferenceBoundary = isRulesNode(node)
+    && getRulesVisibility(node)?.Ruleset === 'optional';
   options.referenceMode = inReferenceMode;
   options.referenceRenderEnabled = renderEnabled;
   options.referenceRenderOnExtend = previousReferenceRenderOnExtend;
-  if (node.type === 'Ruleset' && inReferenceMode && renderEnabled) {
+  if (isRulesetNode(node) && inReferenceMode && renderEnabled) {
     const previewHeader = node.getHeaderString(options, false);
     if (!previewHeader) {
-      const nestedRules = (node as Ruleset).enterRules(options.context);
+      const nestedRules = node.enterRules(options.context);
       if (!nestedRules || !rulesHaveReferenceRenderableDescendant(nestedRules, options)) {
         options.referenceMode = previousReferenceMode;
         options.referenceRenderEnabled = previousReferenceRenderEnabled;
@@ -151,9 +183,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       }
     }
   }
-  const rules = isNode(node, N.Ruleset)
-    ? (node as Ruleset).enterRules(options.context)
-    : (node as AtRule).enterRules(options.context);
+  const rules = node.enterRules(options.context);
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;
@@ -172,21 +202,21 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
   const positionMap = new WeakMap<Node, FlatRulePosition>();
   let rulesToRender = rules.flatRules(true, options.context, positionMap);
-  if (node.type === 'Ruleset' && inReferenceMode && renderEnabled) {
+  if (isRulesetNode(node) && inReferenceMode && renderEnabled) {
     const mergedMirrorBodyRules: Node[] = [];
     const expandedRulesToRender: Node[] = [];
     for (const child of rulesToRender) {
-      if (isNode(child, N.Ruleset)) {
-        const ownSelector = (child as Ruleset).getOwnSelector();
+      if (isRulesetNode(child)) {
+        const ownSelector = child.getOwnSelector();
         if (
           ownSelector
           && !(ownSelector instanceof Nil)
           && isBareAmpersandOwnSelector(ownSelector)
         ) {
-          const childRules = (child as Ruleset).enterRules(options.context);
+          const childRules = child.enterRules(options.context);
           if (childRules) {
             for (const innerChild of childRules.flatRules(true, options.context, positionMap)) {
-              if (isNode(innerChild, N.Ruleset | N.AtRule | N.Rules)) {
+              if (isContainerNode(innerChild)) {
                 expandedRulesToRender.push(innerChild);
               } else {
                 mergedMirrorBodyRules.push(innerChild);
@@ -202,7 +232,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const finalRulesToRender: Node[] = [];
       let insertedMergedMirrorBodyRules = false;
       for (const child of expandedRulesToRender) {
-        const isContainer = isNode(child, N.Ruleset | N.AtRule | N.Rules);
+        const isContainer = isContainerNode(child);
         if (!insertedMergedMirrorBodyRules && isContainer) {
           finalRulesToRender.push(...mergedMirrorBodyRules);
           insertedMergedMirrorBodyRules = true;
@@ -220,7 +250,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
-  const deferredExpandedChildren: any[] = [];
+  const deferredExpandedChildren: Node[] = [];
   const withNodePosition = <T>(target: Node, fn: () => T): T => {
     const ctx = options.context;
     const position = positionMap.get(target);
@@ -238,9 +268,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       ctx.renderKey = previousRenderKey;
     }
   };
-  const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
-    const seen = new Set<any>();
-    const queue: any[] = [start];
+  const sourceChainHas = (start: Node | undefined, predicate: (n: Node) => boolean): boolean => {
+    const seen = new Set<Node>();
+    const queue: Array<Node | undefined> = [start];
     while (queue.length > 0) {
       const current = queue.shift();
       if (!current || seen.has(current)) {
@@ -254,7 +284,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     return false;
   };
-  const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
+  const originatesFromCall = (n: Node | undefined): boolean => sourceChainHas(n, current => current.type === 'Call');
   if (rulesToRender.length === 0) {
     options.referenceMode = previousReferenceMode;
     options.referenceRenderEnabled = previousReferenceRenderEnabled;
@@ -266,7 +296,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   // for each property, keep the last exact serialized declaration and skip earlier duplicates.
   for (let i = rulesToRender.length - 1; i >= 0; i--) {
     const node = rulesToRender[i]!;
-    if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+    if (!isDeclarationNode(node) || isNode(node, N.VarDeclaration)) {
       continue;
     }
     // Push per-node position so patched fields are visible during dedup
@@ -274,8 +304,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
     const declOut = withNodePosition(node, () => node.toTrimmedString(declOptions));
     declarationOutputCache.set(node, declOut);
-    const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
-    const declProp = (node as Declaration).get('name', options.context).valueOf();
+    const declKey = `${declOut}${node.requiresSemi(options.context) ? ';' : ''}`;
+    const declProp = node.get('name', options.context).valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
       seenValues = new Set<string>();
@@ -313,6 +343,31 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   for (let idx = 0; idx < rulesToRender.length; idx++) {
     let n = rulesToRender[idx]!;
     const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
+    const getLaterExternalNonContainer = (currentChild: Node, childSelector?: string): Node | undefined => {
+      const laterCandidates = rulesToRender.slice(idx + 1);
+      return laterCandidates.find((later) => {
+        if (!isVisibleInContext(later, options.context) && !later.fullRender) {
+          return false;
+        }
+        if (isContainerNode(later)) {
+          return false;
+        }
+        if (isDeclarationNode(later) && skippedDuplicateDeclarations.has(later)) {
+          return false;
+        }
+        const ownedByCurrentChild = sourceChainHas(later, (current) => {
+          if (current === currentChild) {
+            return true;
+          }
+          if (!childSelector || !isRulesetNode(current)) {
+            return false;
+          }
+          const currentSelector = getRenderableSelectorString(current, options.collapseNesting, options.context);
+          return currentSelector !== '' && currentSelector === childSelector;
+        });
+        return !ownedByCurrentChild;
+      });
+    };
 
     // Push per-node position from the position map so patched fields resolve
     const skipped = withNodePosition(n, () => {
@@ -329,29 +384,30 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         return true;
       }
 
-      if (isNode(n, N.Rules)) {
-        const ownRefMode = (n as any).options?.referenceMode === true;
+      if (isRulesNode(n)) {
+        const ownRefMode = isReferenceModeRules(n);
         const childRefMode = inReferenceMode || ownRefMode;
         const entering = !inReferenceMode && ownRefMode;
         const childRenderEnabled = childRefMode
           ? (entering ? false : renderEnabled)
           : true;
-        const childOptions = {
+        const childOptions: FinalPrintOptions = {
           ...options,
           referenceMode: childRefMode,
           referenceRenderEnabled: childRenderEnabled,
           referenceRenderOnExtend: previousReferenceRenderOnExtend
-        } as FinalPrintOptions;
+        };
         const childOut = w.capture(() => n.toTrimmedString(childOptions));
         if (childOut) {
           w.add(childOut, n);
         }
         return true;
       }
-      if (isNode(n, N.Ruleset | N.AtRule)) {
-        if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
-          const parentSelector = String((node as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
-          const childSelector = String((n as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
+      const isLeafAtRule = isAtRuleNode(n) && !n.enterRules(options.context);
+      if (isContainerNode(n) && !isLeafAtRule) {
+        if (isRulesetNode(node) && isRulesetNode(n)) {
+          const parentSelector = getRenderableSelectorString(node, options.collapseNesting, options.context);
+          const childSelector = getRenderableSelectorString(n, options.collapseNesting, options.context);
           const isExpandedDescendant = parentSelector !== '' && (
             childSelector.startsWith(`${parentSelector} `)
             || childSelector.startsWith(`${parentSelector}.`)
@@ -364,40 +420,15 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
               childSelector === `${parentSelector} ${parentSelector}`
               || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
             );
-          const fromCall = originatesFromCall(n as any);
-          const laterCandidates = rulesToRender.slice(idx + 1);
-          const hasLaterExternalNonContainer = laterCandidates.some((later) => {
-            if (!isVisibleInContext(later, options.context) && !later.fullRender) {
-              return false;
-            }
-            if (isNode(later, N.Ruleset | N.AtRule | N.Rules)) {
-              return false;
-            }
-            if (isNode(later, N.Declaration) && skippedDuplicateDeclarations.has(later)) {
-              return false;
-            }
-            const ownedByCurrentChild = sourceChainHas(later, (current) => {
-              if (current === n) {
-                return true;
-              }
-              if (current?.type !== 'Ruleset') {
-                return false;
-              }
-              const currentSelector = String((current as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
-              return currentSelector !== '' && currentSelector === childSelector;
-            });
-            return !ownedByCurrentChild;
-          });
-          const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
-            return otherIdx !== idx
-              && isNode(other, N.Ruleset)
-              && String((other as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '') === childSelector;
-          });
-          if (isExpandedDescendant
+          const hasLaterExternalNonContainer = Boolean(getLaterExternalNonContainer(n, childSelector));
+          if (
+            hasLaterExternalNonContainer
+            && (
+              isExpandedDescendant
+              || isAtRuleNode(n)
+              || originatesFromCall(n)
+            )
             && !isSelfWrappedDescendant
-            && fromCall
-            && hasLaterExternalNonContainer
-            && hasRepeatedExpandedSelectorAny
           ) {
             deferredExpandedChildren.push(n);
             return true;
@@ -405,40 +436,40 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         }
         const childReferenceRenderEnabled = (
           inReferenceMode
-          && node.type === 'AtRule'
-          && isNode(n, N.Ruleset | N.AtRule)
+          && isAtRuleNode(node)
+          && isContainerNode(n)
         )
-          ? nodeExtendsReference(n as AtRule | Ruleset, options)
+          ? nodeExtendsReference(n, options)
           : renderEnabled;
         const keepReferenceFilteringForBareMirror = (
           inReferenceMode
           && renderEnabled
-          && node.type === 'Ruleset'
-          && isNode(n, N.Ruleset)
-          && (() => {
-            const ownSelector = (n as Ruleset).getOwnSelector();
-            return Boolean(
-              ownSelector
-              && !(ownSelector instanceof Nil)
-              && isBareAmpersandOwnSelector(ownSelector)
-            );
-          })()
+          && isRulesetNode(node)
+          && isRulesetNode(n)
+          && Boolean(
+            (() => {
+              const ownSelector = n.getOwnSelector();
+              return ownSelector
+                && !(ownSelector instanceof Nil)
+                && isBareAmpersandOwnSelector(ownSelector);
+            })()
+          )
         );
         const childReferenceMode = (
           inReferenceMode
-          && node.type === 'AtRule'
-          && isNode(n, N.Ruleset | N.AtRule)
+          && isAtRuleNode(node)
+          && isContainerNode(n)
         )
           ? true
           : keepReferenceFilteringForBareMirror
             ? true
             : (inReferenceMode && renderEnabled && !isOptionalReferenceBoundary) ? false : inReferenceMode;
-        const childOptions = {
+        const childOptions: FinalPrintOptions = {
           ...options,
           referenceMode: childReferenceMode,
           referenceRenderEnabled: childReferenceRenderEnabled,
           referenceRenderOnExtend: previousReferenceRenderOnExtend
-        } as FinalPrintOptions;
+        };
         const childOut = w.capture(() => n.toTrimmedString(childOptions));
         if (!childOut) {
           return true;
@@ -487,9 +518,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       }
 
       const idt = indent(options.depth + 1);
-      const nn = n as Node;
+      const nn = n;
       let pre = w.capture(() => nn.processPrePost('pre', undefined, options));
-      const out = isNode(nn, N.Declaration)
+      const out = isDeclarationNode(nn)
         ? (declarationOutputCache.get(nn) ?? w.capture(() => nn.toTrimmedString({ ...options, depth: options.depth + 1 })))
         : w.capture(() => nn.toTrimmedString({ ...options, depth: options.depth + 1 }));
       if (
@@ -500,26 +531,28 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       ) {
         return;
       }
-      if (isNode(nn, N.Declaration)) {
+      if (isDeclarationNode(nn)) {
         pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
         const declIn = pre + out;
         const hasEmptyValue = /:\s*$/.test(out);
         const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
           ? `${idt}${out}`
           : normalizeIndent(declIn, idt, true);
-        if ((nn as Declaration).isCustomProperty(options.context)) {
+        if (nn.isCustomProperty(options.context)) {
           w.add(idt);
           w.add(out, nn);
         } else {
           w.add(declNormalized, nn);
         }
-      } else if (isNode(nn, N.Rules)) {
+      } else if (isRulesNode(nn)) {
+        w.add(out, nn);
+      } else if (isAtRuleNode(nn) && !nn.enterRules(options.context)) {
         w.add(out, nn);
       } else {
         w.add(idt);
         w.add(out, nn);
       }
-      if (isNode(nn, N.Declaration) ? (nn as Declaration).requiresSemi(options.context) : nn.requiredSemi) {
+      if (isDeclarationNode(nn) ? nn.requiresSemi(options.context) : nn.requiredSemi) {
         w.add(';');
       }
 
@@ -543,7 +576,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
   for (const deferred of deferredExpandedChildren) {
     const deferredWriter = new OutputWriter();
-    const childOptions = {
+    const childOptions: FinalPrintOptions = {
       ...options,
       writer: deferredWriter,
       frameHeaders: [],
@@ -553,7 +586,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       referenceMode: inReferenceMode,
       referenceRenderEnabled: renderEnabled,
       referenceRenderOnExtend: previousReferenceRenderOnExtend
-    } as FinalPrintOptions;
+    };
     const childOut = withNodePosition(deferred, () => deferred.toTrimmedString(childOptions));
     if (!childOut) {
       continue;
