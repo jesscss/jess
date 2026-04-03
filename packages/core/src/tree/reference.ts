@@ -190,6 +190,27 @@ function getStateSourceRulesParent(node: Node, context: Context): Rules | undefi
   return sourceParent ? getSourceRulesParent(sourceParent, context) : undefined;
 }
 
+function shouldAnchorResolvedReferenceResult(
+  result: Node,
+  context: Context
+): boolean {
+  if ((result.nodeType & (N.Mixin | N.Ruleset | N.Rules | N.Func | N.JsFunction)) !== 0) {
+    return getSourceParent(result, context) === undefined;
+  }
+  return true;
+}
+
+function anchorResolvedReferenceResult<T extends Node>(
+  result: T,
+  sourceReference: Node,
+  context: Context
+): T {
+  if (shouldAnchorResolvedReferenceResult(result, context)) {
+    setSourceParent(result, sourceReference, context);
+  }
+  return result;
+}
+
 export type ReferenceChildData = {
   target: Reference | Call | undefined;
   key: ReferenceValue['key'];
@@ -368,6 +389,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
     // wrapper `Rules` and should be visible inside nested at-rule preludes.
     const activeRulesParent = getStateRulesParent(this, context);
     const activeSourceRulesParent = getStateSourceRulesParent(this, context);
+    const lookupSourceRulesParent = context.lookupScope
+      ? getStateSourceRulesParent(context.lookupScope, context)
+      : undefined;
     const sourceReference = this.sourceNode as Node;
     let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? activeRulesParent;
     const result = pipe(
@@ -736,6 +760,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
             && !target
             && type === 'variable'
             && context.callStack.length > 0
+            && lookupSourceRulesParent
+            && lookupSourceRulesParent !== lookupTarget
+            && lookupSourceRulesParent !== context.lookupScope
+          ) {
+            returnVal = performLookup(lookupSourceRulesParent);
+          }
+
+          if (
+            returnVal === undefined
+            && !target
+            && type === 'variable'
+            && context.callStack.length > 0
             && activeSourceRulesParent
             && activeSourceRulesParent !== lookupTarget
           ) {
@@ -865,7 +901,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
           if (type === 'mixin-ruleset' && !isNode(getLookupParentNode(this, context), N.Call) && context.referenceStack > 1) {
             const first = returnVal[0] as Node | undefined;
             if (first && isNode(first, N.Mixin | N.Ruleset)) {
-              setSourceParent(first as Node, sourceReference, context);
+              anchorResolvedReferenceResult(first as Node, sourceReference, context);
               context.popReference();
               return cast(first);
             }
@@ -875,7 +911,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
 
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
-            setSourceParent(item, sourceReference, context);
+            anchorResolvedReferenceResult(item, sourceReference, context);
             if (!isNode(item, N.Mixin | N.Ruleset)) {
               context.popReference();
               return cast(undefined);
@@ -902,7 +938,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level
         context.popReference();
-        setSourceParent(result, sourceReference, context);
+        anchorResolvedReferenceResult(result, sourceReference, context);
         return result;
       }
     );

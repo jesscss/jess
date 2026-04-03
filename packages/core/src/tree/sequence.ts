@@ -1,4 +1,5 @@
 import { CANONICAL, Node, F_STATIC, defineType, type NodeEdge, type RenderKey } from './node.js';
+import { canReuseEvalState } from './node-base.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
@@ -247,7 +248,8 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (this.preEvaluated) {
+    const reusableState = canReuseEvalState(this, context);
+    if (this.preEvaluated && reusableState) {
       return this;
     }
     const renderKey = context.renderKey ?? this.renderKey;
@@ -277,12 +279,16 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
                 this._replaceValueAt(i, nextValue[i]!, renderKey);
               }
             }
-            this.preEvaluated = true;
+            if (reusableState) {
+              this.preEvaluated = true;
+            }
             return this;
           }
           const changed = nextValue.some((child, i) => child !== value[i]);
           if (!changed) {
-            this.preEvaluated = true;
+            if (reusableState) {
+              this.preEvaluated = true;
+            }
             return this;
           }
           const node = this._cloneWithValue(nextValue);
@@ -296,12 +302,16 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
             this._replaceValueAt(i, nextValue[i]!, renderKey);
           }
         }
-        this.preEvaluated = true;
+        if (reusableState) {
+          this.preEvaluated = true;
+        }
         return this;
       }
       const changed = nextValue.some((child, i) => child !== value[i]);
       if (!changed) {
-        this.preEvaluated = true;
+        if (reusableState) {
+          this.preEvaluated = true;
+        }
         return this;
       }
       const node = this._cloneWithValue(nextValue);
@@ -309,7 +319,9 @@ export class Sequence extends Node<Node[], SequenceOptions, SequenceChildData> {
       return node;
     }
 
-    this.preEvaluated = true;
+    if (reusableState) {
+      this.preEvaluated = true;
+    }
     return this;
   }
 

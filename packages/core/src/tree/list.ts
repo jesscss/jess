@@ -6,6 +6,7 @@ import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { addEdgeAt, addParentEdge, removeParentEdge } from './util/cursor.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { canReuseEvalState } from './node-base.js';
 
 export type ListOptions = {
   /**
@@ -175,7 +176,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (this.preEvaluated) {
+    const reusableState = canReuseEvalState(this, context);
+    if (this.preEvaluated && reusableState) {
       return this;
     }
     const renderKey = context.renderKey ?? this.renderKey;
@@ -201,7 +203,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
               this._replaceValueAt(i, child, renderKey);
             }
           }
-          this.preEvaluated = true;
+          if (reusableState) {
+            this.preEvaluated = true;
+          }
           return this;
         } else {
           const node = this.clone();
@@ -213,7 +217,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
           return node;
         }
       }
-      this.preEvaluated = true;
+      if (reusableState) {
+        this.preEvaluated = true;
+      }
       return this;
     }
 
@@ -243,7 +249,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
                 this._replaceValueAt(i, child, renderKey);
               }
             }
-            this.preEvaluated = true;
+            if (reusableState) {
+              this.preEvaluated = true;
+            }
             return this;
           } else {
             const node = this.clone();
@@ -255,7 +263,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
             return node;
           }
         }
-        this.preEvaluated = true;
+        if (reusableState) {
+          this.preEvaluated = true;
+        }
         return this;
       });
     }
@@ -267,7 +277,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
             this._replaceValueAt(i, child, renderKey);
           }
         }
-        this.preEvaluated = true;
+        if (reusableState) {
+          this.preEvaluated = true;
+        }
         return this;
       } else {
         const node = this.clone();
@@ -279,7 +291,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         return node;
       }
     }
-    this.preEvaluated = true;
+    if (reusableState) {
+      this.preEvaluated = true;
+    }
     return this;
   }
 

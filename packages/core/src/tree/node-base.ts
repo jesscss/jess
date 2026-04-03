@@ -132,7 +132,18 @@ function getNodeValue(node: Node): unknown {
   return getNodeField(node, 'value');
 }
 
-function setNodeEvaluated(node: Node): void {
+export function canReuseEvalState(node: Node, context?: Context): boolean {
+  const renderKey = context?.renderKey;
+  if (renderKey === undefined || renderKey === CANONICAL) {
+    return true;
+  }
+  return node.renderKey === renderKey;
+}
+
+function setNodeEvaluated(node: Node, context?: Context): void {
+  if (!canReuseEvalState(node, context)) {
+    return;
+  }
   setNodeField(node, 'evaluated', true);
 }
 
@@ -1271,7 +1282,8 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
+    const reusableState = canReuseEvalState(node, context);
+    if (node.hasFlag(F_STATIC) && node.evaluated && reusableState) {
       return node;
     }
 
@@ -1283,25 +1295,27 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node.preEvaluated) {
+        if (!node.preEvaluated || !reusableState) {
           return node.preEval(context);
         }
         return node;
       },
       (preEvald) => {
         preEvaluatedNode = preEvald;
-        preEvaluatedNode.preEvaluated = true;
+        if (canReuseEvalState(preEvaluatedNode, context)) {
+          preEvaluatedNode.preEvaluated = true;
+        }
         if (preEvald !== node) {
           Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
           preEvaluatedNode.inherit(node);
         }
-        if (!preEvaluatedNode.evaluated) {
+        if (!preEvaluatedNode.evaluated || !canReuseEvalState(preEvaluatedNode, context)) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
       },
       (evald) => {
-        setNodeEvaluated(evald);
+        setNodeEvaluated(evald, context);
         if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
           Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
           if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
@@ -1315,25 +1329,28 @@ export abstract class Node<
 
   private static _evalStaticSync(node: Node, context: Context): Node {
     let preEvaluatedNode: Node;
+    const reusableState = canReuseEvalState(node, context);
 
-    if (!node.preEvaluated) {
+    if (!node.preEvaluated || !reusableState) {
       preEvaluatedNode = node.preEval(context);
     } else {
       preEvaluatedNode = node;
     }
-    preEvaluatedNode.preEvaluated = true;
+    if (canReuseEvalState(preEvaluatedNode, context)) {
+      preEvaluatedNode.preEvaluated = true;
+    }
     if (preEvaluatedNode !== node) {
       Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
       preEvaluatedNode.inherit(node);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated) {
+    if (!preEvaluatedNode.evaluated || !canReuseEvalState(preEvaluatedNode, context)) {
       evald = preEvaluatedNode.evalNode(context);
     } else {
       evald = preEvaluatedNode;
     }
-    setNodeEvaluated(evald);
+    setNodeEvaluated(evald, context);
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
       Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
       if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {

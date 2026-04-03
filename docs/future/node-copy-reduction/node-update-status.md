@@ -191,14 +191,25 @@ follow-on runtime cleanup once the active correctness bugs are stable.
 
 - `tests-unit/mixins-guards/mixins-guards.less`
   Current narrowing:
-  the wrong `content:` lines are not behaving like normal late-opened variable
-  references. Temporary probes in `Declaration.eval()` / `Reference.eval()`
-  did not fire for the failing parser-backed fixture path, which strongly
-  suggests the mixed CSS-text-plus-Less-ref value is being shaped into a more
-  static/literal node form before ordinary declaration/reference eval ever runs.
-  Next step: inspect Less parser value/declaration shaping, especially the CSS
-  parser declaration/value path plus Less token overrides, before changing mixin
-  scope/runtime again.
+  the old lock-closure and recursive-mixin failures are fixed in reduced repros
+  and in the nearby Less fixtures (`mixins-closure.less`,
+  `mixins-advanced.less`). The earlier
+  `ReferenceError: 'space-list' is not defined` is now removed.
+  Reduced repro:
+  shared `.generic(...)` guarded overloads plus
+  `.variouse-types-comparison { ... }` followed by
+  `.list-comparison { ... }`.
+  The same `.list-comparison` block passes in isolation and only fails after the
+  earlier guarded calls run, which still points at render-key / pre-eval state
+  reuse leakage across repeated guarded mixin evaluation rather than parser
+  output shape or serializer behavior.
+  The live remainder is now output-shaped:
+  repeated guarded calls produce missing spaces in emitted `content:` values and
+  drop the later `.call-lock-mixin .call-inner-lock-mixin` block inside the full
+  fixture, even though `mixins-closure.less` still passes in isolation.
+  Next step: inspect reuse/mutation of evaluated call arg `Sequence` values
+  across repeated guarded candidates, especially when later candidate prep sees
+  arg nodes already carrying non-canonical render keys/source ancestry.
 
 ## Clone / Materialize Debt
 

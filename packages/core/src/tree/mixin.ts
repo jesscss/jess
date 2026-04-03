@@ -7,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setParent } from './util/field-helpers.js';
+import { getParent, setParent } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -232,6 +232,13 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     let node = this.clone();
     node.preEvaluated = true;
     node.sourceNode ??= this;
+    const activeParent = getParent(this, context);
+    if (context.rulesContext && activeParent === context.rulesContext) {
+      const lexicalScope = getParent(context.rulesContext, context);
+      if (lexicalScope) {
+        node.sourceParent ??= lexicalScope;
+      }
+    }
 
     const name = node.get('name', context);
     let rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);

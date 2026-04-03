@@ -2587,12 +2587,13 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const callerSourceNode = (caller as any)?.name instanceof Node
       ? (caller as any).name
       : caller;
-    let sourceParent = caller
-      ?? (
-        callerSourceNode
-          ? getSourceParent(callerSourceNode, thisContext)
-          : undefined
-      );
+    let sourceParent = callerSourceNode
+      ? getSourceParent(callerSourceNode, thisContext)
+      : undefined;
+    if (sourceParent && isNode(sourceParent, N.Reference | N.Call)) {
+      sourceParent = caller;
+    }
+    sourceParent ??= caller;
     const invocationParent = thisContext.rulesContext
       ?? (caller ? getParent(caller, thisContext) : undefined);
 
@@ -2647,12 +2648,13 @@ export async function evalMixinDirect(
   const callerSourceNode = caller && isNode(caller, N.Call) && caller.get('name') instanceof Node
     ? caller.get('name')
     : caller;
-  const sourceParent = caller
-    ?? (
-      callerSourceNode
-        ? getSourceParent(callerSourceNode as Node, context)
-        : undefined
-    );
+  let sourceParent = callerSourceNode
+    ? getSourceParent(callerSourceNode as Node, context)
+    : undefined;
+  if (sourceParent && isNode(sourceParent, N.Reference | N.Call)) {
+    sourceParent = caller;
+  }
+  sourceParent ??= caller;
   const invocationParent = context.rulesContext
     ?? (caller ? getParent(caller as Node, context) : undefined);
 

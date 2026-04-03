@@ -54,11 +54,13 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   exposure and attach stable metadata (`name`, `options`, `_internal`)
   directly to the callable instead
 - recent guard debugging narrowed one live Less seam:
-  `tests-unit/mixins-guards/mixins-guards.less` does not currently look like a
-  mixin call-scope bug. The failing `content:` values appear to survive to final
-  render without hitting the ordinary `Declaration.eval()` / `Reference.eval()`
-  path, so the next pass should inspect parser/value shaping for mixed CSS text
-  plus Less refs before changing mixin output plumbing again.
+  `tests-unit/mixins-guards/mixins-guards.less` is no longer blocked on the old
+  lock-closure / recursive-mixin failures. The live failure is now
+  `ReferenceError: 'space-list' is not defined`, and the reduced repro only
+  fails when the earlier `.variouse-types-comparison` guarded-mixin calls run
+  before `.list-comparison`. Treat that as runtime state leakage / reuse across
+  repeated guarded mixin evaluation until proven otherwise; do not go back to
+  broad parser-shape or mixin-output rewrites first.
 - the end-state is to remove generic `Node.clone()` / `Node.copy()` as ordinary
   runtime tools from `node-base`; until then, every production callsite is
   suspect and must justify itself in `node-update-status.md`
@@ -86,26 +88,27 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 
 ## Current Narrow Frontier
 
-- `packages/core/src/tree/__tests__/import-style.test.ts` is green again
-  aside from intentional skips. Import evaluation now runs through
-  placement-owned top-level wrappers before eval, and compose `set` baselines
-  are reused without canonically reparenting imported trees.
-- Recursive live ampersand resolution in extend matching now stops at the
-  current selector path boundary instead of recursing back into itself.
-  Treat that as a selector-match ownership fix, not a reason to add more
-  clone/materialize helpers.
-- The current live Less integration blocker is
-  `tests-unit/import/import-reference.less`. The source-side reference-import
-  proofs are green, but the real parser-generated fixture still fails to
-  activate the extended selector path cleanly. The remaining bug is the
-  reference-import activation / ruleset-as-mixin ancestry seam, not the older
-  exact-extend `&&` or nested `@media` storyline.
-- `Reference` resolution now has one explicit guardrail in generic eval:
-  when a `Reference` resolves to a definition-like node (`Mixin`, `Ruleset`,
-  `Rules`, `Func`, `JsFunction`), generic eval inheritance must not overwrite
-  that resolved node's identity/source ancestry. That fixed the duplicated
-  `.bg()` candidate path in `media.less` without adding a new clone/materialize
-  helper, and the same guardrail still applies to the reference-import path.
+- `tests-unit/import/import-reference.less` is fixed. Keep the reference-owned
+  activation model simple: print suppression defaults off under reference
+  boundaries, and only explicit activation paths opt specific descendants back
+  in.
+- Two narrow guarded-mixin proofs are green again:
+  - `tests-unit/mixins-closure/mixins-closure.less`
+  - `tests-unit/mixins/mixins-advanced.less`
+- Minimal production-shaped repros for nested lock capture and recursive mixins
+  are green. The remaining live Less blocker is
+  `tests-unit/mixins-guards/mixins-guards.less`.
+- The current reduced repro for that fixture is:
+  - shared `.generic(...)` guarded overloads
+  - `.variouse-types-comparison { ... }`
+  - `.list-comparison { ... }`
+  with the failure only appearing when the earlier guarded calls run first.
+  The hard `ReferenceError: 'space-list' is not defined` has now been removed by
+  normalizing invocation source-parent selection away from reference/call
+  pseudo-owners and by anchoring call-site container arg values. The remaining
+  issue in that same fixture is smaller but still real: repeated guarded calls
+  are leaving output/closure regressions (missing spaces in emitted `content:`
+  values and a dropped `.call-lock-mixin .call-inner-lock-mixin` block).
 
 ## What To Delete Over Time
 
