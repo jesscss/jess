@@ -157,13 +157,10 @@ frontier.
 Each red still needs its own tracked disposition. Do not let one fixture imply
 the solution for another.
 
-Current remaining Jess reds are all parity-shape / formatting candidates:
+Current remaining Jess reds are selector-shape parity candidates only:
 
-- `tests-unit/css-3/css-3.less`
-- `tests-unit/css-grid/css-grid.less`
 - `tests-unit/extend-nest/extend-nest.less`
 - `tests-unit/rulesets/rulesets.less`
-- `tests-unit/whitespace/whitespace.less`
 
 Current extend-specific state:
 
@@ -182,20 +179,25 @@ Current extend-specific state:
 
 Per-fixture next action:
 
-- `tests-unit/css-3/css-3.less`
-  action: treat as serialization/parsing-shape audit, not runtime lookup work.
-- `tests-unit/css-grid/css-grid.less`
-  action: treat as formatting/serialization drift unless a semantic mismatch is
-  proven.
 - `tests-unit/extend-nest/extend-nest.less`
   action: selector-shape decision only. Decide whether Jess should preserve the
   split `.button:hover, .submit:hover` form or keep the semantically-equivalent
   generated `:is(...)` form.
 - `tests-unit/rulesets/rulesets.less`
-  action: decide block-by-block whether each `:is(...)` route is semantic drift
-  or a real selector-composition regression.
+  action: verify each grouped `:is(...)` route remains semantically equivalent
+  to the expanded Less selector list before accepting it as intentional Jess
+  output.
+
+Formatting parity fixed in this pass:
+
+- `tests-unit/css-3/css-3.less`
+  preserved explicit multiline comma-list layout for the `-moz-box-shadow`
+  value without regressing flat comma-list output in `urls.less`.
+- `tests-unit/css-grid/css-grid.less`
+  preserved deliberate leading newlines on multiline declaration values such as
+  `grid-template-areas:`.
 - `tests-unit/whitespace/whitespace.less`
-  action: treat as formatting unless a value/token boundary changes.
+  preserved multiline comma-list declaration formatting again.
 
 Serialization note:
 

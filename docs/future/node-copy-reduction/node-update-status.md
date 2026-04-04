@@ -204,7 +204,6 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 2. Keep the remaining frontier grounded in the actual failing fixture output. The current Jess red set is:
    - selector-shape-only output in `extend-nest.less`
    - grouped `:is(...)` route output in `rulesets.less`
-   - formatting-only output drift in `css-3.less`, `css-grid.less`, and `whitespace.less`
 3. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
 4. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
 
@@ -274,13 +273,17 @@ Recent proof milestone:
   extender.
 
 - `packages/jess/test/less/all-less.test.ts`
-  Current red set after the latest rebuild is down to five fixture-parity
+  Current red set after the latest rebuild is down to two fixture-parity
   candidates:
-  - `tests-unit/css-3/css-3.less`
-  - `tests-unit/css-grid/css-grid.less`
   - `tests-unit/extend-nest/extend-nest.less`
   - `tests-unit/rulesets/rulesets.less`
+  Formatting parity is restored for:
+  - `tests-unit/css-3/css-3.less`
+  - `tests-unit/css-grid/css-grid.less`
   - `tests-unit/whitespace/whitespace.less`
+  with the durable fixes living in:
+  - `packages/core/src/tree/list.ts`
+  - `packages/core/src/tree/declaration.ts`
   Current narrowing:
   a parser-accurate core repro now exists in
   `packages/core/src/tree/__tests__/mixin.test.ts` for the final

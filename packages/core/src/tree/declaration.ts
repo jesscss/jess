@@ -241,11 +241,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } catch (error: unknown) {
         throw error;
       }
-      // Remove leading / trailing whitespace
-      const normalizedValue = valOut.replace(/^\s+|\s+$/g, '');
-      // Ensure exactly one space after ':' by adding one space
-      w.add(' ');
-      w.add(normalizedValue, value);
+      const startsOnNextLine = /^[ \t\r\f]*\n/.test(valOut);
+      const preserveLeadingMultilineValue = startsOnNextLine && /\n[\s\S]*\n/.test(valOut);
+      if (preserveLeadingMultilineValue) {
+        const normalizedValue = valOut.replace(/\s+$/g, '');
+        w.add(normalizedValue, value);
+      } else {
+        const normalizedValue = valOut.replace(/^\s+|\s+$/g, '');
+        // Ensure exactly one space after ':' by adding one space
+        w.add(' ');
+        w.add(normalizedValue, value);
+      }
       if (!isNode(value, N.Collection)) {
         if (important) {
           let imp = w.capture(() => important.toString(options));
@@ -617,13 +623,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return;
           }
           const first = listValue[0]!;
-        const isEmptyPlaceholder = (
-          isNode(first, N.Nil)
-          || (isNode(first, N.List) && first.get('value').length === 0)
-        );
-        if (!isEmptyPlaceholder) {
-          return;
-        }
+          const isEmptyPlaceholder = (
+            isNode(first, N.Nil)
+            || (isNode(first, N.List) && first.get('value').length === 0)
+          );
+          if (!isEmptyPlaceholder) {
+            return;
+          }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
             node.setCurrentValue(new Nil(), context);

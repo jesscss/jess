@@ -7,6 +7,8 @@ import { LIST_ITEM_TRIM } from './util/regex.js';
 import { addEdgeAt, addParentEdge, removeParentEdge } from './util/cursor.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { canReuseEvalState } from './node-base.js';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 
 export type ListOptions = {
   /**
@@ -135,12 +137,23 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     // Subsequent items: emit sep; capture next item to decide spacing precisely
     for (let i = 1; i < length; i++) {
       item = value[i]!;
+      const rawOut = w.capture(() => item.toString(options));
+      const startsOnNextLine = /^[ \t\r\f]*\n/.test(rawOut);
+      const preserveSimpleMultilineCommaList = (
+        sep === ','
+        && startsOnNextLine
+        && value.every(entry => isNode(entry, N.Any | N.Quoted | N.Sequence))
+      );
       if (sep === '/') {
         w.add(' / ');
+        out = rawOut.replace(LIST_ITEM_TRIM, '');
+      } else if (preserveSimpleMultilineCommaList) {
+        w.add(sep);
+        out = rawOut.replace(/\s+$/g, '');
       } else {
         w.add(`${sep} `);
+        out = rawOut.replace(LIST_ITEM_TRIM, '');
       }
-      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
       w.add(out);
     }
     return w.getSince(mark);
