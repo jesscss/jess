@@ -1,7 +1,7 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, amp, interpolated, interpolatedSelector, ref, co } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, amp, interpolated, interpolatedSelector, ref, co, N } from '../index.js';
 import { Context } from '../../context.js';
-import { Ruleset } from '../ruleset.js';
 import { getParentEdge } from '../util/cursor.js';
+import { isNode } from '../util/is-node.js';
 import { LessParser } from '../../../../less-parser/src/index.ts';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset } from '../util/selector-utils.js';
 
@@ -419,26 +419,22 @@ describe('Rule', () => {
     const evald = await tree.eval(context);
 
     const top = evald.value[0];
-    expect(top).toBeInstanceOf(Ruleset);
-    if (!(top instanceof Ruleset)) {
+    if (!isNode(top, N.Ruleset)) {
       throw new Error('expected top-level child to be a Ruleset');
     }
 
     const middle = top.rules.value[0];
-    expect(middle).toBeInstanceOf(Ruleset);
-    if (!(middle instanceof Ruleset)) {
+    if (!isNode(middle, N.Ruleset)) {
       throw new Error('expected middle child to be a Ruleset');
     }
 
     const parent = middle.rules.value[0];
-    expect(parent).toBeInstanceOf(Ruleset);
-    if (!(parent instanceof Ruleset)) {
+    if (!isNode(parent, N.Ruleset)) {
       throw new Error('expected parent child to be a Ruleset');
     }
 
     const child = parent.rules.value[0];
-    expect(child).toBeInstanceOf(Ruleset);
-    if (!(child instanceof Ruleset)) {
+    if (!isNode(child, N.Ruleset)) {
       throw new Error('expected nested child to be a Ruleset');
     }
 
