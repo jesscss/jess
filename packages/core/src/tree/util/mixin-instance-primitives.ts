@@ -219,10 +219,8 @@ export function populateMixinParamScope(
     param.options ??= {};
     param.options.paramVar = true;
     param.removeFlag(F_VISIBLE);
-    // Push canonically — scope is ephemeral, not shared.
-    // Avoids the children ending up in a caller-state that the per-call
-    // state can't see.
-    scope.push(param);
+    const name = String(param.get('name', scope.renderKey).valueOf());
+    scope.setInvocationBinding(name, { template: param });
   }
 }
 
@@ -251,18 +249,20 @@ export function defineMixinArgumentsInScope(
       argumentsArgs.push(argNode);
     }
   }
-
-  const argumentsDecl = new VarDeclarationCtor({
-    name: new Any('arguments', { role: 'property' }),
-    value: createRenderOwnedSequence(argumentsArgs, renderKey, context)
-  }, { readonly: true, paramVar: true });
-  argumentsDecl.removeFlag(F_VISIBLE);
-  argumentsDecl.renderKey = renderKey;
-  argumentsDecl.preEvaluated = true;
-  argumentsDecl.evaluated = true;
-  const registrationContext = { ...context, renderKey };
-  setParent(argumentsDecl, scope, registrationContext);
-  scope.registerNode(argumentsDecl, undefined, registrationContext);
+  scope.setInvocationBinding('arguments', {
+    factory: (rules, bindingContext) => {
+      const nextRenderKey = rules.renderKey;
+      const argumentsDecl = new VarDeclarationCtor({
+        name: new Any('arguments', { role: 'property' }),
+        value: createRenderOwnedSequence(argumentsArgs, nextRenderKey, bindingContext ?? context)
+      }, { readonly: true, paramVar: true });
+      argumentsDecl.removeFlag(F_VISIBLE);
+      argumentsDecl.renderKey = nextRenderKey;
+      argumentsDecl.preEvaluated = true;
+      argumentsDecl.evaluated = true;
+      return argumentsDecl;
+    }
+  });
 }
 
 /**
@@ -956,11 +956,25 @@ export function assembleMixinInvocationOutput(
     candidateOutput.index = i;
   }
 
+  const firstOutput = outputRules[0]!;
   const nextRenderKey = context.renderKey ?? EVAL;
-  const output = outputRules[0]!.createPlacementWrapperWithChildren(
-    outputRules,
-    nextRenderKey
+  const output = new Rules(
+    [],
+    {
+      rulesVisibility: {
+        Ruleset: 'public',
+        Declaration: 'public',
+        VarDeclaration: 'public',
+        Mixin: 'public'
+      },
+      isMixinOutput: restrictMixinOutputLookup
+    },
+    firstOutput.location,
+    firstOutput.treeContext
   );
+  output.renderKey = nextRenderKey;
+  output.sourceParent = firstOutput.sourceParent;
+  output._setValueArray([...outputRules]);
   const outputContext = {
     ...context,
     renderKey: output.renderKey,
@@ -974,6 +988,7 @@ export function assembleMixinInvocationOutput(
         rulesContext: child as Rules
       } as Context;
       setParent(child, output, childContext);
+      output.registerNode(child, undefined, outputContext);
       projectCurrentRenderParents(
         child as Rules,
         childContext
@@ -981,17 +996,8 @@ export function assembleMixinInvocationOutput(
       continue;
     }
     setParent(child, output, outputContext);
+    output.registerNode(child, undefined, outputContext);
   }
-  output.options = {
-    ...output.options,
-    rulesVisibility: {
-      Ruleset: 'public',
-      Declaration: 'public',
-      VarDeclaration: 'public',
-      Mixin: 'public'
-    },
-    isMixinOutput: restrictMixinOutputLookup
-  };
 
   return output;
 }
@@ -1701,13 +1707,6 @@ export async function evaluateCandidateOutput(
       )
     );
     const lexicalSourceParent = candidateSourceParent ?? callerParent;
-    const capturedOuterSourceParent = outerRules
-      ? captureMixinScopeSnapshot(outerRules, undefined, {
-          ...context,
-          renderKey: outerRules.renderKey,
-          rulesContext: outerRules
-        } as Context)
-      : undefined;
     const rulesContext = {
       ...context,
       renderKey: rules.renderKey,
@@ -1758,17 +1757,12 @@ export async function evaluateCandidateOutput(
         context.renderKey = previousRenderKey;
         context.rulesContext = previousRulesContext;
       }
-      const outputContainer = newRules.createPlacementWrapperWithChildren(
-        outputChildren,
-        newRules.renderKey
-      );
       const outputContext = {
         ...context,
         renderKey: newRules.renderKey,
-        rulesContext: outputContainer
+        rulesContext: newRules
       } as Context;
       for (const child of outputChildren) {
-        setParent(child, outputContainer, outputContext);
         if (isNode(child, N.Rules)) {
           projectCurrentRenderParents(
             child as Rules,
@@ -1779,15 +1773,15 @@ export async function evaluateCandidateOutput(
             } as Context
           );
         }
-        bindStructuralSourceParent(child, capturedOuterSourceParent ?? outerRules, outputContext);
       }
-      setParent(outputContainer, outerRules, outputContext);
+      bindStructuralSourceParent(newRules, outerRules, outputContext);
+      setParent(newRules, outerRules, outputContext);
       if (invocationParent ?? callerParent) {
-        addParentEdge(outputContainer, CALLER, (invocationParent ?? callerParent)!);
+        addParentEdge(newRules, CALLER, (invocationParent ?? callerParent)!);
       }
-      outputContainer.sourceParent = capturedOuterSourceParent ?? outerRules ?? candidateSourceParent ?? lexicalSourceParent;
-      outputContainer.index = candidate.index;
-      outputContainer.options.isMixinOutput = false;
+      newRules.sourceParent = outerRules;
+      newRules.index = candidate.index;
+      newRules.options.isMixinOutput = false;
       if (process.env.JESS_DEBUG_LOCK === 'throw-output') {
         const candidateName = String((candidate as Mixin).get('name')?.valueOf?.() ?? '');
         if (candidateName.includes('lock-mixin')) {
@@ -1797,12 +1791,12 @@ export async function evaluateCandidateOutput(
             outerRulesChildren: outerRules?.value?.map((child: Node) => child.type) ?? [],
             candidateSourceParent: candidateSourceParent?.type,
             lexicalSourceParent: lexicalSourceParent?.type,
-            outputContainerSourceParent: outputContainer.sourceParent?.type,
-            outputContainerSourceParentChildren: outputContainer.sourceParent?.value?.map((child: Node) => child.type) ?? []
+            outputContainerSourceParent: newRules.sourceParent?.type,
+            outputContainerSourceParentChildren: newRules.sourceParent?.value?.map((child: Node) => child.type) ?? []
           })}`);
         }
       }
-      outputRules.push(outputContainer);
+      outputRules.push(newRules);
       return;
     }
 

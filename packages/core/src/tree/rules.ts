@@ -148,6 +148,14 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
   });
   eval(context: Context): MaybePromise<this>;
 }
+
+export type InvocationBindingFactory = (rules: Rules, context?: Context) => VarDeclaration;
+
+export type InvocationBinding = {
+  template?: VarDeclaration;
+  factory?: InvocationBindingFactory;
+  declaration?: VarDeclaration;
+};
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -174,6 +182,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   declare renderKey: RenderKey;
   private _wrapperRegistrySeeded = false;
   private _wrapperRegistrySeeding = false;
+  private _invocationBindings?: Map<string, InvocationBinding>;
 
   functionRegistry: Registries.FunctionRegistry | undefined;
 
@@ -227,6 +236,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
   }
 
+  private _cloneInvocationBindings(): Map<string, InvocationBinding> | undefined {
+    if (!this._invocationBindings || this._invocationBindings.size === 0) {
+      return undefined;
+    }
+    const next = new Map<string, InvocationBinding>();
+    for (const [key, binding] of this._invocationBindings) {
+      next.set(key, {
+        template: binding.template,
+        factory: binding.factory
+      });
+    }
+    return next;
+  }
+
   /**
    * Rules are often cloned during `preEval()` when a session is active.
    * If callers register functions/mixins/declarations on the parsed tree
@@ -269,6 +292,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     if (!deep) {
       newRules.inherit(this);
+    }
+
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      newRules._invocationBindings = invocationBindings;
     }
 
     if (ctx) {
@@ -656,6 +684,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     wrapper._setValueArray(this.value as Node[]);
     wrapper.inherit(this);
     wrapper.renderKey = nextRenderKey;
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      wrapper._invocationBindings = invocationBindings;
+    }
     if (this.functionRegistry) {
       wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
     }
@@ -699,6 +731,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     wrapper.inherit(this);
     wrapper.renderKey = nextRenderKey;
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      wrapper._invocationBindings = invocationBindings;
+    }
     if (this.functionRegistry) {
       wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
     }
@@ -720,6 +756,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     wrapper._setValueArray([...children] as Node[]);
     wrapper.inherit(this);
     wrapper.renderKey = renderKey;
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      wrapper._invocationBindings = invocationBindings;
+    }
     if (this.functionRegistry) {
       wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
     }
@@ -785,6 +825,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this.allowRoot = true;
     this.allowRuleRoot = true;
+  }
+
+  setInvocationBinding(name: string, binding: Omit<InvocationBinding, 'declaration'>): void {
+    (this._invocationBindings ??= new Map()).set(name, { ...binding });
+  }
+
+  getInvocationBinding(name: string, context?: Context): VarDeclaration | undefined {
+    const binding = this._invocationBindings?.get(name);
+    if (!binding) {
+      return undefined;
+    }
+    if (binding.declaration) {
+      return binding.declaration;
+    }
+    const bindingContext = context
+      ? {
+          ...context,
+          rulesContext: this,
+          renderKey: context.renderKey ?? this.renderKey
+        } as Context
+      : undefined;
+    const declaration = binding.factory
+      ? binding.factory(this, bindingContext)
+      : binding.template?.clone(false, undefined, bindingContext);
+    if (!declaration) {
+      return undefined;
+    }
+    declaration.renderKey = bindingContext?.renderKey ?? this.renderKey ?? declaration.renderKey;
+    if (bindingContext) {
+      setParent(declaration, this, bindingContext);
+    } else {
+      declaration.parent = this;
+    }
+    binding.declaration = declaration;
+    return declaration;
   }
 
   * [Symbol.iterator]() {

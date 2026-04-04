@@ -1709,16 +1709,27 @@ export class DeclarationRegistry extends Registry<Declaration> {
     let searchChildrenOptions: FindOptions | undefined;
     // Track visited Rules nodes in the parent chain to detect circular parent chains
     const visitedRules = new Set<Rules>();
-    while (rules) {
-      // CRITICAL: Check for circular parent chain
-      if (visitedRules.has(rules)) {
-        throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
-      }
-      visitedRules.add(rules);
-      let currentReadonly = options?.readonly || rules.options.readonly;
-      newReadonly = currentReadonly;
-      const registry = rules.getRegistry('declaration', context);
-      registry?.indexPendingItems();
+      while (rules) {
+        // CRITICAL: Check for circular parent chain
+        if (visitedRules.has(rules)) {
+          throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
+        }
+        visitedRules.add(rules);
+        let currentReadonly = options?.readonly || rules.options.readonly;
+        newReadonly = currentReadonly;
+        const invocationBinding = filterType === 'VarDeclaration'
+          ? rules.getInvocationBinding(key, context)
+          : undefined;
+        if (invocationBinding && (!options?.filter || options.filter(invocationBinding))) {
+          rememberCandidateContext(invocationBinding, rules);
+          newReadonly ||= invocationBinding.options.readonly;
+          if (options && newReadonly) {
+            options.readonly = true;
+          }
+          return invocationBinding;
+        }
+        const registry = rules.getRegistry('declaration', context);
+        registry?.indexPendingItems();
       let list: Declaration[] | undefined;
       const filter = options?.filter;
       const indexSet = registry?.index.get(key);
