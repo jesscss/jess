@@ -569,17 +569,22 @@ function buildBoundMixinParams(
   const cloneDefaultParamValue = (value: Node): Node => {
     return value.clone(false, undefined, bindingContext);
   };
+  const cloneBoundParamTemplate = (param: VarDeclaration, boundValue: Node): VarDeclaration => {
+    const boundParam = param.clone(false, undefined, bindingContext) as VarDeclaration;
+    boundParam.renderKey = renderKey;
+    boundParam.options = { ...(boundParam.options ?? {}), paramVar: true };
+    boundParam.preEvaluated = true;
+    boundParam.evaluated = true;
+    boundParam.setCurrentValue(boundValue, bindingContext);
+    return boundParam;
+  };
 
   for (let index = 0; index < params.get('value').length; index++) {
     const param = params.get('value')[index]!;
 
     if (isNode(param, N.VarDeclaration)) {
-      const name = String((param as VarDeclaration).get('name').valueOf());
-      const boundParam = new VarDeclarationCtor({
-        name: new Any(name, { role: 'property' }),
-        value: new Nil()
-      }, { ...((param as VarDeclaration).options ?? {}), paramVar: true }, param.location, context.treeContext);
-      boundParam.index = param.index ?? -(index + 1);
+      const paramDecl = param as VarDeclaration;
+      const name = String(paramDecl.get('name').valueOf());
 
       const hasNamedArg = namedArgs.has(name);
       const hasPositionalArg = positionalIndex < positionalArgs.length;
@@ -587,18 +592,15 @@ function buildBoundMixinParams(
         ? namedArgs.get(name)!
         : hasPositionalArg
           ? positionalArgs[positionalIndex++]!
-          : cloneDefaultParamValue((param as VarDeclaration).get('value'));
+          : cloneDefaultParamValue(paramDecl.get('value'));
       if (
         bindingSourceParent
         && isNode(boundValue)
       ) {
         anchorCallSiteValue(boundValue, bindingSourceParent, bindingContext);
       }
-      boundParam.renderKey = renderKey;
-      (boundParam as unknown as { value: Node }).value = boundValue;
-      setParent(boundValue, boundParam, bindingContext);
-      boundParam.preEvaluated = true;
-      boundParam.evaluated = true;
+      const boundParam = cloneBoundParamTemplate(paramDecl, boundValue);
+      boundParam.index = paramDecl.index ?? -(index + 1);
       boundParams.push(boundParam);
       namedArgs.delete(name);
       continue;
