@@ -11,6 +11,23 @@ import {
   type Operator
 } from '@jesscss/core';
 
+function unwrapCalcChannelExpression(node: Node): Node {
+  if (!(node instanceof Call)) {
+    return node;
+  }
+  const name = node.get('name');
+  const isCalc = (
+    (typeof name === 'string' && name.toLowerCase() === 'calc')
+    || (name instanceof Any && typeof name.value === 'string' && name.value.toLowerCase() === 'calc')
+  );
+  if (!isCalc) {
+    return node;
+  }
+  const args = node.get('args');
+  const value = args?.get('value');
+  return value?.[0] ?? node;
+}
+
 /**
  * Detects and parses relative color syntax from rawArgs
  * Returns null if not relative color syntax, otherwise returns parsed data
@@ -147,20 +164,18 @@ function substituteChannelVariables(
     const left = node.get('left');
     const op = node.get('operator');
     const right = node.get('right');
-    cloned.setData([
-      substituteChannelVariables(left, channelValues, format),
-      op as Operator,
-      substituteChannelVariables(right, channelValues, format)
-    ]);
+    cloned.setData('left', substituteChannelVariables(left, channelValues, format));
+    cloned.setData('right', substituteChannelVariables(right, channelValues, format));
+    Reflect.set(cloned, 'operator', op as Operator);
     return cloned;
   }
 
   // If it's a Sequence or List, recursively substitute in its values
   if ('value' in node && Array.isArray((node as any).value)) {
     const cloned = node.clone();
-    (cloned as any).value = (node as any).value.map((item: Node) =>
+    cloned.setData((node as any).value.map((item: Node) =>
       substituteChannelVariables(item, channelValues, format)
-    );
+    ));
     return cloned;
   }
 
@@ -202,7 +217,7 @@ export async function evaluateRGBChannelReference(
   // If it's a Call node (like calc()), substitute channel variables and evaluate
   if (channel instanceof Call) {
     const substituted = substituteChannelVariables(channel, channelValues, 'rgb');
-    const evaluated = await substituted.eval(context);
+    const evaluated = await unwrapCalcChannelExpression(substituted).eval(context);
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
@@ -274,7 +289,7 @@ export async function evaluateHSLChannelReference(
   // If it's a Call node (like calc()), substitute channel variables and evaluate
   if (channel instanceof Call) {
     const substituted = substituteChannelVariables(channel, channelValues, 'hsl');
-    const evaluated = await substituted.eval(context);
+    const evaluated = await unwrapCalcChannelExpression(substituted).eval(context);
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {

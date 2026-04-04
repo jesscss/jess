@@ -10,6 +10,7 @@ import {
 type C = CssRecursiveParser;
 
 type AltContext = (ctx?: RuleContext) => Array<import('@chevrotain/types').IOrAlt<any>>;
+type ProductionRule = (ctx?: RuleContext) => Node | undefined;
 
 export function declaration(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
@@ -187,7 +188,7 @@ export function innerCustomValue(this: C, T: TokenMap, alt?: AltContext) {
  *
  * @todo - In tests, is there a way to test that every token is captured?
  */
-export function extraTokens(this: C, T: TokenMap, alt?: AltContext) {
+export function extraTokens(this: C, T: TokenMap, alt?: AltContext): ProductionRule {
   const $ = this;
 
   alt ??= (ctx: RuleContext = {}) => [
@@ -325,7 +326,7 @@ export function customBlock(this: C, T: TokenMap, alt?: AltContext) {
   };
 }
 
-export function valueList(this: C, T: TokenMap) {
+export function valueList(this: C, T: TokenMap): ProductionRule {
   const $ = this;
 
   /** Values separated by commas */
@@ -361,7 +362,7 @@ export function valueList(this: C, T: TokenMap) {
   };
 }
 
-export function valueSequence(this: C, T: TokenMap) {
+export function valueSequence(this: C, T: TokenMap): ProductionRule {
   const $ = this;
 
   /** Often space-separated */
@@ -423,7 +424,7 @@ export function squareValue(this: C, T: TokenMap) {
 //   | '[' identifier ']'
 //   | unknownValue
 //   ;
-export function value(this: C, T: TokenMap, valueAlt?: AltContext) {
+export function value(this: C, T: TokenMap, valueAlt?: AltContext): ProductionRule {
   const $ = this;
 
   valueAlt ??= (ctx: RuleContext = {}) => [
@@ -525,7 +526,7 @@ export function string(this: C, T: TokenMap, stringAlt?: AltContext) {
 }
 
 /** Abstracted for easy over-ride */
-export function mathSum(this: C, T: TokenMap) {
+export function mathSum(this: C, T: TokenMap): ProductionRule {
   const $ = this;
 
   let opAlt = [
@@ -582,7 +583,7 @@ export function mathSum(this: C, T: TokenMap) {
 // mathProduct
 //   : mathValue (WS* ('*' | '/') WS* mathValue)*
 //   ;
-export function mathProduct(this: C, T: TokenMap) {
+export function mathProduct(this: C, T: TokenMap): ProductionRule {
   const $ = this;
 
   let opAlt = [
@@ -641,7 +642,7 @@ export function mathProduct(this: C, T: TokenMap) {
 //   | mathConstant
 //   | '(' WS* mathSum WS* ')'
 //   ;
-export function mathValue(this: C, T: TokenMap, alt?: AltContext) {
+export function mathValue(this: C, T: TokenMap, alt?: AltContext): ProductionRule {
   const $ = this;
 
   alt ??= (ctx: RuleContext = {}) => [
@@ -707,7 +708,7 @@ export function knownFunctions(this: C, T: TokenMap, alt?: AltContext) {
   return (ctx: RuleContext = {}) => $.OR(alt(ctx));
 }
 
-export function ifFunctionArgs(this: C, T: TokenMap) {
+export function ifFunctionArgs(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;

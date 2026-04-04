@@ -14,8 +14,10 @@ type C = CssRecursiveParser;
 
 export type Alt = Array<IOrAlt<any>>;
 type AltContext = (ctx?: RuleContext) => Alt;
+type SelectorRule = (ctx?: RuleContext) => Node | undefined;
+type StylesheetRule = (options?: Record<string, any>) => Node | undefined;
 
-export function stylesheet(this: C, T: TokenMap) {
+export function stylesheet(this: C, T: TokenMap): StylesheetRule {
   const $ = this;
 
   return (options: Record<string, any> = {}) => {
@@ -166,7 +168,7 @@ export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
 //   | pseudoSelector
 //   | attributeSelector
 //   ;
-export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext) {
+export function simpleSelector(this: C, T: TokenMap, selectorAlt?: AltContext): SelectorRule {
   const $ = this;
 
   selectorAlt ??= (ctx: RuleContext = {}) => [

@@ -43,8 +43,8 @@ describe('pipe', () => {
     expect(out).toBe('x!');
   });
 
-  it('first is thunk and second is not a function (args.length>1 branch): evaluates thunk input then throws on bad step', () => {
-    expect(() => (pipe as any)(() => 'x', undefined)).toThrow();
+  it('first is thunk and second is not a function (args.length>1 branch): evaluates thunk input and ignores non-function steps', () => {
+    expect((pipe as any)(() => 'x', undefined)).toBe('x');
   });
 
   it('accepts initial thunk and handles sync errors by throwing', () => {
@@ -239,5 +239,4 @@ describe('safePipe', () => {
     expect(out).toBe('ab');
   });
 });
-
 

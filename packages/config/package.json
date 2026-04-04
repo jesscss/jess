@@ -16,6 +16,9 @@
       "require": "./lib/index.cjs"
     }
   },
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",

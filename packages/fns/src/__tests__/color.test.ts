@@ -20,19 +20,19 @@ describe('color', () => {
   it('creates color from hex string', () => {
     const result = color(new Quoted('#ff0000'));
     expect(result).toBeInstanceOf(Color);
-    expect(result.data.node).toBe('#ff0000');
+    expect(result.node).toBe('#ff0000');
   });
 
   it('creates color from color keyword', () => {
     const result = color(new Quoted('red'));
     expect(result).toBeInstanceOf(Color);
-    expect(result.data.node).toBe('red');
+    expect(result.node).toBe('red');
   });
 
   it('works with object parameters', () => {
     const result = color({ c: new Quoted('#00ff00') });
     expect(result).toBeInstanceOf(Color);
-    expect(result.data.node).toBe('#00ff00');
+    expect(result.node).toBe('#00ff00');
   });
 
   it('rejects invalid hex color', () => {

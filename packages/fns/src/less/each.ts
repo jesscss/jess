@@ -7,6 +7,8 @@ import {
   Any,
   VarDeclaration,
   defineFunction,
+  setParent,
+  setSourceParent,
   type FunctionThis
 } from '@jesscss/core';
 
@@ -37,8 +39,12 @@ const each = defineFunction(
     // parser's detached arg-list ancestry.
     const mixinRules = rawMixinRules.createShallowBodyWrapper(context);
     if (context) {
-      mixinRules.parent = context.rulesContext ?? rawMixinRules.parent;
-      mixinRules.sourceParent = this.caller ?? context.rulesContext ?? rawMixinRules.sourceParent;
+      setParent(mixinRules, context.rulesContext ?? rawMixinRules.parent, context);
+      setSourceParent(
+        mixinRules,
+        this.caller ?? context.rulesContext ?? rawMixinRules.sourceParent,
+        context
+      );
     }
     let keys = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
