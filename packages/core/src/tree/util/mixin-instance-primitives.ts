@@ -242,7 +242,7 @@ function createRenderOwnedSequence(
 export function populateMixinParamScope(
   scope: Rules,
   params: List<Node>,
-  _context: Context
+  context: Context
 ): void {
   const paramItems = params.get('value');
   for (let i = 0; i < paramItems.length; i++) {
@@ -257,7 +257,8 @@ export function populateMixinParamScope(
     param.options.paramVar = true;
     param.removeFlag(F_VISIBLE);
     const name = String(param.get('name', scope.renderKey).valueOf());
-    scope.setInvocationBinding(name, { template: param });
+    setParent(param, scope, context);
+    scope.setInvocationBinding(name, { declaration: param });
   }
 }
 

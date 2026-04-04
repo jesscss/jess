@@ -243,7 +243,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const next = new Map<string, InvocationBinding>();
     for (const [key, binding] of this._invocationBindings) {
       next.set(key, {
-        template: binding.template,
+        template: binding.declaration ?? binding.template,
         factory: binding.factory
       });
     }
@@ -827,7 +827,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.allowRuleRoot = true;
   }
 
-  setInvocationBinding(name: string, binding: Omit<InvocationBinding, 'declaration'>): void {
+  setInvocationBinding(name: string, binding: InvocationBinding): void {
     (this._invocationBindings ??= new Map()).set(name, { ...binding });
   }
 
