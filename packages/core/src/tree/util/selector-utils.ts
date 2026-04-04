@@ -310,6 +310,18 @@ export function selectorHasAuthoredAmpersand(selector: Selector): boolean {
   return false;
 }
 
+function selectorContainsGeneratedIs(selector: Selector): boolean {
+  if (isNode(selector, N.PseudoSelector)) {
+    return selector.generated && selector.get('name') === ':is';
+  }
+
+  if (isNode(selector, N.SelectorList | N.ComplexSelector | N.CompoundSelector)) {
+    return selector.get('value').some(item => selectorContainsGeneratedIs(item));
+  }
+
+  return false;
+}
+
 /**
  * Apply an ampersand's template (suffix like `-1` or template like `.&-foo`)
  * to a resolved parent selector. Mirrors the logic in Ampersand.evalNode but
@@ -478,11 +490,9 @@ function resolveAuthoredAmpersands(
     const nextData: Selector[] = [];
     let hasAppendValue = false;
     const isCompound = isNode(selector, N.CompoundSelector);
-    let sawAuthoredAmpersandReplacement = false;
     for (let i = 0; i < selectorData.length; i++) {
       const item = selectorData[i];
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        sawAuthoredAmpersandReplacement = true;
         const template = item.template;
         const atStart = !isCompound && i === 0;
         if (template instanceof Nil) {
@@ -516,7 +526,6 @@ function resolveAuthoredAmpersands(
         if (compoundData.length > 0 && isNode(compoundData[0], N.Ampersand) && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)) {
           const ampTemplate = compoundData[0].template;
           if (ampTemplate === undefined) {
-            sawAuthoredAmpersandReplacement = true;
             const parentParts = [...parentSelector.get('value')];
             const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d, parentSelector));
             const lastParentPart = parentParts[parentParts.length - 1]!.copy(true);
@@ -571,8 +580,7 @@ function resolveAuthoredAmpersands(
 
 function composeSelectorRouteWithParent(
   selector: Selector,
-  parentSelector: Selector,
-  collapseNesting: boolean = false
+  parentSelector: Selector
 ): Selector {
   const childCopy = selector.copy(true);
   if (selectorHasAuthoredAmpersand(childCopy)) {
@@ -629,32 +637,45 @@ export function getImplicitSelector(
     return selector.copy(true);
   }
 
-  if (
-    !collapseNesting
-    && isNode(selector, N.SelectorList)
-    && selector.get('value').some(item =>
-      isNode(item, N.ComplexSelector) && item.get('value').length > 1
-    )
-    && !selectorHasAuthoredAmpersand(selector)
-  ) {
-    const grouped = PseudoSelector.create({
-      name: ':is',
-      arg: selector.copy(true)
-    });
-    grouped.generated = true;
-    selector = grouped;
-  } else if (isNode(selector, N.SelectorList)) {
+  if (isNode(selector, N.SelectorList)) {
+    const shouldGroupSelectorListBeforeComposition = (
+      !selectorHasAuthoredAmpersand(selector)
+      && (
+        !collapseNesting
+          ? selector.get('value').some(item =>
+              isNode(item, N.ComplexSelector) && item.get('value').length > 1
+            )
+          : (
+              !isNode(parentSelector, N.SelectorList)
+              && !selectorContainsGeneratedIs(parentSelector)
+            )
+      )
+    );
+
+    if (shouldGroupSelectorListBeforeComposition) {
+      const grouped = PseudoSelector.create({
+        name: ':is',
+        arg: selector.copy(true)
+      });
+      grouped.generated = true;
+      selector = composeSelectorRouteWithParent(grouped, parentSelector);
+      if (collapseNesting) {
+        selector.hoistToRoot = true;
+      }
+      return selector;
+    }
+
     const next = selector.get('value').map(item =>
-      composeSelectorRouteWithParent(item, parentSelector, collapseNesting)
+      composeSelectorRouteWithParent(item, parentSelector)
     );
     const list = SelectorList.create(next).inherit(selector);
     if (collapseNesting) {
       list.hoistToRoot = true;
     }
     return list;
-  } else {
-    selector = composeSelectorRouteWithParent(selector, parentSelector, collapseNesting);
   }
+
+  selector = composeSelectorRouteWithParent(selector, parentSelector);
 
   if (collapseNesting) {
     selector.hoistToRoot = true;

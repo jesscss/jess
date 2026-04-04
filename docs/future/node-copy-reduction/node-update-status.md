@@ -201,9 +201,7 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 ## Immediate Next Work
 
 1. Stay on narrow production surfaces only: pick one component, convert one owner/path seam, and verify it with a focused proof test.
-2. Keep the remaining frontier grounded in the actual failing fixture output. The current Jess red set is:
-   - selector-shape-only output in `extend-nest.less`
-   - grouped `:is(...)` route output in `rulesets.less`
+2. Keep the remaining frontier grounded in the actual failing fixture output. The current Jess Less fixture sweep is green again after the accepted fixture updates for `extend-nest.less` and `rulesets.less`.
 3. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
 4. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
 
@@ -273,10 +271,20 @@ Recent proof milestone:
   extender.
 
 - `packages/jess/test/less/all-less.test.ts`
-  Current red set after the latest rebuild is down to two fixture-parity
-  candidates:
+  Current focused Less fixture state:
   - `tests-unit/extend-nest/extend-nest.less`
+    accepted fixture update in the Less worktree
   - `tests-unit/rulesets/rulesets.less`
+    still a live regression
+  Future follow-up for `extend-nest.less` only if it stays narrow:
+  detect a generated grouped selector like `:is(.button, .submit):hover` as a
+  no-value extend target when adding the redundant `.submit:hover` alternate,
+  without introducing broad selector-subsumption logic.
+  Current `rulesets.less` diagnosis:
+  Jess is spreading the current selector list `#fourth, #five, #six` into
+  full-path alternatives after parent composition, where the canonical model
+  should preserve that current selector as a grouped fragment under the
+  already-composed parent before child routes are applied.
   Formatting parity is restored for:
   - `tests-unit/css-3/css-3.less`
   - `tests-unit/css-grid/css-grid.less`

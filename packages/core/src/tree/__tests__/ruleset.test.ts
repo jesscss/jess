@@ -1,5 +1,6 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, amp, interpolated, interpolatedSelector, ref, co } from '../index.js';
 import { Context } from '../../context.js';
+import { Ruleset } from '../ruleset.js';
 import { getParentEdge } from '../util/cursor.js';
 import { LessParser } from '../../../../less-parser/src/index.ts';
 import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset } from '../util/selector-utils.js';
@@ -340,6 +341,29 @@ describe('Rule', () => {
     expect(composed.valueOf()).toBe(':is(#fourth,#five,#six) .seven,:is(#fourth,#five,#six) .eight>#nine');
   });
 
+  it('keeps the current selector list grouped after composing with a complex parent', () => {
+    const parentSelector = sel([
+      el('#first'),
+      co('>'),
+      el('.one'),
+      co('>'),
+      el('#second'),
+      co(' '),
+      el('.two'),
+      co('>'),
+      el('#deux')
+    ]);
+    const childSelector = sellist([
+      el('#fourth'),
+      el('#five'),
+      el('#six')
+    ]);
+
+    const composed = getImplicitSelectorUtil(childSelector, parentSelector, true);
+
+    expect(composed.valueOf()).toBe('#first>.one>#second .two>#deux :is(#fourth,#five,#six)');
+  });
+
   it('parser-backed collapse keeps grouped parent context for selector-list child routes', async () => {
     const parser = new LessParser();
     const { tree, errors } = parser.parse(`
@@ -364,11 +388,11 @@ describe('Rule', () => {
     const evald = await tree.eval(context);
 
     expect(evald.toString({ collapseNesting: true, context })).toBeString(`
-      :is(#first > .one > #second .two > #deux #fourth, #first > .one > #second .two > #deux #five, #first > .one > #second .two > #deux #six) .seven,
-      :is(#first > .one > #second .two > #deux #fourth, #first > .one > #second .two > #deux #five, #first > .one > #second .two > #deux #six) .eight > #nine {
+      #first > .one > #second .two > #deux :is(#fourth, #five, #six) .seven,
+      #first > .one > #second .two > #deux :is(#fourth, #five, #six) .eight > #nine {
         border: 1px solid black;
       }
-      :is(#first > .one > #second .two > #deux #fourth, #first > .one > #second .two > #deux #five, #first > .one > #second .two > #deux #six) #ten {
+      #first > .one > #second .two > #deux :is(#fourth, #five, #six) #ten {
         color: red;
       }
     `);
@@ -394,10 +418,29 @@ describe('Rule', () => {
     context.root = tree;
     const evald = await tree.eval(context);
 
-    const top = evald.value[0] as any;
-    const middle = top.rules.value[0] as any;
-    const parent = middle.rules.value[0] as any;
-    const child = parent.rules.value[0] as any;
+    const top = evald.value[0];
+    expect(top).toBeInstanceOf(Ruleset);
+    if (!(top instanceof Ruleset)) {
+      throw new Error('expected top-level child to be a Ruleset');
+    }
+
+    const middle = top.rules.value[0];
+    expect(middle).toBeInstanceOf(Ruleset);
+    if (!(middle instanceof Ruleset)) {
+      throw new Error('expected middle child to be a Ruleset');
+    }
+
+    const parent = middle.rules.value[0];
+    expect(parent).toBeInstanceOf(Ruleset);
+    if (!(parent instanceof Ruleset)) {
+      throw new Error('expected parent child to be a Ruleset');
+    }
+
+    const child = parent.rules.value[0];
+    expect(child).toBeInstanceOf(Ruleset);
+    if (!(child instanceof Ruleset)) {
+      throw new Error('expected nested child to be a Ruleset');
+    }
 
     const parentSelector = parent.getEffectiveSelector(true, context);
     const ownSelector = child.getOwnSelector();
@@ -405,7 +448,12 @@ describe('Rule', () => {
     const renderKey = child.renderKey;
     const keyedSelector = child.getSelector(renderKey);
     const extendedSelector = child.getExtendedSelector(renderKey);
-    const resolvedRenderKey = (child as any)._resolveRenderKey(context);
+    const resolveRenderKey = Reflect.get(child, '_resolveRenderKey');
+    expect(resolveRenderKey).toBeTypeOf('function');
+    if (typeof resolveRenderKey !== 'function') {
+      throw new Error('expected child to expose _resolveRenderKey');
+    }
+    const resolvedRenderKey = resolveRenderKey.call(child, context);
     const resolvedSelector = child.getSelector(resolvedRenderKey);
     const helperParent = getParentRuleset(child, context);
     const selectorBeforeExtend = child.getSelectorBeforeExtend(renderKey);
@@ -414,18 +462,18 @@ describe('Rule', () => {
     const effectiveWithoutContext = child.getEffectiveSelector(true);
     const effective = child.getEffectiveSelector(true, context);
 
-    expect(parentSelector.valueOf()).toBe('#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six');
+    expect(parentSelector.valueOf()).toBe('#first>.one>#second .two>#deux :is(#fourth,#five,#six)');
     expect(ownSelector.valueOf()).toBe('.seven,.eight>#nine');
     expect(renderKey).toBeDefined();
     expect(resolvedRenderKey).toBe(renderKey);
     expect(hoistToRoot).toBe(true);
     expect(selectorBeforeExtend).toBeUndefined();
-    expect(storedSelector.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
-    expect(keyedSelector.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(storedSelector.valueOf()).toBe('#first>.one>#second .two>#deux :is(#fourth,#five,#six) .seven,#first>.one>#second .two>#deux :is(#fourth,#five,#six) .eight>#nine');
+    expect(keyedSelector.valueOf()).toBe('#first>.one>#second .two>#deux :is(#fourth,#five,#six) .seven,#first>.one>#second .two>#deux :is(#fourth,#five,#six) .eight>#nine');
     expect(extendedSelector).toBeUndefined();
-    expect(resolvedSelector.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(resolvedSelector.valueOf()).toBe('#first>.one>#second .two>#deux :is(#fourth,#five,#six) .seven,#first>.one>#second .two>#deux :is(#fourth,#five,#six) .eight>#nine');
     expect(helperParent).toBe(parent);
-    expect(recomposed.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(recomposed.valueOf()).toBe('#first>.one>#second .two>#deux :is(#fourth,#five,#six) .seven,#first>.one>#second .two>#deux :is(#fourth,#five,#six) .eight>#nine');
     expect(effectiveWithoutContext.valueOf()).toBe(recomposed.valueOf());
     expect(effective.valueOf()).toBe(recomposed.valueOf());
   });

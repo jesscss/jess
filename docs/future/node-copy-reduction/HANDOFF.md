@@ -147,20 +147,14 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
   - emitted nested mixins keep closure/default-param behavior
   - same-named globals do not shadow emitted nested mixin closure
 
-## Current Jess Red Set
+## Current Jess Less State
 
-After the latest rebuild and runtime fixes, `import-reference.less` and
-`mixins-guards.less` are green again. The remaining reds in
-`packages/jess/test/less/all-less.test.ts` should be treated as the new
-frontier.
+After the latest selector-grouping fix, core baseline cleanup, and the accepted
+fixture updates for `extend-nest.less` and `rulesets.less`,
+`packages/jess/test/less/all-less.test.ts` is green again.
 
-Each red still needs its own tracked disposition. Do not let one fixture imply
-the solution for another.
-
-Current remaining Jess reds are selector-shape parity candidates only:
-
-- `tests-unit/extend-nest/extend-nest.less`
-- `tests-unit/rulesets/rulesets.less`
+When future Less diffs appear, still treat each one as its own tracked
+disposition. Do not let one fixture imply the solution for another.
 
 Current extend-specific state:
 
@@ -180,13 +174,16 @@ Current extend-specific state:
 Per-fixture next action:
 
 - `tests-unit/extend-nest/extend-nest.less`
-  action: selector-shape decision only. Decide whether Jess should preserve the
-  split `.button:hover, .submit:hover` form or keep the semantically-equivalent
-  generated `:is(...)` form.
+  action: fixture updated in the Less worktree. Future improvement only if it
+  stays narrow: detect the grouped
+  `:is(.button, .submit):hover` branch as a no-value extend when adding the
+  redundant `.submit:hover` alternate, without broad selector-subsumption
+  matching.
 - `tests-unit/rulesets/rulesets.less`
-  action: verify each grouped `:is(...)` route remains semantically equivalent
-  to the expanded Less selector list before accepting it as intentional Jess
-  output.
+  action: fixed and fixture-updated in the Less worktree. Canonical Jess
+  behavior is to compose the complex parent first and then preserve the current
+  selector list `#fourth, #five, #six` as one grouped fragment
+  `:is(#fourth, #five, #six)` before child routes are applied.
 
 Formatting parity fixed in this pass:
 
