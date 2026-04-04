@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, interpolatedSelector, nil, num, dimension, seq, amp, sellist } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, Rules, call, ruleset, Ruleset, rest, sel, co, compound, atrule, interpolated, interpolatedSelector, nil, num, dimension, seq, amp, sellist, defaultguard } from '../index.js';
 import { Context } from '../../context.js';
 import { getFunctionFromMixins } from '../rules.js';
 import { isVisibleInContext } from '../node-base.js';
@@ -372,6 +372,69 @@ describe('Mixin', () => {
       expect(css).toBeString(`
         .test1 {
           color: red;
+        }
+      `);
+    });
+
+    it('replays default() guard candidates with bound params intact', async () => {
+      const exactMixin = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        guard: condition([
+          expr(ref({ key: 'color' }, { type: 'variable' })),
+          '=',
+          any('red')
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('exact') })
+        ])
+      });
+
+      const defaultMixin = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        guard: condition([defaultguard('default()')]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      }, { hasDefault: true });
+
+      const exactCall = ruleset({
+        selector: el('.exact'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('red')])
+          })
+        ])
+      });
+
+      const fallbackCall = ruleset({
+        selector: el('.fallback'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([exactMixin, defaultMixin, exactCall, fallbackCall]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        .exact {
+          color: exact;
+        }
+        .fallback {
+          color: blue;
         }
       `);
     });

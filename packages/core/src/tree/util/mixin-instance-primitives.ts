@@ -343,14 +343,6 @@ function captureMixinScopeSnapshot(
   );
   captured.parent = getParent(scope, context);
   captured.sourceParent = scope.sourceParent;
-  const capturedContext = {
-    ...context,
-    renderKey: captured.renderKey,
-    rulesContext: captured
-  } as Context;
-  for (const child of capturedChildren) {
-    captured.registerNode(child, undefined, capturedContext);
-  }
   return captured;
 }
 
