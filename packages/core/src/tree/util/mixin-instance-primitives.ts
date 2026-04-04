@@ -37,7 +37,6 @@ export type PreparedMixinCandidateInvocation = {
   rules: Rules;
   params: List<Node> | undefined;
   outerRules: Rules | undefined;
-  guardScopeChildren: readonly Node[] | undefined;
 };
 
 export type EvaluatedMixinGuard = {
@@ -746,10 +745,7 @@ export function prepareMixinCandidateInvocation(
   return {
     rules: invocationRules,
     params: boundParams,
-    outerRules,
-    guardScopeChildren: outerRules
-      ? [...outerRules.value]
-      : undefined
+    outerRules
   };
 }
 
@@ -1213,7 +1209,14 @@ export async function processPreparedMixinCandidate<TCandidate>(
   } = options;
 
   let nextOuterRules = outerRules;
-  const getCapturedOuterRules = () => captureMixinScopeSnapshot(nextOuterRules, guardScopeChildren, context);
+  const stableGuardScopeChildren = guard
+    ? (guardScopeChildren ?? (nextOuterRules ? [...nextOuterRules.value] : undefined))
+    : guardScopeChildren;
+  const getCapturedOuterRules = () => captureMixinScopeSnapshot(
+    nextOuterRules,
+    stableGuardScopeChildren,
+    context
+  );
   const pendingLookupScope = () => getCapturedOuterRules() ?? getMixinCandidateLookupScope(parent, rules, context);
   if (guard) {
     const evaluatedGuard = await evaluateMixinGuardCandidate(
@@ -1221,7 +1224,7 @@ export async function processPreparedMixinCandidate<TCandidate>(
       nextOuterRules,
       parent,
       context,
-      guardScopeChildren,
+      stableGuardScopeChildren,
       candidateHasDefault
     );
     nextOuterRules = evaluatedGuard.outerRules;
@@ -1230,26 +1233,28 @@ export async function processPreparedMixinCandidate<TCandidate>(
     }
     if (hasAnyDefault) {
       const capturedOuterRules = getCapturedOuterRules();
+      const lookupScope = capturedOuterRules ?? getMixinCandidateLookupScope(parent, rules, context);
       return {
         candidate,
         rules,
         outerRules: capturedOuterRules,
         params,
         group: candidateHasDefault ? evaluatedGuard.defaultGroup! : MixinDefaultGroup.None,
-        lookupScope: pendingLookupScope()
+        lookupScope
       };
     }
   }
 
   if (hasAnyDefault) {
     const capturedOuterRules = getCapturedOuterRules();
+    const lookupScope = capturedOuterRules ?? getMixinCandidateLookupScope(parent, rules, context);
     return {
       candidate,
       rules,
       outerRules: capturedOuterRules,
       params,
       group: MixinDefaultGroup.None,
-      lookupScope: pendingLookupScope()
+      lookupScope
     };
   }
 
@@ -1766,7 +1771,7 @@ export async function evaluateCandidateOutput(
       context.rulesContext = newRules;
       let outputChildren: readonly Node[];
       try {
-        outputChildren = [...newRules.getRegistryChildren(context)];
+        outputChildren = newRules.getRegistryChildren(context);
       } finally {
         context.renderKey = previousRenderKey;
         context.rulesContext = previousRulesContext;
@@ -1972,7 +1977,6 @@ export async function dispatchMixinEvalCandidates(
       outerRules: prepared.outerRules,
       guard: currentGuard,
       parent: getCandidateParent(candidate),
-      guardScopeChildren: prepared.guardScopeChildren,
       hasAnyDefault: hasDefault,
       candidateHasDefault,
       context,
