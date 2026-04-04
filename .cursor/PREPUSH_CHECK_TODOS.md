@@ -1,11 +1,12 @@
 # Pre-push Check TODOs
 
-Generated: 2026-04-04T19:31:19.312Z
+Generated: 2026-04-04T22:00:09.213Z
 
 These checks failed during `--mode=upstream` and were treated as non-blocking.
 
 ## TODO Items
 1. [ ] `packages/core` - `pnpm --filter ./packages/core typecheck` (exit 2)
+2. [ ] `packages/core` - `pnpm exec eslint packages/core/src/tree/util/mixin-instance-primitives.ts` (exit 1)
 
 ## Failure Details
 ### 1) packages/core
@@ -77,9 +78,9 @@ src/tree/__tests__/import-style.test.ts(1046,14): error TS18048: 'sourceDecl' is
 src/tree/__tests__/import-style.test.ts(1424,14): error TS18048: 'resolvedFromInterpolatedImport' is possibly 'undefined'.
 src/tree/__tests__/import-style.test.ts(1449,14): error TS18048: 'resolvedFromUrl' is possibly 'undefined'.
 src/tree/__tests__/import-style.test.ts(1762,58): error TS2304: Cannot find name 'VarDeclaration'.
-src/tree/__tests__/mixin.test.ts(860,22): error TS2571: Object is of type 'unknown'.
-src/tree/__tests__/mixin.test.ts(938,26): error TS2571: Object is of type 'unknown'.
-src/tree/__tests__/mixin.test.ts(1284,32): error TS2339: Property 'keySetLibrary' does not exist on type 'Nil | Selector<any, NodeOptions, Record<string, unknown>>'.
+src/tree/__tests__/mixin.test.ts(923,22): error TS2571: Object is of type 'unknown'.
+src/tree/__tests__/mixin.test.ts(1001,26): error TS2571: Object is of type 'unknown'.
+src/tree/__tests__/mixin.test.ts(1347,32): error TS2339: Property 'keySetLibrary' does not exist on type 'Nil | Selector<any, NodeOptions, Record<string, unknown>>'.
   Property 'keySetLibrary' does not exist on type 'Nil'.
 src/tree/__tests__/quoted.test.ts(60,25): error TS2345: Argument of type 'Expression' is not assignable to parameter of type 'string | Any<AnyRole> | Interpolated<AnyRole> | undefined'.
   Type 'Expression' is not assignable to type 'Any<AnyRole> | Interpolated<AnyRole>'.
@@ -97,7 +98,7 @@ src/tree/__tests__/serialize-types.test.ts(154,14): error TS2540: Cannot assign 
 src/tree/ampersand.ts(395,34): error TS2532: Object is possibly 'undefined'.
 src/tree/ampersand.ts(395,34): error TS2571: Object is of type 'unknown'.
 src/tree/at-rule.ts(429,54): error TS2554: Expected 0 arguments, but got 1.
-src/tree/at-rule.ts(513,13): error TS2740: Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Rules': value, _wrapperRegistrySeeded, _wrapperRegistrySeeding, functionRegistry, and 51 more.
+src/tree/at-rule.ts(513,13): error TS2740: Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Rules': value, _wrapperRegistrySeeded, _wrapperRegistrySeeding, functionRegistry, and 54 more.
 src/tree/block.ts(39,14): error TS2540: Cannot assign to 'value' because it is a read-only property.
 src/tree/call.ts(104,26): error TS2341: Property '_meta' is private and only accessible within class 'Node<Data, O, ChildData>'.
 src/tree/call.ts(150,71): error TS2339: Property 'Interpolated' does not exist on type 'typeof N'.
@@ -224,15 +225,18 @@ src/tree/reference.ts(980,80): error TS2345: Argument of type 'Context | { rende
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
 src/tree/reference.ts(983,67): error TS2345: Argument of type 'Context | { renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/rules.ts(278,39): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/rules.ts(306,39): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/rules.ts(451,48): error TS2345: Argument of type 'Context | undefined' is not assignable to parameter of type 'Context'.
+src/tree/rules.ts(479,48): error TS2345: Argument of type 'Context | undefined' is not assignable to parameter of type 'Context'.
   Type 'undefined' is not assignable to type 'Context'.
-src/tree/rules.ts(694,52): error TS2345: Argument of type 'Context | undefined' is not assignable to parameter of type 'Context'.
+src/tree/rules.ts(726,52): error TS2345: Argument of type 'Context | undefined' is not assignable to parameter of type 'Context'.
   Type 'undefined' is not assignable to type 'Context'.
-src/tree/rules.ts(744,17): error TS2540: Cannot assign to 'parent' because it is a read-only property.
-src/tree/rules.ts(990,20): error TS2304: Cannot find name 'isBareAmpersandOwnSelector'.
-src/tree/rules.ts(2255,34): error TS2345: Argument of type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is not assignable to parameter of type 'Declaration<DeclarationOptions>'.
+src/tree/rules.ts(784,17): error TS2540: Cannot assign to 'parent' because it is a read-only property.
+src/tree/rules.ts(843,9): error TS2352: Conversion of type '{ rulesContext: this; renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 31 more ...; composeSetValues: Map<...>; }' to type 'Context' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ rulesContext: this; renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 30 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
+src/tree/rules.ts(859,19): error TS2540: Cannot assign to 'parent' because it is a read-only property.
+src/tree/rules.ts(1065,20): error TS2304: Cannot find name 'isBareAmpersandOwnSelector'.
+src/tree/rules.ts(2330,34): error TS2345: Argument of type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is not assignable to parameter of type 'Declaration<DeclarationOptions>'.
   Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Declaration<DeclarationOptions>': name, value, important, _getAssignmentRenderKey, and 11 more.
 src/tree/ruleset.ts(242,57): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context | RenderKey | undefined'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
@@ -346,42 +350,38 @@ src/tree/util/field-helpers.ts(75,5): error TS2322: Type 'unknown' is not assign
 src/tree/util/field-helpers.ts(129,42): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'RenderKey'.
 src/tree/util/field-helpers.ts(162,8): error TS2540: Cannot assign to 'parent' because it is a read-only property.
 src/tree/util/field-helpers.ts(229,3): error TS2322: Type 'unknown' is not assignable to type 'readonly Node<NodeValue, NodeOptions, Record<string, unknown>>[]'.
-src/tree/util/mixin-instance-primitives.ts(88,30): error TS2769: No overload matches this call.
+src/tree/util/mixin-instance-primitives.ts(89,30): error TS2769: No overload matches this call.
   Overload 1 of 3, '(key: "params", renderKey: RenderKey | undefined): List<Node<NodeValue, NodeOptions, Record<string, unknown>>> | undefined', gave the following error.
     Argument of type 'Context | RenderKey | undefined' is not assignable to parameter of type 'RenderKey | undefined'.
       Type 'Context' is not assignable to type 'RenderKey | undefined'.
   Overload 2 of 3, '(key: "params", ctx: Context | undefined): List<Node<NodeValue, NodeOptions, Record<string, unknown>>> | undefined', gave the following error.
     Argument of type 'Context | RenderKey | undefined' is not assignable to parameter of type 'Context | undefined'.
       Type 'number' is not assignable to type 'Context'.
-src/tree/util/mixin-instance-primitives.ts(195,31): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/util/mixin-instance-primitives.ts(230,31): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(264,35): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/util/mixin-instance-primitives.ts(344,12): error TS2540: Cannot assign to 'parent' because it is a read-only property.
+src/tree/util/mixin-instance-primitives.ts(371,9): error TS2540: Cannot assign to 'parent' because it is a read-only property.
+src/tree/util/mixin-instance-primitives.ts(387,11): error TS2540: Cannot assign to 'parent' because it is a read-only property.
+src/tree/util/mixin-instance-primitives.ts(597,42): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(265,48): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/util/mixin-instance-primitives.ts(603,54): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(309,12): error TS2540: Cannot assign to 'parent' because it is a read-only property.
-src/tree/util/mixin-instance-primitives.ts(344,9): error TS2540: Cannot assign to 'parent' because it is a read-only property.
-src/tree/util/mixin-instance-primitives.ts(360,11): error TS2540: Cannot assign to 'parent' because it is a read-only property.
-src/tree/util/mixin-instance-primitives.ts(570,42): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/util/mixin-instance-primitives.ts(609,46): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(595,62): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/util/mixin-instance-primitives.ts(632,62): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(599,41): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
+src/tree/util/mixin-instance-primitives.ts(656,62): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(627,64): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
-  Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(630,43): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
-  Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
-src/tree/util/mixin-instance-primitives.ts(1065,31): error TS18046: 'children' is of type 'unknown'.
-src/tree/util/mixin-instance-primitives.ts(1066,17): error TS18046: 'children' is of type 'unknown'.
-src/tree/util/mixin-instance-primitives.ts(1070,69): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Node<NodeValue, NodeOptions, Record<string, unknown>>'.
-src/tree/util/mixin-instance-primitives.ts(1071,15): error TS18046: 'child' is of type 'unknown'.
-src/tree/util/mixin-instance-primitives.ts(1072,13): error TS2341: Property '_setChildAt' is private and only accessible within class 'Rules'.
-src/tree/util/mixin-instance-primitives.ts(1114,23): error TS18046: 'children' is of type 'unknown'.
-src/tree/util/mixin-instance-primitives.ts(1128,27): error TS18046: 'child' is of type 'unknown'.
-src/tree/util/mixin-instance-primitives.ts(1407,20): error TS2339: Property 'type' does not exist on type 'never'.
-src/tree/util/mixin-instance-primitives.ts(1801,80): error TS2551: Property 'value' does not exist on type 'Node<NodeValue, NodeOptions, Record<string, unknown>>'. Did you mean 'valueOf'?
-src/tree/util/mixin-instance-primitives.ts(1957,49): error TS2345: Argument of type 'Mixin' is not assignable to parameter of type 'Ruleset<RulesetValue>'.
+src/tree/util/mixin-instance-primitives.ts(1093,31): error TS18046: 'children' is of type 'unknown'.
+src/tree/util/mixin-instance-primitives.ts(1094,17): error TS18046: 'children' is of type 'unknown'.
+src/tree/util/mixin-instance-primitives.ts(1098,69): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Node<NodeValue, NodeOptions, Record<string, unknown>>'.
+src/tree/util/mixin-instance-primitives.ts(1099,15): error TS18046: 'child' is of type 'unknown'.
+src/tree/util/mixin-instance-primitives.ts(1100,13): error TS2341: Property '_setChildAt' is private and only accessible within class 'Rules'.
+src/tree/util/mixin-instance-primitives.ts(1142,23): error TS18046: 'children' is of type 'unknown'.
+src/tree/util/mixin-instance-primitives.ts(1156,27): error TS18046: 'child' is of type 'unknown'.
+src/tree/util/mixin-instance-primitives.ts(1444,20): error TS2339: Property 'type' does not exist on type 'never'.
+src/tree/util/mixin-instance-primitives.ts(1818,73): error TS2551: Property 'value' does not exist on type 'Node<NodeValue, NodeOptions, Record<string, unknown>>'. Did you mean 'valueOf'?
+src/tree/util/mixin-instance-primitives.ts(1974,49): error TS2345: Argument of type 'Mixin' is not assignable to parameter of type 'Ruleset<RulesetValue>'.
   Type 'Mixin' is missing the following properties from type 'Ruleset<RulesetValue>': frames, selector, selectorEdge, rulesEdge, and 26 more.
 src/tree/util/registry-utils.ts(239,54): error TS2345: Argument of type 'Node<NodeValue, NodeOptions, Record<string, unknown>> | undefined' is not assignable to parameter of type 'Nil | Selector<any, NodeOptions, Record<string, unknown>> | undefined'.
   Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is not assignable to type 'Nil | Selector<any, NodeOptions, Record<string, unknown>> | undefined'.
@@ -432,18 +432,18 @@ src/tree/util/registry-utils.ts(1676,48): error TS2345: Argument of type 'Rules 
   Type 'undefined' is not assignable to type 'Rules'.
 src/tree/util/registry-utils.ts(1677,48): error TS2345: Argument of type 'Rules | undefined' is not assignable to parameter of type 'Rules'.
   Type 'undefined' is not assignable to type 'Rules'.
-src/tree/util/registry-utils.ts(1827,53): error TS2345: Argument of type 'Rules | undefined' is not assignable to parameter of type 'Rules'.
+src/tree/util/registry-utils.ts(1838,53): error TS2345: Argument of type 'Rules | undefined' is not assignable to parameter of type 'Rules'.
   Type 'undefined' is not assignable to type 'Rules'.
-src/tree/util/registry-utils.ts(1828,53): error TS2345: Argument of type 'Rules | undefined' is not assignable to parameter of type 'Rules'.
+src/tree/util/registry-utils.ts(1839,53): error TS2345: Argument of type 'Rules | undefined' is not assignable to parameter of type 'Rules'.
   Type 'undefined' is not assignable to type 'Rules'.
-src/tree/util/registry-utils.ts(1872,9): error TS2322: Type 'Node<NodeValue, NodeOptions, Record<string, unknown>> | undefined' is not assignable to type 'Declaration<DeclarationOptions> | undefined'.
+src/tree/util/registry-utils.ts(1883,9): error TS2322: Type 'Node<NodeValue, NodeOptions, Record<string, unknown>> | undefined' is not assignable to type 'Declaration<DeclarationOptions> | undefined'.
   Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Declaration<DeclarationOptions>': name, value, important, _getAssignmentRenderKey, and 11 more.
-src/tree/util/registry-utils.ts(1874,26): error TS2345: Argument of type '(a: Declaration, b: Declaration) => number' is not assignable to parameter of type '(a: Node<NodeValue, NodeOptions, Record<string, unknown>>, b: Node<NodeValue, NodeOptions, Record<string, unknown>>) => number'.
+src/tree/util/registry-utils.ts(1885,26): error TS2345: Argument of type '(a: Declaration, b: Declaration) => number' is not assignable to parameter of type '(a: Node<NodeValue, NodeOptions, Record<string, unknown>>, b: Node<NodeValue, NodeOptions, Record<string, unknown>>) => number'.
   Types of parameters 'a' and 'a' are incompatible.
     Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Declaration<DeclarationOptions>': name, value, important, _getAssignmentRenderKey, and 11 more.
-src/tree/util/registry-utils.ts(1876,7): error TS2322: Type 'Node<NodeValue, NodeOptions, Record<string, unknown>> | undefined' is not assignable to type 'Declaration<DeclarationOptions> | undefined'.
+src/tree/util/registry-utils.ts(1887,7): error TS2322: Type 'Node<NodeValue, NodeOptions, Record<string, unknown>> | undefined' is not assignable to type 'Declaration<DeclarationOptions> | undefined'.
   Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Declaration<DeclarationOptions>': name, value, important, _getAssignmentRenderKey, and 11 more.
-src/tree/util/registry-utils.ts(1895,20): error TS2345: Argument of type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is not assignable to parameter of type 'Declaration<DeclarationOptions>'.
+src/tree/util/registry-utils.ts(1906,20): error TS2345: Argument of type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is not assignable to parameter of type 'Declaration<DeclarationOptions>'.
   Type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is missing the following properties from type 'Declaration<DeclarationOptions>': name, value, important, _getAssignmentRenderKey, and 11 more.
 src/tree/util/scoped-body-eval.ts(74,41): error TS2345: Argument of type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; ... 32 more ...; composeSetValues: Map<...>; }' is not assignable to parameter of type 'Context'.
   Type '{ renderKey: RenderKey; plugins: PluginInterface[]; opts: ContextOptions; treeContext: TreeContext; errors: ErrorDiagnostic[]; ... 31 more ...; composeSetValues: Map<...>; }' is missing the following properties from type 'Context': _searchScope, searchScope, getSearchScopeIdentity, hasInSearchScope, and 35 more.
@@ -491,5 +491,66 @@ src/tree/util/serialize-helper.ts(384,34): error TS2345: Argument of type 'Rules
 /Users/matthew/git/worktrees/jess-dev/packages/core:
  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @jesscss/core@2.0.0-alpha.5 typecheck: `tsc -p tsconfig.json --noEmit`
 Exit status 2
+```
+
+### 2) packages/core
+
+- Command: `pnpm exec eslint packages/core/src/tree/util/mixin-instance-primitives.ts`
+- Exit: `1`
+
+```
+/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/util/mixin-instance-primitives.ts
+   227:4   error    Unsafe type assertion: type '{ value: Node<NodeValue, NodeOptions, Record<string, unknown>>[]; }' is more narrow than the original type            @typescript-eslint/no-unsafe-type-assertion
+   417:41  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+   422:22  error    Unsafe type assertion: type 'typeof Node' is more narrow than the original type                                                                    @typescript-eslint/no-unsafe-type-assertion
+   427:20  error    Unsafe type assertion: type 'Record<string, unknown>' is more narrow than the original type                                                        @typescript-eslint/no-unsafe-type-assertion
+   442:10  warning  'bindStructuralParentTree' is defined but never used. Allowed unused vars must match /^_/u                                                         @typescript-eslint/no-unused-vars
+   453:22  error    Unsafe type assertion: type 'typeof Node' is more narrow than the original type                                                                    @typescript-eslint/no-unsafe-type-assertion
+   458:20  error    Unsafe type assertion: type 'Record<string, unknown>' is more narrow than the original type                                                        @typescript-eslint/no-unsafe-type-assertion
+   483:29  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+   544:17  error    Unsafe assertion to `any` detected: consider using a more specific type to ensure safety                                                           @typescript-eslint/no-unsafe-type-assertion
+   545:19  error    Unsafe assertion to `any` detected: consider using a more specific type to ensure safety                                                           @typescript-eslint/no-unsafe-type-assertion
+   551:31  error    Unsafe assertion to `any` detected: consider using a more specific type to ensure safety                                                           @typescript-eslint/no-unsafe-type-assertion
+   552:9   error    Unsafe assertion from `any` detected: consider using type guards or a safer assertion                                                              @typescript-eslint/no-unsafe-type-assertion
+   552:10  error    Unsafe assertion to `any` detected: consider using a more specific type to ensure safety                                                           @typescript-eslint/no-unsafe-type-assertion
+   667:32  error    Unsafe type assertion: type '{ value?: string | undefined; }' is more narrow than the original type                                                @typescript-eslint/no-unsafe-type-assertion
+   668:19  error    Unsafe type assertion: type '{ value: string; }' is more narrow than the original type                                                             @typescript-eslint/no-unsafe-type-assertion
+  1000:25  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1007:28  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1041:28  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1056:25  error    Unsafe type assertion: type 'Ruleset<RulesetValue> | AtRule' is more narrow than the original type                                                 @typescript-eslint/no-unsafe-type-assertion
+  1086:25  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1136:25  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1148:51  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1158:50  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1180:28  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1284:10  error    Unsafe type assertion: type 'Rules | undefined' is more narrow than the original type                                                              @typescript-eslint/no-unsafe-type-assertion
+  1318:28  error    Unsafe assertion from `any` detected: consider using type guards or a safer assertion                                                              @typescript-eslint/no-unsafe-type-assertion
+  1336:29  error    Unsafe assertion to `any` detected: consider using a more specific type to ensure safety                                                           @typescript-eslint/no-unsafe-type-assertion
+  1337:8   error    Unsafe assertion to `any` detected: consider using a more specific type to ensure safety                                                           @typescript-eslint/no-unsafe-type-assertion
+  1383:28  error    Unsafe type assertion: type '{ value: unknown; }' is more narrow than the original type                                                            @typescript-eslint/no-unsafe-type-assertion
+  1384:22  error    Unsafe type assertion: type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is more narrow than the original type                          @typescript-eslint/no-unsafe-type-assertion
+  1384:52  error    Unsafe type assertion: type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is more narrow than the original type                          @typescript-eslint/no-unsafe-type-assertion
+  1385:32  error    Unsafe type assertion: type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is more narrow than the original type                          @typescript-eslint/no-unsafe-type-assertion
+  1388:36  error    Unsafe type assertion: type '{ value: Node<NodeValue, NodeOptions, Record<string, unknown>>[]; }' is more narrow than the original type            @typescript-eslint/no-unsafe-type-assertion
+  1432:10  error    Unsafe type assertion: type '{ name?: Node<NodeValue, NodeOptions, Record<string, unknown>> | undefined; }' is more narrow than the original type  @typescript-eslint/no-unsafe-type-assertion
+  1437:41  error    Expected parentheses around arrow function argument having a body with curly braces                                                                @stylistic/arrow-parens
+  1549:43  error    Unsafe type assertion: type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is more narrow than the original type                          @typescript-eslint/no-unsafe-type-assertion
+  1593:30  error    Unsafe type assertion: type '{ name?: { valueOf?: (() => string) | undefined; } | undefined; }' is more narrow than the original type              @typescript-eslint/no-unsafe-type-assertion
+  1594:11  error    Unsafe type assertion: type '{ name?: string | undefined; }' is more narrow than the original type                                                 @typescript-eslint/no-unsafe-type-assertion
+  1599:18  error    Unsafe type assertion: type '{ value: unknown; }' is more narrow than the original type                                                            @typescript-eslint/no-unsafe-type-assertion
+  1610:18  error    Unsafe type assertion: type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is more narrow than the original type                          @typescript-eslint/no-unsafe-type-assertion
+  1610:56  error    Unsafe type assertion: type 'Node<NodeValue, NodeOptions, Record<string, unknown>>' is more narrow than the original type                          @typescript-eslint/no-unsafe-type-assertion
+  1629:45  error    Unsafe assertion from `any` detected: consider using type guards or a safer assertion                                                              @typescript-eslint/no-unsafe-type-assertion
+  1660:34  error    Unsafe type assertion: type 'Mixin' is more narrow than the original type                                                                          @typescript-eslint/no-unsafe-type-assertion
+  1741:26  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1760:29  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1783:29  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1792:13  error    Unsafe type assertion: type 'Context' is more narrow than the original type                                                                        @typescript-eslint/no-unsafe-type-assertion
+  1809:39  error    Unsafe type assertion: type 'Mixin' is more narrow than the original type                                                                          @typescript-eslint/no-unsafe-type-assertion
+  1974:26  error    Unsafe type assertion: type 'Condition | Bool | undefined' is more narrow than the original type                                                   @typescript-eslint/no-unsafe-type-assertion
+
+✖ 49 problems (48 errors, 1 warning)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
 ```
 
