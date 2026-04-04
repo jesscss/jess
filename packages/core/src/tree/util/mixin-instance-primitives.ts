@@ -75,6 +75,7 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
 };
 
 const bindableParamTemplates = new WeakMap<Node, VarDeclaration>();
+const restParamTemplates = new WeakMap<Node, VarDeclaration>();
 
 function getCurrentRulesetGuard(
   ruleset: Ruleset,
@@ -110,6 +111,23 @@ function getBindableParamTemplate(
     value: new Nil()
   }, { paramVar: true }, param.location, context.treeContext);
   bindableParamTemplates.set(param, template);
+  return template;
+}
+
+function getRestParamTemplate(
+  param: Node,
+  restName: string,
+  context: Context
+): VarDeclaration {
+  const cached = restParamTemplates.get(param);
+  if (cached) {
+    return cached;
+  }
+  const template = new VarDeclarationCtor({
+    name: new Any(restName, { role: 'property' }),
+    value: new Nil()
+  }, { paramVar: true }, param.location, context.treeContext);
+  restParamTemplates.set(param, template);
   return template;
 }
 
@@ -667,14 +685,9 @@ function buildBoundMixinParams(
               ? createRenderOwnedSequence([], renderKey, context)
               : new Any(restName, { role: 'property' })
           );
-      const restVarDecl = new VarDeclarationCtor({
-        name: new Any(restName, { role: 'property' }),
-        value: restValue
-      }, { paramVar: true }, param.location, context.treeContext);
+      const restTemplate = getRestParamTemplate(param, restName, context);
+      const restVarDecl = cloneBoundParamTemplate(restTemplate, restValue);
       restVarDecl.index = -(index + 1);
-      restVarDecl.renderKey = renderKey;
-      restVarDecl.preEvaluated = true;
-      restVarDecl.evaluated = true;
       boundParams.push(restVarDecl);
       continue;
     }
