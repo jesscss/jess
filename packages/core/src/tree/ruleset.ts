@@ -393,6 +393,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && this.hoistToRoot
       && ownSelector
       && !(ownSelector instanceof Nil)
+      && isNode(ownSelector as Selector, N.SelectorList)
+      && isNode(selector as Selector, N.SelectorList)
+      && ownSelector.valueOf() !== selector.valueOf()
+    ) {
+      return selector;
+    }
+    if (
+      collapseNesting
+      && this.hoistToRoot
+      && ownSelector
+      && !(ownSelector instanceof Nil)
       && Ruleset.isBareAmpersandSelector(ownSelector)
     ) {
       return selector;
@@ -433,25 +444,17 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       return parentSelector;
     };
+    const parentSelector = getComposedParentSelector();
     if (
-      collapseNesting
-      && this.hoistToRoot
-      && !this.getSelectorBeforeExtend(renderKey)
+      this.hoistToRoot
+      && extendedSelector
+      && !(extendedSelector instanceof Nil)
       && ownSelector
       && !(ownSelector instanceof Nil)
-      && ownSelector.valueOf() !== selector.valueOf()
+      && selectorHasAuthoredAmpersand(ownSelector as Selector)
     ) {
-      let parentSelector = getComposedParentSelector();
-      if (parentSelector && !(parentSelector instanceof Nil)) {
-        return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, false);
-      }
-    }
-
-    if (this.hoistToRoot) {
       return selector;
     }
-
-    const parentSelector = getComposedParentSelector();
     if (
       ownSelector
       && !(ownSelector instanceof Nil)
@@ -460,6 +463,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       && ownSelector.valueOf() !== selector.valueOf()
     ) {
       return getImplicitSelectorUtil(ownSelector as Selector, parentSelector as Selector, collapseNesting);
+    }
+
+    if (this.hoistToRoot) {
+      return selector;
     }
 
     return selector;

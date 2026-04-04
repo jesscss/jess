@@ -1024,6 +1024,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rules: Rules,
       inheritedRenderKey?: RenderKey
     ) => {
+      type DeferredEntry =
+        | {
+          kind: 'node';
+          node: Node;
+          renderKey?: RenderKey;
+        }
+        | {
+          kind: 'flatten';
+          rules: Rules;
+          inheritedRenderKey?: RenderKey;
+        };
       const renderKey = rules.renderKey ?? inheritedRenderKey;
       const scopedContext = context
         ? (
@@ -1035,15 +1046,32 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                   : context)
           )
         : undefined;
+      const pendingDescendants: DeferredEntry[] = [];
+      const emitNode = (node: Node, nodeRenderKey?: RenderKey): void => {
+        if (positionMap && nodeRenderKey !== CANONICAL && nodeRenderKey !== undefined) {
+          positionMap.set(node, { renderKey: nodeRenderKey });
+        }
+        finalRules.push(node);
+      };
+      const flushPendingDescendants = (): void => {
+        for (const entry of pendingDescendants) {
+          if (entry.kind === 'flatten') {
+            iterateRules(entry.rules, entry.inheritedRenderKey);
+            continue;
+          }
+          emitNode(entry.node, entry.renderKey);
+        }
+        pendingDescendants.length = 0;
+      };
 
       for (let n of rules._getRenderChildren(scopedContext)) {
         if (isNode(n, N.Rules)) {
           if ((n.options as RulesOptions)?.referenceMode === true) {
-            const nodeRenderKey = (n as Rules).renderKey ?? renderKey;
-            if (positionMap && nodeRenderKey !== CANONICAL) {
-              positionMap.set(n, { renderKey: nodeRenderKey });
-            }
-            finalRules.push(n);
+            flushPendingDescendants();
+            emitNode(
+              n,
+              (n as Rules).renderKey ?? renderKey
+            );
           } else {
             iterateRules(n, renderKey);
           }
@@ -1055,16 +1083,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           && !isVisibleInContext(n, scopedContext)
           && !n.fullRender
         ) {
-          iterateRules((n as Ruleset).enterRules(scopedContext), renderKey);
+          pendingDescendants.push({
+            kind: 'flatten',
+            rules: (n as Ruleset).enterRules(scopedContext),
+            inheritedRenderKey: renderKey
+          });
           continue;
         }
         if (!visibleOnly || isVisibleInContext(n, scopedContext) || n.fullRender) {
-          if (positionMap && renderKey !== CANONICAL) {
-            positionMap.set(n, { renderKey });
+          if (isNode(n, N.Ruleset)) {
+            pendingDescendants.push({
+              kind: 'node',
+              node: n,
+              renderKey
+            });
+          } else if (isNode(n, N.AtRule)) {
+            flushPendingDescendants();
+            emitNode(n, renderKey);
+          } else {
+            emitNode(n, renderKey);
           }
-          finalRules.push(n);
         }
       }
+
+      flushPendingDescendants();
     };
     iterateRules(this);
     return finalRules;

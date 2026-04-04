@@ -478,9 +478,11 @@ function resolveAuthoredAmpersands(
     const nextData: Selector[] = [];
     let hasAppendValue = false;
     const isCompound = isNode(selector, N.CompoundSelector);
+    let sawAuthoredAmpersandReplacement = false;
     for (let i = 0; i < selectorData.length; i++) {
       const item = selectorData[i];
       if (isNode(item, N.Ampersand) && !item.hasFlag(F_IMPLICIT_AMPERSAND)) {
+        sawAuthoredAmpersandReplacement = true;
         const template = item.template;
         const atStart = !isCompound && i === 0;
         if (template instanceof Nil) {
@@ -514,6 +516,7 @@ function resolveAuthoredAmpersands(
         if (compoundData.length > 0 && isNode(compoundData[0], N.Ampersand) && !compoundData[0]!.hasFlag(F_IMPLICIT_AMPERSAND)) {
           const ampTemplate = compoundData[0].template;
           if (ampTemplate === undefined) {
+            sawAuthoredAmpersandReplacement = true;
             const parentParts = [...parentSelector.get('value')];
             const remaining = compoundData.slice(1).map(d => resolveAuthoredAmpersands(d, parentSelector));
             const lastParentPart = parentParts[parentParts.length - 1]!.copy(true);
@@ -532,7 +535,7 @@ function resolveAuthoredAmpersands(
       nextData.push(resolveAuthoredAmpersands(item, parentSelector, false));
     }
     // For compounds, sort type/element selectors before class/id/pseudo
-    if (isCompound) {
+    if (isCompound && !sawAuthoredAmpersandReplacement) {
       nextData.sort((a, b) => {
         const aIsTag = isNode(a, N.BasicSelector) && a.isTag ? 0 : 1;
         const bIsTag = isNode(b, N.BasicSelector) && b.isTag ? 0 : 1;

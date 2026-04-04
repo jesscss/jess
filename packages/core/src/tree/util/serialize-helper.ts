@@ -143,6 +143,20 @@ function nodeExtendsReference(node: AtRule | Ruleset, options: FinalPrintOptions
   return rules ? rulesHaveReferenceRenderableDescendant(rules, options) : false;
 }
 
+function framesHaveSameHeader(
+  currentFrame: AtRule | Ruleset,
+  priorFrame: AtRule | Ruleset,
+  depth: number,
+  options: FinalPrintOptions
+): boolean {
+  if (currentFrame.type !== priorFrame.type) {
+    return false;
+  }
+  const currentHeader = currentFrame.getHeaderString({ ...options, depth }, true);
+  const priorHeader = priorFrame.getHeaderString({ ...options, depth }, true);
+  return currentHeader === priorHeader;
+}
+
 /**
  * Handles flattening and serializing of at-rules and rulesets
  */
@@ -418,7 +432,17 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       for (let i = 0; i < lastRenderedFrames.length; i++) {
         const currentFrame = inFrames[i];
         const priorFrame = lastRenderedFrames[i];
-        if (currentFrame !== priorFrame) {
+        const sameFrame = currentFrame === priorFrame
+          || (
+            currentFrame
+            && priorFrame
+            && isContainerNode(currentFrame)
+            && isContainerNode(priorFrame)
+            && !isRulesNode(currentFrame)
+            && !isRulesNode(priorFrame)
+            && framesHaveSameHeader(currentFrame, priorFrame, i, options)
+          );
+        if (!sameFrame) {
           break;
         }
         matches = i;

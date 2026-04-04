@@ -2,7 +2,7 @@ import { rules, sellist, sel, el, decl, ruleset, spaced, any, compound, pseudo, 
 import { Context } from '../../context.js';
 import { getParentEdge } from '../util/cursor.js';
 import { LessParser } from '../../../../less-parser/src/index.ts';
-import { getImplicitSelector as getImplicitSelectorUtil } from '../util/selector-utils.js';
+import { getImplicitSelector as getImplicitSelectorUtil, getParentRuleset } from '../util/selector-utils.js';
 
 let context: Context;
 
@@ -311,7 +311,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('expands implicit nesting under a selector-list parent instead of grouping the parent with :is()', () => {
+  it('groups implicit nesting under a selector-list parent with :is()', () => {
     const parentSelector = sellist([
       el('#fourth'),
       el('#five'),
@@ -321,10 +321,10 @@ describe('Rule', () => {
 
     const composed = getImplicitSelectorUtil(childSelector, parentSelector, true);
 
-    expect(composed.valueOf()).toBe('#fourth #ten,#five #ten,#six #ten');
+    expect(composed.valueOf()).toBe(':is(#fourth,#five,#six) #ten');
   });
 
-  it('expands each child route against each selector-list parent alternative', () => {
+  it('keeps selector-list parents grouped with :is() across child routes', () => {
     const parentSelector = sellist([
       el('#fourth'),
       el('#five'),
@@ -337,7 +337,97 @@ describe('Rule', () => {
 
     const composed = getImplicitSelectorUtil(childSelector, parentSelector, true);
 
-    expect(composed.valueOf()).toBe('#fourth .seven,#five .seven,#six .seven,#fourth .eight>#nine,#five .eight>#nine,#six .eight>#nine');
+    expect(composed.valueOf()).toBe(':is(#fourth,#five,#six) .seven,:is(#fourth,#five,#six) .eight>#nine');
+  });
+
+  it('parser-backed collapse keeps grouped parent context for selector-list child routes', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      #first > .one {
+        > #second .two > #deux {
+          #fourth, #five, #six {
+            .seven, .eight > #nine {
+              border: 1px solid black;
+            }
+            #ten {
+              color: red;
+            }
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ collapseNesting: true, context })).toBeString(`
+      :is(#first > .one > #second .two > #deux #fourth, #first > .one > #second .two > #deux #five, #first > .one > #second .two > #deux #six) .seven,
+      :is(#first > .one > #second .two > #deux #fourth, #first > .one > #second .two > #deux #five, #first > .one > #second .two > #deux #six) .eight > #nine {
+        border: 1px solid black;
+      }
+      :is(#first > .one > #second .two > #deux #fourth, #first > .one > #second .two > #deux #five, #first > .one > #second .two > #deux #six) #ten {
+        color: red;
+      }
+    `);
+  });
+
+  it('parser-backed selector-list child routes still recompose correctly from stored own selector', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      #first > .one {
+        > #second .two > #deux {
+          #fourth, #five, #six {
+            .seven, .eight > #nine {
+              border: 1px solid black;
+            }
+          }
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    context = new Context({ collapseNesting: true });
+    context.root = tree;
+    const evald = await tree.eval(context);
+
+    const top = evald.value[0] as any;
+    const middle = top.rules.value[0] as any;
+    const parent = middle.rules.value[0] as any;
+    const child = parent.rules.value[0] as any;
+
+    const parentSelector = parent.getEffectiveSelector(true, context);
+    const ownSelector = child.getOwnSelector();
+    const storedSelector = child.getSelector();
+    const renderKey = child.renderKey;
+    const keyedSelector = child.getSelector(renderKey);
+    const extendedSelector = child.getExtendedSelector(renderKey);
+    const resolvedRenderKey = (child as any)._resolveRenderKey(context);
+    const resolvedSelector = child.getSelector(resolvedRenderKey);
+    const helperParent = getParentRuleset(child, context);
+    const selectorBeforeExtend = child.getSelectorBeforeExtend(renderKey);
+    const hoistToRoot = child.hoistToRoot;
+    const recomposed = getImplicitSelectorUtil(ownSelector, parentSelector, true);
+    const effectiveWithoutContext = child.getEffectiveSelector(true);
+    const effective = child.getEffectiveSelector(true, context);
+
+    expect(parentSelector.valueOf()).toBe('#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six');
+    expect(ownSelector.valueOf()).toBe('.seven,.eight>#nine');
+    expect(renderKey).toBeDefined();
+    expect(resolvedRenderKey).toBe(renderKey);
+    expect(hoistToRoot).toBe(true);
+    expect(selectorBeforeExtend).toBeUndefined();
+    expect(storedSelector.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(keyedSelector.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(extendedSelector).toBeUndefined();
+    expect(resolvedSelector.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(helperParent).toBe(parent);
+    expect(recomposed.valueOf()).toBe(':is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .seven,:is(#first>.one>#second .two>#deux #fourth,#first>.one>#second .two>#deux #five,#first>.one>#second .two>#deux #six) .eight>#nine');
+    expect(effectiveWithoutContext.valueOf()).toBe(recomposed.valueOf());
+    expect(effective.valueOf()).toBe(recomposed.valueOf());
   });
 
   it('should serialize to CSS', () => {

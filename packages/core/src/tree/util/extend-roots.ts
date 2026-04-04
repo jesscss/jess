@@ -616,7 +616,10 @@ function getRulesetExtendTarget(
           || Boolean(rawOwnMatch?.fullMatch)
           || Boolean(rawOwnMatch?.partialMatch)
         )
-      : (ownMatch.fullMatch && ownMatch.crossesAmpersand);
+      : (
+          ownMatch.fullMatch
+          && ownMatch.crossesAmpersand
+        );
 
     if (shouldUseOwnSelector) {
       return {
@@ -698,6 +701,70 @@ function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?:
   markExtendedSelector(selector, context);
 }
 
+function selectorHasTopLevelValue(selector: Selector | Nil | undefined, value: string): boolean {
+  if (!selector || isNode(selector, N.Nil)) {
+    return false;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    return ((selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === value);
+  }
+  return selector.valueOf() === value;
+}
+
+function getExactOwnSelectorFallbackTarget(
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  currentTargetInfo: { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined,
+  context?: Context
+): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
+  if (instruction.partial || currentTargetInfo?.usingOwnSelector) {
+    return undefined;
+  }
+
+  const ownSelector = ruleset.getOwnSelector(context);
+  if (!ownSelector || isNode(ownSelector, N.Nil)) {
+    return undefined;
+  }
+
+  const parentRuleset = getParentRuleset(ruleset, context);
+  const parentOwnSelector = parentRuleset?.getOwnSelector(context);
+  if (
+    parentOwnSelector
+    && !isNode(parentOwnSelector, N.Nil)
+    && isNode(parentOwnSelector, N.SelectorList)
+  ) {
+    return undefined;
+  }
+  const parentSelectorBeforeExtend = parentRuleset
+    ? (context ? parentRuleset.get('selectorBeforeExtend', context) : parentRuleset.getSelectorBeforeExtend())
+    : undefined;
+  const activeParentSelector = parentRuleset?.getEffectiveSelector(false, context);
+  const parentSelector = (
+    parentSelectorBeforeExtend
+    && !isNode(parentSelectorBeforeExtend, N.Nil)
+      ? parentSelectorBeforeExtend
+      : activeParentSelector
+  );
+  if (!parentSelector || isNode(parentSelector, N.Nil)) {
+    return undefined;
+  }
+
+  if (selectorHasTopLevelValue(activeParentSelector, instruction.extendWith.valueOf())) {
+    return undefined;
+  }
+
+  const ownMatch = selectorMatch(instruction.target, ownSelector, parentSelector, context);
+  if (!ownMatch.partialMatch || ownMatch.crossesAmpersand) {
+    return undefined;
+  }
+
+  return {
+    selector: ownSelector,
+    parent: parentSelector,
+    usingOwnSelector: true
+  };
+}
+
 function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   const rulesetFlagTarget = ruleset;
   if (context) {
@@ -733,19 +800,36 @@ function applyInstructionToRuleset(
   cache?: TargetInfoCache,
   context?: Context
 ): { matched: boolean; changed: boolean } {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  let targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
   if (!targetInfo) {
-    return { matched: false, changed: false };
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, undefined, context);
+    if (!fallbackTargetInfo) {
+      return { matched: false, changed: false };
+    }
+    targetInfo = fallbackTargetInfo;
   }
 
-  const targetMatch = selectorMatch(
+  let targetMatch = selectorMatch(
     instruction.target,
     targetInfo.selector,
     targetInfo.parent,
     context
   );
   if (!targetMatch.partialMatch) {
-    return { matched: false, changed: false };
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, targetInfo, context);
+    if (!fallbackTargetInfo) {
+      return { matched: false, changed: false };
+    }
+    targetInfo = fallbackTargetInfo;
+    targetMatch = selectorMatch(
+      instruction.target,
+      targetInfo.selector,
+      targetInfo.parent,
+      context
+    );
+    if (!targetMatch.partialMatch) {
+      return { matched: false, changed: false };
+    }
   }
 
   const currentSelector = ruleset.get('selector', context);
@@ -819,9 +903,11 @@ function applyInstructionToRuleset(
 
   let nextSelector = normalizedResult;
   if (targetInfo.usingOwnSelector) {
-    const nextOwnSelector = targetInfo.parent
-      ? localizeSelectorAgainstParent(normalizedResult, targetInfo.parent)
-      : normalizedResult;
+    const nextOwnSelector = (
+      shouldHoist || !targetInfo.parent
+    )
+      ? normalizedResult
+      : localizeSelectorAgainstParent(normalizedResult, targetInfo.parent);
     ruleset.setOwnSelector(nextOwnSelector, context);
 
     if (!shouldHoist && targetInfo.parent) {

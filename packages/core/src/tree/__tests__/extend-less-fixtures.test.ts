@@ -821,7 +821,8 @@ div:is(.ext5, .ext7),
 .cc {
   color: black;
   .dd,
-  .ee {
+  .ee,
+  .ff {
     background: red;
   }
 }

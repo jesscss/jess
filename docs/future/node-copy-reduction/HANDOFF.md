@@ -154,27 +154,16 @@ After the latest rebuild and runtime fixes, `import-reference.less` and
 `packages/jess/test/less/all-less.test.ts` should be treated as the new
 frontier.
 
-Each red needs its own tracked disposition. Do not let one fixture imply the
-solution for another.
+Each red still needs its own tracked disposition. Do not let one fixture imply
+the solution for another.
 
-Likely exact-output / fixture-drift cases:
+Current remaining Jess reds are all parity-shape / formatting candidates:
 
 - `tests-unit/css-3/css-3.less`
 - `tests-unit/css-grid/css-grid.less`
 - `tests-unit/extend-nest/extend-nest.less`
 - `tests-unit/rulesets/rulesets.less`
 - `tests-unit/whitespace/whitespace.less`
-
-Still-real runtime / semantic cases:
-
-- `tests-unit/extend/extend.less`
-- `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
-
-Borderline / mixed:
-
-- `tests-unit/extend-selector/extend-selector.less`
-- `tests-unit/starting-style/starting-style.less`
-- `tests-unit/urls/urls.less`
 
 Current extend-specific state:
 
@@ -183,11 +172,13 @@ Current extend-specific state:
   only: Jess emits `:is(.button, .submit):hover, .submit:hover` where the Less
   fixture expects `.button:hover, .submit:hover`.
 - `tests-unit/extend/extend.less`
-  is still a real parser-backed/runtime seam. The hand-built core proof is
-  green, but the parser-backed Less fixture still drops `.ff` from the nested
-  `.dd` branch. The live bug appears after earlier local `all` extension has
-  widened a nested own-selector list, so the later exact `.ff:extend(.dd, ...)`
-  instruction no longer lands on the local nested target.
+  is fixed again. The real parser-backed seam was exact local-child extend after
+  an earlier local `all` extend had widened the child own-selector list. The
+  durable fix lives in `applyInstructionToRuleset(...)`: exact local fallback is
+  allowed only for child rules under a single-parent-selector ruleset, and only
+  when the active parent selector does not already contain the extender.
+- `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
+  is green again after the mixin output assembly and parent/render-path fixes.
 
 Per-fixture next action:
 
@@ -200,13 +191,6 @@ Per-fixture next action:
   action: selector-shape decision only. Decide whether Jess should preserve the
   split `.button:hover, .submit:hover` form or keep the semantically-equivalent
   generated `:is(...)` form.
-- `tests-unit/extend/extend.less`
-  action: keep reproducing parser-backed in core. This is a real runtime seam,
-  not a serializer-only diff.
-- `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
-  action: reproduce in focused core first. Current diff is narrow: a
-  same-selector guarded/default mixin result is being emitted as two blocks
-  instead of one merged block after the multi-candidate output assembly fix.
 - `tests-unit/rulesets/rulesets.less`
   action: decide block-by-block whether each `:is(...)` route is semantic drift
   or a real selector-composition regression.

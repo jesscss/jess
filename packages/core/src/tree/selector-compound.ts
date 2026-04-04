@@ -70,6 +70,16 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
     let value = this._valueOf;
     if (!value) {
       const components = this.value;
+      const preserveGeneratedPseudoOrder = components.some(component =>
+        (isNode(component, N.PseudoSelector) && component.generated)
+        || isNode(component, N.Ampersand)
+      );
+
+      if (preserveGeneratedPseudoOrder) {
+        value = components.map(component => component.valueOf()).join('');
+        this._valueOf = value;
+        return value;
+      }
 
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
@@ -160,14 +170,20 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
       },
       (sel) => {
         let data: SimpleSelector[] = sel.get('value', context).filter(n => n && !(n instanceof Nil));
-        data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
-          let aIsElement = !nonElementRegex.test(a.valueOf());
-          let bIsElement = !nonElementRegex.test(b.valueOf());
-          if (aIsElement && bIsElement) {
-            return a.valueOf() < b.valueOf() ? -1 : 1;
-          }
-          return aIsElement ? -1 : bIsElement ? 1 : 0;
-        });
+        const preserveGeneratedPseudoOrder = data.some(component =>
+          (isNode(component, N.PseudoSelector) && component.generated)
+          || isNode(component, N.Ampersand)
+        );
+        if (!preserveGeneratedPseudoOrder) {
+          data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
+            let aIsElement = !nonElementRegex.test(a.valueOf());
+            let bIsElement = !nonElementRegex.test(b.valueOf());
+            if (aIsElement && bIsElement) {
+              return a.valueOf() < b.valueOf() ? -1 : 1;
+            }
+            return aIsElement ? -1 : bIsElement ? 1 : 0;
+          });
+        }
         if (data.length === 0) {
           return (new Nil()).inherit(this);
         }

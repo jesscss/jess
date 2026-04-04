@@ -144,9 +144,14 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
   private _serializeCallArg(node: Node, options: PrintOptions): string {
     const context = options.context;
     if (isNode(node, N.Sequence)) {
-      return node.get('value', context)
+      const children = node.get('value', context);
+      const isQuotedConcatSequence = (
+        children.some(child => isNode(child, N.Quoted))
+        && children.every(child => isNode(child, N.Quoted | N.Any | N.Interpolated))
+      );
+      return children
         .map(child => this._serializeCallArg(child, options).replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''))
-        .join(' ');
+        .join(isQuotedConcatSequence ? '' : ' ');
     }
     if (isNode(node, N.List)) {
       const sep = node.options?.sep ?? ',';
