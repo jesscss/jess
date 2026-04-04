@@ -811,6 +811,9 @@ export async function evaluateMixinGuardCandidate(
     isDefaultValue: boolean
   ): Promise<{ passes: boolean; outerRules: Rules | undefined }> => {
     const prevIsDefault = context.isDefault;
+    const previousRulesContext = context.rulesContext;
+    const previousRenderKey = context.renderKey;
+    const previousLookupScope = context.lookupScope;
     try {
       const nextScope = seedMixinGuardScope(
         outerRules,
@@ -820,17 +823,18 @@ export async function evaluateMixinGuardCandidate(
         scopeChildren
       );
       context.isDefault = isDefaultValue;
-      const probeResult = await withMixinLookupScope(
-        nextScope,
-        nextScope,
-        context,
-        () => guardNode.eval(context)
-      );
+      context.rulesContext = nextScope;
+      context.lookupScope = nextScope;
+      context.renderKey = nextScope.renderKey ?? previousRenderKey;
+      const probeResult = await guardNode.eval(context);
       return {
         passes: probeResult instanceof Bool && probeResult.value === true,
         outerRules: nextScope
       };
     } finally {
+      context.rulesContext = previousRulesContext;
+      context.renderKey = previousRenderKey;
+      context.lookupScope = previousLookupScope;
       context.isDefault = prevIsDefault;
     }
   };
