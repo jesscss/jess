@@ -272,23 +272,22 @@ export function defineMixinArgumentsInScope(
   nodeArgs: readonly Node[],
   context: Context
 ): void {
-  const renderKey = scope.renderKey;
-  const paramValues = params?.get('value', renderKey)
-    .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
-    .map(p => p.get('value', renderKey))
-    .filter((value): value is Node => value instanceof Node);
-  const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
-  const argumentsArgs: Node[] = [];
-  for (const argNode of argumentNodes) {
-    if (isNode(argNode, N.Sequence) && (argNode as Sequence).get('value', renderKey).length > 1) {
-      argumentsArgs.push(...(argNode as Sequence).get('value', renderKey));
-    } else {
-      argumentsArgs.push(argNode);
-    }
-  }
   scope.setInvocationBinding('arguments', {
     factory: (rules, bindingContext) => {
       const nextRenderKey = rules.renderKey;
+      const paramValues = params?.get('value', nextRenderKey)
+        .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
+        .map(p => p.get('value', nextRenderKey))
+        .filter((value): value is Node => value instanceof Node);
+      const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
+      const argumentsArgs: Node[] = [];
+      for (const argNode of argumentNodes) {
+        if (isNode(argNode, N.Sequence) && (argNode as Sequence).get('value', nextRenderKey).length > 1) {
+          argumentsArgs.push(...(argNode as Sequence).get('value', nextRenderKey));
+        } else {
+          argumentsArgs.push(argNode);
+        }
+      }
       const argumentsDecl = new VarDeclarationCtor({
         name: new Any('arguments', { role: 'property' }),
         value: createRenderOwnedSequence(argumentsArgs, nextRenderKey, bindingContext ?? context)
