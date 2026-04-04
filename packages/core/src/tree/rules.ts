@@ -1047,9 +1047,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           )
         : undefined;
       const pendingDescendants: DeferredEntry[] = [];
+      let hasEmittedLocalNonContainer = false;
       const emitNode = (node: Node, nodeRenderKey?: RenderKey): void => {
         if (positionMap && nodeRenderKey !== CANONICAL && nodeRenderKey !== undefined) {
           positionMap.set(node, { renderKey: nodeRenderKey });
+        }
+        if (!isNode(node, N.Ruleset | N.AtRule | N.Rules)) {
+          hasEmittedLocalNonContainer = true;
         }
         finalRules.push(node);
       };
@@ -1073,7 +1077,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               (n as Rules).renderKey ?? renderKey
             );
           } else {
-            iterateRules(n, renderKey);
+            if (pendingDescendants.length > 0 && !hasEmittedLocalNonContainer) {
+              pendingDescendants.push({
+                kind: 'flatten',
+                rules: n as Rules,
+                inheritedRenderKey: renderKey
+              });
+            } else {
+              iterateRules(n, renderKey);
+            }
           }
           continue;
         }

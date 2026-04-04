@@ -199,6 +199,20 @@ Formatting parity fixed in this pass:
 - `tests-unit/whitespace/whitespace.less`
   preserved multiline comma-list declaration formatting again.
 
+Core baseline cleanup from the same pass:
+
+- `packages/core/src/tree/rules.ts`
+  `Rules.flatRules(...)` now preserves the intended collapse order when a later
+  mixin-produced `Rules` wrapper follows pending descendant rulesets, without
+  regressing parent-block declaration coalescing.
+- `packages/core/src/tree/util/selector-utils.ts`
+  authored compound ampersand replacement restores type-selector ordering
+  during collapse (e.g. `h2.one.two`, not `.one.twoh2`).
+- `packages/core/src/tree/util/__tests__/process-leading-is.test.ts`
+  stale expectations were updated to the current production shapes:
+  the ampersand path already materializes `* b[e]`, and non-unwrapped
+  `:is(list)` compounds preserve their authored order.
+
 Serialization note:
 
 - `Rules` / `Ruleset` serialization still carries too much ad-hoc control flow,

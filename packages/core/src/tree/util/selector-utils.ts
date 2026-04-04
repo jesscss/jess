@@ -535,7 +535,7 @@ function resolveAuthoredAmpersands(
       nextData.push(resolveAuthoredAmpersands(item, parentSelector, false));
     }
     // For compounds, sort type/element selectors before class/id/pseudo
-    if (isCompound && !sawAuthoredAmpersandReplacement) {
+    if (isCompound) {
       nextData.sort((a, b) => {
         const aIsTag = isNode(a, N.BasicSelector) && a.isTag ? 0 : 1;
         const bIsTag = isNode(b, N.BasicSelector) && b.isTag ? 0 : 1;

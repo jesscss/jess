@@ -723,7 +723,7 @@ describe('Style import extend behavior', () => {
         .visible + .visible {
           color: green;
         }
-        :is(.visible + .visible) .sub {
+        .visible + .visible .sub {
           color: green;
         }
       `);
@@ -805,7 +805,7 @@ describe('Style import extend behavior', () => {
           :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) {
             color: green;
           }
-          :is(:is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible)) .sub {
+          :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) .sub {
             color: green;
           }
           "
@@ -855,7 +855,7 @@ describe('Style import extend behavior', () => {
           .visible + .visible {
             color: green;
           }
-          :is(.visible + .visible) .sub {
+          .visible + .visible .sub {
             color: green;
           }
           "
@@ -918,7 +918,7 @@ describe('Style import extend behavior', () => {
           .visible + .visible {
             color: green;
           }
-          :is(.visible + .visible) .sub {
+          .visible + .visible .sub {
             color: green;
           }
           "

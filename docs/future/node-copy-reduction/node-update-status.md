@@ -284,6 +284,16 @@ Recent proof milestone:
   with the durable fixes living in:
   - `packages/core/src/tree/list.ts`
   - `packages/core/src/tree/declaration.ts`
+  Core baseline is green again after:
+  - `packages/core/src/tree/rules.ts`
+    narrowed `Rules.flatRules(...)` ordering so late mixin-produced `Rules`
+    wrappers do not jump ahead of earlier pending descendants unless the parent
+    declaration block has already started
+  - `packages/core/src/tree/util/selector-utils.ts`
+    restoring type-selector ordering for authored compound ampersand collapse
+  - `packages/core/src/tree/__tests__/extend-import-style.test.ts`
+    refreshing collapse-mode snapshots to the simpler semantically-equivalent
+    descendant selector shapes now emitted by Jess
   Current narrowing:
   a parser-accurate core repro now exists in
   `packages/core/src/tree/__tests__/mixin.test.ts` for the final
