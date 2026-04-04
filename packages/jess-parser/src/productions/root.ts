@@ -1,4 +1,5 @@
 import type { JessRuleContext as RuleContext, TokenMap } from '../jessRecursiveParser.js';
+import type { IToken } from 'chevrotain';
 import {
   Any,
   Collection,
@@ -6,7 +7,6 @@ import {
   Rules,
   VarDeclaration
 } from '@jesscss/core';
-import type { IToken } from '@jesscss/parser';
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
