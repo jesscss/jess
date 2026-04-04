@@ -75,7 +75,6 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
 
 const bindableParamTemplates = new WeakMap<Node, VarDeclaration>();
 const restParamTemplates = new WeakMap<Node, VarDeclaration>();
-
 function getCurrentRulesetGuard(
   ruleset: Ruleset,
   context: Context
@@ -318,9 +317,10 @@ export function seedMixinGuardScope(
   const activeChildren = scopeChildren ?? nextScope.getRegistryChildren(context);
   if (scopeChildren) {
     setChildren(nextScope, activeChildren, context, { markDirty: false });
-  }
-  for (const child of activeChildren) {
-    setParent(child, nextScope, context);
+  } else {
+    for (const child of activeChildren) {
+      setParent(child, nextScope, context);
+    }
   }
   if (guardNode) {
     nextScope.adopt(guardNode, context);
