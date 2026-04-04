@@ -18,9 +18,14 @@ globs:
 - Extend algorithm: `packages/core/src/tree/util/extend.ts`
 - Tree subsystem: `packages/core/src/tree/**`
 
+## Architecture priority
+
+- Follow `AGENTS.md` for repo-wide goals.
+- If the work touches the evaluation-model refactor, use `docs/future/node-copy-reduction/README.md` and `docs/future/node-copy-reduction/session-instance-architecture.md` as the canonical design docs.
+- Do not preserve clone-heavy or materialization-heavy internals just to keep a local slice green if that fights the target runtime model.
+
 ## Cross-package testing nuance
 
 Downstream packages (notably `packages/jess`) often resolve `@jesscss/core` via built `lib/` outputs. If core changes, build it before running downstream tests:
 
 - `pnpm --filter @jesscss/core build`
-

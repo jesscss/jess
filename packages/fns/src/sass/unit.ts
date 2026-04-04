@@ -1,8 +1,8 @@
 /**
  * Sass unit() function
- * 
+ *
  * Returns the unit of a number as a quoted string, or changes the unit.
- * 
+ *
  * @example
  * unit(10px) // "px"
  * unit(10px, em) // 10em
@@ -16,13 +16,13 @@ const unit = defineFunction(
     if (newUnit) {
       const unitValue = typeof newUnit.value === 'string' ? newUnit.value : newUnit.valueOf();
       return new Dimension({
-        number: number.value.number,
+        number: number.number,
         unit: unitValue
       });
     }
-    
+
     // Otherwise, return the unit as a quoted string
-    const unitStr = number.value.unit || '';
+    const unitStr = number.unit || '';
     return new Quoted(unitStr, { quote: '"' });
   },
   {

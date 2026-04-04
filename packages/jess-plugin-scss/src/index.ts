@@ -17,6 +17,7 @@ import { expandScssImportCandidates } from '@jesscss/style-resolver';
 import type { EqualityMode, UnitMode } from '@jesscss/core';
 
 export type ScssPluginOptions = {
+  allowExtendSelectors?: ExtendSelectorKind[];
   /**
    * Unit mode for handling unit arithmetic.
    * - 'loose': Convert units when possible (default for Less)
@@ -37,6 +38,9 @@ export type ScssPluginOptions = {
   collapseNesting?: boolean;
 };
 
+type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+type PluginParseOptions = { compilerOptions?: Record<string, any> };
+
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
@@ -56,7 +60,11 @@ export class ScssPlugin extends AbstractPlugin {
     return expandScssImportCandidates(importPath);
   }
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: PluginParseOptions): ISafeParseResult {
+    const allowExtendSelectors = this.opts.allowExtendSelectors
+      ?? parseOptions?.compilerOptions?.allowExtendSelectors
+      ?? ['simple'];
+
     const context = new TreeContext({
       file: {
         name: path.basename(filePath),
@@ -65,6 +73,7 @@ export class ScssPlugin extends AbstractPlugin {
         source
       },
       plugin: this,
+      allowExtendSelectors,
       unitMode: this.unitMode,
       equalityMode: this.equalityMode,
       collapseNesting: this.opts.collapseNesting ?? false
@@ -113,8 +122,8 @@ export class ScssPlugin extends AbstractPlugin {
         }
       }
     } catch (error: unknown) {
-      if (error && typeof error === 'object' && 'severity' in error) {
-        const diagnostic = toDiagnostic(error as JessError);
+      if (error instanceof JessError) {
+        const diagnostic = toDiagnostic(error);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {

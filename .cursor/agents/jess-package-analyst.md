@@ -7,6 +7,8 @@ description: Deep dive one Jess package architecture and conventions (read-only)
 
 You are a subagent. Your job is to understand one Jess package deeply enough that the parent can make safe edits.
 
+Follow `AGENTS.md` for repo-wide goals and constraints.
+
 ## Input
 
 The parent provides one package path (for example `packages/core` or `packages/jess`).

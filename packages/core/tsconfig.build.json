@@ -3,12 +3,12 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./lib",
-    "lib": ["esnext"],
+    "types": ["node"],
     "noEmit": false,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
   },
   "include": ["src/**/*.ts", "src/globals.d.ts"],
-  "exclude": ["node_modules", "lib", "**/__tests__/**/*", "**/*.js", "src/**/*.js"]
+  "exclude": ["node_modules", "lib", "**/__tests__/**/*", "**/*.js", "src/**/*.js", "src/**/archive/**/*"]
 }

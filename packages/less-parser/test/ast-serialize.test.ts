@@ -10,9 +10,19 @@ function extractInterpolatedNodes(serialized: string): string[] {
   return matches || [];
 }
 
-const parser = new Parser();
+const parser = {
+  parse(text: string) {
+    return new Parser().parse(text);
+  }
+};
 
 describe('serializeTypes coverage', () => {
+  test('paren list value parses', () => {
+    const { errors, tree } = parser.parse('.a { grid: ((1, 2), (3, 4)); }');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContain('(Paren');
+  });
+
   test('charset', () => {
     const { errors, tree } = parser.parse('@charset "UTF-8";');
     expect(errors.length).toBe(0);
@@ -79,20 +89,10 @@ describe('serializeTypes coverage', () => {
   test('mixin definition', () => {
     const { errors, tree } = parser.parse('.mixin(@color) { color: @color; }');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toContainString(`
+    const out = serializeTypes(tree);
+    expect(out).toContainString(`
       (Mixin
         name: '.mixin'
-        params: 
-          (List
-            [
-              (VarDeclaration
-                name: 
-                  (Any [role=property] 'color')
-                value: 
-                  (Nil '')
-              )
-            ]
-          )
         rules: 
           (Rules
             [
@@ -106,7 +106,16 @@ describe('serializeTypes coverage', () => {
               )
             ]
           )
-      )
+        params: 
+          (List
+            [
+              (VarDeclaration
+                name: 
+                  (Any [role=property] 'color')
+                value: 
+                  (Nil)
+              )
+            ]
     `);
   });
 
@@ -117,7 +126,7 @@ describe('serializeTypes coverage', () => {
       .withNegatedDefault(@x) when not (default()) { c: 1; }
     `);
     expect(errors.length).toBe(0);
-    const mixins = (tree as any).value.filter((node: any) => node.type === 'Mixin');
+    const mixins = tree.value.filter((node: any) => node.type === 'Mixin');
     expect(mixins).toHaveLength(3);
     expect(mixins[0].options?.hasDefault).toBe(true);
     expect(Boolean(mixins[1].options?.hasDefault)).toBe(false);
@@ -206,7 +215,7 @@ describe('serializeTypes coverage', () => {
   test('property accessor', () => {
     const { errors, tree } = parser.parse('.test { color: @obj[prop]; }');
     expect(errors.length).toBe(0);
-    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj.~prop');
+    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[\'prop\']');
     expect(serializeTypes(tree)).toContainString(`
       (Reference
         target: 
@@ -280,33 +289,32 @@ describe('serializeTypes coverage', () => {
 test('rest parameter in mixin', () => {
   const { errors, tree } = parser.parse('.mixin(@args...) { color: red; }');
   expect(errors.length).toBe(0);
-  expect(serializeTypes(tree)).toContainString(`
-      (Mixin
-        name: '.mixin'
-        params: 
-          (List
-            [
-              (Rest 'args')
-            ]
-          )
-        rules: 
-          (Rules
-            [
-              (Declaration
-                name: 
-                  (Any [role=property] 'color')
-                value: 
-                  (Color
-                    node: 'red'
-                    rgb:
+  const out = serializeTypes(tree);
+  expect(out).toContainString(`
+    (Mixin
+      name: '.mixin'
+      rules: 
+        (Rules
+          [
+            (Declaration
+              name: 
+                (Any [role=property] 'color')
+              value: 
+                (Color
+                  node: 'red'
+                  rgb:
                     [255, 0, 0]
-                    alpha: 1
-                  )
-              )
-            ]
-          )
-      )
-    `);
+                  alpha: 1
+                )
+            )
+          ]
+        )
+      params: 
+        (List
+          [
+            (Rest 'args')
+          ]
+  `);
 });
 
 test('rest argument in mixin call', () => {
@@ -326,17 +334,17 @@ test('operation', () => {
   expect(serializeTypes(tree)).toContainString(`
       (Expression
         (Operation
-          [
+          left: 
             (Dimension
               number: 10
               unit: 'px'
             )
-            (undefined)
+          right: 
             (Dimension
               number: 5
               unit: 'px'
             )
-          ]
+          operator: '+'
         )
       )
     `);
@@ -354,9 +362,9 @@ test('static rgb() is preserved as Call node', () => {
         args: 
           (List
             [
-              (Number 255)
-              (Number 0)
-              (Number 0)
+              (Num 255)
+              (Num 0)
+              (Num 0)
             ]
           )
       )
@@ -368,18 +376,18 @@ test('rgb() with variable creates Call node', () => {
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
       (Call
-        name: 
+        name:
           (Reference
             key: 'rgb'
           )
-        args: 
+        args:
           (List
             [
               (Reference
                 key: 'r'
               )
-              (Number 0)
-              (Number 0)
+              (Num 0)
+              (Num 0)
             ]
           )
       )
@@ -398,7 +406,7 @@ test('static hsl() is preserved as Call node', () => {
         args: 
           (List
             [
-              (Number 120)
+              (Num 120)
               (Dimension
                 number: 50
                 unit: '%'
@@ -646,9 +654,9 @@ test('parse known at-rule as variable call', () => {
   expect(serializeTypes(tree)).toContainString(`
       (Expression
         (Call
-          name: 
+          name:
             (Reference [role=name]
-              key: 
+              key:
                 (Any [role=ident] 'media')
             )
         )
@@ -1538,13 +1546,13 @@ describe('extend cases', () => {
     const ruleset = tree.value[0];
     expect(ruleset?.type).toBe('Ruleset');
     if (ruleset && ruleset.type === 'Ruleset') {
-      const rules = ruleset.value.rules;
+      const rules = ruleset.rules;
       if (rules && rules.value) {
         for (const rule of rules.value) {
           if (rule.type === 'Extend') {
             // Check what selector the parser set
-            const selectorType = rule.value.selector?.type;
-            const selectorValueOf = rule.value.selector?.valueOf();
+            const selectorType = rule.selector?.type;
+            const selectorValueOf = rule.selector?.valueOf();
 
             // The parser should set the extend selector to undefined for extends inside rulesets
             // This allows it to default to ampersand and resolve to the ruleset's selector

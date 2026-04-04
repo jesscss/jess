@@ -1,8 +1,8 @@
 /**
  * Sass percentage() function
- * 
+ *
  * Converts a unitless number to a percentage.
- * 
+ *
  * @example
  * percentage(0.5) // 50%
  */
@@ -12,10 +12,10 @@ const percentage = defineFunction(
   'percentage',
   function(number: Dimension): Dimension {
     // Sass requires the number to be unitless
-    if (number.value.unit) {
+    if (number.unit) {
       throw new Error('$number: Expected unitless number, got number with unit');
     }
-    const value = number.value.number;
+    const value = number.number;
     return new Dimension({ number: value * 100, unit: '%' });
   },
   {

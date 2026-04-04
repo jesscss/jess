@@ -16,7 +16,7 @@ const format = defineFunction(
 
     let result = serializeNodeValue(template, this.context);
     for (const value of args) {
-      result = result.replace(/%[sda]/i, (token) => applyToken(token, value, this.context));
+      result = result.replace(/%[sda]/i, token => applyToken(token, value, this.context));
     }
     result = result.replace(/%%/g, '%');
 

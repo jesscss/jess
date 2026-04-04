@@ -1,72 +1,22 @@
 import { Operation, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
-import { fromLessNode } from '../transform/from-less.js';
-import type { LessNode } from '../types.js';
 
-/**
- * Transform a Jess Operation to a Less-compatible Operation
- */
-export function transformOperationToLess(
-  jessOperation: Operation,
-  cache?: WeakMap<any, any>
-): LessNode {
-  return createLessProxy(jessOperation, cache, (prop, target) => {
-    const op = target as Operation;
-
-    // Map 'type' property
-    if (prop === 'type') {
-      return mapJessTypeToLessType(op.type);
-    }
-
-    // Map 'typeIndex'
-    if (prop === 'typeIndex') {
-      return undefined;
-    }
-
-    // Map 'op' property (operator)
-    if (prop === 'op') {
-      // Jess stores as [left, op, right], extract op
-      const value = op.value;
-      if (Array.isArray(value) && value.length >= 2) {
-        return value[1]; // Operator is in the middle
+export const transformOperationToLess = createFromAdapter<Operation>({
+  fields: {
+    op: o => o.get('operator') || '',
+    operands: (o, cache) => {
+      const operands: Node[] = [];
+      const left = o.get('left');
+      const right = o.get('right');
+      if (left instanceof Node) {
+        operands.push(left);
       }
-      return '';
-    }
-
-    // Map 'operands' property
-    if (prop === 'operands') {
-      const value = op.value;
-      if (Array.isArray(value)) {
-        // Extract left and right operands, skip operator
-        const operands: Node[] = [];
-        for (let i = 0; i < value.length; i++) {
-          const item = value[i];
-          if (item instanceof Node) {
-            operands.push(item);
-          } else if (typeof item === 'string' && i === 1) {
-            // Skip operator
-            continue;
-          }
-        }
-        return operands.map(o => toLessNode(o, { cache }));
+      if (right instanceof Node) {
+        operands.push(right);
       }
-      return [];
+      return operands.map(n => toLessNode(n, { cache }));
     }
-
-    // Map 'accept' method for visitor traversal
-    if (prop === 'accept') {
-      return function(visitor: any) {
-        const lessOp = transformOperationToLess(op, cache);
-        const result = visitor.visit(lessOp);
-        if (result !== lessOp) {
-          return fromLessNode(result, { cache });
-        }
-        return op;
-      };
-    }
-
-    return undefined;
-  });
-}
+  },
+  accept: selfVisitAccept()
+});

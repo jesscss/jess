@@ -5,22 +5,23 @@ import type {
   ImportOptions,
   Node,
   Any,
-  Selector,
-  Mixin
+  Selector
 } from './tree/index.js';
-import type { Visitor } from './visitor/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
+import type { RenderKey } from './tree/node-base.js';
 import type { PluginInterface } from './plugin.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
+import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
-import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
+import { BitSetLibrary } from './tree/util/bitset.js';
+import type { EvalDependency } from './tree/util/field-helpers.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -239,6 +240,13 @@ export class Context {
    * this also enables call-time variable resolution ($~variable).
    */
   rulesContext!: Rules;
+  /**
+   * Internal transient lookup-scope override.
+   *
+   * Used by direct mixin/function invocation so canonical bodies can evaluate
+   * against a prepared outer scope without changing the public node API.
+   */
+  lookupScope?: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
   /** Set so that we can do ruleset selector lookup for extend */
@@ -248,31 +256,59 @@ export class Context {
   /** The call that is currently being evaluated */
   caller?: Call;
 
+  /**
+   * Current render-key selection for parent/edge-sensitive traversal.
+   *
+   * Canonical traversal falls back when no alternate edge exists.
+   */
+  renderKey?: RenderKey;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 
   /**
    * Depth-first document order of each Ruleset (assigned once per root before eval).
    * Used so processExtends can apply extends in true source order.
+   *
+   * @todo - Probably remove once I fix extends
    */
   documentOrderByRuleset?: WeakMap<Ruleset, number>;
 
   /**
    * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
+   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?, fromReferenceScope?, namespace?]
+   *
+   * @todo - Probably remove once I fix extends
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean, namespace?: string]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved
    * nodes in the search chain are added to prevent recursion errors.
    *
-   * We use a set here because we look it up for filtering.
+   * Search-scope identity is canonical when available (`sourceNode ?? node`)
+   * so derived wrappers do not bypass recursion guards.
    * Also used to track mixins currently being evaluated to prevent infinite recursion.
    */
   private _searchScope: Set<Node> | undefined;
   get searchScope() {
     return (this._searchScope ??= new Set());
+  }
+
+  getSearchScopeIdentity(node: Node): Node {
+    return node.sourceNode ?? node;
+  }
+
+  hasInSearchScope(node: Node): boolean {
+    return this.searchScope.has(this.getSearchScopeIdentity(node));
+  }
+
+  addToSearchScope(node: Node): void {
+    this.searchScope.add(this.getSearchScopeIdentity(node));
+  }
+
+  deleteFromSearchScope(node: Node): void {
+    this.searchScope.delete(this.getSearchScopeIdentity(node));
   }
 
   /**
@@ -283,9 +319,13 @@ export class Context {
    */
   id = generateId();
   ruleCounter = 0;
+  renderCounter = 0;
 
   /** Rules depth, used to figure out source order */
   depth = -1;
+
+  /** Selector valueOf() strings to bitset positions */
+  selectorBits = new BitSetLibrary<string>();
 
   private _classMap: Map<string, string> | undefined;
   get classMap() {
@@ -294,6 +334,12 @@ export class Context {
 
   /** Frames for nested rulesets, used for selector evaluation */
   rulesetFrames: Ruleset[] = [];
+  /**
+   * When mixin eval clears `rulesetFrames`, this preserves the caller's
+   * last ruleset frame so at-rule hoisting can still pick up the caller's
+   * selector for the wrapper Ruleset.
+   */
+  callerRulesetFrame: Ruleset | undefined;
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 
@@ -415,6 +461,10 @@ export class Context {
     return (this._exports ??= new Set());
   }
 
+  nextRenderKey(): RenderKey {
+    return ++this.renderCounter;
+  }
+
   /**
    * currently generating a runtime module or not
    * @todo - remove in favor of ToModuleVisitor?
@@ -431,8 +481,7 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  /** A flag to clone nodes before mutating */
-  preserveOriginalNodes: boolean | undefined;
+  readonly dependencyMap = new WeakMap<Node, EvalDependency>();
 
   _leakyRules: boolean | undefined;
   get leakyRules() {
@@ -459,6 +508,7 @@ export class Context {
   /** Full resolved path -> tree */
   sourceTrees = new Map<string, Rules>();
   evaldTrees = new Map<string, Rules>();
+  composeSetValues = new Map<string, Rules>();
 
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
@@ -622,10 +672,12 @@ export class Context {
     let source: string;
     try {
       source = await sourceGetter.getSource!(resolvedPath);
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
-    const parseResult = plugin.safeParse!(resolvedPath, source);
+    const parseResult = plugin.safeParse!(resolvedPath, source, {
+      compilerOptions: this.opts
+    });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -636,7 +688,7 @@ export class Context {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
       throw new JessError({
-        code: firstError.code as any,
+        code: firstError.code,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,
@@ -655,7 +707,7 @@ export class Context {
     if (parseResult.tree) {
       // Set context.root so preEval visitors can check if this is the root
       // parseResult.tree should be a Rules node (the root of the parsed tree)
-      if (!this.root && isNode(parseResult.tree, 'Rules')) {
+      if (!this.root && isNode(parseResult.tree, N.Rules)) {
         this.root = parseResult.tree;
       }
 
@@ -684,7 +736,7 @@ export class Context {
       column: 1
     });
     return {
-      node: null as any,
+      node: null,
       triedPaths,
       resolvedPath
     };
@@ -711,7 +763,9 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const tree = await plugin.parse!(virtualPath, content);
+    const tree = await plugin.parse!(virtualPath, content, {
+      compilerOptions: this.opts
+    });
 
     if (!tree) {
       throw new Error('Failed to parse content');
@@ -783,7 +837,7 @@ export class Context {
   //   filePath: string,
   //   nodeOptions: StyleImportOptions,
   //   userOptions: Record<string, any> = {},
-  //   withValues?: StyleImportValue['with']
+  //   withNode?: StyleImportValue['withNode']
   // ) {
   //   let rules = await this.getTree(filePath, userOptions);
   //   if (withValues && isNode(withValues.node, 'Rules')) {

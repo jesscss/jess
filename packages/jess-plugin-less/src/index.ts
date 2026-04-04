@@ -81,8 +81,8 @@ export class LessPlugin extends AbstractPlugin {
       if (typeof value !== 'function') {
         continue;
       }
-      const runtimeName = ((value as any).name as string | undefined) ?? key;
-      tree.register('function', new JsFunction({ name: runtimeName, fn: value as (...args: any[]) => any }));
+      const runtimeName = value.name || key;
+      tree.register('function', new JsFunction({ name: runtimeName, fn: value }));
       registeredNames.push(runtimeName);
     }
   }
@@ -156,7 +156,8 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: { compilerOptions?: Record<string, any> }): ISafeParseResult {
+    void parseOptions;
     const context = new TreeContext({
       file: {
         name: path.basename(filePath),
@@ -168,6 +169,7 @@ export class LessPlugin extends AbstractPlugin {
       unitMode: this.unitMode,
       equalityMode: this.equalityMode,
       plugin: this,
+      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
       collapseNesting: this.collapseNesting,
       leakyRules: this.leakyRules,
       bubbleRootAtRules: this.bubbleRootAtRules
@@ -205,7 +207,7 @@ export class LessPlugin extends AbstractPlugin {
       if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
         // Convert each parser error to a diagnostic
         for (const error of parseResult.errors) {
-          const line = error.token?.startLine ?? (error as any).line ?? 1;
+          const line = error.token?.startLine ?? 1;
           const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
           const diagnostic = toDiagnostic(jessError);
           // Ensure lines are extracted
@@ -221,7 +223,7 @@ export class LessPlugin extends AbstractPlugin {
         // Convert lexer errors
         if (parseResult.lexerResult?.errors) {
           for (const lexError of parseResult.lexerResult.errors) {
-            const line = (lexError as any).line ?? 1;
+            const line = typeof lexError.line === 'number' ? lexError.line : 1;
             const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
             const diagnostic = toDiagnostic(jessError);
             // Ensure lines are extracted
@@ -236,21 +238,22 @@ export class LessPlugin extends AbstractPlugin {
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Convert caught error to diagnostic
-      if (error && typeof error === 'object' && 'severity' in error) {
-        const diagnostic = toDiagnostic(error as JessError);
+      if (error instanceof JessError) {
+        const diagnostic = toDiagnostic(error);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {
           warnings.push(diagnostic);
         }
       } else {
+        const message = error instanceof Error ? error.message : 'Unknown parsing error';
         errors.push({
           code: 'internal/unknown',
           phase: 'parse',
-          message: error?.message || 'Unknown parsing error',
-          reason: error?.message || 'An unexpected error occurred during parsing.',
+          message,
+          reason: message || 'An unexpected error occurred during parsing.',
           fix: 'Check the file syntax and ensure it is valid.',
           file: context.file,
           filePath: filePath,

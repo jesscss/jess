@@ -1,22 +1,19 @@
 {
   "name": "@jesscss/less-parser",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "version": "2.0.0-alpha.5",
   "description": "Jess LESS parser",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -27,8 +24,12 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
+    "bench": "tsx test/bench.ts",
+    "bench:save": "tsx test/bench.ts --save",
+    "bench:memory": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --memory",
+    "bench:heap": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --heap-snapshot",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -37,18 +38,20 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
-    "chevrotain": "^11.0.3",
-    "chevrotain-allstar": "~0.3.0",
+    "@jesscss/parser": "workspace:*",
+    "chevrotain": "^12.0.0",
     "known-css-properties": "~0.37.0"
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
-    "@types/node": "^18.19.31"
+    "@types/node": "^18.19.31",
+    "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/jesscss/jess#readme"
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "module": "lib/index.js"
 }

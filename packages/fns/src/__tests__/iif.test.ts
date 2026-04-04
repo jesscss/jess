@@ -2,7 +2,7 @@ import {
   iif
 } from '../less/index.js';
 
-import { Bool, Context, Dimension } from '@jesscss/core';
+import { Anonymous, Bool, Context, Dimension } from '@jesscss/core';
 import { beforeAll, describe, it, test, expect } from 'vitest';
 
 let context: Context;
@@ -43,7 +43,7 @@ describe('iif', () => {
   });
 
   test('iif (false) without elseValue', async () => {
-    await expect(iif(new Bool(false), () => new Dimension({ number: 2, unit: 'px' }))).resolves.toBeUndefined();
+    await expect(iif(new Bool(false), () => new Dimension({ number: 2, unit: 'px' }))).resolves.toBeInstanceOf(Anonymous);
   });
 
   /** @todo - add tests to make sure iif lazy evaluates true / false */

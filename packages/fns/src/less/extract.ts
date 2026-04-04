@@ -1,19 +1,9 @@
-import { defineFunction, Node, List, Sequence, Dimension, toNumber } from '@jesscss/core';
-
-function getItems(value: Node): Node[] {
-  if (value instanceof List && value.length === 1 && value.value[0] instanceof Sequence) {
-    return value.value[0].value;
-  }
-  if (value instanceof List || value instanceof Sequence) {
-    return value.value;
-  }
-  return [value];
-}
+import { defineFunction, Node, List, Sequence, Dimension, toNumber, coerceListItems } from '@jesscss/core';
 
 const extract = defineFunction(
   'extract',
   function(this: { rawArgs?: List } | undefined, value: Node, index: number): Node {
-    const items = getItems(value);
+    const items = coerceListItems(value);
     const raw = Math.trunc(index);
     if (!Number.isFinite(raw)) {
       if (items.length === 1) {
@@ -28,7 +18,7 @@ const extract = defineFunction(
     const out = items[normalized - 1]!;
     if (out instanceof Sequence) {
       const normalizedOut = out.copy(true) as Sequence;
-      normalizedOut.value.forEach((node, index) => {
+      normalizedOut.get('value').forEach((node: Node, index: number) => {
         node.pre = index === 0 ? 0 : 1;
       });
       return normalizedOut;

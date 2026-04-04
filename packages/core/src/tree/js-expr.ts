@@ -10,12 +10,20 @@ import { type MaybePromise } from '@jesscss/awaitable-pipe';
  * @deprecated - use `@-use` instead
  */
 export interface JsExpression extends Node<string> {
+  type: 'JsExpression';
+  shortType: 'jsexpr';
   eval(context: Context): Promise<Node>;
 }
 
 export class JsExpression extends Node<string> {
-  type = 'JsExpression' as const;
-  shortType = 'jsexpr' as const;
+  static override childKeys = null as null;
+
+  value!: string;
+
+  constructor(value: string, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+  }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
@@ -38,4 +46,5 @@ export class JsExpression extends Node<string> {
     })();
   }
 }
+
 export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');

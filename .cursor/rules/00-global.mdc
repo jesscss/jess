@@ -5,6 +5,11 @@ alwaysApply: true
 
 # Global rules (Jess monorepo)
 
+## Canonical contract
+- Read `AGENTS.md` as the repo-wide agent contract before relying on tool-specific summaries.
+- Treat `AGENTS.md` as the stable source for cross-tool goals and decision rules.
+- Do not duplicate volatile branch status in permanent rule files when a canonical doc already exists.
+
 ## Evidence-first
 - Prefer **scan-first, questions-later**. If something matters and isn’t confirmed by repo evidence, label it **Unknown** and only then ask.
 - When explaining decisions, cite **file paths** (and specific sections if relevant).

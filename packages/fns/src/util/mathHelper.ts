@@ -6,9 +6,9 @@ export function num(values: Dimension | number): number;
 export function num(values: Array<Dimension | number>): number[];
 export function num(values: Dimension | number | Array<Dimension | number>): number | number[] {
   if (isArray(values)) {
-    return values.map(n => n instanceof Dimension ? n.value.number : n);
+    return values.map(n => n instanceof Dimension ? n.number : n);
   }
-  return values instanceof Dimension ? values.value.number : values;
+  return values instanceof Dimension ? values.number : values;
 }
 
 export const mathHelper = (
@@ -28,25 +28,25 @@ export const mathHelper = (
   const val = input[0];
   if (unit === null) {
     const numberResult = fn(...num(input));
-    const preservedUnit = val instanceof Dimension ? val.value.unit : undefined;
+    const preservedUnit = val instanceof Dimension ? val.unit : undefined;
     return new Dimension({ number: numberResult, unit: preservedUnit });
   }
-  const normalizedInput = input.map(v => {
+  const normalizedInput = input.map((v) => {
     if (!(v instanceof Dimension)) {
       return v;
     }
-    if (v.value.unit === 'deg') {
-      return v.value.number * Math.PI / 180;
+    if (v.unit === 'deg') {
+      return v.number * Math.PI / 180;
     }
-    if (v.value.unit === 'grad') {
-      return v.value.number * Math.PI / 200;
+    if (v.unit === 'grad') {
+      return v.number * Math.PI / 200;
     }
-    if (v.value.unit === 'turn') {
-      return v.value.number * 2 * Math.PI;
+    if (v.unit === 'turn') {
+      return v.number * 2 * Math.PI;
     }
-    return v.value.number;
+    return v.number;
   });
-  unit ??= val instanceof Dimension ? val.value.unit : '';
+  unit ??= val instanceof Dimension ? val.unit : '';
   if (unit === undefined) {
     return new Num(fn(...(normalizedInput as number[])));
   }

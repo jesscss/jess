@@ -8,7 +8,7 @@ describe('pow()', () => {
       new Dimension({ number: 3, unit: 'rem' }),
       new Dimension({ number: 2, unit: '' })
     );
-    expect(result.value.number).toBe(9);
-    expect(result.value.unit).toBe('rem');
+    expect(result.data.number).toBe(9);
+    expect(result.data.unit).toBe('rem');
   });
 });

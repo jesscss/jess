@@ -17,7 +17,7 @@ export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension
    */
   let alpha: Node | number = 1;
   if (one instanceof Sequence) {
-    const val: Dimension[] = one.value as Dimension[];
+    const val: Dimension[] = one.get('value') as Dimension[];
     one = val[0]!;
     two = val[1]!;
     three = val[2]!;
@@ -27,7 +27,7 @@ export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension
      */
     if (three instanceof Operation) {
       const op = three as Operation;
-      ([three, ,alpha] = op.value as [Dimension, string, Dimension]);
+      ([three, ,alpha] = [op.get('left') as Dimension, op.get('operator'), op.get('right') as Dimension] as [Dimension, string, Dimension]);
     }
   }
   return ([one, two, three, alpha].map(v => getNumber(v, true)) as [number, number, number, number]);

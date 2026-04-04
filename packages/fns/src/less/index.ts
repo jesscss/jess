@@ -81,3 +81,8 @@ export { default as tint } from './tint.js';
 export { default as spin } from './spin.js';
 
 export { default as each } from './each.js';
+export { default as dataUri } from './data-uri.js';
+export { default as imageSize } from './image-size.js';
+export { default as imageWidth } from './image-width.js';
+export { default as imageHeight } from './image-height.js';
+export { default as svgGradient } from './svg-gradient.js';

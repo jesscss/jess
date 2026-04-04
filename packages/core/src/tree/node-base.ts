@@ -1,17 +1,18 @@
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { NodeTraversalCursor } from './util/collections.js';
 import {
   type TreeContext,
   type Context
 } from '../context.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
-import type { Class, AbstractClass, Tagged } from 'type-fest';
-import { getEntriesFromNode, getValues } from './util/collections.js';
+import type { AbstractClass, Tagged } from 'type-fest';
 import type { Comment } from './comment.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
+import { N, nodeTypeBits } from './node-type.js';
+import { addParentEdge } from './util/cursor.js';
 export type { TreeContext };
 
 const { isArray } = Array;
@@ -38,14 +39,12 @@ type AllNodeOptions = {
 export type Primitive = undefined | boolean | string | number;
 export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
 
-const primitives = ['undefined', 'boolean', 'string', 'number'];
-
 export const ABORT: unique symbol = Symbol('ABORT');
 export const REMOVE: unique symbol = Symbol('REMOVE');
 export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
-export const DEFAULT_DATA = 'value';
+export const DEFAULT_DATA = 'data';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
@@ -68,14 +67,144 @@ export type LocationInfo = [
 ];
 
 /**
+ * Values returned by {@link Node.location}: a full six-number span, or `[]` when unknown.
+ * The empty tuple is the lazy default assigned by the `location` getter.
+ */
+export type LocationInfoOrEmpty = LocationInfo | [];
+
+/**
+ * Location argument for node construction and APIs that accept another node's `location`.
+ * Same shape as {@link LocationInfoOrEmpty}, or `undefined` to defer to the empty default.
+ */
+export type OptionalLocation = LocationInfoOrEmpty | undefined;
+
+export type RenderKey = number | symbol;
+
+export const CANONICAL: unique symbol = Symbol('CANONICAL');
+export const EVAL: unique symbol = Symbol('EVAL');
+export const CALLER: unique symbol = Symbol('CALLER');
+
+export type NodeEdge<T> = Map<RenderKey, T>;
+
+export type Cursor = {
+  node: Node;
+  renderKey: RenderKey;
+};
+
+function isContextArg(value: Context | RenderKey | undefined): value is Context {
+  return typeof value === 'object' && value !== null && 'rulesetFrames' in value;
+}
+
+function getActiveParentFromContext(
+  node: Node,
+  context?: Context
+): Node | undefined {
+  if (!context) {
+    return node.parent;
+  }
+  const keys: RenderKey[] = [];
+  const push = (key: RenderKey | undefined): void => {
+    if (key === undefined || key === CANONICAL || keys.includes(key)) {
+      return;
+    }
+    keys.push(key);
+  };
+  push(context.renderKey);
+  push(context.rulesContext?.renderKey);
+  push(node.renderKey);
+  if (node.parentEdges?.has(EVAL)) {
+    push(EVAL);
+  }
+  for (const key of keys) {
+    const parent = node.parentEdges?.get(key);
+    if (parent !== undefined) {
+      return parent;
+    }
+  }
+  return node.parent;
+}
+
+function hasTypeProperty(value: unknown): value is { type?: string } {
+  return (typeof value === 'object' || typeof value === 'function')
+    && value !== null
+    && 'type' in value;
+}
+
+function getNodeChildKeys(node: Node): readonly string[] | null | undefined {
+  const childKeys: readonly string[] | null | undefined = Reflect.get(node.constructor, 'childKeys');
+  return childKeys;
+}
+
+function getNodeField<T = unknown>(node: Node, key: string): T {
+  const value: T = Reflect.get(node, key);
+  return value;
+}
+
+function setNodeField(node: Node, key: string, value: unknown): void {
+  Reflect.set(node, key, value);
+}
+
+function getNodeEdge<T>(node: Node, key: string): NodeEdge<T> | undefined {
+  const edge = Reflect.get(node, key);
+  return edge instanceof Map ? edge : undefined;
+}
+
+function getNodeEdgeList(node: Node, key: string): Array<NodeEdge<unknown> | undefined> | undefined {
+  const edges = Reflect.get(node, key);
+  return Array.isArray(edges) ? edges : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getNodeValue(node: Node): unknown {
+  return getNodeField(node, 'value');
+}
+
+export function canReuseEvalState(node: Node, context?: Context): boolean {
+  const renderKey = context?.renderKey;
+  if (renderKey === undefined || renderKey === CANONICAL) {
+    return true;
+  }
+  return node.renderKey === renderKey;
+}
+
+function setNodeEvaluated(node: Node, context?: Context): void {
+  if (!canReuseEvalState(node, context)) {
+    return;
+  }
+  setNodeField(node, 'evaluated', true);
+}
+
+function getNodeKeySetLibrary(node: Node): unknown {
+  return Reflect.get(node, 'keySetLibrary');
+}
+
+function setNodeKeySetLibrary(node: Node, library: unknown): void {
+  Reflect.set(node, 'keySetLibrary', library);
+}
+
+function isRulesNode(node: Node | undefined): node is Rules {
+  return node?.type === 'Rules';
+}
+
+function toPrimitiveValue(value: unknown): Primitive {
+  return (
+    value === undefined
+    || typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+  )
+    ? value
+    : String(value);
+}
+
+/**
  * Utility type to mark a node's value as generated
  */
 export type GeneratedNodeValue<T> = T extends object ? T & { generated: true } : T;
 
-/**
- * @todo I think the only utility for this now is we collect
- * the types of nodes in the tree at first evaluation time.
- */
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
@@ -86,21 +215,31 @@ export const defineType = <
   shortType?: string
 ) => {
   shortType ??= type.toLowerCase();
-  (Clazz as any).type = type;
-  (Clazz as any).shortType = shortType;
+  Reflect.set(Clazz, 'type', type);
+  Reflect.set(Clazz, 'shortType', shortType);
 
-  let proto: any = Clazz;
-  let types = proto.types = new Set();
-  while (proto?.type) {
-    types.add(proto.type);
+  /** Build nodeType bitmask by OR-ing bits for each type in the prototype chain */
+  let nodeType = 0;
+  let proto: unknown = Clazz;
+  /**
+   * @todo - We shouldn't have to crawl the prototype at runtime.
+   *         We should be setting this explicitly in a parameter to defineType.
+   */
+  while (hasTypeProperty(proto) && proto.type) {
+    const bit = nodeTypeBits[proto.type];
+    if (bit !== undefined) {
+      nodeType |= bit;
+    }
     proto = Object.getPrototypeOf(proto);
   }
+  /** Set on the prototype so ALL instances (including `new Foo()`) inherit it */
+  Clazz.prototype.nodeType = nodeType;
+  Clazz.prototype.type = type;
+  Clazz.prototype.shortType = shortType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args) => {
-    const node = new (Clazz as any)(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never;
-    (node as any).type = type;
-    (node as any).shortType = shortType;
+    const node: InstanceType<T> = Reflect.construct(Clazz, args);
     return node;
   };
 };
@@ -132,6 +271,17 @@ export const F_EXTEND_TARGET = 0b10000000;
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
 
+export function isVisibleInContext(node: Node, context?: Context): boolean {
+  return context ? node._hasFlag(F_VISIBLE, context) : node.hasFlag(F_VISIBLE);
+}
+
+/** Secondary metadata flags. Keeps a pile of booleans off the instance shape. */
+const M_ALLOW_ROOT = 1 << 0;
+const M_ALLOW_RULE_ROOT = 1 << 1;
+const M_GENERATED = 1 << 2;
+const M_REQUIRED_SEMI = 1 << 3;
+const M_FROZEN = 1 << 4;
+
 // Future flags can be added here
 // export const CACHED = 0b1000000;
 // export const DIRTY = 0b10000000;
@@ -139,39 +289,71 @@ export const F_DEFAULT = F_VISIBLE;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
 
+export type RestorableIterator<T> = Iterator<T> & {
+  mark: (key?: string) => void;
+  reset: (key?: string) => void;
+};
+
+type NodeMeta<O extends NodeOptions = NodeOptions> = {
+  treeContext?: TreeContext;
+  options?: O & AllNodeOptions;
+  sourceNode?: Node;
+  sourceParent?: Node;
+  hoistToRoot?: boolean;
+};
+
 /**
  * The underlying type for all Jess nodes
  */
 export abstract class Node<
-  Data = unknown,
-  O extends NodeOptions = NodeOptions
+  Data = NodeValue,
+  O extends NodeOptions = NodeOptions,
+  ChildData extends Record<string, unknown> = Record<string, unknown>
 > {
-  _location: LocationInfo | [] | undefined;
-  get location() {
+  _location: OptionalLocation;
+  get location(): LocationInfoOrEmpty {
     return (this._location ??= []);
   }
 
-  private _treeContext: TreeContext | undefined;
-  /** Assigned in index to avoid circularity */
-  declare readonly treeContext: TreeContext;
+  private _meta: NodeMeta<O> | undefined;
+  private _metaFlags = 0;
 
-  private _options: O & AllNodeOptions | undefined;
+  private _getMeta(): NodeMeta<O> {
+    return (this._meta ??= {});
+  }
+
+  /** Assigned in index to avoid circularity */
+  get treeContext() {
+    return this._meta?.treeContext;
+  }
+
   get options(): O & AllNodeOptions {
-    return (this._options ??= {} as O & AllNodeOptions);
+    const meta = this._getMeta();
+    if (meta.options === undefined) {
+      meta.options = Reflect.construct(Object, []);
+    }
+    return meta.options;
   }
 
   set options(options: O & AllNodeOptions) {
-    this._options = options;
+    this._getMeta().options = options;
   }
 
   /**
-   * Assigned on the prototype, make sure we don't initialize
+   * Assigned on the prototype by defineType — do NOT initialize in subclasses
+   * (an `= 'X'` would create an own property that shadows the prototype value).
+   * Use interface merging to declare the literal type per node class.
    */
-  abstract type: string;
-  abstract shortType: string;
-  get types(): Set<string> {
-    return (this.constructor as any).types;
-  }
+  declare type: string;
+  declare shortType: string;
+
+  /**
+   * Bitmask of this node's type and all ancestor types.
+   * Set on the prototype by defineType. Used by isNode for O(1) type checking.
+   * DO NOT initialize here — an `= 0` would create an own property that
+   * shadows the prototype value set by defineType.
+   */
+  declare nodeType: number;
 
   /**
    * Whitespace or comments before or after a Node.
@@ -190,10 +372,9 @@ export abstract class Node<
   /** Will be copied during inherit */
   state = F_DEFAULT;
 
-  /** Runtime tracking: has preEval been run on this node? */
   preEvaluated = false;
-  /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
+  declare stateEdges: Map<RenderKey, number> | undefined;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -201,36 +382,72 @@ export abstract class Node<
 
   declare fullRender: boolean;
 
-  allowRoot = false;
-  allowRuleRoot = false;
-  hoistToRoot: boolean | undefined = undefined;
+  get allowRoot() {
+    return (this._metaFlags & M_ALLOW_ROOT) !== 0;
+  }
+
+  set allowRoot(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_ALLOW_ROOT) : (this._metaFlags & ~M_ALLOW_ROOT);
+  }
+
+  get allowRuleRoot() {
+    return (this._metaFlags & M_ALLOW_RULE_ROOT) !== 0;
+  }
+
+  set allowRuleRoot(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_ALLOW_RULE_ROOT) : (this._metaFlags & ~M_ALLOW_RULE_ROOT);
+  }
+
+  get hoistToRoot() {
+    return this._meta?.hoistToRoot;
+  }
+
+  set hoistToRoot(value: boolean | undefined) {
+    if (value === undefined) {
+      if (this._meta) {
+        this._meta.hoistToRoot = undefined;
+      }
+      return;
+    }
+    this._getMeta().hoistToRoot = value;
+  }
 
   /**
    * Code internally should call .create() when making new
    * nodes, which will automatically mark the node as generated.
    */
-  generated = false;
+  get generated() {
+    return (this._metaFlags & M_GENERATED) !== 0;
+  }
+
+  set generated(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_GENERATED) : (this._metaFlags & ~M_GENERATED);
+  }
 
   /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
    * rules list.
    */
-  _requiredSemi = false;
   get requiredSemi() {
-    return this._requiredSemi;
+    return (this._metaFlags & M_REQUIRED_SEMI) !== 0;
   }
 
   set requiredSemi(value: boolean) {
-    this._requiredSemi = value;
+    this._metaFlags = value ? (this._metaFlags | M_REQUIRED_SEMI) : (this._metaFlags & ~M_REQUIRED_SEMI);
   }
 
   /**
    * Track the original source when cloned / copied,
    * rather than keeping the entire tree
-   * Note: This property is defined in constructor as non-enumerable
    */
-  declare sourceNode: Node;
+  get sourceNode() {
+    return this._meta?.sourceNode ?? this;
+  }
+
+  set sourceNode(node: Node) {
+    this._getMeta().sourceNode = node;
+  }
 
   /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
@@ -255,74 +472,184 @@ export abstract class Node<
    * If true, prevents re-parenting of this node.
    * This is used to maintain source lookup chains.
    */
-  frozen = false;
+  get frozen() {
+    return (this._metaFlags & M_FROZEN) !== 0;
+  }
+
+  set frozen(value: boolean) {
+    this._metaFlags = value ? (this._metaFlags | M_FROZEN) : (this._metaFlags & ~M_FROZEN);
+  }
 
   /**
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
-   */
+  */
   declare readonly parent: Node | undefined;
-  declare sourceParent: Node | undefined;
+  declare parentEdges: NodeEdge<Node> | undefined;
+  declare renderKey: RenderKey;
+
+  get sourceParent() {
+    return this._meta?.sourceParent;
+  }
+
+  set sourceParent(node: Node | undefined) {
+    this._getMeta().sourceParent = node;
+  }
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
-  protected _value: Data;
+  /**
+   * Keys of instance fields that hold child Nodes.
+   * Override per node type.
+   * - `undefined` (default) — unmigrated
+   * - `null` — leaf node, no children to iterate/adopt/clone
+   * - `string[]` — names of instance fields holding child Node(s) or Node[]
+   */
+  static childKeys: readonly string[] | null | undefined = undefined;
 
   /**
-   * This is the internal `data` of the node.
+   * The internal data of the node.
+   * Prefer setData() for mutations to ensure proper parent adoption.
    */
-  get value(): Data {
-    return this._value;
-  }
+  // Note to LLM - STOP removing Readonly to try to fix type errors. Make
+  // this a strong readonly contract. Otherwise we will miss type errors
+  // for things like code mutating arrays that are assigned to data.
+  // Uses `declare` to avoid emitting a class field initializer that would
+  // shadow prototype getters on migrated subclasses.
 
-  set value(val: Data) {
-    this._value = this._tryProxyWrap(val);
-    // Invalidate memoized valueOf() on selector-like nodes after mutation.
-    if ('_valueOf' in this) {
-      (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
+  private _adoptValue(value: unknown): void {
+    if (value instanceof Node) {
+      this.adopt(value);
+      return;
     }
-  }
-
-  /**
-   * This wraps the value in a proxy if it's an object or array.
-   * We do this so that assignment to the sub-nodes will properly
-   * set the parent of the sub-nodes.
-   *
-   * @todo - Test parent setting for objects / arrays.
-   */
-  private _tryProxyWrap<T>(value: T): T {
-    if (isPlainObject(value) || isArray(value)) {
-      value = this._processNodes(value);
-      return new Proxy(value as object, {
-        get: (target, prop) => {
-          if (prop === IS_PROXY) {
-            return true;
-          }
-          const returnVal = Reflect.get(target, prop);
-          if (isPlainObject(returnVal) || isArray(returnVal)) {
-            if (returnVal[IS_PROXY]) {
-              /** Already a proxy so don't re-wrap it */
-              return returnVal;
-            }
-            return this._tryProxyWrap(returnVal);
-          }
-          return returnVal;
-        },
-        set: (target, prop, newValue) => {
-          if (isPlainObject(newValue) || isArray(newValue)) {
-            newValue = this._processNodes(newValue);
-          }
-          if (newValue instanceof Node) {
-            this.adopt(newValue);
-          }
-          return Reflect.set(target, prop, newValue);
+    if (isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const item = value[i];
+        if (item instanceof Node) {
+          this.adopt(item);
         }
-      }) as T;
+      }
+    }
+  }
+
+  protected _invalidateValueOf(): void {
+    if (Reflect.has(this, '_valueOf')) {
+      Reflect.set(this, '_valueOf', undefined);
+    }
+    if (Reflect.has(this, '_keySet')) {
+      Reflect.set(this, '_keySet', undefined);
+      Reflect.set(this, '_visibleKeySet', undefined);
+      Reflect.set(this, '_requiredKeySet', undefined);
+    }
+  }
+
+  /**
+   * Set the whole child payload, a named child field, or an indexed child item.
+   * This is a canonical mutation compatibility seam; non-canonical mutation
+   * should happen through derived nodes and keyed edges.
+   */
+  setData(val: NodeValue): void;
+  setData(key: string | number, val: unknown): void;
+  setData(...args: unknown[]): void {
+    const childKeys = getNodeChildKeys(this);
+
+    if (args.length === 1) {
+      const val = args[0];
+      if (Array.isArray(childKeys) && childKeys.length === 1) {
+        setNodeField(this, childKeys[0]!, val);
+      } else if (Array.isArray(childKeys) && val !== null && typeof val === 'object') {
+        for (const key of childKeys) {
+          if (Reflect.has(val, key)) {
+            setNodeField(this, key, Reflect.get(val, key));
+          }
+        }
+      } else {
+        setNodeField(this, 'value', val);
+      }
+      this._adoptValue(val);
+      this._invalidateValueOf();
+      return;
     }
 
-    return this._processNodes(value);
+    const key = args[0];
+    if (typeof key !== 'string' && typeof key !== 'number') {
+      throw new TypeError('setData key must be a string or number');
+    }
+    const val = args[1];
+    if (typeof key === 'number') {
+      const arr = this._getArrayField();
+      if (arr[key] === val) {
+        return;
+      }
+      arr[key] = val;
+    } else {
+      const fields = this;
+      if (fields[key] === val) {
+        return;
+      }
+      fields[key] = val;
+    }
+    this._adoptValue(val);
+    this._invalidateValueOf();
+  }
+
+  private _getArrayField(): unknown[] {
+    const childKeys = getNodeChildKeys(this);
+    if (!Array.isArray(childKeys) || childKeys.length === 0) {
+      throw new Error(`${this.type} has no array child field`);
+    }
+    const key = childKeys[0]!;
+    const value = getNodeField(this, key);
+    if (!isArray(value)) {
+      throw new Error(`${this.type}.${key} is not an array child field`);
+    }
+    return value;
+  }
+
+  push(ctx: Context, ...items: Node[]): void;
+  push(...items: Node[]): void;
+  push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
+    let ctx: Context | undefined;
+    let items: Node[];
+    if (ctxOrFirst instanceof Node) {
+      items = [ctxOrFirst, ...rest];
+    } else {
+      ctx = ctxOrFirst;
+      items = rest;
+    }
+    const arr = this._getArrayField();
+    arr.push(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item, ctx);
+      }
+    }
+    this._invalidateValueOf();
+  }
+
+  splice(start: number, deleteCount: number, ...items: unknown[]): unknown[] {
+    const arr = this._getArrayField();
+    const removed = arr.splice(start, deleteCount, ...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
+    return removed;
+  }
+
+  unshift(...items: unknown[]): void {
+    const arr = this._getArrayField();
+    arr.unshift(...items);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+      }
+    }
+    this._invalidateValueOf();
   }
 
   /**
@@ -359,15 +686,67 @@ export abstract class Node<
    * Add multiple flags to the node's state
    */
   addFlags(...flags: number[]) {
-    for (const flag of flags) {
-      this.addFlag(flag);
+    for (let i = 0; i < flags.length; i++) {
+      this.addFlag(flags[i]!);
     }
   }
 
-  adopt(node: Node) {
-    /** The only place we should do this */
+  private _resolveRuntimeRenderKey(context: Context): RenderKey {
+    if (context.renderKey !== undefined) {
+      return context.renderKey;
+    }
+    if (this.renderKey !== CANONICAL) {
+      return this.renderKey;
+    }
+    if (this.stateEdges?.has(EVAL)) {
+      return EVAL;
+    }
+    return this.renderKey;
+  }
+
+  _hasFlag(flag: number, context: Context): boolean {
+    const renderKey = this._resolveRuntimeRenderKey(context);
+    if (renderKey === this.renderKey) {
+      return this.hasFlag(flag);
+    }
+    const flags = this.stateEdges?.get(renderKey) ?? this.state;
+    return (flags & flag) !== 0;
+  }
+
+  _addFlag(flag: number, context: Context): void {
+    const renderKey = this._resolveRuntimeRenderKey(context);
+    if (renderKey === this.renderKey) {
+      this.addFlag(flag);
+      return;
+    }
+    const stateEdges = (this.stateEdges ??= new Map());
+    let nextFlags = (stateEdges.get(renderKey) ?? this.state) | flag;
+    if (flag === F_NON_STATIC) {
+      nextFlags &= ~F_STATIC;
+    }
+    stateEdges.set(renderKey, nextFlags);
+  }
+
+  _removeFlag(flag: number, context: Context): void {
+    const renderKey = this._resolveRuntimeRenderKey(context);
+    if (renderKey === this.renderKey) {
+      this.removeFlag(flag);
+      return;
+    }
+    const stateEdges = (this.stateEdges ??= new Map());
+    stateEdges.set(renderKey, (stateEdges.get(renderKey) ?? this.state) & ~flag);
+  }
+
+  adopt(node: Node, ctx?: Context) {
     if (!node.frozen) {
-      (node as any).parent = this;
+      const renderKey = ctx?.renderKey;
+      if (renderKey !== undefined && renderKey !== CANONICAL) {
+        const edge = node.parentEdges ?? new Map<RenderKey, Node>();
+        edge.set(renderKey, this);
+        node.parentEdges = edge;
+      } else {
+        setNodeField(node, 'parent', this);
+      }
     }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
@@ -383,50 +762,98 @@ export abstract class Node<
     }
   }
 
-  /**
-   * Assign parent to sub-nodes
-   * @note - This will not process the children nodes of children nodes.
-   */
-  private _processNodes<T>(value: T): T {
-    for (let val of getValues(value)) {
-      if (val instanceof Node) {
-        this.adopt(val);
-      }
-    }
-    return value;
-  }
-
   constructor(
     value: Data,
     options?: O,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
-    // Make some props non-enumerable to avoid JSON serialization issues
-    Object.defineProperties(this, {
-      sourceNode: {
-        value: this,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      parent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      sourceParent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      }
-    });
-    this._value = this._tryProxyWrap(value);
-    this._treeContext = treeContext;
+    setNodeField(this, 'parent', undefined);
+    setNodeField(this, 'renderKey', CANONICAL);
+    this.index = undefined!;
     this._location = location;
-    this._options = options;
+    if (options !== undefined || treeContext !== undefined) {
+      this._meta = {
+        sourceNode: this,
+        sourceParent: undefined,
+        options,
+        treeContext
+      };
+    } else {
+      this._meta = {
+        sourceNode: this,
+        sourceParent: undefined
+      };
+    }
+  }
+
+  /**
+   * Type-safe access to child data fields.
+   * Without a second arg: returns canonical (parse-time) value.
+   * With a renderKey: returns edge-selected value if one exists.
+   * With a context: returns edge-selected value first, then any eval-state-patched value.
+   *
+   * @example
+   *   url.get('value')              // canonical, typed
+   *   url.get('value', renderKey)   // render-path aware, typed
+   *   url.get('value', ctx)         // render + eval-state aware, typed
+   *   url.get('name')               // TS error if 'name' not in ChildData
+   */
+  get<K extends keyof ChildData & string>(key: K): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, renderKey: RenderKey | undefined): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, ctx: Context | undefined): ChildData[K];
+  get<K extends keyof ChildData & string>(key: K, ctxOrRenderKey?: Context | RenderKey | undefined): ChildData[K] {
+    const ctx = isContextArg(ctxOrRenderKey) ? ctxOrRenderKey : undefined;
+    const explicitRenderKey = !isContextArg(ctxOrRenderKey)
+      ? ctxOrRenderKey
+      : undefined;
+    const renderKeys: RenderKey[] = [];
+    const pushRenderKey = (renderKey: RenderKey | undefined) => {
+      if (renderKey === undefined || renderKey === CANONICAL || renderKeys.includes(renderKey)) {
+        return;
+      }
+      renderKeys.push(renderKey);
+    };
+    pushRenderKey(explicitRenderKey);
+    pushRenderKey(ctx?.renderKey);
+    pushRenderKey(ctx?.rulesContext?.renderKey);
+    pushRenderKey(this.renderKey !== CANONICAL ? this.renderKey : undefined);
+    const singularEdge = getNodeEdge<ChildData[K]>(this, `${key}Edge`);
+    const canonicalValue = getNodeField(this, key);
+    if (
+      ctx
+      && (singularEdge?.has(EVAL) || getNodeEdgeList(this, `${key}Edges`)?.some(edge => edge?.has(EVAL))
+    )) {
+      pushRenderKey(EVAL);
+    }
+
+    for (const renderKey of renderKeys) {
+      const overridden = singularEdge?.get(renderKey);
+      if (overridden !== undefined) {
+        return overridden;
+      }
+      if (isArray(canonicalValue)) {
+        const indexedEdges = getNodeEdgeList(this, `${key}Edges`);
+        if (indexedEdges) {
+          let resolved: ChildData[K] | undefined;
+          for (let i = 0; i < canonicalValue.length; i++) {
+            const item = indexedEdges[i]?.get(renderKey);
+            if (item !== undefined) {
+              if (!resolved) {
+                const nextResolved: ChildData[K] = [...canonicalValue];
+                resolved = nextResolved;
+              }
+              resolved[i] = item;
+            }
+          }
+          if (resolved) {
+            return resolved;
+          }
+        }
+      }
+    }
+
+    return getNodeField<ChildData[K]>(this, key);
   }
 
   /**
@@ -447,7 +874,7 @@ export abstract class Node<
     treeContext?: ConstructorParameters<T>[3]
   ): InstanceType<T> {
     // Create the instance with the same signature as constructor
-    const instance = new this(value, options, location, treeContext) as InstanceType<T>;
+    const instance: InstanceType<T> = Reflect.construct(this, [value, options, location, treeContext]);
 
     // Mark as generated if the value is an object that can be marked
     if (instance instanceof Node) {
@@ -462,7 +889,7 @@ export abstract class Node<
     while (possibleRules && possibleRules.type !== 'Rules') {
       possibleRules = possibleRules.parent;
     }
-    return possibleRules as Rules;
+    return isRulesNode(possibleRules) ? possibleRules : undefined;
   }
 
   get sourceRulesParent(): Rules | undefined {
@@ -480,11 +907,11 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
+  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, context?: Context) {
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
+      return this._forEachNodeSync(func, context);
     }
-    const entries = [...getEntriesFromNode(this as { value: unknown[] })];
+    const entries = this._collectChildEntries();
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -492,26 +919,79 @@ export abstract class Node<
       const out = func(value, idx);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          collection[key] = result;
+          if (result !== value) {
+            collection[key] = result;
+            if (result instanceof Node) {
+              this.adopt(result);
+            }
+            this._invalidateValueOf();
+          }
         });
       }
-      collection[key] = out as Node;
+      if (out !== value) {
+        collection[key] = out as Node;
+        this.adopt(out as Node);
+        this._invalidateValueOf();
+      }
     });
   }
 
-  private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
-    let idx = 0;
-    for (const [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
-      if (!(value instanceof Node)) {
-        continue;
+  private _collectChildEntries(): [unknown, string | number, any][] {
+    const ck = getNodeChildKeys(this);
+    if (!ck) {
+      return [];
+    }
+    const entries: [unknown, string | number, any][] = [];
+    for (const key of ck) {
+      const field = getNodeField(this, key);
+      if (isArray(field)) {
+        for (let i = 0; i < field.length; i++) {
+          entries.push([field[i], i, field]);
+        }
+      } else {
+        entries.push([field, key!, this]);
       }
-      collection[key] = func(value, idx++);
+    }
+    return entries;
+  }
+
+  private _forEachNodeSync(func: (n: Node, idx?: number) => Node, _context?: Context) {
+    const ck = getNodeChildKeys(this);
+
+    if (Array.isArray(ck)) {
+      let idx = 0;
+      for (const key of ck) {
+        const field = getNodeField(this, key);
+        if (isArray(field)) {
+          for (let i = 0; i < field.length; i++) {
+            const item = field[i];
+            if (!(item instanceof Node)) {
+              continue;
+            }
+            const result = func(item, idx++);
+            if (result !== item) {
+              field[i] = result;
+              this.adopt(result);
+              this._invalidateValueOf();
+            }
+          }
+        } else if (field instanceof Node) {
+          const result = func(field, idx++);
+          if (result !== field) {
+            setNodeField(this, key, result);
+            this.adopt(result);
+            this._invalidateValueOf();
+          }
+        }
+      }
     }
   }
 
-  static* nodeAndPrePost(node: Node) {
+  * nodeAndPrePost(): IterableIterator<Node> {
+    const node = this;
     if (isArray(node.pre)) {
-      for (let n of node.pre) {
+      for (let i = 0; i < node.pre.length; i++) {
+        const n = node.pre[i];
         if (n instanceof Node) {
           yield n;
         }
@@ -519,7 +999,8 @@ export abstract class Node<
     }
     yield node;
     if (isArray(node.post)) {
-      for (let n of node.post) {
+      for (let i = 0; i < node.post.length; i++) {
+        const n = node.post[i];
         if (n instanceof Node) {
           yield n;
         }
@@ -530,52 +1011,33 @@ export abstract class Node<
   /**
    * Return an iterator for all nodes / children nodes, including this one
    */
-  * nodes(reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    if (includePrePost) {
-      yield* Node.nodeAndPrePost(this);
-    } else {
-      yield this;
-    }
-    yield* this.children(true, reverse, includePrePost);
+  nodes(
+    reverse?: boolean,
+    includePrePost?: boolean
+  ): NodeTraversalCursor {
+    return new NodeTraversalCursor(this, {
+      includeSelf: true,
+      deep: true,
+      reverse,
+      includePrePost
+    });
   }
 
   /**
    * An iterator for all node children
-   * @todo - Replace `walkNodes` with this?
    */
-  * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    for (let nodeVal of getValues(this.value, reverse)) {
-      if (nodeVal instanceof Node) {
-        if (includePrePost) {
-          yield* Node.nodeAndPrePost(nodeVal);
-        } else {
-          yield nodeVal;
-        }
-        if (deep) {
-          yield* nodeVal.children(deep, reverse, includePrePost);
-        }
-      }
-    }
+  children(
+    deep?: boolean,
+    reverse?: boolean,
+    includePrePost?: boolean
+  ): NodeTraversalCursor {
+    return new NodeTraversalCursor(this, {
+      includeSelf: false,
+      deep,
+      reverse,
+      includePrePost
+    });
   }
-
-  /**
-   * @todo - Remove?
-   */
-  // collectRoots(): Node[] {
-  //   let list: Node[] = []
-  //   this.walkNodes(n => {
-  //     if (n.type === 'Rules') {
-  //       const rules = n.rootRules
-  //       if (rules) {
-  //         for (let n of rules) {
-  //           list.push(n)
-  //         }
-  //         n.rootRules = undefined
-  //       }
-  //     }
-  //   })
-  //   return list
-  // }
 
   /**
    * Accept a visitor (classic visitor pattern).
@@ -591,22 +1053,24 @@ export abstract class Node<
     // Visit self first (like Less.js pattern).
     // Support both Visitor class instances (visit()) and plain visitor objects.
     let result: Node | NodeVisitReturn = this;
-    const treeVisitMethod = (visitor as unknown as { _visit?: (node: Node, ctx?: unknown) => NodeVisitReturn })._visit;
-    const hasTreeVisitorState = (visitor as unknown as { visitedNodes?: unknown }).visitedNodes instanceof Set;
-    const visitMethod = (visitor as unknown as { visit?: (node: Node) => Node }).visit;
+    const treeVisitMethod = Reflect.get(visitor, '_visit');
+    const hasTreeVisitorState = Reflect.get(visitor, 'visitedNodes') instanceof Set;
+    const visitMethod = Reflect.get(visitor, 'visit');
     if (typeof treeVisitMethod === 'function' && hasTreeVisitorState) {
-      result = treeVisitMethod.call(visitor, this, {});
+      const visited: NodeVisitReturn = treeVisitMethod.call(visitor, this, {});
+      result = visited;
     } else if (typeof visitMethod === 'function') {
-      result = visitMethod.call(visitor, this);
+      const visited: Node = visitMethod.call(visitor, this);
+      result = visited;
     } else {
       const maybeAbort = visitor.enter?.(this);
       if (maybeAbort === ABORT) {
         return this;
       }
       const methodName = this.type.charAt(0).toLowerCase() + this.type.slice(1);
-      const typeMethod = (visitor as unknown as Record<string, unknown>)[methodName];
+      const typeMethod = Reflect.get(visitor, methodName);
       if (typeof typeMethod === 'function') {
-        const visited = (typeMethod as (node: Node) => NodeVisitReturn).call(visitor, this);
+        const visited: NodeVisitReturn = typeMethod.call(visitor, this);
         if (visited) {
           result = visited;
         }
@@ -630,78 +1094,111 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  /**
-   * @todo
-   * Write tests that make sure that a maybe clone without preserveOriginalNodes
-   * does not clone the nodes, but a maybeClone with preserveOriginalNodes
-   * does clone the nodes all through the tree.
-   */
-  maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.preserveOriginalNodes) {
-      return this.clone(deep, cloneFn);
-    }
-    return this;
-  }
+  clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const ck = getNodeChildKeys(this);
 
-  clonedEval(context: Context): MaybePromise<Node> {
-    let preserveNodes = context.preserveOriginalNodes;
-    context.preserveOriginalNodes = true;
-    let out = this.eval(context);
-    if (isThenable(out)) {
-      return (out as Promise<Node>).then((result) => {
-        context.preserveOriginalNodes = preserveNodes;
-        return result;
-      });
+    // Leaf node — no children to iterate or deep-clone
+    if (ck === null) {
+      const options = this._meta?.options;
+      const newNode: this = Reflect.construct(this.constructor, [getNodeValue(this), options ? { ...options } : undefined, this.location, this.treeContext]);
+      newNode.inherit(this);
+      return newNode;
     }
-    context.preserveOriginalNodes = preserveNodes;
-    return out;
-  }
 
-  /**
-   * Creates a copy of the current node.
-   *
-   * @note - In the Less source, nodes were always cloned before
-   * mutating, which is why I did it here. However... the only
-   * utility for cloning is to preserve the original node,
-   * or (maybe?) to create a copy which is output differently.
-   *
-   * But... considering the high cost of cloning in terms of
-   * object creation, and the low utility of preserving the original
-   * node, I think we should just only clone when we need to.
-   */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    let Class = this.constructor as Class<this>;
-    let originalValue = this.value;
-    let newValue = { value: originalValue };
-    /**
-     * Create new array objects and plain objects
-     */
-    if (isArray(originalValue)) {
-      newValue.value = [...originalValue] as Data;
-    } else if (isPlainObject(originalValue)) {
-      let map = new Map(Object.entries(originalValue as Record<string, unknown>));
-      for (let [key, value] of map.entries()) {
-        if (isArray(value)) {
-          map.set(key, [...value]);
-        }
+    // Container — build constructor value from childKeys
+    let cloneData: unknown;
+    let cloneRecord: Record<string, unknown> | undefined;
+    if (ck!.length === 1) {
+      const field = getNodeField(this, ck![0]!);
+      cloneData = isArray(field) ? [...field] : field;
+    } else {
+      cloneRecord = {};
+      cloneData = cloneRecord;
+      for (const key of ck!) {
+        const field = getNodeField(this, key);
+        cloneRecord[key] = isArray(field) ? [...field] : field;
       }
-      newValue.value = Object.fromEntries(map) as Data;
     }
-
-    cloneFn ??= n => n.clone(deep);
 
     if (deep) {
-      /** I think GetEntriesOf is not typed correctly, thus neither is getEntriesFromNode */
-      for (let [value, key, collection] of getEntriesFromNode(newValue as { value: unknown[] })) {
-        if (value instanceof Node) {
-          collection[key] = cloneFn(value);
+      cloneFn ??= n => n.clone(deep);
+      if (ck!.length === 1) {
+        if (isArray(cloneData)) {
+          for (let i = 0; i < cloneData.length; i++) {
+            if (cloneData[i] instanceof Node) {
+              cloneData[i] = cloneFn(cloneData[i]);
+            }
+          }
+        } else if (cloneData instanceof Node) {
+          cloneData = cloneFn(cloneData);
+        }
+      } else {
+        const cloneObject = cloneRecord;
+        for (const key of ck!) {
+          const val = cloneObject?.[key];
+          if (isArray(val)) {
+            for (let i = 0; i < val.length; i++) {
+              if (val[i] instanceof Node) {
+                val[i] = cloneFn(val[i]);
+              }
+            }
+          } else if (val instanceof Node) {
+            if (cloneObject) {
+              cloneObject[key] = cloneFn(val);
+            }
+          }
         }
       }
     }
 
-    let newNode = new Class(newValue.value, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
-    newNode.inherit(this);
+    // When eval state is active and this is a shallow clone, the constructor will call
+    // adopt() for all child nodes without ctx, which directly mutates their parent fields.
+    // Save the pre-construction parent values so we can restore them after, routing the
+    // new parent assignment through the eval state instead.
+    let priorChildParents: [Node, Node | undefined][] | undefined;
+    if (!deep && ctx) {
+      priorChildParents = [];
+      if (isArray(cloneData)) {
+        for (const item of cloneData) {
+          if (item instanceof Node) {
+            priorChildParents.push([item, item.parent]);
+          }
+        }
+      } else if (cloneData instanceof Node) {
+        priorChildParents.push([cloneData, cloneData.parent]);
+      } else if (isRecord(cloneData)) {
+        for (const key of ck!) {
+          const field = cloneData[key];
+          if (field instanceof Node) {
+            priorChildParents.push([field, field.parent]);
+          } else if (isArray(field)) {
+            for (const item of field) {
+              if (item instanceof Node) {
+                priorChildParents.push([item, item.parent]);
+              }
+            }
+          }
+        }
+      }
+    }
 
+    const options = this._meta?.options;
+    const newNode: this = Reflect.construct(this.constructor, [cloneData, options ? { ...options } : undefined, this.location, this.treeContext]);
+
+    // Reconnect shallow-cloned children on the active render path without
+    // mutating canonical parent pointers.
+    if (priorChildParents) {
+      const renderKey = ctx!.renderKey ?? this.renderKey;
+      for (const [child, priorParent] of priorChildParents) {
+        if (renderKey !== undefined) {
+          addParentEdge(child, renderKey, newNode);
+        }
+        setNodeField(child, 'parent', priorParent);
+      }
+    }
+
+    newNode.inherit(this);
+    Node._inheritDerivedParent(this, newNode, ctx);
     return newNode;
   }
 
@@ -726,19 +1223,8 @@ export abstract class Node<
     const nilish = new Node();
     nilish.type = 'Nil';
     nilish.shortType = 'nil';
-    // Override the types getter on this instance to return a Set
-    // The types getter normally reads from this.constructor.types
-    // We use a get descriptor to override the prototype getter
-    const typesSet = new Set(['Nil', 'Node']);
-    Object.defineProperty(nilish, 'types', {
-      get() {
-        return typesSet;
-      },
-      enumerable: false,
-      configurable: false
-    });
+    nilish.nodeType = nodeTypeBits['Nil']!;
     nilish.removeFlag(F_VISIBLE);
-    nilish.value = '';
     return nilish;
   }
 
@@ -784,19 +1270,19 @@ export abstract class Node<
    */
   preEval(context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
-      let node = this.maybeClone(context);
+      let node = this.clone();
       node.preEvaluated = true;
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNode(n => n.preEval(context));
+        out = node.forEachNode(n => n.preEval(context), context);
       } catch (error: unknown) {
         throw error;
       }
       if (isThenable(out)) {
-        return (out as Promise<void>).then(() => node).catch((error: unknown) => {
+        return Promise.resolve(out).then(() => node).catch((error: unknown) => {
           throw error;
         });
       }
@@ -817,9 +1303,9 @@ export abstract class Node<
     }
     let out = this.forEachNode((n: Node) => {
       return n.eval(context);
-    });
+    }, context);
     if (isThenable(out)) {
-      return (out as Promise<void>).then(() => {
+      return Promise.resolve(out).then(() => {
         return this;
       });
     }
@@ -827,7 +1313,8 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
+    const reusableState = canReuseEvalState(node, context);
+    if (node.hasFlag(F_STATIC) && node.evaluated && reusableState) {
       return node;
     }
 
@@ -839,26 +1326,34 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node.preEvaluated) {
+        if (!node.preEvaluated || !reusableState) {
           return node.preEval(context);
         }
         return node;
       },
       (preEvald) => {
         preEvaluatedNode = preEvald;
-        preEvaluatedNode.preEvaluated = true;
-        if (preEvald !== node) {
-          preEvaluatedNode.inherit(node);
+        if (canReuseEvalState(preEvaluatedNode, context)) {
+          preEvaluatedNode.preEvaluated = true;
         }
-        if (!preEvaluatedNode.evaluated) {
+        if (preEvald !== node) {
+          Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
+          preEvaluatedNode.inherit(node);
+          Node._inheritDerivedParent(node, preEvaluatedNode, context);
+        }
+        if (!preEvaluatedNode.evaluated || !canReuseEvalState(preEvaluatedNode, context)) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
       },
       (evald) => {
-        evald.evaluated = true;
-        if (preEvaluatedNode !== evald) {
-          evald.inherit(preEvaluatedNode);
+        setNodeEvaluated(evald, context);
+        if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
+          Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
+          if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
+            evald.inherit(preEvaluatedNode);
+            Node._inheritDerivedParent(preEvaluatedNode, evald, context);
+          }
         }
         return evald;
       }
@@ -867,28 +1362,60 @@ export abstract class Node<
 
   private static _evalStaticSync(node: Node, context: Context): Node {
     let preEvaluatedNode: Node;
+    const reusableState = canReuseEvalState(node, context);
 
-    if (!node.preEvaluated) {
-      preEvaluatedNode = node.preEval(context) as Node;
+    if (!node.preEvaluated || !reusableState) {
+      preEvaluatedNode = node.preEval(context);
     } else {
       preEvaluatedNode = node;
     }
-    preEvaluatedNode.preEvaluated = true;
+    if (canReuseEvalState(preEvaluatedNode, context)) {
+      preEvaluatedNode.preEvaluated = true;
+    }
     if (preEvaluatedNode !== node) {
+      Node._inheritDerivedRenderKey(node, preEvaluatedNode, context);
       preEvaluatedNode.inherit(node);
+      Node._inheritDerivedParent(node, preEvaluatedNode, context);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated) {
-      evald = preEvaluatedNode.evalNode(context) as Node;
+    if (!preEvaluatedNode.evaluated || !canReuseEvalState(preEvaluatedNode, context)) {
+      evald = preEvaluatedNode.evalNode(context);
     } else {
       evald = preEvaluatedNode;
     }
-    evald.evaluated = true;
+    setNodeEvaluated(evald, context);
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
-      evald.inherit(preEvaluatedNode);
+      Node._inheritDerivedRenderKey(preEvaluatedNode, evald, context);
+      if (Node._shouldInheritEvalResult(preEvaluatedNode, evald)) {
+        evald.inherit(preEvaluatedNode);
+        Node._inheritDerivedParent(preEvaluatedNode, evald, context);
+      }
     }
     return evald;
+  }
+
+  private static _shouldInheritEvalResult(source: Node, result: Node): boolean {
+    if (source.type !== 'Reference') {
+      return true;
+    }
+    return (result.nodeType & (N.Mixin | N.Ruleset | N.Rules | N.Func | N.JsFunction)) === 0;
+  }
+
+  private static _inheritDerivedRenderKey(source: Node, derived: Node, context?: Context): void {
+    if (source === derived || derived.renderKey !== CANONICAL) {
+      return;
+    }
+    derived.renderKey = source.renderKey === CANONICAL
+      ? (context?.renderKey ?? EVAL)
+      : source.renderKey;
+  }
+
+  private static _inheritDerivedParent(source: Node, derived: Node, context?: Context): void {
+    if (source === derived) {
+      return;
+    }
+    setNodeField(derived, 'parent', getActiveParentFromContext(source, context));
   }
 
   /**
@@ -910,12 +1437,16 @@ export abstract class Node<
      * Frozen nodes inherit the parent only if they don't have a parent yet.
      */
     if (!this.frozen) {
-      (this as any).parent = node.parent;
+      setNodeField(this, 'parent', node.parent);
     } else {
-      (this as any).parent ??= node.parent;
+      if (this.parent === undefined) {
+        setNodeField(this, 'parent', node.parent);
+      }
     }
     this._location = node.location;
-    this._treeContext ??= node.treeContext;
+    if (this._meta?.treeContext === undefined) {
+      this._getMeta().treeContext = node.treeContext;
+    }
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {
@@ -937,6 +1468,15 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.sourceParent ??= node.sourceParent;
+    if (node.hoistToRoot) {
+      this.hoistToRoot = true;
+    }
+    if (getNodeKeySetLibrary(this) === undefined) {
+      const keySetLibrary = getNodeKeySetLibrary(node);
+      if (keySetLibrary !== undefined) {
+        setNodeKeySetLibrary(this, keySetLibrary);
+      }
+    }
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
@@ -957,17 +1497,28 @@ export abstract class Node<
    * Derived nodes will override this with different
    * normalization algorithms.
    */
-  valueOf(): Primitive {
-    let value = this.value;
-    let type = typeof value;
-    if (primitives.includes(type)) {
-      return value as Primitive;
+  valueOf(_context?: Context): Primitive {
+    const ck = getNodeChildKeys(this);
+    if (!ck) {
+      // Leaf node — value is a primitive
+      return toPrimitiveValue(getNodeValue(this));
     }
-    let values = [...getValues(value)];
-    if (values.length === 1) {
-      return `${values[0]}`;
+    // Container — collect string values from children
+    const parts: string[] = [];
+    for (const key of ck) {
+      const field = getNodeField(this, key);
+      if (isArray(field)) {
+        for (let i = 0; i < field.length; i++) {
+          parts.push(`${field[i]}`);
+        }
+      } else if (field !== undefined) {
+        parts.push(`${field}`);
+      }
     }
-    return values.join('');
+    if (parts.length === 1) {
+      return parts[0]!;
+    }
+    return parts.join('');
   }
 
   processPrePost(key: 'pre' | 'post', defaultVal: string = '', options: PrintOptions) {
@@ -992,7 +1543,8 @@ export abstract class Node<
       return w.getSince(mark);
     } else if (isArray(value)) {
       // Handle Node[] array - call toString() on each node (they will emit into writer)
-      for (let node of value) {
+      for (let i = 0; i < value.length; i++) {
+        const node = value[i];
         if (node instanceof Node) {
           node.toString(options);
         } else {
@@ -1027,8 +1579,11 @@ export abstract class Node<
    * In almost all Node cases, this should not be overriden,
    * and toTrimmedString() should be overridden instead.
    */
-  toString(options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+  toString(options?: PrintOptions, _renderKey?: RenderKey): string {
+    if (!isVisibleInContext(this, options?.context) && !this.fullRender) {
+      return '';
+    }
+    if (options?.suppressComments && this.type === 'Comment') {
       return '';
     }
     options = getPrintOptions(options);
@@ -1045,25 +1600,66 @@ export abstract class Node<
   }
 
   /**
+   * Serialize the evaluated tree. Requires context so position patches
+   * (the virtual evaluated tree) are resolved during serialization.
+   *
+   * Use this instead of toString() when serializing eval results.
+   * toString() serializes the canonical (parsed) tree without eval state.
+   */
+  render(options?: PrintOptions | Context, renderKey?: RenderKey): string {
+    const normalizedOptions = isContextArg(options)
+      ? { context: options }
+      : options;
+    return this.toString(normalizedOptions, renderKey);
+  }
+
+  /**
    * The form of the node without pre/post comments and white-space
    *
    * @note - Internally, this still calls `toString()` on each value,
    * so that the internal spacing of the node serialization is
    * correct. This method just serializes a node without the outer
    * pre/post nodes.
+   *
+   * @todo - Simplify
    */
-  toTrimmedString(options?: PrintOptions) {
+  toTrimmedString(options?: PrintOptions, _renderKey?: RenderKey) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (let value of getValues(this.value)) {
-      if (value instanceof Node) {
-        value.toString(options);
-      } else {
-        const s = value === undefined ? '' : String(value);
-        if (s) {
-          w.add(s, this);
+    const ck = getNodeChildKeys(this);
+    const ctx = options.context;
+    if (ck) {
+      for (const key of ck) {
+        // Resolve through eval state when context available
+        const field = ctx
+          ? this.get(key! as keyof ChildData & string, ctx)
+          : getNodeField(this, key);
+        if (isArray(field)) {
+          for (const item of field) {
+            if (item instanceof Node) {
+              item.toString(options);
+            } else {
+              const s = item === undefined ? '' : String(item);
+              if (s) {
+                w.add(s, this);
+              }
+            }
+          }
+        } else if (field instanceof Node) {
+          field.toString(options);
+        } else {
+          const s = field === undefined ? '' : String(field);
+          if (s) {
+            w.add(s, this);
+          }
         }
+      }
+    } else {
+      // Leaf node — render the primitive value directly
+      const s = String(getNodeValue(this) ?? '');
+      if (s) {
+        w.add(s, this);
       }
     }
     return w.getSince(mark);
@@ -1079,8 +1675,8 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.valueOf();
-    let bVal = b.valueOf();
+    let aVal = this.valueOf(context);
+    let bVal = b.valueOf(context);
     if (aVal === bVal) {
       return 0;
     }
@@ -1091,7 +1687,7 @@ export abstract class Node<
   }
 
   /** Overridden in index.ts to avoid circularity */
-  operate(b: Node, op: Operator, context: Context): Node {
+  operate(_b: Node, _op: Operator, _context: Context): Node {
     return this;
   }
 

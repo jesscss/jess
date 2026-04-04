@@ -3,7 +3,14 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
-    "noEmit": false
+    "types": ["node"],
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/**/__tests__/**"
+  ]
 }

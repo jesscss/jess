@@ -3,18 +3,14 @@
   "type": "module",
   "version": "2.0.0-alpha.5",
   "description": "JavaScript Enhanced Style Sheets",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -48,8 +44,8 @@
     "prepublishOnly": "pnpm build && pnpm test",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
-    "dev": "tsc -b tsconfig.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:all": "pnpm benchmark && pnpm test",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -66,7 +62,8 @@
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/lodash-es": "^4.17.8",
-    "less": "^4.0.0"
+    "bootstrap-less-port": "~2.5.1",
+    "clinic": "~13.0.0"
   },
   "keywords": [
     "css",
@@ -75,5 +72,6 @@
     "pre-processor",
     "css-in-js",
     "front-end"
-  ]
+  ],
+  "module": "lib/index.js"
 }

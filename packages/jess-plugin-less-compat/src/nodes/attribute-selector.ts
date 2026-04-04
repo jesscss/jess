@@ -1,65 +1,18 @@
 import { AttributeSelector, Node } from '@jesscss/core';
-import { createLessProxy } from '../transform/proxy.js';
+import { createFromAdapter, selfVisitAccept } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
-import { fromLessNode } from '../transform/from-less.js';
-import type { LessNode } from '../types.js';
 
-/**
- * Transform a Jess AttributeSelector to a Less-compatible Attribute
- */
-export function transformAttributeSelectorToLess(
-  jessAttr: AttributeSelector,
-  cache?: WeakMap<any, any>
-): LessNode {
-  return createLessProxy(jessAttr, cache, (prop, target) => {
-    const attr = target as AttributeSelector;
-
-    // Map 'type' property
-    if (prop === 'type') {
-      return mapJessTypeToLessType(attr.type);
+export const transformAttributeSelectorToLess = createFromAdapter<AttributeSelector>({
+  fields: {
+    key: (a, cache) => {
+      const name = a.get('name');
+      return name instanceof Node ? toLessNode(name, { cache }) : name;
+    },
+    op: a => a.get('op') || '',
+    value: (a, cache) => {
+      const value = a.get('value');
+      return value instanceof Node ? toLessNode(value, { cache }) : value;
     }
-
-    // Map 'typeIndex'
-    if (prop === 'typeIndex') {
-      return undefined;
-    }
-
-    // Map 'key' property (Less uses 'key', Jess uses 'name')
-    if (prop === 'key') {
-      const name = attr.value.name;
-      if (name instanceof Node) {
-        return toLessNode(name, { cache });
-      }
-      return name;
-    }
-
-    // Map 'op' property (operator)
-    if (prop === 'op') {
-      return attr.value.op || '';
-    }
-
-    // Map 'value' property
-    if (prop === 'value') {
-      const value = attr.value.value;
-      if (value instanceof Node) {
-        return toLessNode(value, { cache });
-      }
-      return value;
-    }
-
-    // Map 'accept' method for visitor traversal
-    if (prop === 'accept') {
-      return function(visitor: any) {
-        const lessAttr = transformAttributeSelectorToLess(attr, cache);
-        const result = visitor.visit(lessAttr);
-        if (result !== lessAttr) {
-          return fromLessNode(result, { cache });
-        }
-        return attr;
-      };
-    }
-
-    return undefined;
-  });
-}
+  },
+  accept: selfVisitAccept()
+});

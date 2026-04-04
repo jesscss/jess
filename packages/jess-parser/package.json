@@ -1,0 +1,55 @@
+{
+  "name": "@jesscss/jess-parser",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "2.0.0-alpha.5",
+  "description": "Jess CST parser",
+  "main": "lib/index.cjs",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./*": {
+      "types": "./lib/*.d.ts",
+      "source": "./src/*.ts",
+      "import": "./lib/*.js",
+      "require": "./lib/*.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "npm run build",
+    "build": "pnpm clean && pnpm compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest --run --passWithNoTests",
+    "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "author": "Matthew Dean",
+  "license": "MIT",
+  "dependencies": {
+    "@jesscss/core": "workspace:*",
+    "@jesscss/css-parser": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/parser": "workspace:*",
+    "@jesscss/scss-parser": "workspace:*",
+    "chevrotain": "^12.0.0",
+    "color-name": "~2.0.0"
+  },
+  "devDependencies": {
+    "@types/color-name": "^1.1.1"
+  },
+  "type": "module",
+  "module": "lib/index.js"
+}

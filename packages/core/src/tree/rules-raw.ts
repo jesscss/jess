@@ -1,24 +1,33 @@
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { getChildren } from './util/field-helpers.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,
  * without parent-managed newlines or indentation.
  */
+export interface RawRules {
+  type: 'RawRules';
+  shortType: 'rules-raw';
+}
 export class RawRules extends Rules {
-  override type = 'RawRules' as const;
-  override shortType = 'rules-raw' as const;
-  override allowRuleRoot = true;
+  constructor(...args: ConstructorParameters<typeof Rules>) {
+    super(...args);
+    this.allowRuleRoot = true;
+  }
 
   // Do not add newlines/indent; emit children exactly as-is
   override toBraced(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const children = options.context
+      ? getChildren(this, options.context)
+      : this.value;
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments
-    for (const child of this.value) {
+    for (const child of children) {
       child.toString(options);
     }
     w.add('}');
@@ -30,7 +39,10 @@ export class RawRules extends Rules {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (const child of this.value) {
+    const children = options.context
+      ? getChildren(this, options.context)
+      : this.value;
+    for (const child of children) {
       child.toString(options);
     }
     return w.getSince(mark);

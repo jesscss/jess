@@ -1,8 +1,8 @@
 /**
  * Sass quote() function
- * 
+ *
  * Adds quotes to a string.
- * 
+ *
  * @example
  * quote(hello) // "hello" (quoted)
  */
@@ -12,11 +12,11 @@ const quote = defineFunction(
   'quote',
   function(string: Quoted): Quoted {
     // If already quoted, return as-is
-    if (string.options?.quote) {
+    if (string.quote) {
       return string;
     }
     // Create new Quoted with quote option (quoted)
-    const value = typeof string.value === 'string' ? string.value : string.valueOf();
+    const value = String(typeof string.get('value') === 'string' ? string.get('value') : string.valueOf());
     return new Quoted(value, { quote: '"' });
   },
   {

@@ -43,10 +43,8 @@ export function toLessNode(
 
   // Check if already being proxied (prevent recursion)
   // Only return node as-is if there's no cached proxy
-  if ((jessNode as any)[IS_PROXYING_SYMBOL]) {
-    // Return the node as-is to prevent recursion
-    // This should only happen if cache doesn't have it (checked above)
-    return jessNode as any;
+  if ((jessNode as unknown as Record<symbol, unknown>)[IS_PROXYING_SYMBOL]) {
+    return jessNode;
   }
 
   // Get transformer for this node type
@@ -67,14 +65,16 @@ export function toLessNode(
     // typeIndex is handled automatically by the base proxy handler
 
     // For child nodes, convert them lazily
-    if (prop === 'value' && target.value) {
+    // Use instance field `.value` (the canonical accessor for leaf nodes)
+    if (prop === 'value' && 'value' in target && target.value !== undefined) {
+      const nodeValue = target.value;
       // If value is a Node, convert it
-      if (target.value instanceof Node) {
-        return toLessNode(target.value, options);
+      if (nodeValue instanceof Node) {
+        return toLessNode(nodeValue, options);
       }
       // If value is an array, convert each element
-      if (Array.isArray(target.value)) {
-        return target.value.map((item: any) => {
+      if (Array.isArray(nodeValue)) {
+        return nodeValue.map((item: any) => {
           if (item instanceof Node) {
             return toLessNode(item, options);
           }
@@ -82,9 +82,9 @@ export function toLessNode(
         });
       }
       // If value is an object, convert nested nodes
-      if (typeof target.value === 'object' && target.value !== null) {
+      if (typeof nodeValue === 'object' && nodeValue !== null) {
         const converted: any = {};
-        for (const [key, val] of Object.entries(target.value)) {
+        for (const [key, val] of Object.entries(nodeValue)) {
           if (val instanceof Node) {
             converted[key] = toLessNode(val, options);
           } else if (Array.isArray(val)) {
@@ -111,11 +111,11 @@ export function toLessNode(
         // Check if the visitor is a Less visitor (has visitRuleset, visitDeclaration, etc.)
         // vs the less-compat visitor (has a visit method that converts to Less)
         const isLessVisitor = visitor && (
-          typeof visitor.visitRuleset === 'function' ||
-          typeof visitor.visitDeclaration === 'function' ||
-          typeof visitor.visitVariable === 'function' ||
-          typeof visitor.visitAtRule === 'function' ||
-          (typeof visitor.visit === 'function' && !visitor.atRule && !visitor.ruleset && !visitor.visit)
+          typeof visitor.visitRuleset === 'function'
+          || typeof visitor.visitDeclaration === 'function'
+          || typeof visitor.visitVariable === 'function'
+          || typeof visitor.visitAtRule === 'function'
+          || (typeof visitor.visit === 'function' && !visitor.atRule && !visitor.ruleset && !visitor.visit)
         );
 
         if (!isLessVisitor) {
@@ -154,7 +154,7 @@ export function toLessTree(
     // Rules is a container - we need to find the root ruleset
     // For now, create a synthetic root ruleset
     // TODO: Handle this properly based on how Less structures its root
-    return toLessNode(jessRules as any, options);
+    return toLessNode(jessRules, options);
   }
 
   // Otherwise, convert the node directly

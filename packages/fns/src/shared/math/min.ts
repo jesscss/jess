@@ -5,7 +5,7 @@ import { defineFunction, Node } from '@jesscss/core';
  */
 const min = defineFunction(
   'min',
-  function(...values: Node[]) {
+  function(...values: Node[]): Node {
     values = values.sort((a, b) => {
       let compare = a.compare(b);
       if (compare === undefined) {
@@ -13,7 +13,7 @@ const min = defineFunction(
       }
       return compare;
     });
-    return values[0];
+    return values[0]!;
   },
   {
     params: [{

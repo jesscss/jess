@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 import circleDependency from 'vite-plugin-circular-dependency';
-import { TestTypeReporter } from './test/vitest-test-type-reporter';
 
 export default defineConfig({
   plugins: [
@@ -14,39 +13,22 @@ export default defineConfig({
     mainFields: ['import', 'module', 'exports', 'main']
   },
   test: {
+    /**
+     * @todo - This doesn't work yet because the modules are mapped incorrectly somehow.
+     *         But might make test running faster.
+     */
+    // experimental: {
+    //   viteModuleRunner: false,
+    // },
     watch: false,
     // Set TEST environment variable for packages that depend on it
     env: {
       TEST: 'true'
     },
-    deps: {
-      // Transpile workspace libs instead of treating them as prebuilt node_modules
-      inline: [/^@jesscss\//]
-    },
-    server: {
-      deps: {
-        inline: [/^@jesscss\//]
-      }
-    },
     // Ensure environment variables are passed to test processes
     environment: 'node',
-    // Run tests sequentially to reduce memory usage
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        maxForks: 1,
-        minForks: 1
-      }
-    },
-    // Set low concurrency - run one test at a time
-    maxConcurrency: 1,
-    // Increase timeout since we're running sequentially
     testTimeout: 30_000,
-    // Reduce memory usage
-    isolate: true,
-    // Keep output manageable; custom reporter prints per “test type” lines.
-    reporters: ['default', new TestTypeReporter()],
+    reporters: [['tree', { summary: true }]],
     // Enable globals for describe, test, etc.
     globals: true,
     // Include all test files from all packages - use absolute paths relative to config file
@@ -67,6 +49,7 @@ export default defineConfig({
             'node_modules/**',
             'dist/**',
             'lib/**',
+            'packages/css-parser/test/perf.test.ts',
             '**/*bench*'
           ]
         }

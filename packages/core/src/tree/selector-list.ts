@@ -1,37 +1,64 @@
 import {
   defineType,
   F_EXTENDED,
-  F_EXTEND_TARGET
+  F_EXTEND_TARGET,
+  type OptionalLocation
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
-import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
-import { selectorCompare } from './util/compare.js';
+import { N } from './node-type.js';
+import { selectorMatch } from './util/selector-match-core.js';
+
+export type SelectorListChildData = { value: Selector[] };
+
+export interface SelectorList {
+  type: 'SelectorList';
+  shortType: 'sellist';
+}
 
 /** Constructs */
-export class SelectorList extends Selector<Selector[]> {
-  type = 'SelectorList';
-  shortType = 'sellist';
+export class SelectorList extends Selector<Selector[], any, SelectorListChildData> {
+  static override childKeys = ['value'] as const;
 
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    for (const selector of this.value) {
-      for (const key of selector.keySet) {
-        combinedKeySet.add(key);
-      }
-      for (const key of selector.visibleKeySet) {
-        combinedVisibleKeySet.add(key);
+  value!: Selector[];
+
+  constructor(value: Selector[], options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
       }
     }
+  }
 
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    // SelectorLists represent alternatives - can't use fast rejection
-    this._canFastReject = false;
+  get length() {
+    return this.value.length;
+  }
+
+  override clone(deep?: boolean): this {
+    if (deep) {
+      return super.clone(true) as this;
+    }
+    return this._withValue(this.value) as this;
+  }
+
+  private _withValue(value: Selector[]): SelectorList {
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as OptionalLocation
+      : undefined;
+    const node = new (this.constructor as typeof SelectorList)(
+      [],
+      this.options ? { ...this.options } : undefined,
+      location,
+      this.treeContext
+    );
+    node.inherit(this);
+    node.value = value;
+    return node;
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -41,35 +68,32 @@ export class SelectorList extends Selector<Selector[]> {
     let depth = options.depth!;
     let space = ''.padStart(depth * 2);
     // Flatten generated top-level `:is(...)` items into the selector list.
-    // This matches Less output expectations when an extend created an :is() and it ended up being
-    // the whole selector-list item.
+    const sourceValue = this.get('value', options.context);
     const value: Selector[] = [];
-    for (const item of this.value) {
-      // Flatten `:is(a, b)` selector-list items into `a, b`.
-      // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
-      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
-        const arg = item.value.arg;
-        if (arg && isNode(arg, 'SelectorList')) {
-          value.push(...arg.value);
+    for (const item of sourceValue) {
+      if (isNode(item, N.PseudoSelector) && item.get('name') === ':is') {
+        const arg = item.get('arg');
+        if (arg && isNode(arg, N.SelectorList)) {
+          value.push(...arg.get('value'));
           continue;
         }
       }
-      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            value.push(...arg.value);
+      if (isNode(item, N.CompoundSelector) && item.get('value').length === 1) {
+        const only = item.get('value')[0]!;
+        if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
+          const arg = only.get('arg');
+          if (arg && isNode(arg, N.SelectorList)) {
+            value.push(...arg.get('value'));
             continue;
           }
         }
       }
-      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            value.push(...arg.value);
+      if (isNode(item, N.ComplexSelector) && item.get('value').length === 1) {
+        const only = item.get('value')[0]!;
+        if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
+          const arg = only.get('arg');
+          if (arg && isNode(arg, N.SelectorList)) {
+            value.push(...arg.get('value'));
             continue;
           }
         }
@@ -98,7 +122,6 @@ export class SelectorList extends Selector<Selector[]> {
     let out = w.capture(() => item.toString(options));
     w.add(out.trim(), item);
 
-    // Subsequent items: emit sep; capture next item to decide spacing precisely
     for (let i = 1; i < length; i++) {
       item = value[i]!;
       w.add(`,\n${space}`);
@@ -113,67 +136,90 @@ export class SelectorList extends Selector<Selector[]> {
     return itemValues.join(',');
   }
 
-  override compare(b: Selector): 0 | 1 | -1 | undefined {
-    if (!isNode(b, 'Selector')) {
-      return super.compare(b as unknown as Selector);
+  override compare(b: Selector, context?: Context): 0 | 1 | -1 | undefined {
+    if (!isNode(b, N.Selector)) {
+      return super.compare(b as unknown as Selector, context);
     }
-    const semantic = selectorCompare(this, b);
-    if (semantic.isEquivalent) {
+    const semantic = selectorMatch(this, b, undefined, context);
+    if (semantic.fullMatch) {
       return 0;
     }
-    return super.compare(b);
+    return super.compare(b, context);
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     return pipe(
       () => {
-        const list = this;
-        const { value } = list;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
-          const out = item.eval(context);
+        const list = super.evalNode(context) as SelectorList;
+        const value = [...list.get('value', context)];
+        let changed = false;
+        const maybe = serialForEach(value.map((_, i) => i), (i) => {
+          const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
-              value[i] = res as Selector;
+              if (res !== value[i]) {
+                value[i] = res as Selector;
+                changed = true;
+              }
               return undefined;
             });
           }
-          value[i] = out as Selector;
+          if ((out as Selector) !== value[i]) {
+            value[i] = out as Selector;
+            changed = true;
+          }
           return undefined;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => list);
+          return (maybe as Promise<void>).then(() => {
+            if (changed) {
+              return list === this
+                ? this._withValue(value)
+                : (() => {
+                    list.value = value;
+                    return list;
+                  })();
+            }
+            return list;
+          });
+        }
+        if (changed) {
+          return list === this
+            ? this._withValue(value)
+            : (() => {
+                list.value = value;
+                return list;
+              })();
         }
         return list;
       },
       (list) => {
-        const { value } = list;
-        // Flatten top-level `:is(a, b)` items into the selector list.
-        // This is safe in SelectorList context (it is equivalent to `a, b`).
+        const value = list.get('value', context);
         const flattened: Selector[] = [];
         for (const item of value) {
-          if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
-            const arg = item.value.arg;
-            if (arg && isNode(arg, 'SelectorList')) {
-              flattened.push(...arg.value);
+          if (isNode(item, N.PseudoSelector) && item.get('name') === ':is') {
+            const arg = item.get('arg');
+            if (arg && isNode(arg, N.SelectorList)) {
+              flattened.push(...arg.get('value'));
               continue;
             }
           }
-          if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, 'SelectorList')) {
-                flattened.push(...arg.value);
+          if (isNode(item, N.CompoundSelector) && item.get('value').length === 1) {
+            const only = item.get('value')[0]!;
+            if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
+              const arg = only.get('arg');
+              if (arg && isNode(arg, N.SelectorList)) {
+                flattened.push(...arg.get('value'));
                 continue;
               }
             }
           }
-          if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, 'SelectorList')) {
-                flattened.push(...arg.value);
+          if (isNode(item, N.ComplexSelector) && item.get('value').length === 1) {
+            const only = item.get('value')[0]!;
+            if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
+              const arg = only.get('arg');
+              if (arg && isNode(arg, N.SelectorList)) {
+                flattened.push(...arg.get('value'));
                 continue;
               }
             }
@@ -181,10 +227,14 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length !== value.length) {
-          list.value = flattened;
+          if (list === this) {
+            list = this._withValue(flattened);
+          } else {
+            list.value = flattened;
+          }
         }
-        if (value.length === 1) {
-          return value[0]!;
+        if (flattened.length === 1) {
+          return flattened[0]!;
         }
         return list;
       }

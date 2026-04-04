@@ -105,6 +105,30 @@ into a **Reference lookup chain**:
 
 This is the same core mechanism Jess uses for `$theme.colors.primary` and array/map-like access.
 
+## Slash division and arithmetic
+
+Historically, Sass treated `/` as either:
+
+- division
+- or a plain slash separator in a value
+
+The old Sass rules were heuristic and inconsistent because Sass also overloaded `()` for grouping, lists, and maps.
+
+Jess does **not** try to preserve that whole ambiguity set when importing SCSS.
+
+Jess supports the clear arithmetic forms:
+
+- `math.div(...)`
+- isolated parenthesized arithmetic like `(15px/30px)`
+
+Jess does **not** try to infer division from every legacy Sass slash form in general value position. If a slash form is ambiguous, Jess prefers to keep it as a slash-separated value rather than guess.
+
+This aligns with Jess’s own language model:
+
+- real math should be explicit
+- imported SCSS arithmetic should only be recognized when the syntax is clearly arithmetic
+- native Jess expressions use `$(...)`
+
 ## SCSS interpolation mapping
 
 Jess distinguishes:
@@ -163,4 +187,3 @@ Sass supports `!global` and `!default` on variable assignments ([variables](http
 Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. Instead, SCSS `!global` will be treated as “set existing / do not shadow” (Jess’s `setDefined` behavior), which is equivalent to `!global` *unless the user has already shadowed the variable in a narrower scope*—in that case, the user must refactor the source for clarity.
 
 `!default` exists in Sass primarily to support module configuration (`@use ... with (...)`). Jess will align with Sass’s `@use` configuration behavior by ensuring configurable variables are explicitly marked and handled accordingly.
-

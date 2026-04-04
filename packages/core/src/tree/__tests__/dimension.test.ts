@@ -1,4 +1,4 @@
-import { dimension, num } from '..';
+import { dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -12,15 +12,15 @@ describe('Dimension', () => {
     // it.only('should make a dimension from a string', () => {
     //   let rule = dimension('10px');
     //   let clone = rule.clone();
-    //   expect(rule.value.number).toBe(10);
+    //   expect(rule.data.number).toBe(10);
     //   expect(clone.value.number).toBe(10);
-    //   expect(rule.value.unit).toBe('px');
+    //   expect(rule.data.unit).toBe('px');
     //   expect(rule.value).not.toBe(clone.value);
     //   expect(rule.toString()).toBe('10px');
     // });
     it('should make a dimension from a number', () => {
       let rule = num(10);
-      expect(rule.value.number).toBe(10);
+      expect(rule.number).toBe(10);
       expect(rule.toString()).toBe('10');
     });
   });
@@ -159,7 +159,7 @@ describe('Dimension', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'rem']);
       const result = left.operate(right, '+', context);
-      const output = result.toString();
+      const output = result.render(context);
       // Uncomment to see actual output:
       // console.log('10px + 2rem =', output);
       expect(output).toContain('calc');
@@ -170,15 +170,15 @@ describe('Dimension', () => {
       let left = num(10);
       let right = dimension([2, 'px']);
       const result = left.operate(right, '/', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
+      expect(result.render(context)).toContain('calc');
+      expect(result.render(context)).toContain('px');
     });
     it('should create calc() when multiplying double units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
       const result = left.operate(right, '*', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
+      expect(result.render(context)).toContain('calc');
+      expect(result.render(context)).toContain('px');
     });
     it('should throw on divide by zero (preserve mode still throws)', () => {
       let left = dimension([10, 'px']);
@@ -194,17 +194,17 @@ describe('Dimension', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 's']);
       const result = left.operate(right, '/', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('s');
+      expect(result.render(context)).toContain('calc');
+      expect(result.render(context)).toContain('px');
+      expect(result.render(context)).toContain('s');
     });
     it('should create calc() when multiplying incompatible units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'em']);
       const result = left.operate(right, '*', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('em');
+      expect(result.render(context)).toContain('calc');
+      expect(result.render(context)).toContain('px');
+      expect(result.render(context)).toContain('em');
     });
     it('should throw when comparing incompatible units (same as strict)', () => {
       let left = dimension([10, 'px']);
@@ -215,17 +215,17 @@ describe('Dimension', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'cm']);
       const result = left.operate(right, '*', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('cm');
+      expect(result.render(context)).toContain('calc');
+      expect(result.render(context)).toContain('px');
+      expect(result.render(context)).toContain('cm');
     });
     it('should create calc() for compatible units division (different units)', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'cm']);
       const result = left.operate(right, '/', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('cm');
+      expect(result.render(context)).toContain('calc');
+      expect(result.render(context)).toContain('px');
+      expect(result.render(context)).toContain('cm');
     });
   });
   // it('should serialize to a module', () => {

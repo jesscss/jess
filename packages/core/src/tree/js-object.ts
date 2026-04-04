@@ -3,8 +3,20 @@ import { Node, defineType } from './node.js';
 /**
  * A plain JS object.
  */
-export class JsObject extends Node<Record<string, any>> {
-  type = 'JsObject' as const;
-  shortType = 'jsobj' as const;
+export interface JsObject {
+  type: 'JsObject';
+  shortType: 'jsobj';
 }
+
+export class JsObject extends Node<Record<string, any>> {
+  static override childKeys = null as null;
+
+  value!: Record<string, any>;
+
+  constructor(value: Record<string, any>, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+  }
+}
+
 export const jsobj = defineType(JsObject, 'JsObject', 'jsobj');

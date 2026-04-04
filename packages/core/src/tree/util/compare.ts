@@ -1,7 +1,6 @@
 import { isNode } from './is-node.js';
 import isObject from 'lodash-es/isObject.js';
 import { type Node } from '../node.js';
-import { type Rules } from '../rules.js';
 import type { EqualityMode } from '../../types/modes.js';
 
 export function compare(a: any, b: any, mode: EqualityMode = 'coerce') {
@@ -26,51 +25,43 @@ export function compare(a: any, b: any, mode: EqualityMode = 'coerce') {
  * their position in their lowest common ancestor in the tree.
  */
 export function comparePosition(a: Node, b: Node) {
-  /** Find the lowest common ancestor rules */
-  let min = Math.min(a.depth, b.depth);
-
-  let a0 = a;
-  let b0 = b;
-
-  /** Get to the same rules depth */
-  if (a.depth !== min) {
-    while (a.depth > min) {
-      a = a.rulesParent!;
-    }
-  } else if (b.depth !== min) {
-    while (b.depth > min) {
-      b = b.rulesParent!;
-    }
-  }
-  /** Now, get to the same rules ancestor */
-  while (a !== b) {
-    a = a.rulesParent!;
-    b = b.rulesParent!;
-  }
-  let commonAncestor = a;
-
-  /** Now, go up the tree to the same ancestor */
-  let aParent = a0;
-  let bParent = b0;
-
-  while (true) {
-    aParent = aParent.parent!;
-    if (aParent === commonAncestor) {
-      break;
-    }
-    a0 = aParent;
+  if (a === b) {
+    return 0;
   }
 
-  while (true) {
-    bParent = bParent.parent!;
-    if (bParent === commonAncestor) {
-      break;
+  const pathToRoot = (node: Node): Node[] => {
+    const path: Node[] = [];
+    let current: Node | undefined = node;
+    let guard = 0;
+    while (current && guard < 1024) {
+      path.push(current);
+      current = current.parent;
+      guard++;
     }
-    b0 = bParent;
+    return path;
+  };
+
+  const aPath = pathToRoot(a);
+  const bPath = pathToRoot(b);
+  let ai = aPath.length - 1;
+  let bi = bPath.length - 1;
+  let commonAncestor: Node | undefined;
+
+  while (ai >= 0 && bi >= 0 && aPath[ai] === bPath[bi]) {
+    commonAncestor = aPath[ai];
+    ai--;
+    bi--;
   }
 
-  /** Now we should have siblings in the nearest common ancestor */
-  return a0.index! - b0.index!;
+  if (!commonAncestor) {
+    return 0;
+  }
+
+  const aChild = ai >= 0 ? aPath[ai] : a;
+  const bChild = bi >= 0 ? bPath[bi] : b;
+  const aIndex = Number.isFinite(aChild.index) ? aChild.index : 0;
+  const bIndex = Number.isFinite(bChild.index) ? bChild.index : 0;
+  return aIndex - bIndex;
 }
 
 export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'coerce'): 0 | 1 | -1 | undefined {
@@ -97,5 +88,3 @@ export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'coerc
   }
   return output;
 }
-
-export { selectorCompare } from './selector-compare.js';

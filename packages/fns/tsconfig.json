@@ -5,6 +5,7 @@
     "outDir": "./lib",
     "rootDir": ".",
     "types": [
+      "node",
       "vitest/importMeta" 
     ]
   },

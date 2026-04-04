@@ -14,30 +14,30 @@ describe('Sass opacity() function', () => {
       const color = new Color('#ff0000');
       const result = opacity(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(1);
-      expect((result as Dimension).value.unit).toBeUndefined();
+      expect((result as Dimension).data.number).toBe(1);
+      expect((result as Dimension).data.unit).toBeUndefined();
     });
 
     it('extracts alpha from color with partial opacity', () => {
       const color = new Color({ format: 1, rgb: [255, 0, 0], alpha: 0.5 });
       const result = opacity(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(0.5);
-      expect((result as Dimension).value.unit).toBeUndefined();
+      expect((result as Dimension).data.number).toBe(0.5);
+      expect((result as Dimension).data.unit).toBeUndefined();
     });
 
     it('extracts alpha from transparent color', () => {
       const color = new Color({ format: 1, rgb: [255, 0, 0], alpha: 0 });
       const result = opacity(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(0);
+      expect((result as Dimension).data.number).toBe(0);
     });
 
     it('works with object parameters', () => {
       const color = new Color({ format: 1, rgb: [255, 0, 0], alpha: 0.75 });
       const result = opacity({ color: color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(0.75);
+      expect((result as Dimension).data.number).toBe(0.75);
     });
   });
 
@@ -46,15 +46,15 @@ describe('Sass opacity() function', () => {
       const number = new Dimension({ number: 50, unit: '%' });
       const result = opacity(number);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(50);
-      expect((result as Dimension).value.unit).toBe('%');
+      expect((result as Dimension).data.number).toBe(50);
+      expect((result as Dimension).data.unit).toBe('%');
     });
 
     it('passes through unitless number', () => {
       const number = new Dimension({ number: 0.5 });
       const result = opacity(number);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(0.5);
+      expect((result as Dimension).data.number).toBe(0.5);
     });
   });
 });

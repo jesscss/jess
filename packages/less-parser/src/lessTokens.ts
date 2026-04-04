@@ -10,6 +10,7 @@ import {
   type CssTokenType,
   SKIPPED_LABEL
 } from '@jesscss/css-parser';
+import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from '@jesscss/core';
 
 type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 
@@ -30,6 +31,9 @@ export type LessExtraTokenType =
   | 'LtEqAlias'
   | 'Extend'
   | 'AmpersandExtend'
+  | 'AmpersandLParen'
+  | 'AmpersandTemplateContents'
+  | 'AmpersandTemplateEnd'
   | 'AllFlag'
   | 'When'
   | 'WhenFunctionStart'
@@ -48,7 +52,7 @@ export type LessExtraTokenType =
   | 'InterpolatedSelector';
 
 function $preBuildFragments() {
-  const fragments = rawCssFragments() as unknown as string[][];
+  const fragments: string[][] = rawCssFragments().map(f => [...f]);
   fragments.unshift(['lineComment', '\\/\\/[^\\n\\r]*']);
   fragments.push(['interpolated', '[@$]\\{(?:{{nmchar}}*)\\}']);
 
@@ -156,6 +160,12 @@ function $preBuildTokens() {
         name: 'AmpersandExtend',
         pattern: /&:extend\(/,
         categories: ['BlockMarker']
+      },
+      {
+        name: 'AmpersandLParen',
+        pattern: /&\(/,
+        push_mode: 'AmpersandTemplate',
+        categories: ['Selector', 'NestedRuleStart', 'BlockMarker']
       },
       {
         name: 'AllFlag',
@@ -269,7 +279,7 @@ function $preBuildTokens() {
          *   3. &1
          *   4. .foo-&
          */
-        token.pattern = '(?:[.#](?:{{ident}}-)?&|&)(?:\\((?:[.#]|{{nmchar}}|&)+\\)|{{nmchar}}*)';
+        token.pattern = '(?:[.#](?:{{ident}}-)?&|&){{nmchar}}*';
         token.start_chars_hint = ['&', '.', '#'];
         break;
       case 'DotName':
@@ -306,6 +316,30 @@ function $preBuildTokens() {
       i += mergeLength;
     }
   }
+  tokens.modes.AmpersandTemplate = [
+    {
+      name: 'AmpersandTemplateEnd',
+      pattern: /\)/,
+      pop_mode: true,
+      categories: ['FunctionLikeEnd']
+    },
+    {
+      name: 'AmpersandTemplateContents',
+      /**
+       * Template-ish raw text until `)` or a quote. Quotes are tokenized
+       * separately so `&('')` can be handled like `url(...)`.
+       *
+       * We intentionally do not accept arbitrary plain identifiers here:
+       * Less templates are selector-ish fragments or explicit `&` insertion
+       * patterns, not free-form identifiers like `nil`.
+       */
+      pattern: AMPERSAND_TEMPLATE_CONTENTS_REGEX,
+      categories: ['Selector']
+    },
+    'SingleQuoteStart',
+    'DoubleQuoteStart',
+    'WS'
+  ] as Array<RawTokenConfig | string>;
   return tokens;
 }
 

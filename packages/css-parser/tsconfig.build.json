@@ -3,8 +3,15 @@
   "compilerOptions": {
     "outDir": "./lib",
     "rootDir": "./src",
+    "allowJs": false,
+    "types": ["node"],
     "noEmit": false
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "lib", "**/__tests__/**/*"]
+  "exclude": [
+    "node_modules",
+    "lib",
+    "**/__tests__/**/*",
+    "src/util/cst.ts"
+  ]
 }

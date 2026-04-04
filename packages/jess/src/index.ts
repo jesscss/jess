@@ -1,13 +1,16 @@
 import * as path from 'path';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import mergeWith from 'lodash-es/mergeWith.js';
 import { getConfigWithMeta } from './config.js';
 import {
   Context,
+  Rules,
+  type ContextOptions,
   type PrintOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
-  type JessError,
+  JessError,
   toDiagnostic,
   logger,
   type Deprecation
@@ -16,7 +19,8 @@ import {
   getOptions,
   type StylesConfig,
   type JavaScriptSandboxConfig,
-  type CompileJavaScriptOption
+  type CompileJavaScriptOption,
+  type OutputOptions
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
@@ -39,18 +43,201 @@ export type ConfigOptions = StylesConfig & {
 
 const { isArray } = Array;
 
+type LessOptions = ReturnType<typeof getOptions>;
+type LessPluginCacheKey = string;
+type PluginFactoryCacheKey = string;
+type LazyPluginInterface = PluginInterface & { prewarm?: () => Promise<void> };
+type ProfileMemorySnapshot = {
+  rss: number;
+  heapTotal: number;
+  heapUsed: number;
+  external: number;
+  arrayBuffers: number;
+};
+type RenderProfile = {
+  id: number;
+  label: string;
+  metadata: Record<string, unknown>;
+  startedAtMs: number;
+  startedMemory: ProfileMemorySnapshot;
+  phases: Array<{
+    phase: string;
+    durationMs: number;
+    memoryDelta: ProfileMemorySnapshot;
+  }>;
+};
+
+type PluginFactoryRecord = {
+  name: string;
+  create: () => PluginInterface;
+};
+
+type ResolvedRenderConfig = {
+  filePath?: string;
+  configFilePath?: string;
+  effectiveConfig: ConfigOptions;
+  lessOptions: LessOptions;
+  activeOptions: Record<string, any>;
+  resolvedOutputFilePath?: string;
+  jsPluginConfig: JavaScriptSandboxConfig;
+  normalizedCompileJavaScript?: JavaScriptSandboxConfig;
+  printOptions: { collapseNesting?: boolean };
+};
+
+const createBaseConfig = (): ConfigOptions => ({
+  compile: {},
+  output: {},
+  language: {}
+});
+
 /**
  * Customizer for mergeWith that concatenates arrays instead of replacing them
  */
-function arrayConcatCustomizer(objValue: any, srcValue: any): any {
+function arrayConcatCustomizer(objValue: unknown, srcValue: unknown): unknown {
   if (isArray(objValue) && isArray(srcValue)) {
     return [...objValue, ...srcValue];
   }
-  // Return undefined to use default merge behavior for non-arrays
   return undefined;
 }
 
-const require = createRequire(import.meta.url);
+function stableStringify(value: unknown): string {
+  if (value == null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const entries = Object.keys(obj)
+    .sort()
+    .map(key => `${JSON.stringify(key)}:${stableStringify(obj[key])}`);
+  return `{${entries.join(',')}}`;
+}
+
+let nextRenderProfileId = 0;
+
+const isProfileEnabled = (): boolean => process.env.JESS_PROFILE === '1';
+
+const nowMs = (): number => Number(process.hrtime.bigint()) / 1_000_000;
+
+const getMemorySnapshot = (): ProfileMemorySnapshot => {
+  const { rss, heapTotal, heapUsed, external, arrayBuffers } = process.memoryUsage();
+  return { rss, heapTotal, heapUsed, external, arrayBuffers };
+};
+
+const diffMemorySnapshot = (
+  before: ProfileMemorySnapshot,
+  after: ProfileMemorySnapshot
+): ProfileMemorySnapshot => ({
+  rss: after.rss - before.rss,
+  heapTotal: after.heapTotal - before.heapTotal,
+  heapUsed: after.heapUsed - before.heapUsed,
+  external: after.external - before.external,
+  arrayBuffers: after.arrayBuffers - before.arrayBuffers
+});
+
+const createRenderProfile = (
+  label: string,
+  metadata: Record<string, unknown> = {}
+): RenderProfile | undefined => {
+  if (!isProfileEnabled()) {
+    return undefined;
+  }
+  return {
+    id: ++nextRenderProfileId,
+    label,
+    metadata,
+    startedAtMs: nowMs(),
+    startedMemory: getMemorySnapshot(),
+    phases: []
+  };
+};
+
+const measureProfileSync = <T>(
+  profile: RenderProfile | undefined,
+  phase: string,
+  fn: () => T
+): T => {
+  if (!profile) {
+    return fn();
+  }
+  const startedAt = nowMs();
+  const startedMemory = getMemorySnapshot();
+  try {
+    return fn();
+  } finally {
+    const endedAt = nowMs();
+    const endedMemory = getMemorySnapshot();
+    profile.phases.push({
+      phase,
+      durationMs: endedAt - startedAt,
+      memoryDelta: diffMemorySnapshot(startedMemory, endedMemory)
+    });
+  }
+};
+
+const measureProfileAsync = async <T>(
+  profile: RenderProfile | undefined,
+  phase: string,
+  fn: () => Promise<T>
+): Promise<T> => {
+  if (!profile) {
+    return fn();
+  }
+  const startedAt = nowMs();
+  const startedMemory = getMemorySnapshot();
+  try {
+    return await fn();
+  } finally {
+    const endedAt = nowMs();
+    const endedMemory = getMemorySnapshot();
+    profile.phases.push({
+      phase,
+      durationMs: endedAt - startedAt,
+      memoryDelta: diffMemorySnapshot(startedMemory, endedMemory)
+    });
+  }
+};
+
+const finalizeRenderProfile = (
+  profile: RenderProfile | undefined,
+  extraMetadata: Record<string, unknown> = {}
+) => {
+  if (!profile) {
+    return;
+  }
+  const endedAtMs = nowMs();
+  const endedMemory = getMemorySnapshot();
+  console.error(
+    `[jess-profile] ${JSON.stringify({
+      id: profile.id,
+      label: profile.label,
+      metadata: {
+        ...profile.metadata,
+        ...extraMetadata
+      },
+      totalDurationMs: endedAtMs - profile.startedAtMs,
+      totalMemoryDelta: diffMemorySnapshot(profile.startedMemory, endedMemory),
+      phases: profile.phases
+    })}`
+  );
+};
+
+const createConsumerRequire = (fromDir?: string) => {
+  const baseDir = fromDir ? path.resolve(fromDir) : process.cwd();
+  return createRequire(path.join(baseDir, '__jess_consumer__.js'));
+};
+
+const resolveFromConsumer = (specifier: string, fromDir?: string): string | undefined => {
+  try {
+    return createConsumerRequire(fromDir).resolve(specifier);
+  } catch (err: unknown) {
+    if (err instanceof Error && 'code' in err && err.code === 'MODULE_NOT_FOUND') {
+      return undefined;
+    }
+    throw err;
+  }
+};
 
 const normalizeCompileJavaScript = (
   javascript: CompileJavaScriptOption | undefined
@@ -86,138 +273,56 @@ const resolveJsReadRoot = (
   return entryRoot ?? configRoot ?? process.cwd();
 };
 
-const maybeLoadJsPlugin = (
-  jsConfig: JavaScriptSandboxConfig
-): PluginInterface | undefined => {
-  try {
-    require.resolve('@jesscss/plugin-js/package.json');
-
-    let pluginPromise: Promise<PluginInterface> | undefined;
-    const getPlugin = async (): Promise<PluginInterface> => {
-      if (!pluginPromise) {
-        pluginPromise = import('@jesscss/plugin-js').then((mod: any) => {
-          const pluginFactory = (mod?.default ?? mod) as ((opts?: JavaScriptSandboxConfig) => PluginInterface);
-          return pluginFactory(jsConfig);
-        });
-      }
-      return pluginPromise;
-    };
-
-    const pluginProxy: PluginInterface & { prewarm?: () => Promise<void> } = {
-      name: 'js',
-      supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
-      prewarm: async () => {
-        const plugin = await getPlugin();
-        if (typeof (plugin as any).prewarm === 'function') {
-          await (plugin as any).prewarm();
-        }
-      },
-      import: async (absoluteFilePath: string) => {
-        const plugin = await getPlugin();
-        if (!plugin.import) {
-          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
-        }
-        return plugin.import(absoluteFilePath);
-      }
-    };
-    return pluginProxy;
-  } catch (err: any) {
-    // Only ignore module-not-found for optional dependency resolution.
-    if (
-      err?.code === 'MODULE_NOT_FOUND'
-      && typeof err?.message === 'string'
-      && err.message.includes('@jesscss/plugin-js')
-    ) {
-      return undefined;
-    }
-    throw err;
+const getConsumerResolutionBaseDir = (
+  filePath: string | undefined,
+  configFilePath: string | undefined
+): string | undefined => {
+  if (filePath) {
+    return path.dirname(filePath);
   }
-};
-
-const maybeLoadConfiguredPlugin = (
-  specifier: string
-): (PluginInterface & { prewarm?: () => Promise<void> }) | undefined => {
-  let pluginPromise: Promise<PluginInterface> | undefined;
-  let loadedPlugin: PluginInterface | undefined;
-  const getPlugin = async (): Promise<PluginInterface> => {
-    if (!pluginPromise) {
-      pluginPromise = import(specifier).then((mod: any) => {
-        const pluginFactoryOrInstance = mod?.default ?? mod?.lessCompatPlugin ?? mod?.plugin ?? mod;
-        const plugin = typeof pluginFactoryOrInstance === 'function'
-          ? pluginFactoryOrInstance()
-          : pluginFactoryOrInstance;
-        if (!plugin || typeof plugin !== 'object' || typeof plugin.name !== 'string') {
-          throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
-        }
-        loadedPlugin = plugin as PluginInterface;
-        return loadedPlugin;
-      });
-    }
-    return pluginPromise;
-  };
-
-  const base: Record<string, any> = {
-    name: specifier,
-    prewarm: async () => {
-      const plugin = await getPlugin();
-      if (typeof (plugin as any).prewarm === 'function') {
-        await (plugin as any).prewarm();
-      }
-    }
-  };
-
-  return new Proxy(base, {
-    get(target, prop, receiver) {
-      if (prop === 'name' && loadedPlugin?.name) {
-        return loadedPlugin.name;
-      }
-      if (Reflect.has(target, prop)) {
-        return Reflect.get(target, prop, receiver);
-      }
-      if (!loadedPlugin) {
-        return undefined;
-      }
-      const value = (loadedPlugin as any)[prop];
-      if (typeof value === 'function') {
-        return value.bind(loadedPlugin);
-      }
-      return value;
-    }
-  }) as PluginInterface & { prewarm?: () => Promise<void> };
+  if (configFilePath) {
+    return path.dirname(configFilePath);
+  }
+  return process.cwd();
 };
 
 export class Compiler {
+  private baseOptsNormalized: ConfigOptions;
+  private configuredPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
+  private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
+  private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
+  private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
+
   constructor(
     public opts: ConfigOptions = {
       compile: {},
       output: {},
       language: {}
     }
-  ) {}
+  ) {
+    this.baseOptsNormalized = mergeWith(
+      createBaseConfig(),
+      opts,
+      arrayConcatCustomizer
+    );
+  }
 
-  /**
-   * Create a context with the configured plugins
-   */
-  createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
-    // Merge order: file config -> compiler opts -> render options
+  private resolveEffectiveConfig(
+    filePath?: string,
+    renderOptions?: Partial<ConfigOptions>,
+    parseInput: { language?: string; extension?: string } = {}
+  ): ResolvedRenderConfig {
     const { config: loadedFileConfig, configFilePath } = filePath
       ? getConfigWithMeta(path.dirname(filePath))
       : { config: {}, configFilePath: undefined };
-    const fileConfig = loadedFileConfig;
-    const baseConfig: ConfigOptions = {
-      compile: {},
-      output: {},
-      language: {}
-    };
-
-    const config: ConfigOptions = mergeWith(
-      baseConfig,
-      fileConfig,
-      this.opts,
+    const effectiveConfig: ConfigOptions = mergeWith(
+      createBaseConfig(),
+      loadedFileConfig,
+      this.baseOptsNormalized,
       renderOptions || {},
       arrayConcatCustomizer
     );
-    const normalizedCompileJavaScript = normalizeCompileJavaScript(config.compile?.javascript);
+    const normalizedCompileJavaScript = normalizeCompileJavaScript(effectiveConfig.compile?.javascript);
     const resolvedJsReadRoot = resolveJsReadRoot(normalizedCompileJavaScript, filePath, configFilePath);
     const jsPluginConfig: JavaScriptSandboxConfig = {
       ...(normalizedCompileJavaScript ?? {}),
@@ -225,85 +330,42 @@ export class Compiler {
         ? path.resolve(normalizedCompileJavaScript.jsReadRoot)
         : resolvedJsReadRoot
     };
-    // Extract plugins from compile.plugins
-    const plugins = config.compile?.plugins;
-    /** @todo Add CSS and Jess plugins */
-    // Get merged options for each language using file-based matching
-    // Use outputFile from renderOptions, or try to extract from config
     let resolvedOutputFilePath: string | undefined = renderOptions?.outputFile;
     if (!resolvedOutputFilePath) {
-      if (Array.isArray(config.output)) {
+      if (Array.isArray(effectiveConfig.output)) {
         // If output is an array, we need the expected output file path to match
-        // This should be provided via renderOptions.outputFile
-      } else if (config.output && 'file' in config.output && (config.output as any).file) {
+      } else if (effectiveConfig.output && !Array.isArray(effectiveConfig.output) && effectiveConfig.output.file) {
         const dir = filePath ? path.dirname(filePath) : '.';
         const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
-        resolvedOutputFilePath = path.join(dir, (config.output as any).file.replace('{name}', name));
-      } else if (renderOptions?.output && !Array.isArray(renderOptions.output) && 'file' in renderOptions.output && (renderOptions.output as any).file) {
+        resolvedOutputFilePath = path.join(dir, effectiveConfig.output.file.replace('{name}', name));
+      } else if (renderOptions?.output && !Array.isArray(renderOptions.output) && 'file' in renderOptions.output && renderOptions.output.file) {
         const dir = filePath ? path.dirname(filePath) : '.';
         const name = filePath ? path.basename(filePath, path.extname(filePath)) : 'output';
-        resolvedOutputFilePath = path.join(dir, (renderOptions.output as any).file.replace('{name}', name));
+        resolvedOutputFilePath = path.join(dir, renderOptions.output.file.replace('{name}', name));
       }
     }
-    const lessOptions = getOptions(config, { language: 'less', input: filePath, output: resolvedOutputFilePath });
-    let corePlugins = [
-      lessPlugin(lessOptions)
-    ];
-    const pluginMap = new Map<string, PluginInterface>();
-    /** This can be used to override the core plugin settings */
-    for (const plugin of corePlugins) {
-      pluginMap.set(plugin.name, plugin);
-    }
-    if (plugins) {
-      for (const plugin of plugins) {
-        if (typeof plugin === 'string') {
-          if (plugin === '@jesscss/plugin-js') {
-            const jsPlugin = maybeLoadJsPlugin(jsPluginConfig);
-            if (jsPlugin) {
-              pluginMap.set(jsPlugin.name, jsPlugin);
-            }
-            continue;
-          }
-          const loadedPlugin = maybeLoadConfiguredPlugin(plugin);
-          if (loadedPlugin) {
-            pluginMap.set(plugin, loadedPlugin);
-          }
-        } else {
-          // PluginInterfaceBase instance - cast to PluginInterface (they're compatible)
-          pluginMap.set(plugin.name, plugin as PluginInterface);
-        }
-      }
-    }
-    if (!pluginMap.has('js')) {
-      const jsPlugin = maybeLoadJsPlugin(jsPluginConfig);
-      if (jsPlugin) {
-        pluginMap.set(jsPlugin.name, jsPlugin);
-      }
-    }
-    // Eagerly load plugin-js when present so it sets globalThis (less-compat @plugin requires it to be present)
-    if (pluginMap.has('js')) {
-      try {
-        createRequire(import.meta.url)('@jesscss/plugin-js');
-      } catch {
-        // optional: plugin-js may be missing; @plugin will throw at runtime if used
-      }
-    }
-    // Pass output options and compile options to Context
-    // Use getOptions result which includes properly merged output options
-    const contextOptions = {
-      ...lessOptions,
-      ...config.compile
-    };
-    if (normalizedCompileJavaScript) {
-      (contextOptions as any).javascript = jsPluginConfig;
-    }
+    const configInputPath = filePath ?? (
+      parseInput.extension
+        ? `virtual${parseInput.extension.startsWith('.') ? parseInput.extension : `.${parseInput.extension}`}`
+        : undefined
+    );
+    const lessOptions = getOptions(effectiveConfig, {
+      language: 'less',
+      input: configInputPath,
+      output: resolvedOutputFilePath
+    });
+    const activeOptions = getOptions(effectiveConfig, {
+      language: parseInput.language,
+      input: configInputPath,
+      output: resolvedOutputFilePath
+    });
 
     const resolveMatchedOutputCollapseNesting = (): boolean | undefined => {
-      if (!Array.isArray(config.output) || !resolvedOutputFilePath) {
+      if (!Array.isArray(effectiveConfig.output) || !resolvedOutputFilePath) {
         return undefined;
       }
-      const outputEntries = config.output as Array<Record<string, any>>;
-      let defaults: Record<string, any> = {};
+      const outputEntries = effectiveConfig.output as OutputOptions[];
+      let defaults: OutputOptions = {};
       if (outputEntries[0] && typeof outputEntries[0] === 'object' && !('file' in outputEntries[0])) {
         defaults = outputEntries[0]!;
       }
@@ -317,10 +379,10 @@ export class Compiler {
         const expandedPath = path.join(dir, filePattern.replace('{name}', name));
         if (expandedPath === resolvedOutputFilePath) {
           if ('collapseNesting' in entry) {
-            return entry.collapseNesting as boolean | undefined;
+            return entry.collapseNesting;
           }
           if ('collapseNesting' in defaults) {
-            return defaults.collapseNesting as boolean | undefined;
+            return defaults.collapseNesting;
           }
           return undefined;
         }
@@ -328,147 +390,460 @@ export class Compiler {
       return undefined;
     };
 
-    // Create print options for CSS output.
-    // For array output configs, infer the matched entry's collapseNesting using resolved outputFile.
     const matchedOutputCollapseNesting = resolveMatchedOutputCollapseNesting();
-    const explicitOutputCollapseNesting = (
-      !Array.isArray(config.output)
-        ? (config.output as any)?.collapseNesting
-        : undefined
-    ) as boolean | undefined;
+    const explicitOutputCollapseNesting: boolean | undefined =
+      !Array.isArray(effectiveConfig.output)
+        ? effectiveConfig.output?.collapseNesting
+        : undefined;
     const printOptions = {
-      // Respect explicit output config first; lessOptions can carry defaults.
       collapseNesting: explicitOutputCollapseNesting
         ?? matchedOutputCollapseNesting
-        ?? lessOptions.collapseNesting
+        ?? activeOptions.collapseNesting
     };
 
-    // Ensure output options are available on context.opts.output.
-    // Many serializer/hoisting behaviors (including Less extend materialization) consult output.collapseNesting.
-    // Also mirror to top-level context option because selector/ruleset preEval paths consult context.opts.collapseNesting.
-    (contextOptions as any).collapseNesting = printOptions.collapseNesting;
-    (contextOptions as any).output = {
-      ...(typeof (config.output as any) === 'object' && !Array.isArray(config.output) ? (config.output as any) : {}),
-      collapseNesting: printOptions.collapseNesting
+    return {
+      filePath,
+      configFilePath,
+      effectiveConfig,
+      lessOptions,
+      activeOptions,
+      resolvedOutputFilePath,
+      jsPluginConfig,
+      normalizedCompileJavaScript,
+      printOptions
+    };
+  }
+
+  private getLessPluginCacheKey(lessOptions: LessOptions): LessPluginCacheKey {
+    return stableStringify({
+      math: lessOptions.math,
+      mathMode: lessOptions.mathMode,
+      strictUnits: lessOptions.strictUnits,
+      unitMode: lessOptions.unitMode,
+      equalityMode: lessOptions.equalityMode,
+      allowExtendSelectors: lessOptions.allowExtendSelectors,
+      leakyRules: lessOptions.leakyRules,
+      bubbleRootAtRules: lessOptions.bubbleRootAtRules,
+      collapseNesting: lessOptions.collapseNesting
+    });
+  }
+
+  private getOrCreateLessPlugin(lessOptions: LessOptions): PluginInterface {
+    const key = this.getLessPluginCacheKey(lessOptions);
+    let plugin = this.lessPluginInstanceCache.get(key);
+    if (!plugin) {
+      plugin = lessPlugin(lessOptions);
+      this.lessPluginInstanceCache.set(key, plugin);
+    }
+    return plugin;
+  }
+
+  private getConfiguredPluginFactory(specifier: string): Promise<PluginFactoryRecord> {
+    let factoryPromise = this.configuredPluginFactoryCache.get(specifier);
+    if (!factoryPromise) {
+      factoryPromise = import(specifier).then((mod: Record<string, unknown>) => {
+        const pluginFactoryOrInstance = (mod?.default ?? mod?.lessCompatPlugin ?? mod?.plugin ?? mod) as
+          | ((...args: unknown[]) => unknown)
+          | Record<string, unknown>;
+        if (typeof pluginFactoryOrInstance === 'function') {
+          return {
+            name: specifier,
+            create: (): PluginInterface => {
+              const plugin = pluginFactoryOrInstance() as Record<string, unknown>;
+              if (!plugin || typeof plugin !== 'object' || typeof plugin.name !== 'string') {
+                throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
+              }
+              return plugin as unknown as PluginInterface;
+            }
+          };
+        }
+        if (!pluginFactoryOrInstance || typeof pluginFactoryOrInstance !== 'object' || typeof pluginFactoryOrInstance.name !== 'string') {
+          throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
+        }
+        return {
+          name: pluginFactoryOrInstance.name as string,
+          create: (): PluginInterface => pluginFactoryOrInstance as unknown as PluginInterface
+        };
+      });
+      this.configuredPluginFactoryCache.set(specifier, factoryPromise);
+    }
+    return factoryPromise;
+  }
+
+  private createConfiguredPluginProxy(specifier: string): LazyPluginInterface {
+    const factoryPromise = this.getConfiguredPluginFactory(specifier);
+    let pluginPromise: Promise<PluginInterface> | undefined;
+    let loadedPlugin: PluginInterface | undefined;
+    const getPlugin = async (): Promise<PluginInterface> => {
+      if (!pluginPromise) {
+        pluginPromise = factoryPromise.then((factory) => {
+          loadedPlugin = factory.create();
+          return loadedPlugin;
+        });
+      }
+      return pluginPromise;
     };
 
-    return new Context(contextOptions, [...pluginMap.values()]);
+    const base: Record<string | symbol, unknown> = {
+      name: specifier,
+      prewarm: async () => {
+        const plugin = await getPlugin();
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.prewarm === 'function') {
+          await (p.prewarm as () => Promise<void>)();
+        }
+      }
+    };
+
+    return new Proxy(base, {
+      get(target, prop, receiver) {
+        if (prop === 'name' && loadedPlugin?.name) {
+          return loadedPlugin.name;
+        }
+        if (Reflect.has(target, prop)) {
+          return Reflect.get(target, prop, receiver);
+        }
+        if (!loadedPlugin) {
+          return undefined;
+        }
+        const lp = loadedPlugin as unknown as Record<string | symbol, unknown>;
+        const value = lp[prop];
+        return typeof value === 'function' ? (value as Function).bind(loadedPlugin) : value;
+      }
+    }) as unknown as LazyPluginInterface;
+  }
+
+  private getJsPluginFactory(
+    jsConfig: JavaScriptSandboxConfig,
+    resolutionBaseDir?: string
+  ): { key: PluginFactoryCacheKey; factoryPromise: Promise<PluginFactoryRecord>; resolvedSpecifier: string } | undefined {
+    const resolvedSpecifier = resolveFromConsumer('@jesscss/plugin-js', resolutionBaseDir);
+    if (!resolvedSpecifier) {
+      return undefined;
+    }
+    const key = stableStringify({
+      resolvedSpecifier,
+      jsConfig
+    });
+    let factoryPromise = this.jsPluginFactoryCache.get(key);
+    if (!factoryPromise) {
+      factoryPromise = import(pathToFileURL(resolvedSpecifier).href).then((mod: Record<string, unknown>) => {
+        const pluginFactory = (mod?.default ?? mod) as unknown as ((opts?: JavaScriptSandboxConfig) => PluginInterface);
+        return {
+          name: 'js',
+          create: () => pluginFactory(jsConfig)
+        };
+      });
+      this.jsPluginFactoryCache.set(key, factoryPromise);
+    }
+    return {
+      key,
+      factoryPromise,
+      resolvedSpecifier
+    };
+  }
+
+  private createJsPluginProxy(
+    jsConfig: JavaScriptSandboxConfig,
+    resolutionBaseDir?: string
+  ): LazyPluginInterface | undefined {
+    const factoryRecord = this.getJsPluginFactory(jsConfig, resolutionBaseDir);
+    if (!factoryRecord) {
+      return undefined;
+    }
+    const cachedProxy = this.jsPluginProxyCache.get(factoryRecord.key);
+    if (cachedProxy) {
+      return cachedProxy;
+    }
+
+    let pluginPromise: Promise<PluginInterface> | undefined;
+    let loadedPlugin: PluginInterface | undefined;
+    const getPlugin = async (): Promise<PluginInterface> => {
+      if (!pluginPromise) {
+        pluginPromise = factoryRecord.factoryPromise.then((factory) => {
+          loadedPlugin = factory.create();
+          return loadedPlugin;
+        });
+      }
+      return pluginPromise;
+    };
+
+    const proxy: LazyPluginInterface = {
+      name: 'js',
+      supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
+      prewarm: async () => {
+        const plugin = await getPlugin();
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.prewarm === 'function') {
+          await (p.prewarm as () => Promise<void>)();
+        }
+      },
+      import: async (absoluteFilePath) => {
+        const plugin = await getPlugin();
+        if (!plugin.import) {
+          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
+        }
+        return plugin.import(absoluteFilePath);
+      }
+    };
+    this.jsPluginProxyCache.set(factoryRecord.key, proxy);
+    return proxy;
+  }
+
+  private buildPlugins(resolved: ResolvedRenderConfig): PluginInterface[] {
+    const pluginMap = new Map<string, PluginInterface>();
+    const coreLessPlugin = this.getOrCreateLessPlugin(resolved.lessOptions);
+    pluginMap.set(coreLessPlugin.name, coreLessPlugin);
+    const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
+
+    const configuredPlugins = resolved.effectiveConfig.compile?.plugins;
+    if (configuredPlugins) {
+      for (const plugin of configuredPlugins) {
+        if (typeof plugin === 'string') {
+          if (plugin === '@jesscss/plugin-js') {
+            const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig, resolutionBaseDir);
+            if (jsPlugin) {
+              pluginMap.set(jsPlugin.name, jsPlugin);
+            }
+            continue;
+          }
+          pluginMap.set(plugin, this.createConfiguredPluginProxy(plugin));
+          continue;
+        }
+        pluginMap.set(plugin.name, plugin as unknown as PluginInterface);
+      }
+    }
+
+    if (!pluginMap.has('js')) {
+      const jsPlugin = this.createJsPluginProxy(resolved.jsPluginConfig, resolutionBaseDir);
+      if (jsPlugin) {
+        pluginMap.set(jsPlugin.name, jsPlugin);
+      }
+    }
+
+    if (pluginMap.has('js')) {
+      try {
+        const consumerRequire = createConsumerRequire(resolutionBaseDir);
+        consumerRequire('@jesscss/plugin-js');
+      } catch {
+        // optional: plugin-js may be missing; @plugin will throw at runtime if used
+      }
+    }
+
+    return [...pluginMap.values()];
+  }
+
+  private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
+    const contextOptions: Record<string, unknown> = {
+      ...resolved.effectiveConfig.compile,
+      ...resolved.activeOptions
+    };
+    if (resolved.normalizedCompileJavaScript) {
+      contextOptions.javascript = resolved.jsPluginConfig;
+    }
+    contextOptions.collapseNesting = resolved.printOptions.collapseNesting;
+    contextOptions.output = {
+      ...(typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
+        ? resolved.effectiveConfig.output
+        : {}),
+      collapseNesting: resolved.printOptions.collapseNesting
+    };
+
+    return new Context(contextOptions as ContextOptions, plugins);
+  }
+
+  private async prepareRender(
+    filePath?: string,
+    renderOptions?: Partial<ConfigOptions>,
+    parseInput?: { language?: string; extension?: string }
+  ) {
+    const profile = createRenderProfile('prepareRender', { filePath });
+    const resolved = measureProfileSync(profile, 'resolveEffectiveConfig', () =>
+      this.resolveEffectiveConfig(filePath, renderOptions, parseInput)
+    );
+    const plugins = measureProfileSync(profile, 'buildPlugins', () =>
+      this.buildPlugins(resolved)
+    );
+    const context = measureProfileSync(profile, 'createContextFromResolved', () =>
+      this.createContextFromResolved(resolved, plugins)
+    );
+    return { resolved, plugins, context, profile };
+  }
+
+  /**
+   * Create a context with the configured plugins
+   */
+  createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context {
+    const resolved = this.resolveEffectiveConfig(filePath, renderOptions);
+    const plugins = this.buildPlugins(resolved);
+    return this.createContextFromResolved(resolved, plugins);
+  }
+
+  private applyPreEvalVisitors(context: Context, tree: any, currentFilePath: string): any {
+    if (!tree || !context.plugins?.length) {
+      return tree;
+    }
+    let current = tree;
+    const processed = new Set<unknown>();
+    for (let pass = 0; pass < 2; pass++) {
+      for (const plugin of context.plugins) {
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.setContext === 'function') {
+          try {
+            (p.setContext as (ctx: Context) => void)(context);
+          } catch {
+            // ignore
+          }
+        }
+        if (typeof p.setCurrentFilePath === 'function') {
+          try {
+            (p.setCurrentFilePath as (fp: string) => void)(currentFilePath);
+          } catch {
+            // ignore
+          }
+        }
+        const pre = plugin.preEvalVisitor;
+        if (!pre) {
+          continue;
+        }
+        const visitors = Array.isArray(pre) ? pre : [pre];
+        for (const visitor of visitors) {
+          if (!visitor || typeof visitor.visit !== 'function') {
+            continue;
+          }
+          if (pass === 1 && processed.has(visitor)) {
+            continue;
+          }
+          const result = current.accept ? current.accept(visitor) : current;
+          if (result) {
+            current = result;
+          }
+          processed.add(visitor);
+        }
+      }
+    }
+    return current;
+  }
+
+  private applyPostEvalVisitors(context: Context, tree: any): any {
+    if (!tree || !context.plugins?.length) {
+      return tree;
+    }
+    let current = tree;
+    for (const plugin of context.plugins) {
+      const post = plugin.postEvalVisitor;
+      if (!post) {
+        continue;
+      }
+      const visitors = Array.isArray(post) ? post : [post];
+      for (const visitor of visitors) {
+        if (!visitor || typeof visitor.visit !== 'function') {
+          continue;
+        }
+        const result = current.accept ? current.accept(visitor) : current;
+        if (result) {
+          current = result;
+        }
+      }
+    }
+    return current;
+  }
+
+  private attachImportVisitorHook(context: Context, filePath: string) {
+    const currentFilePathFromImport = (importPath: string, fallback: string) => {
+      return typeof importPath === 'string' && importPath.length ? importPath : fallback;
+    };
+
+    const originalGetTree = context.getTree.bind(context);
+    context.getTree = async (importPath: string, importOptions = {}) => {
+      const result = await originalGetTree(importPath, importOptions);
+      const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
+      const processedTree = this.applyPreEvalVisitors(context, result.node, resolvedPath);
+      if (processedTree && processedTree !== result.node) {
+        result.node = processedTree;
+        if (result.resolvedPath) {
+          context.sourceTrees.set(result.resolvedPath, processedTree as Rules);
+        }
+      }
+      return result;
+    };
+  }
+
+  private async prewarmPlugins(context: Context) {
+    for (const plugin of context.plugins) {
+      const p = plugin as unknown as Record<string, unknown>;
+      if (typeof p.prewarm === 'function') {
+        await (p.prewarm as () => Promise<void>)();
+      }
+    }
+  }
+
+  private async evaluateInput(
+    context: Context,
+    input: { filePath?: string; source?: string; language?: string; extension?: string },
+    profile?: RenderProfile
+  ) {
+    const { filePath, source, language, extension } = input;
+
+    if (filePath) {
+      this.attachImportVisitorHook(context, filePath);
+    }
+
+    await measureProfileAsync(profile, 'prewarmPlugins', () => this.prewarmPlugins(context));
+
+    let tree;
+    if (source != null) {
+      const parsed = await measureProfileAsync(profile, 'parseString', () =>
+        context.parseString(source, {
+          filePath,
+          type: language,
+          extension
+        })
+      );
+      tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
+        this.applyPreEvalVisitors(context, parsed.node, filePath ?? '<input>')
+      );
+    } else {
+      const loaded = await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
+      tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
+        this.applyPreEvalVisitors(context, loaded.node, filePath!)
+      );
+    }
+
+    const evald = await measureProfileAsync(profile, 'eval', () => tree.eval(context));
+    return measureProfileSync(profile, 'applyPostEvalVisitors', () =>
+      this.applyPostEvalVisitors(context, evald)
+    );
+  }
+
+  private renderTree(tree: any, context: Context, profile?: RenderProfile): string {
+    const printOptions: PrintOptions = {
+      collapseNesting: context.opts.collapseNesting,
+      context
+    };
+
+    let css = measureProfileSync(profile, 'render', () => tree.render(context, printOptions));
+    css = measureProfileSync(profile, 'postProcessCss', () => {
+      let nextCss = css;
+      for (const plugin of context.plugins || []) {
+        const p = plugin as unknown as Record<string, unknown>;
+        if (typeof p.runPostProcessors === 'function') {
+          nextCss = (p.runPostProcessors as (css: string, opts: Record<string, unknown>) => string)(nextCss, {});
+        } else if (typeof p.postProcessCss === 'function') {
+          nextCss = (p.postProcessCss as (css: string, ctx: Context) => string)(nextCss, context);
+        }
+      }
+      return nextCss;
+    });
+    return css;
   }
 
   async compile(filePath: string, options?: Partial<ConfigOptions>) {
-    const context = this.createContext(filePath, options);
+    const { context, profile } = await this.prepareRender(filePath, options);
 
     try {
-      // Jess orchestrates visitor phases (not core):
-      // - preEvalVisitor runs on the parsed tree (before any evaluation)
-      // - postEvalVisitor runs on the evaluated tree (after eval)
-      const applyPreEvalVisitors = (tree: any, currentFilePath: string) => {
-        if (!tree || !context.plugins?.length) {
-          return tree;
-        }
-        let current = tree;
-        const processed = new Set<any>();
-        // Two passes: match Less.js behavior where @plugin can add new visitors
-        for (let pass = 0; pass < 2; pass++) {
-          for (const plugin of context.plugins) {
-            // Allow plugins to access the current compilation context if needed
-            if (typeof (plugin as any).setContext === 'function') {
-              try {
-                (plugin as any).setContext(context);
-              } catch {
-                // ignore
-              }
-            }
-            // Allow plugins to know the current file path if they need it (e.g. less-compat @plugin relative paths)
-            if (typeof (plugin as any).setCurrentFilePath === 'function') {
-              try {
-                (plugin as any).setCurrentFilePath(currentFilePath);
-              } catch {
-                // ignore
-              }
-            }
-            const pre = (plugin as any).preEvalVisitor;
-            if (!pre) {
-              continue;
-            }
-            const visitors = Array.isArray(pre) ? pre : [pre];
-            for (const v of visitors) {
-              if (!v || typeof v.visit !== 'function') {
-                continue;
-              }
-              if (pass === 1 && processed.has(v)) {
-                continue;
-              }
-              const result = current.accept ? current.accept(v) : current;
-              if (result) {
-                current = result;
-              }
-              processed.add(v);
-            }
-          }
-        }
-        return current;
-      };
+      const postEvald = await this.evaluateInput(context, { filePath }, profile);
 
-      const applyPostEvalVisitors = (tree: any) => {
-        if (!tree || !context.plugins?.length) {
-          return tree;
-        }
-        let current = tree;
-        for (const plugin of context.plugins) {
-          const post = (plugin as any).postEvalVisitor;
-          if (!post) {
-            continue;
-          }
-          const visitors = Array.isArray(post) ? post : [post];
-          for (const v of visitors) {
-            if (!v || typeof v.visit !== 'function') {
-              continue;
-            }
-            const result = current.accept ? current.accept(v) : current;
-            if (result) {
-              current = result;
-            }
-          }
-        }
-        return current;
-      };
-
-      // Helper: best-effort fallback for file path when Context doesn't provide one
-      const currentFilePathFromImport = (importPath: string, fallback: string) => {
-        return typeof importPath === 'string' && importPath.length ? importPath : fallback;
-      };
-
-      // Ensure pre-eval visitors also run on trees loaded during evaluation (imports).
-      // This keeps @plugin processing consistent for imported Less files.
-      const originalGetTree = context.getTree.bind(context);
-      context.getTree = async (importPath: string, importOptions: any = {}) => {
-        const result = await originalGetTree(importPath, importOptions);
-        const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
-        const processedTree = applyPreEvalVisitors(result.node, resolvedPath);
-        if (processedTree && processedTree !== result.node) {
-          result.node = processedTree;
-          if (result.resolvedPath) {
-            context.sourceTrees.set(result.resolvedPath, processedTree as any);
-          }
-        }
-        return result;
-      };
-
-      // Eagerly initialize lazy configured plugins before parsing/evaluation so
-      // parse/import hooks and visitors are available from the first file.
-      for (const plugin of context.plugins) {
-        if (typeof (plugin as any).prewarm === 'function') {
-          await (plugin as any).prewarm();
-        }
-      }
-
-      const { node } = await context.getTree(filePath);
-      const preEvaldTree = applyPreEvalVisitors(node, filePath);
-      const evald = await preEvaldTree.eval(context);
-      const postEvald = applyPostEvalVisitors(evald);
-
-      // Output any collected diagnostics
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
@@ -477,9 +852,14 @@ export class Compiler {
         });
       }
 
+      finalizeRenderProfile(profile, {
+        method: 'compile',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length
+      });
       return { tree: postEvald, context };
-    } catch (err: any) {
-      // If we have diagnostics, output them
+    } catch (err: unknown) {
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
@@ -487,50 +867,48 @@ export class Compiler {
           verbose: options?.verbose ?? false
         });
       } else {
-        // Fallback to logger for non-diagnostic errors
-        logger.error(err.toString());
+        logger.error(String(err));
       }
+      finalizeRenderProfile(profile, {
+        method: 'compile',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length,
+        failed: true,
+        errorMessage: err instanceof Error ? err.message : String(err)
+      });
       throw err;
     }
   }
 
-  /**
-   * Render CSS from a file path
-   */
   async render(filePath: string, options?: Partial<ConfigOptions>) {
+    const { context, profile } = await this.prepareRender(filePath, options);
     try {
-      const { tree, context } = await this.compile(filePath, options);
-
-      const printOptions: PrintOptions = {
-        collapseNesting: context.opts.collapseNesting,
-        context
-      };
-
-      let css = tree.toString(printOptions);
-
-      // Allow plugins to post-process final CSS (e.g. Less addPostProcessor via less-compat)
-      for (const plugin of context.plugins || []) {
-        if (typeof (plugin as any).runPostProcessors === 'function') {
-          css = (plugin as any).runPostProcessors(css, {});
-        } else if (typeof (plugin as any).postProcessCss === 'function') {
-          css = (plugin as any).postProcessCss(css, context);
-        }
-      }
-
+      const tree = await this.evaluateInput(context, { filePath }, profile);
+      const css = this.renderTree(tree, context, profile);
+      finalizeRenderProfile(profile, {
+        method: 'render',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length
+      });
       return css;
-    } catch (err: any) {
-      // Diagnostics are already output by compile()
-      // If it's not a diagnostic error, log it
+    } catch (err: unknown) {
       if (!(err && typeof err === 'object' && 'code' in err)) {
-        logger.error(err.toString());
+        logger.error(String(err));
       }
+      finalizeRenderProfile(profile, {
+        method: 'render',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length,
+        failed: true,
+        errorMessage: err instanceof Error ? err.message : String(err)
+      });
       throw err;
     }
   }
 
-  /**
-   * Render CSS from a string content
-   */
   async renderString(content: string, options: {
     filePath?: string;
     language?: string;
@@ -538,40 +916,32 @@ export class Compiler {
     config?: Partial<ConfigOptions>;
   } = {}) {
     const { filePath, language, extension, config: renderOptions } = options;
-    const context = this.createContext(filePath, renderOptions);
+    const { context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const { node } = await context.parseString(content, {
+      const evald = await this.evaluateInput(context, { filePath, source: content, language, extension }, profile);
+      const css = this.renderTree(evald, context, profile);
+      finalizeRenderProfile(profile, {
+        method: 'renderString',
         filePath,
-        type: language,
-        extension
+        errors: context.errors.length,
+        warnings: context.warnings.length
       });
-
-      const evald = await node.eval(context);
-
-      // Create print options with collapseNesting setting and context for charset handling
-      const printOptions: PrintOptions = {
-        collapseNesting: context.opts.collapseNesting,
-        context
-      };
-
-      const css = evald.toString(printOptions);
       return css;
-    } catch (err: any) {
-      logger.error(err.toString());
+    } catch (err: unknown) {
+      logger.error(String(err));
+      finalizeRenderProfile(profile, {
+        method: 'renderString',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length,
+        failed: true,
+        errorMessage: err instanceof Error ? err.message : String(err)
+      });
       throw err;
     }
   }
 
-  /**
-   * Renders to CSS and returns a structured result object containing CSS and metadata.
-   * Can accept either a file path or string content.
-   * Similar to dart-sass's compileToResult() pattern, but uses "render" naming to match less.js.
-   *
-   * @param input - File path (string) or source content (object with source string)
-   * @param options - Render options
-   * @returns RenderResult with css, errors, warnings, and loadedUrls
-   */
   async renderToResult(
     input: string | { source: string; filePath?: string; language?: string; extension?: string },
     options?: Partial<ConfigOptions> & {
@@ -585,54 +955,44 @@ export class Compiler {
     warnings: WarningDiagnostic[];
     loadedUrls: string[];
   }> {
-    // Determine if input is a file path or source content
     const isSourceContent = typeof input === 'object' && 'source' in input;
     const source = isSourceContent ? input.source : undefined;
     const filePath = isSourceContent ? input.filePath : input;
     const language = isSourceContent ? input.language : options?.language;
     const extension = isSourceContent ? input.extension : options?.extension;
-    const renderOptions = isSourceContent ? options : options;
-
-    const context = this.createContext(filePath, renderOptions);
+    const renderOptions = options;
+    const { context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      let evald;
-      if (isSourceContent && source) {
-        const { node } = await context.parseString(source, {
-          filePath,
-          type: language,
-          extension
-        });
-        evald = await node.eval(context);
-      } else {
-        const { node } = await context.getTree(filePath!);
-        evald = await node.eval(context);
-      }
+      const evald = await this.evaluateInput(context, {
+        filePath,
+        source,
+        language,
+        extension
+      }, profile);
+      const css = this.renderTree(evald, context, profile);
 
-      const printOptions: PrintOptions = {
-        collapseNesting: context.opts.collapseNesting,
-        context
-      };
-
-      const css = evald.toString(printOptions);
-
-      // Collect loaded URLs from context (if available)
       const loadedUrls: string[] = [];
-      // TODO: Extract loaded URLs from context when that information is available
 
+      finalizeRenderProfile(profile, {
+        method: 'renderToResult',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length
+      });
       return {
         css,
         errors: [...context.errors],
         warnings: [...context.warnings],
         loadedUrls
       };
-    } catch (err: any) {
-      // Convert error to diagnostic
+    } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
+      const errMsg = err instanceof Error ? err.message : String(err);
 
-      if (err && typeof err === 'object' && 'severity' in err) {
-        const diagnostic = toDiagnostic(err as JessError);
+      if (err instanceof JessError) {
+        const diagnostic = toDiagnostic(err);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {
@@ -642,8 +1002,8 @@ export class Compiler {
         errors.push({
           code: 'internal/unknown',
           phase: 'eval',
-          message: err?.message || 'Unknown error',
-          reason: err?.message || 'An unexpected error occurred during compilation.',
+          message: errMsg || 'Unknown error',
+          reason: errMsg || 'An unexpected error occurred during compilation.',
           fix: 'Check the file and ensure it is valid.',
           filePath: filePath ?? undefined,
           line: 1,
@@ -651,7 +1011,6 @@ export class Compiler {
         });
       }
 
-      // Output diagnostics if configured
       if (renderOptions?.suppressWarnings !== true) {
         outputDiagnostics(errors, warnings, {
           suppressWarnings: renderOptions?.suppressWarnings ?? false,
@@ -661,6 +1020,14 @@ export class Compiler {
       }
 
       const loadedUrls: string[] = [];
+      finalizeRenderProfile(profile, {
+        method: 'renderToResult',
+        filePath,
+        errors: errors.length,
+        warnings: warnings.length,
+        failed: true,
+        errorMessage: errMsg
+      });
       return {
         css: '',
         errors,
@@ -670,40 +1037,40 @@ export class Compiler {
     }
   }
 
-  /**
-   * Safe version of compile that collects errors and warnings instead of throwing.
-   * Returns the tree (or null if compilation failed) along with collected errors and warnings.
-   */
   async safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
     tree: any | null;
     context: Context;
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
   }> {
-    const context = this.createContext(filePath, {
+    const { context, profile } = await this.prepareRender(filePath, {
       ...options,
       breakOnError: false,
       suppressWarnings: options?.suppressWarnings ?? false
     });
 
     try {
-      const { node } = await context.getTree(filePath);
-      const evald = await node.eval(context);
+      const evald = await this.evaluateInput(context, { filePath }, profile);
 
-      // Collect any errors and warnings from context
+      finalizeRenderProfile(profile, {
+        method: 'safeCompile',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length
+      });
       return {
         tree: evald,
         context,
         errors: [...context.errors],
         warnings: [...context.warnings]
       };
-    } catch (err: any) {
-      // Convert error to diagnostic
+    } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
+      const errMsg = err instanceof Error ? err.message : String(err);
 
-      if (err && typeof err === 'object' && 'severity' in err) {
-        const diagnostic = toDiagnostic(err as JessError);
+      if (err instanceof JessError) {
+        const diagnostic = toDiagnostic(err);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {
@@ -713,23 +1080,27 @@ export class Compiler {
         errors.push({
           code: 'internal/unknown',
           phase: 'eval',
-          message: err?.message || 'Unknown error',
-          reason: err?.message || 'An unexpected error occurred during compilation.',
+          message: errMsg || 'Unknown error',
+          reason: errMsg || 'An unexpected error occurred during compilation.',
           fix: 'Check the file and ensure it is valid.',
-          filePath: filePath,
+          filePath,
           line: 1,
           column: 1
         });
       }
 
+      finalizeRenderProfile(profile, {
+        method: 'safeCompile',
+        filePath,
+        errors: errors.length,
+        warnings: warnings.length,
+        failed: true,
+        errorMessage: errMsg
+      });
       return { tree: null, context, errors, warnings };
     }
   }
 
-  /**
-   * Safe version of render that collects errors and warnings instead of throwing.
-   * Returns the CSS (or null if rendering failed) along with collected errors and warnings.
-   */
   async safeRender(filePath: string, options?: Partial<ConfigOptions>): Promise<{
     css: string | null;
     errors: ErrorDiagnostic[];
@@ -749,19 +1120,40 @@ export class Compiler {
 
       const css = tree.toString(printOptions);
       return { css, errors, warnings };
-    } catch (err: any) {
-      // This shouldn't happen in safe mode, but handle it just in case
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       const errors: ErrorDiagnostic[] = [{
         code: 'internal/unknown',
         phase: 'eval',
-        message: err?.message || 'Unknown error',
-        reason: err?.message || 'An unexpected error occurred during rendering.',
+        message: errMsg || 'Unknown error',
+        reason: errMsg || 'An unexpected error occurred during rendering.',
         fix: 'Check the file and ensure it is valid.',
-        filePath: filePath,
+        filePath,
         line: 1,
         column: 1
       }];
       return { css: null, errors, warnings: [] };
     }
+  }
+
+  dispose() {
+    for (const plugin of this.jsPluginProxyCache.values()) {
+      try {
+        plugin['dispose']?.();
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+    for (const plugin of this.lessPluginInstanceCache.values()) {
+      try {
+        plugin['dispose']?.();
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+    this.jsPluginProxyCache.clear();
+    this.jsPluginFactoryCache.clear();
+    this.lessPluginInstanceCache.clear();
+    this.configuredPluginFactoryCache.clear();
   }
 }

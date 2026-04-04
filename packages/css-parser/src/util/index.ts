@@ -4,12 +4,14 @@ import type {
   IMultiModeLexerDefinition,
   TokenPattern,
   CustomPatternMatcherFunc
-} from 'chevrotain';
+} from '@chevrotain/types';
 import {
   Lexer,
   createToken
 } from 'chevrotain';
 import { type WritableDeep } from 'type-fest';
+
+const { isArray } = Array;
 
 // TODO: get rid of xRegExp dep
 import XRegExp from 'xregexp';
@@ -74,8 +76,8 @@ export function createLexerDefinition(
 
   /** Build fragment replacements */
   const entries = Object.entries(rawTokens.modes);
-  entries.forEach(([mode, modeTokens]) => {
-    modeTokens.forEach((rawToken) => {
+  entries.forEach(([mode, modeTokens]: [string, ReadonlyArray<string | Readonly<RawToken>>]) => {
+    modeTokens.forEach((rawToken: string | Readonly<RawToken>) => {
       const addToken = (token: TokenType) => {
         if (lexer.modes[mode] === undefined) {
           lexer.modes[mode] = [token];
@@ -94,19 +96,17 @@ export function createLexerDefinition(
       if (pattern !== LexerType.NA) {
         const isUnknownToken = name === 'Unknown';
         if (!isUnknownToken && (!categories || (group !== LexerType.SKIPPED && !categories.includes('BlockMarker')))) {
-          if (!categories) {
-            categories = [];
-          } else {
-            /** Any non-blockmarker that's not an Identifier */
-            if (!categories.includes('Ident')) {
-              categories.push('NonIdent');
-            }
+          const cats: string[] = categories ? [...categories] : [];
+          /** Any non-blockmarker that's not an Identifier */
+          if (!cats.includes('Ident')) {
+            cats.push('NonIdent');
           }
-          categories.push('Value');
+          cats.push('Value');
+          categories = cats;
         }
         if (pattern instanceof RegExp) {
           regExpPattern = pattern;
-        } else if (Array.isArray(pattern)) {
+        } else if (isArray(pattern)) {
           regExpPattern = pattern[1].bind(XRegExp.build(pattern[0], fragments, 'yi'));
         } else {
           regExpPattern = XRegExp.build(pattern as string, fragments, 'i');
@@ -117,9 +117,9 @@ export function createLexerDefinition(
 
       const longerAlt = longer_alt
         ? {
-            longer_alt: Array.isArray(longer_alt)
-              ? longer_alt.map(val => T[val])
-              : T[longer_alt]
+            longer_alt: isArray(longer_alt)
+              ? longer_alt.map((val: string) => T[val])
+              : T[longer_alt as string]
           }
         : {};
       const groupValue = group === LexerType.SKIPPED
@@ -127,7 +127,7 @@ export function createLexerDefinition(
         : group ? { group } : {};
       const tokenCategories = categories
         ? {
-            categories: categories.map((category) => {
+            categories: categories.map((category: string) => {
               return T[category];
             })
           }

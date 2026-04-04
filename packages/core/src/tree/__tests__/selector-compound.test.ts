@@ -1,36 +1,45 @@
-import { compound, sel, el, pseudo, type SimpleSelector } from '..';
+import { any, compound, el, expr, pseudo } from '../index.js';
+import { Context } from '../../context.js';
+
+let context: Context;
 
 /**
  * @todo - add tests for list bubbling
  */
 describe('Compound Selector', () => {
+  beforeEach(() => {
+    context = new Context();
+  });
+
   describe('equality', () => {
     test('same value', () => {
-      let sel1 = compound([
+      let sel1 = (compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf();
-      let sel2 = compound([
+      ]) as any).valueOf();
+      let sel2 = (compound([
         el('a'),
         el('#id'),
         el('.class')
-      ]).valueOf();
+      ]) as any).valueOf();
       expect(sel1).toEqual(sel2);
     });
   });
 
   describe('keys', () => {
-    test('simple compound', () => {
+    test('simple compound', async () => {
       let sel1 = compound([
         el('a'),
         el('#id'),
         el('.class')
       ]);
-      expect([...sel1.keySet]).toEqual(['a', '#id', '.class']);
+      await sel1.eval(context);
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
-    test('nested compound', () => {
+    test('nested compound', async () => {
       /** :is(a)#id:is(.one.two) */
       const sel1 = pseudo({ name: ':is', arg: el('a') });
       let sel2 = compound([
@@ -39,8 +48,27 @@ describe('Compound Selector', () => {
         pseudo({ name: ':is', arg: compound([el('.two'), el('.one')]) })
       ]);
 
-      expect([...sel1.keySet]).toEqual(['a']);
-      expect([...sel2.keySet]).toEqual(['a', '#id', '.two', '.one']);
+      await sel2.eval(context);
+      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
+      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
+      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+    });
+  });
+
+  describe('evaluation', () => {
+    it('preserves compound serialization while evaluating nested selector children', async () => {
+      const node = compound([
+        el('button'),
+        pseudo({
+          name: ':not',
+          arg: expr(any('blue'))
+        })
+      ]);
+
+      const evald = await node.eval(context);
+
+      expect(evald.toTrimmedString({ context })).toBe('button:not(blue)');
     });
   });
 });

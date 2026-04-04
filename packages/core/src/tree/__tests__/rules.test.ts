@@ -11,30 +11,43 @@ import {
   call,
   ref,
   mixin,
+  fn,
+  condition,
+  expr,
   Node,
   type Rules,
+  List,
   AssignmentType,
   VarDeclaration,
   style,
   quoted,
+  atrule,
+  amp,
   type Declaration,
   type Selector
 } from '../index.js';
+import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { getChildren, getParent, getSourceParent, markScopeDirty, setChildren, setParent, setSourceParent } from '../util/field-helpers.js';
+import { N } from '../node-type.js';
+import { EVAL } from '../node.js';
+import { addEdgeAt, getParentEdge } from '../util/cursor.js';
 
 let context: Context;
 
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
+  opts.context = context;
   return n.find('declaration', key, 'Declaration', opts);
 }
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
+  opts.context = context;
   let decl = n.find('declaration', key, 'VarDeclaration', opts);
   return decl;
 }
@@ -81,14 +94,14 @@ describe('Rules', () => {
     node = await node.eval(context);
     let index = node.index;
     expect(index).toBe(0);
-    expect(node.at(1)?.index).toBeGreaterThan(index);
-    index = node.at(1)?.index ?? index;
-    expect(node.at(2)?.index).toBeGreaterThan(index);
-    index = node.at(2)?.index ?? index;
-    expect((node.at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
-    index = (node.at(2) as Rules).at(1)?.index ?? index;
-    expect((node.at(2) as Rules).at(2)?.index).toBeGreaterThan(index);
-    expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
+    expect(node.at(1, context)?.index).toBeGreaterThan(index);
+    index = node.at(1, context)?.index ?? index;
+    expect(node.at(2, context)?.index).toBeGreaterThan(index);
+    index = node.at(2, context)?.index ?? index;
+    expect((node.at(2, context) as Rules).at(0, context)?.index).toBeGreaterThan(index);
+    index = (node.at(2, context) as Rules).at(1, context)?.index ?? index;
+    expect((node.at(2, context) as Rules).at(2, context)?.index).toBeGreaterThan(index);
+    expect(((node.at(2, context) as Rules).at(2, context) as Rules).at(0, context)?.index).toBeGreaterThan(index);
   });
 
   describe('Scope / lookups', () => {
@@ -129,7 +142,7 @@ describe('Rules', () => {
         node = await node.eval(context);
         /** This won't have been resolved, so we need to evaluate it. */
         let result = await getVar(node, 'first')!.eval(context);
-        expect(`${result}`).toBe('$first: one');
+        expect(result.render(context)).toBe('$first: one');
       });
 
       // it('will skip normalization', () => {
@@ -169,7 +182,7 @@ describe('Rules', () => {
         let node = rules([
           style({ path: quoted(any('retry-target.jess')) }, { type: 'import' })
         ]);
-        const target = node.at(0);
+        const target = node.at(0, context);
         if (!target) {
           throw new Error('Expected first rule to exist');
         }
@@ -212,6 +225,187 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
+      });
+
+      it('characterizes shallow Rules clones as keeping canonical parentage while exposing shared top-level children through render-key parent edges', () => {
+        const ctx = new Context();
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const cloned = node.clone(false, undefined, ctx);
+        const clonedRuleset = cloned.at(0, context) as typeof nested;
+        const activeCtx = new Context();
+        activeCtx.renderKey = cloned.renderKey;
+
+        expect(clonedRuleset).toBe(nested);
+        expect(getParent(clonedRuleset, ctx)).toBe(node);
+        expect(getParent(clonedRuleset, activeCtx)).toBe(cloned);
+        expect(clonedRuleset.parent).toBe(node);
+        expect(clonedRuleset.get('rules')).toBe(nestedBody);
+        expect(clonedRuleset.get('rules').parent).toBe(clonedRuleset);
+        expect(clonedRuleset.get('rules').at(0, context)).toBe(nestedBody.at(0, context));
+      });
+
+      it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper state parent', () => {
+        const ctx = new Context();
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const wrapper = node.cloneDetachedUnlockWrapper(ctx);
+        const wrappedRuleset = wrapper.at(0, context) as typeof nested;
+
+        expect(wrapper).not.toBe(node);
+        expect(wrappedRuleset).toBe(nested);
+        expect(wrappedRuleset.parent).toBe(node);
+        expect(getParentEdge({ node: wrappedRuleset, renderKey: wrapper.renderKey })?.node).toBe(wrapper);
+        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
+      });
+
+      it('cloneVisibilityIsolationWrapper isolates rulesVisibility writes while keeping shared top-level children canonically parented', () => {
+        const ctx = new Context();
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+        node.options.rulesVisibility.VarDeclaration = 'optional';
+
+        const wrapper = node.cloneVisibilityIsolationWrapper(ctx);
+        const wrappedRuleset = wrapper.at(0, context) as typeof nested;
+
+        wrapper.options.rulesVisibility.VarDeclaration = 'private';
+
+        expect(wrapper.options).not.toBe(node.options);
+        expect(wrapper.options.rulesVisibility).not.toBe(node.options.rulesVisibility);
+        expect(wrapper.options.rulesVisibility.VarDeclaration).toBe('private');
+        expect(node.options.rulesVisibility.VarDeclaration).toBe('optional');
+        expect(wrappedRuleset.parent).toBe(node);
+        expect(getParentEdge({ node: wrappedRuleset, renderKey: wrapper.renderKey })?.node).toBe(wrapper);
+        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
+        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
+      });
+
+      it('createShallowBodyWrapper reuses the same top-level child array', () => {
+        const ctx = new Context();
+        const nestedBody = rules([
+          decl({ name: 'color', value: any('red') })
+        ]);
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: nestedBody
+        });
+        const node = rules([nested]);
+
+        const wrapper = node.createShallowBodyWrapper(ctx);
+
+        expect(wrapper).not.toBe(node);
+        expect(wrapper.value).toBe(node.value);
+        expect(wrapper.renderKey).toBe(EVAL);
+        expect(wrapper.at(0, context)).toBe(nested);
+        expect(getParentEdge({ node: nested, renderKey: wrapper.renderKey })?.node).toBe(wrapper);
+        expect(nested.parent).toBe(node);
+      });
+
+      it('render-key child replacement on a shallow wrapper updates parentEdges without corrupting canonical parentage', () => {
+        const ctx = new Context();
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+        const node = rules([nested]);
+        const wrapper = node.createShallowBodyWrapper(ctx);
+        const replacement = ruleset({
+          selector: sel([el('.other')]),
+          rules: rules([
+            decl({ name: 'color', value: any('blue') })
+          ])
+        });
+
+        ctx.renderKey = wrapper.renderKey;
+        setChildren(wrapper, [replacement], ctx, { markDirty: false });
+
+        expect(wrapper.value[0]).toBe(replacement);
+        expect(getParent(replacement, ctx)).toBe(wrapper);
+        expect(getParent(nested, ctx)).toBe(node);
+        expect(node.value[0]).toBe(nested);
+      });
+
+      it('characterizes returned param-mixin nested bodies as correctly parented and already source-rooted in provenance', async () => {
+        const paramMixin = mixin({
+          name: any('.with-param'),
+          params: new List([
+            vardecl({ name: 'shade', value: any('red') }, { paramVar: true })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.item')]),
+              rules: rules([
+                decl({ name: 'color', value: ref({ key: 'shade' }, { type: 'variable' }) })
+              ])
+            })
+          ])
+        });
+        const node = rules([
+          paramMixin,
+          call({
+            name: ref({ key: '.with-param' }, { type: 'mixin' }),
+            args: new List([any('blue')])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(evald.toTrimmedString({ context })).toContain('.item {\n  color: blue;\n}');
+      });
+
+      it('guarded mixin passes guard check and produces correct output', async () => {
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            params: new List([
+              any('color', { role: 'property' })
+            ]),
+            guard: condition([
+              expr(ref({ key: 'color' }, { type: 'variable' })),
+              '=',
+              any('blue')
+            ]),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.inner')]),
+                rules: rules([
+                  decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+                ])
+              })
+            ])
+          }),
+          call({
+            name: ref({ key: '.guarded' }, { type: 'mixin' }),
+            args: new List([any('blue')])
+          })
+        ]);
+        const ctx = new Context();
+        const evald = await root.eval(ctx);
+
+        expect(evald.toTrimmedString({ context: ctx })).toContain('.inner');
+        expect(evald.toTrimmedString({ context: ctx })).toContain('color: blue');
       });
 
       it('peeks into optional child scope', async () => {
@@ -307,11 +501,11 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, 'VarDeclaration') && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.get('name').valueOf() === 'var' && n.get('value').valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
-          expect(`${result}`).toBe('$var: second');
+          expect(result.render(context)).toBe('$var: second');
         }
       });
 
@@ -391,12 +585,12 @@ describe('Rules', () => {
         expect(`${getVar(node, 'var')}`).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, 'VarDeclaration') && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.get('name').valueOf() === 'var' && n.get('value').valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
           // Should find root-second (before start), not optional value
-          expect(`${result}`).toBe('$var: root-second');
+          expect(result.render(context)).toBe('$var: root-second');
         }
       });
 
@@ -487,7 +681,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        let inherited = node.at(1);
+        let inherited = node.at(1, context);
         expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one: three');
       });
 
@@ -501,7 +695,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        let inherited = node.at(1);
+        let inherited = node.at(1, context);
         expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one: three');
       });
 
@@ -515,7 +709,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
-        let inherited = node.at(1);
+        let inherited = node.at(1, context);
         expect(`${getVar(node, 'one')}`).toBe('$one: three');
         expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one := three');
       });
@@ -544,14 +738,14 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         // The first rule should use the original value (red) - setDefined shouldn't affect earlier references
-        let firstRule = node.at(1) as Rules; // First rule (background)
-        let firstDecl = firstRule.at(0) as Declaration;
+        let firstRule = node.at(1, context) as Rules; // First rule (background)
+        let firstDecl = firstRule.at(0, context) as Declaration;
         let firstResult = await firstDecl.eval(context);
         expect(`${firstResult}`).toBe('background: red');
 
         // The last rule should also use the updated value (blue)
-        let lastRule = node.at(3) as Rules; // Last rule (border-color)
-        let lastDecl = lastRule.at(0) as Declaration;
+        let lastRule = node.at(3, context) as Rules; // Last rule (border-color)
+        let lastDecl = lastRule.at(0, context) as Declaration;
         let lastResult = await lastDecl.eval(context);
         expect(`${lastResult}`).toBe('border-color: blue');
 
@@ -631,70 +825,70 @@ describe('Rules', () => {
 
         // Structure after eval: [vardecl (0), mixin (1), boxRuleset (2), box2Ruleset (3), box3Ruleset (4)]
         // Access rulesets directly by index
-        let boxRuleset = node.at(2);
-        if (!boxRuleset || !isNode(boxRuleset, 'Ruleset')) {
+        let boxRuleset = node.at(2, context);
+        if (!boxRuleset || !isNode(boxRuleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
         // After evaluation, rulesets are still Rulesets, access via .value.rules
-        let boxRules = boxRuleset.value.rules;
+        let boxRules = boxRuleset.get('rules');
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
         // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
-        if (!isNode(boxRules, 'Rules')) {
+        if (!isNode(boxRules, N.Rules)) {
           throw new Error(`Expected Rules, got ${(boxRules as any)?.type || 'undefined'}`);
         }
         expect(boxRules.value.length).toBe(2);
 
         // First declaration: color: $color
-        let boxDecl1 = await boxRules.at(0)!.eval(context);
+        let boxDecl1 = await boxRules.at(0, context)!.eval(context);
         expect(`${boxDecl1}`).toBe('color: red');
 
         // Second: mixin call
-        let boxMixinCall = boxRules.at(1);
+        let boxMixinCall = boxRules.at(1, context);
         if (!boxMixinCall) {
           throw new Error('Expected mixin call at index 1');
         }
         let boxMixinResult = await boxMixinCall.eval(context);
         // Mixin call returns Rules containing the mixin's rules
-        if (!isNode(boxMixinResult, 'Rules')) {
+        if (!isNode(boxMixinResult, N.Rules)) {
           throw new Error('Expected mixin call to return Rules');
         }
         let boxMixinRules = boxMixinResult;
         expect(boxMixinRules.value.length).toBeGreaterThan(0);
-        let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
+        let boxMixinDecl = await boxMixinRules.at(0, context)!.eval(context);
         expect(`${boxMixinDecl}`).toBe('color: red');
 
         // Find the .box3 ruleset (index 4)
-        let box3Ruleset = node.at(4);
-        if (!box3Ruleset || !isNode(box3Ruleset, 'Ruleset')) {
+        let box3Ruleset = node.at(4, context);
+        if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.value.rules;
+        let box3Rules = box3Ruleset.get('rules');
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
-        if (!isNode(box3Rules, 'Rules')) {
+        if (!isNode(box3Rules, N.Rules)) {
           throw new Error(`Expected Rules, got ${(box3Rules as any)?.type || 'undefined'}`);
         }
         expect(box3Rules.value.length).toBe(2);
 
         // First declaration: color: $color
-        let box3Decl1 = await box3Rules.at(0)!.eval(context);
+        let box3Decl1 = await box3Rules.at(0, context)!.eval(context);
         expect(`${box3Decl1}`).toBe('color: blue');
 
         // Second: mixin call
-        let box3MixinCall = box3Rules.at(1);
+        let box3MixinCall = box3Rules.at(1, context);
         if (!box3MixinCall) {
           throw new Error('Expected mixin call at index 1');
         }
         let box3MixinResult = await box3MixinCall.eval(context);
-        if (!isNode(box3MixinResult, 'Rules')) {
+        if (!isNode(box3MixinResult, N.Rules)) {
           throw new Error('Expected mixin call to return Rules');
         }
         let box3MixinRules = box3MixinResult;
         expect(box3MixinRules.value.length).toBeGreaterThan(0);
-        let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
+        let box3MixinDecl = await box3MixinRules.at(0, context)!.eval(context);
         // With call-time resolution ($~color), the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
         expect(`${box3MixinDecl}`).toBe('color: blue');
@@ -821,8 +1015,8 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: one');
-        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$one: two');
+        expect(`${getVar(node, 'one', { start: node.at(1, context)?.index })}`).toBe('$one: one');
+        expect(`${getVar(node, 'one', { start: node.at(2, context)?.index })}`).toBe('$one: two');
         expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
       });
 
@@ -844,9 +1038,9 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         // child1.jess should see child2.jess's vars because it owns the `@use`
-        expect(`${getVar(node.at(0) as Rules, 'one')}`).toBe('$one: two');
+        expect(`${getVar(node.at(0, context) as Rules, 'one')}`).toBe('$one: two');
         // child1.jess can still see its own vars
-        expect(`${getVar(node.at(0) as Rules, 'foo')}`).toBe('$foo: bar');
+        expect(`${getVar(node.at(0, context) as Rules, 'foo')}`).toBe('$foo: bar');
         // root.jess can see child1.jess's vars but not child2.jess's
         expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
         expect(getVar(node, 'one')).toBeUndefined();
@@ -884,6 +1078,194 @@ describe('Rules', () => {
       })
     ]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+    expect(evald.render(context)).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+  });
+
+  // Deleted: registry cache tests — tested globalRegistryCache infrastructure
+  // which was removed in the NodeState-scoped registry refactor.
+
+  describe.skip('eval state registry delta — registry deltas removed with EvalSession', () => {
+    it('prefers state-only declaration entries over the canonical cache', () => {
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+      const ctx = new Context();
+      const injected = vardecl({ name: 'bar', value: any('baz') });
+
+      root.getRegistry('declaration');
+      root.register('declaration', injected, ctx);
+
+      expect(root.find('declaration', 'bar', 'VarDeclaration', {
+        context: ctx,
+        searchParents: false
+      })).toBe(injected);
+      expect(root.find('declaration', 'bar', 'VarDeclaration', {
+        searchParents: false
+      })).toBeUndefined();
+    });
+
+    it('clears state-only registry entries when the scope is marked dirty', () => {
+      const root = rules([
+        vardecl({ name: 'foo', value: any('bar') })
+      ]);
+      const ctx = new Context();
+      const injected = vardecl({ name: 'bar', value: any('baz') });
+
+      root.getRegistry('declaration');
+      root.register('declaration', injected, ctx);
+      markScopeDirty(root, ctx);
+
+      expect(root.find('declaration', 'bar', 'VarDeclaration', {
+        context: ctx,
+        searchParents: false
+      })).toBeUndefined();
+    });
+
+    it('keeps canonical parent pointers intact when unshifting shared nodes', () => {
+      const shared = vardecl({ name: 'foo', value: any('bar') });
+      const source = rules([shared]);
+      const target = rules([]);
+      const ctx = new Context();
+      target.unshift(ctx, shared);
+
+      expect(shared.parent).toBe(source);
+      expect(getParent(shared, ctx)).toBe(target);
+    });
+
+    it('keeps canonical parent pointers intact when splicing shared nodes', () => {
+      const shared = vardecl({ name: 'foo', value: any('bar') });
+      const source = rules([shared]);
+      const target = rules([]);
+      const ctx = new Context();
+      target.splice(ctx, 0, 0, shared);
+
+      expect(shared.parent).toBe(source);
+      expect(getParent(shared, ctx)).toBe(target);
+    });
+
+    it('keeps canonical children intact when unshifting', () => {
+      const original = vardecl({ name: 'foo', value: any('bar') });
+      const inserted = vardecl({ name: 'bar', value: any('baz') });
+      const target = rules([original]);
+      const ctx = new Context();
+      target.unshift(ctx, inserted);
+
+      expect(target.value).toHaveLength(1);
+      expect(target.at(0, context)).toBe(original);
+      expect(target.at(0, ctx)).toBe(inserted);
+      expect(target.at(1, ctx)).toBe(original);
+      expect(inserted.parent).toBeUndefined();
+      expect(getParent(inserted, ctx)).toBe(target);
+    });
+
+    it('keeps canonical children intact when splicing', () => {
+      const original = vardecl({ name: 'foo', value: any('bar') });
+      const replacement = vardecl({ name: 'bar', value: any('baz') });
+      const target = rules([original]);
+      const ctx = new Context();
+      const removed = target.splice(ctx, 0, 1, replacement);
+
+      expect(removed).toEqual([original]);
+      expect(target.value).toHaveLength(1);
+      expect(target.at(0, context)).toBe(original);
+      expect(target.at(0, ctx)).toBe(replacement);
+      expect(replacement.parent).toBeUndefined();
+      expect(getParent(replacement, ctx)).toBe(target);
+    });
+
+    it('preEval keeps charset replacement parented only in the eval state', async () => {
+      const charset = any('@charset "utf-8"', { role: 'charset' });
+      const root = rules([charset]);
+      const ctx = new Context();
+      const preEvald = await root.preEval(ctx);
+      const replaced = preEvald.at(0, ctx);
+
+      expect(isNode(replaced as Node, N.Nil)).toBe(true);
+      expect(getParent(replaced as Node, ctx)).toBe(root);
+      expect((replaced as Node).parent).toBeUndefined();
+      expect(preEvald.at(0, context)).toBe(charset);
+      expect(root.value[0]).toBe(charset);
+      expect(ctx.currentCharset).toBe(charset);
+    });
+    it('coalesces merged declarations using state-parent scope boundaries', async () => {
+      const base = decl({ name: 'color', value: any('red') });
+      const merged = decl(
+        { name: 'color', value: any('blue') },
+        { assign: AssignmentType.Add }
+      );
+      const root = rules([base, merged]);
+      const foreignScope = rules([]);
+      const ctx = new Context();
+      const preEvald = await root.preEval(ctx);
+      const mergedPreEvald = preEvald.at(1, ctx);
+      if (!mergedPreEvald) {
+        throw new Error('Expected merged declaration at index 1');
+      }
+      setParent(mergedPreEvald, foreignScope, ctx);
+
+      const evald = await preEvald.eval(ctx);
+      const mergedEvald = evald.at(1, ctx);
+
+      expect(mergedEvald?.toTrimmedString({ context: ctx })).toBe('color: red, blue');
+      expect(merged.toTrimmedString()).toContain('+:');
+    });
+
+    it('preEval keeps cloned Rules parents in the eval state on eval reset', async () => {
+      const child = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const root = rules([child]);
+      const ctx = new Context();
+      const preEvald = await child.preEval(ctx);
+
+      expect(preEvald).not.toBe(child);
+      expect(getParent(preEvald as Rules, ctx)).toBe(root);
+      expect((preEvald as Rules).parent).toBeUndefined();
+    });
+
+    it('preEval detects nestable at-rule wrappers through the state parent chain', async () => {
+      const wrapper = rules([
+        ruleset({
+          selector: amp(),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ]);
+      const media = atrule({
+        name: any('@media', { role: 'atkeyword' }),
+        prelude: any('screen')
+      });
+      const ctx = new Context();
+      setParent(wrapper, media, ctx);
+      const preEvald = await wrapper.preEval(ctx);
+
+      expect(preEvald).toBe(wrapper);
+      expect(getParent(wrapper, ctx)).toBe(media);
+      expect(wrapper.parent).toBeUndefined();
+    });
+
+    it('reorders call-produced declaration-only Rules using the state sourceParent without mutating canonical children', () => {
+      const nested = ruleset({
+        selector: sellist([sel([el('.nested')])]),
+        rules: rules([
+          decl({ name: any('color'), value: any('red') })
+        ])
+      });
+      const callProduced = rules([
+        decl({ name: any('margin'), value: any('0') })
+      ]);
+      const root = rules([nested, callProduced]);
+      const caller = call({ name: any('each') });
+      const ctx = new Context();
+      setSourceParent(callProduced, caller, ctx);
+      (root as any)._normalizeCallDeclarationRulesOrder(root, ctx);
+
+      expect(getSourceParent(callProduced, ctx)).toBe(caller);
+      expect(callProduced.sourceParent).toBeUndefined();
+      expect(getChildren(root, ctx)[0]).toBe(callProduced);
+      expect(root.value[0]).toBe(nested);
+      expect(root.value[1]).toBe(callProduced);
+    });
   });
 });

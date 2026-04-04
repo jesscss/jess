@@ -1,14 +1,14 @@
 /**
  * Sass map.keys() function
- * 
+ *
  * Returns a list of all keys in a map.
- * 
+ *
  * @example
  * map.keys((a: 1, b: 2)) // a, b
  */
 import { defineFunction, Collection, List, Declaration, Any, Quoted, type Context } from '@jesscss/core';
 import type { FunctionThis } from '@jesscss/core';
-import { isNode } from '@jesscss/core';
+import { isNode, N } from '@jesscss/core';
 
 const keys = defineFunction(
   'keys',
@@ -16,9 +16,9 @@ const keys = defineFunction(
     // Get all declarations from the collection
     const keyNodes: any[] = [];
     for (const node of map.value) {
-      if (isNode(node, 'Declaration')) {
+      if (isNode(node, N.Declaration)) {
         // The key is the declaration's name - convert to a Node
-        const name = node.value.name;
+        const name = node.get('name');
         // If it's already a Node (Any or Interpolated), use it directly
         // Otherwise wrap it in a Quoted node
         if (name instanceof Any || (name as any).type) {

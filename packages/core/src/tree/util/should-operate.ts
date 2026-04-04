@@ -1,6 +1,7 @@
 import type { MathMode } from '../../types/modes.js';
 import type { Operator } from './calculate.js';
 import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import type { Node } from '../node.js';
 
 export type MathFrameState = {
@@ -37,9 +38,9 @@ export function shouldOperateWithMathFrames(
 
   if (inCalc) {
     /** Only collapse safe units */
-    if (isNode(left, 'Dimension') && isNode(right, 'Dimension')) {
-      const lUnit = left.value.unit;
-      const rUnit = right.value.unit;
+    if (isNode(left, N.Dimension) && isNode(right, N.Dimension)) {
+      const lUnit = left.unit;
+      const rUnit = right.unit;
       if ((op === '+' || op === '-') && lUnit === rUnit) {
         return true;
       }
@@ -53,6 +54,13 @@ export function shouldOperateWithMathFrames(
       }
     }
 
+    return false;
+  }
+
+  // Preserve CSS/Less slash syntax such as `font: small/20px` even under
+  // aggressive math modes. Keyword-like `Any` operands are overwhelmingly
+  // shorthand/value syntax, not arithmetic.
+  if (op === '/' && (isNode(left, N.Any) || isNode(right, N.Any))) {
     return false;
   }
 

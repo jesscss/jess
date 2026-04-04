@@ -112,6 +112,7 @@ export default tseslint.config([
       '@typescript-eslint/no-confusing-void-expression': 'off',
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
+      '@typescript-eslint/no-unsafe-type-assertion': 'error',
       // Enforce runtime-correct ESM specifiers in TS source:
       // - relative imports must include `.js`
       // - directory imports like `./foo` are banned; use `./foo/index.js`

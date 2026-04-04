@@ -1,28 +1,34 @@
 import { expectFlags, DEFAULT_VARIABLE } from './helpers.js';
 import { rules, ruleset, sellist, sel, el, decl, any, list, num, op, call, ref, type Ruleset, type Declaration, type List, type Call, type Operation } from '../src/index.js';
 
-// Helper function to find a node by type
+// Helper function to find a node by type using childKeys for safe traversal
 function findNodeByType(node: any, type: string): any {
+  if (!node || typeof node !== 'object') {
+    return null;
+  }
   if (node.type === type) {
     return node;
   }
-
-  if (node.value) {
-    if (Array.isArray(node.value)) {
-      for (const child of node.value) {
+  const childKeys: string[] | null = node.constructor?.childKeys ?? null;
+  if (childKeys === null) {
+    return null;
+  }
+  for (const key of childKeys) {
+    const field = node[key];
+    if (Array.isArray(field)) {
+      for (const child of field) {
         const found = findNodeByType(child, type);
         if (found) {
           return found;
         }
       }
-    } else if (typeof node.value === 'object') {
-      const found = findNodeByType(node.value, type);
+    } else if (field && typeof field === 'object' && 'type' in field) {
+      const found = findNodeByType(field, type);
       if (found) {
         return found;
       }
     }
   }
-
   return null;
 }
 
@@ -44,7 +50,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the first declaration (color: red)
-    const declaration = rulesetNode.value.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     expect(declaration).toBeDefined();
     expect(declaration.type).toBe('Declaration');
 
@@ -69,7 +75,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the first declaration (color: @var)
-    const declaration = rulesetNode.value.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     expect(declaration).toBeDefined();
     expect(declaration.type).toBe('Declaration');
 
@@ -93,7 +99,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the declaration with the operation
-    const declaration = rulesetNode.value.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     const operation = findNodeByType(declaration, 'Operation');
     expect(operation).toBeDefined();
     expect(operation!.type).toBe('Operation');
@@ -118,7 +124,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // Get the declaration with the function call
-    const declaration = rulesetNode.value.rules.value[0]! as Declaration;
+    const declaration = rulesetNode.get('rules').value[0]! as Declaration;
     const callNode = findNodeByType(declaration, 'Call');
     expect(callNode).toBeDefined();
     expect(callNode!.type).toBe('Call');
@@ -143,7 +149,7 @@ describe('Static optimization', () => {
     const rulesetNode = tree.value[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
-    const declarations = rulesetNode.value.rules.value;
+    const declarations = rulesetNode.get('rules').value;
 
     // Get the List node (shadow: 1px, 2px)
     const listDeclaration = declarations[0]! as Declaration;
@@ -171,7 +177,7 @@ describe('Static optimization', () => {
     const rulesetNode = tree.value[0]! as Ruleset;
     expect(rulesetNode).toBeDefined();
 
-    const declarations = rulesetNode.value.rules.value;
+    const declarations = rulesetNode.get('rules').value;
 
     // Get the List node (shadow: 1px, @var, 3px)
     const listDeclaration = declarations[0]! as Declaration;
@@ -204,7 +210,7 @@ describe('Static optimization', () => {
     // The ruleset should have mayAsync flags due to dynamic content
     expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC
 
-    const declarations = rulesetNode.value.rules.value;
+    const declarations = rulesetNode.get('rules').value;
 
     // Static declarations should remain static
     expectFlags(declarations[0]!, true, false); // color: red

@@ -1,17 +1,19 @@
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 /**
  * Imports of TS/JS ESM modules.
  *
- * `@-use 'foo.js' as foo;`
+ * `@-from 'foo.js' import ( name, ... );` or `@-from 'foo.js' import * as ns;`
  */
 
 type JsImportSpecifier = string | [string, string] | { name: string; alias?: string };
 
 export type JsImportOptions = {
-  /** e.g. `@-use 'foo.js' as foo` sets namespace to `foo` */
+  /** e.g. `@-from 'foo.js' import * as foo` sets namespace to `foo` */
   namespace?: string;
   /**
    * - In array,
@@ -26,36 +28,90 @@ export type JsImportValue = {
   imports?: JsImportSpecifier[];
 };
 
-export class JsImport extends Node<JsImportValue, JsImportOptions> {
-  type = 'JsImport' as const;
-  shortType = 'js' as const;
+export type JsImportChildData = { path: Quoted; imports: JsImportSpecifier[] | undefined };
+
+export interface JsImport {
+  type: 'JsImport';
+  shortType: 'js';
+}
+export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChildData> {
+  static override childKeys = ['path', 'imports'] as const;
+
+  path!: Quoted;
+  imports: JsImportSpecifier[] | undefined;
 
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // JS imports are always non-static and may be async
+    this.path = value.path;
+    this.imports = value.imports;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override evalNode(context: Context): MaybePromise<JsImport> {
+    const path = this.get('path', context);
+    const finish = (nextPath: Quoted): JsImport => {
+      const out = this.clone() as JsImport;
+      if (nextPath !== path) {
+        out.path = nextPath;
+      }
+      return out;
+    };
+    const maybeEvald = path.eval(context);
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Quoted>).then(finish);
+    }
+    return finish(maybeEvald as Quoted);
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.value;
+    const context = options.context;
+    const path = this.get('path', context);
     const { namespace } = this.options;
-    const imports = this.value.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this.get('imports', context) ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
-    w.add('@-use ');
+    w.add('@-from ');
     path.toString(options);
+
+    // Named imports: `import ( name, name as alias, ... )`
+    const namedImports = imports?.filter((s) => {
+      if (typeof s === 'string') {
+        return true;
+      }
+      if (Array.isArray(s)) {
+        return s[0] !== '*';
+      }
+      return s.name !== '*';
+    });
+    if (namedImports?.length) {
+      const parts = namedImports.map((s) => {
+        if (typeof s === 'string') {
+          return s;
+        }
+        if (Array.isArray(s)) {
+          return `${s[0]} as ${s[1]}`;
+        }
+        return s.alias ? `${s.name} as ${s.alias}` : s.name;
+      });
+      w.add(` import ( ${parts.join(', ')} )`);
+    }
+
+    // Namespace import: `import * as ns`
     let explicitNamespace = namespace;
     if (!explicitNamespace && imports?.length) {
       const nsSpec = imports.find((specifier) => {
-        if (typeof specifier === 'string') {
-          return false;
-        }
         if (Array.isArray(specifier)) {
           return specifier[0] === '*';
         }
-        return specifier.name === '*';
+        if (typeof specifier !== 'string') {
+          return specifier.name === '*';
+        }
+        return false;
       });
       if (nsSpec) {
         explicitNamespace = Array.isArray(nsSpec)
@@ -64,7 +120,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
       }
     }
     if (explicitNamespace) {
-      w.add(` as ${explicitNamespace}`);
+      w.add(` import * as ${explicitNamespace}`);
     }
     w.add(';');
     return w.getSince(mark);

@@ -3,9 +3,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
-import type { IParseResult } from './types/index.js';
-import type { ILexingResult } from 'chevrotain';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**
@@ -26,6 +24,10 @@ export type ISafeParseResult = {
    * Always an array (empty if no warnings).
    */
   warnings: WarningDiagnostic[];
+};
+
+export type PluginParseOptions = {
+  compilerOptions?: Record<string, any>;
 };
 
 export interface PluginInterface {
@@ -79,10 +81,10 @@ export interface PluginInterface {
    * If we have the extension in `supportedExtensions`, and this method exists,
    * then this plugin is assumed to be able to parse the file.
    */
-  parse?(filePath: string, source: string): Rules;
+  parse?(filePath: string, source: string, options?: PluginParseOptions): Rules;
 
   /** No errors thrown; instead will return errors in the result */
-  safeParse?(filePath: string, source: string): ISafeParseResult;
+  safeParse?(filePath: string, source: string, options?: PluginParseOptions): ISafeParseResult;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
@@ -93,6 +95,8 @@ export interface PluginInterface {
   preEvalVisitor?: Visitor | Visitor[];
   /** Post-eval visitor(s) - called after node.eval() (alternative to visitor for clarity) */
   postEvalVisitor?: Visitor | Visitor[];
+  /** Optional cleanup hook for plugins that manage external resources */
+  dispose?(): void;
 }
 
 const { isArray } = Array;
@@ -126,7 +130,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     try {
       const result = await readFile(absoluteFilePath, 'utf8');
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
   }
@@ -142,16 +146,16 @@ export abstract class AbstractPlugin implements PluginInterface {
     return null;
   }
 
-  parse(filePath: string, source: string): Rules {
-    const safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
+  parse(filePath: string, source: string, options?: PluginParseOptions): Rules {
+    const safeParse: PluginInterface['safeParse'] = (this as PluginInterface).safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }
-    const { tree, errors } = safeParse.call(this, filePath, source);
+    const { tree, errors } = safeParse.call(this, filePath, source, options);
     if (errors.length > 0) {
       const firstError = errors[0]!;
       throw new JessError({
-        code: firstError.code as any,
+        code: firstError.code,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,

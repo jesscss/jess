@@ -6,8 +6,10 @@
  *
  * Status (as of 2025-02):
  * 1. extend-clearfix.less – FIXED. Document order in :is() now :is(.clearfix, .foo, .bar):after.
- * 2. extend-exact.less – Test 2a is the canonical case (replace + rep_ace, exact extend) but currently FAILS (:is() not emitted).
- *    Test 2 (full) used ExtendFlag.All for rep_ace, so it passed while asserting wrong behavior; real Less uses exact extend.
+ * 2. extend-exact.less – Test 2a is the canonical exact case (replace + rep_ace).
+ *    Exact extend keeps the rule nested and appends `.rep_ace` into the local selector list,
+ *    rather than hoisting a generated `:is(...)` route.
+ *    Test 2 (full) still uses ExtendFlag.All for rep_ace to cover the partial/`!all` shape.
  *    &:extend(.c) without "all" must NOT merge .effected into the first rule (no exact .c there). 2a includes .effected to assert that.
  * 3. extend-nest.less – FAILING. :is(.sidebar,...) .box and .submit:hover merged (we output .sidebar .box; .submit vs .submit:hover).
  * 4. extend-selector.less – FAILING. [data="test3"], .attribute-test both extend attributes2 (nesting/selector list shape).
@@ -17,6 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
+import { LessParser } from '../../../../less-parser/src/index.ts';
 import {
   any,
   amp,
@@ -83,7 +86,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   it('1a. extend-clearfix with nesting – nested &:after inside block', async () => {
     const context = new Context({ collapseNesting: false });
     const evald = await createExtendClearfixAst().eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(
       `.clearfix,
 .foo,
@@ -108,7 +111,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   it('1b. extend-clearfix without nesting – flat :is(...):after (Less-style)', async () => {
     const context = new Context({ collapseNesting: true });
     const evald = await createExtendClearfixAst().eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(
       `.clearfix,
 .foo,
@@ -134,7 +137,8 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
    * ISOLATED: First rule of extend-exact (replace + rep_ace, exact extend). Plus .effected { &:extend(.c) } to assert
    * that exact extend does NOT merge .effected into this rule (there is no bare .c here; only .replace.replace, .c.replace + .replace, .replace, .c).
    * Input: .replace.replace, .c.replace + .replace { .replace, .c { prop: copy-paste-replace } }; .rep_ace:extend(.replace.replace .replace) {}; .effected { &:extend(.c); }
-   * Expected: First rule :is(.replace.replace, .c.replace + .replace) :is(.replace, .c), .rep_ace { ... }; .effected must NOT appear in that rule.
+   * Expected: keep the original parent selector nested and append `.rep_ace`
+   * into the inner `.replace, .c` list. `.effected` must NOT appear in that rule.
    */
   it('2a. extend-exact ISOLATED – replace + rep_ace only (first rule); .effected &:extend(.c) must not apply', async () => {
     const root = rules([
@@ -166,7 +170,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
 .rep_ace {
   prop: copy-paste-replace;
@@ -206,7 +210,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ])
       }),
       ruleset({
-        selector: sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]),
+        selector: sel([el('.a'), co(' '), el('.b'), co(' '), el('.c')]) as any,
         rules: rules([decl({ name: 'prop', value: any('not_effected') })])
       }),
       ruleset({
@@ -269,7 +273,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(`
 :is(.replace, .rep_ace):is(.replace, .rep_ace),
 .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
@@ -400,7 +404,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         ])
       }),
       ruleset({
-        selector: sel([el('.button2'), co(' '), el(':hover')]),
+        selector: sel([el('.button2'), co(' '), el(':hover')]) as any,
         rules: rules([decl({ name: 'notnested', value: any('black') })])
       }),
       ruleset({
@@ -417,14 +421,14 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
               el('.amp-test-c'),
               co(' '),
               compound([amp(), el('.amp-test-d'), amp(), el('.amp-test-e')])
-            ]),
+            ]) as any,
             rules: rules([
               ruleset({
                 selector: sel([
                   compound([el('.amp-test-f'), amp()]),
                   co('+'),
                   compound([amp(), el('.amp-test-g')])
-                ]),
+                ]) as any,
                 rules: rules([extend({ target: el('.amp-test-h') })])
               })
             ])
@@ -437,7 +441,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
       })
     ]);
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(`
 .sidebar,
 .sidebar2,
@@ -480,6 +484,40 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }`.trim());
   });
 
+  it('3b. parser-backed nested wrapped extend keeps parent context for &:hover', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+.button {
+  color: black;
+  &:hover {
+    color: inherit;
+  }
+}
+.submit {
+  &:extend(.button);
+  &:hover:extend(.button:hover) {}
+}
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    const context = new Context({ collapseNesting });
+    context.root = tree;
+    const evald = await tree.eval(context);
+    const css = evald.render(context);
+
+    expect(css.trim()).toBeString(`
+.button,
+.submit {
+  color: black;
+}
+:is(.button, .submit):hover,
+.submit:hover {
+  color: inherit;
+}
+    `.trim());
+  });
+
   /**
    * 4. extend-selector.less – full fixture parity for all-less failing shape.
    */
@@ -496,7 +534,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
         rules: rules([decl({ name: 'display', value: any('none') })])
       }),
       ruleset({
-        selector: sel([el('.ext1'), co(' '), el('.ext2')]),
+        selector: sel([el('.ext1'), co(' '), el('.ext2')]) as any,
         rules: rules([extend({ target: el('.foo'), flag: ExtendFlag.All })])
       }),
       ruleset({
@@ -615,7 +653,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
             rules: rules([
               extend({ target: el('.issue-2586-bordered') }),
               ruleset({
-                selector: sel([amp(), co('>'), el('span')]),
+                selector: sel([amp(), co('>'), el('span')]) as any,
                 rules: rules([decl({ name: 'margin-bottom', value: any('10px') })])
               })
             ])
@@ -625,7 +663,11 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
+    /**
+     * @todo - this is wrong / inefficient and a regression.
+     * :is(.bar, .baz) should be grouped
+     */
     expect(css.trim()).toBeString(`
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {
@@ -692,10 +734,40 @@ div:is(.ext5, .ext7),
 `.trim());
   });
 
+  it('4b. parser-backed extend-selector attribute interpolation resolves before extend matching', async () => {
+    const parser = new LessParser();
+    const { tree, errors } = parser.parse(`
+      .attributes {
+        @attr-data: "test3";
+        [data=@{attr-data}] {
+          extend: attributes2;
+        }
+        .attribute-test {
+          &:extend([data="test3"] all);
+        }
+      }
+    `);
+
+    expect(errors).toHaveLength(0);
+
+    const context = new Context({ collapseNesting: false });
+    context.root = tree;
+    const evald = await tree.eval(context);
+    const css = evald.render(context);
+
+    expect(css.trim()).toBeString(`
+.attributes {
+  [data="test3"],
+  .attribute-test {
+    extend: attributes2;
+  }
+}
+    `.trim());
+  });
+
   /**
    * 5. extend.less – .aa .dd, .bb .bb, .cc:extend(.aa,.bb), .ee:extend(.dd all,.bb), .ff:extend(.dd,.bb all)
    * Expected: .aa,.cc { .dd,.ee,.ff { background: red } }; .bb,.cc,.ee,.ff { .bb,.ff { color: black } }
-   * Current: .ee missing from first block; .cc wrongly in second inner
    */
   it('5. extend.less – .aa/.cc .dd/.ee/.ff and .bb/.cc/.ee/.ff .bb/.ff', async () => {
     const root = rules([
@@ -743,7 +815,7 @@ div:is(.ext5, .ext7),
     ]);
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(`
 .aa,
 .cc {

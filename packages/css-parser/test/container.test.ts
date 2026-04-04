@@ -68,8 +68,8 @@ describe('@container at-rule parsing and serialization', () => {
     const { tree, errors } = cssParser.parse('@container not (width < 400px) { .card { font-size: 1.2rem; } }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.value.prelude;
-    const queryNode = prelude.value ? prelude.value[0] : prelude;
+    const prelude = atRule.prelude;
+    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
     expect(queryNode.value[0].value).toBe('not');
@@ -78,6 +78,16 @@ describe('@container at-rule parsing and serialization', () => {
     expect(out).toContain('AtRule');
     expect(out).toContain('@container');
     expect(out).toContain('QueryCondition');
+    expect(out).toContainString(`
+      prelude: 
+        (Sequence
+          [
+            (QueryCondition
+              [
+                (Keyword [role=keyword] 'not')
+                (Paren
+                  (QueryCondition
+      `);
   });
 
   test('container query with nested conditions', () => {
@@ -158,8 +168,8 @@ describe('@container at-rule parsing and serialization', () => {
     const { tree, errors } = cssParser.parse('@container (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.value.prelude;
-    const queryNode = prelude.value[0];
+    const prelude = atRule.prelude;
+    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     const out = serializeTypes(tree);
     expect(queryNode.type).toBe('Paren');
     expect(queryNode.value.type).toBe('QueryCondition');
@@ -174,8 +184,8 @@ describe('@media at-rule - QueryCondition parsing', () => {
     const { tree, errors } = cssParser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.value.prelude;
-    const queryNode = Array.isArray(prelude.value) ? prelude.value[0] : prelude;
+    const prelude = atRule.prelude;
+    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     const out = serializeTypes(tree);
     if (queryNode) {
       expect(queryNode.type).toBe('Paren');
@@ -184,6 +194,14 @@ describe('@media at-rule - QueryCondition parsing', () => {
     }
     expect(out).toContain('QueryCondition');
     expect(out).toContain('Paren');
+    expect(out).toContainString(`
+      prelude: 
+        (Paren
+          (QueryCondition
+            [
+              (Any [role=ident] 'width')
+              (Any [role=operator] '>')
+      `);
   });
 
   test('media query with colon syntax parses as Declaration', () => {
@@ -234,12 +252,12 @@ describe('@container - container query type functions', () => {
 
     // Verify structure: Call -> List -> QueryCondition -> [Paren(Declaration), Any('and'), Paren(Declaration)]
     const atRule = tree.value[0] as any;
-    const prelude = atRule.value.prelude;
-    const queryNode = prelude.value[0];
+    const prelude = atRule.prelude;
+    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value[0].type).toBe('Call');
-    expect(queryNode.value[0].value.name).toBe('scroll-state');
-    const argList = queryNode.value[0].value.args;
+    expect(queryNode.value[0].name).toBe('scroll-state');
+    const argList = queryNode.value[0].args;
     expect(argList.type).toBe('List');
     expect(argList.value.length).toBe(1);
     const firstArg = argList.value[0];
@@ -251,6 +269,17 @@ describe('@container - container query type functions', () => {
     expect(firstArg.value[1].value).toBe('and');
     expect(firstArg.value[2].type).toBe('Paren');
     expect(firstArg.value[2].value.type).toBe('Declaration');
+    expect(out).toContainString(`
+      (Call
+        name: 'scroll-state'
+        args: 
+          (List
+            [
+              (QueryCondition
+                [
+                  (Paren
+                    (Declaration
+      `);
   });
 
   test('not scroll-state with declaration argument', () => {
@@ -264,15 +293,26 @@ describe('@container - container query type functions', () => {
 
     // Verify structure: QueryCondition -> [Any('not'), QueryCondition -> [Call]]
     const atRule = tree.value[0] as any;
-    const prelude = atRule.value.prelude;
-    const queryNode = prelude.value[0];
+    const prelude = atRule.prelude;
+    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     expect(queryNode.type).toBe('QueryCondition');
     expect(queryNode.value.length).toBe(2);
     expect(queryNode.value[0].type).toBe('Keyword');
     expect(queryNode.value[0].value).toBe('not');
     expect(queryNode.value[1].type).toBe('QueryCondition');
     expect(queryNode.value[1].value[0].type).toBe('Call');
-    expect(queryNode.value[1].value[0].value.name).toBe('scroll-state');
+    expect(queryNode.value[1].value[0].name).toBe('scroll-state');
+    expect(out).toContainString(`
+      (QueryCondition
+        [
+          (Keyword [role=keyword] 'not')
+          (QueryCondition
+            [
+              (Call
+                name: 'scroll-state'
+                args: 
+                  (List
+      `);
   });
 
   test('complex style() queries with commas, and/or/not', () => {
@@ -291,8 +331,8 @@ describe('@container - container query type functions', () => {
 
     // Verify structure: List of queries, each can be QueryCondition
     const atRule = tree.value[0] as any;
-    const prelude = atRule.value.prelude;
-    const queryNode = prelude.value[0];
+    const prelude = atRule.prelude;
+    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     expect(queryNode.type).toBe('List');
     expect(queryNode.value.length).toBe(4); // 4 comma-separated queries
   });

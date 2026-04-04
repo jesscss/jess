@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo } from './node.js';
+import { Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type RangeValue = {
@@ -15,6 +15,8 @@ export type RangeOptions = {
   includeEnd?: boolean;
 };
 
+export type RangeChildData = { start: Node; end: Node; step: Node | undefined };
+
 /**
  * A numeric-ish range expression intended for `$for` headers.
  *
@@ -24,12 +26,35 @@ export type RangeOptions = {
  * - `1> to 3`        (exclusive start)
  * - `1> to <10 step 2`
  */
-export class Range extends Node<RangeValue, RangeOptions> {
-  type = 'Range' as const;
-  shortType = 'range' as const;
+export interface Range {
+  type: 'Range';
+  shortType: 'range';
+}
+
+export class Range extends Node<RangeValue, RangeOptions, RangeChildData> {
+  static override childKeys = ['start', 'end', 'step'] as const;
+
+  start!: Node;
+  end!: Node;
+  step: Node | undefined;
+
+  constructor(value: RangeValue, options?: RangeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    this.start = value.start;
+    this.end = value.end;
+    this.step = value.step;
+    if (this.start instanceof Node) {
+      this.adopt(this.start);
+    }
+    if (this.end instanceof Node) {
+      this.adopt(this.end);
+    }
+    if (this.step instanceof Node) {
+      this.adopt(this.step);
+    }
+  }
 
   override evalNode(_context: Context): Range {
-    // Parsing-only for now; semantics can be implemented later.
     return this;
   }
 
@@ -37,7 +62,10 @@ export class Range extends Node<RangeValue, RangeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { start, end, step } = this.value;
+    const context = options.context;
+    const start = this.get('start', context);
+    const end = this.get('end', context);
+    const step = this.get('step', context);
     const includeStart = this.options?.includeStart !== false;
     const includeEnd = this.options?.includeEnd !== false;
 
@@ -71,4 +99,3 @@ export const range = defineType(Range, 'Range', 'range') as (
   location?: RangeParams[2],
   treeContext?: RangeParams[3]
 ) => Range;
-

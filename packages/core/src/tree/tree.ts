@@ -40,6 +40,49 @@ import type { Log } from './log.js';
 import type { Paren } from './paren.js';
 import type { Block } from './block.js';
 
+import { N } from './node-type.js';
+
+/**
+ * Maps N bitmask values → node instance types for TypeScript narrowing.
+ * Used by isNode() overloads.
+ */
+export interface NToNode {
+  [N.BasicSelector]: BasicSelector;
+  [N.Ampersand]: Ampersand;
+  [N.PseudoSelector]: PseudoSelector;
+  [N.CompoundSelector]: CompoundSelector;
+  [N.ComplexSelector]: ComplexSelector;
+  [N.SelectorList]: SelectorList;
+  [N.Combinator]: Combinator;
+  [N.SimpleSelector]: SimpleSelector;
+  [N.Selector]: Selector;
+  [N.Any]: Any;
+  [N.Color]: Color;
+  [N.Dimension]: Dimension;
+  [N.Quoted]: Quoted;
+  [N.Expression]: Expression;
+  [N.Operation]: Operation;
+  [N.Paren]: Paren;
+  [N.Range]: Range;
+  [N.List]: List;
+  [N.Sequence]: Sequence;
+  [N.Nil]: Nil;
+  [N.Call]: Call;
+  [N.Func]: Func;
+  [N.Mixin]: Mixin;
+  [N.Declaration]: Declaration;
+  [N.VarDeclaration]: VarDeclaration;
+  [N.Rules]: Rules;
+  [N.Collection]: Collection;
+  [N.Ruleset]: Ruleset;
+  [N.AtRule]: AtRule;
+  [N.Reference]: Reference;
+  [N.Comment]: Comment;
+  [N.JsFunction]: JsFunction;
+  [N.JsObject]: JsObject;
+  [N.JsArray]: JsArray;
+}
+
 export type Nodes = {
   Ampersand: typeof Ampersand;
   Any: typeof Any;

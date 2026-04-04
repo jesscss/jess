@@ -17,10 +17,10 @@ describe('isruleset()', () => {
       throw new ReferenceError('missing');
     });
 
-    expect(rulesResult.value).toBe(true);
-    expect(mixinResult.value).toBe(true);
-    expect(noRulesResult.value).toBe(false);
-    expect(missingRulesResult.value).toBe(false);
+    expect(rulesResult.data).toBe(true);
+    expect(mixinResult.data).toBe(true);
+    expect(noRulesResult.data).toBe(false);
+    expect(missingRulesResult.data).toBe(false);
 
     await expect(isrulesetInternal(() => {
       throw new TypeError('boom');

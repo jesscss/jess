@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Parser } from '../src/index.js';
-import { isNode, serializeTypes, Condition } from '@jesscss/core';
+import { isNode, N, serializeTypes, Condition, TreeContext } from '@jesscss/core';
 import { assertValidTree } from './assert-valid-tree.js';
 
 describe('scss-parser (baseline)', () => {
@@ -45,7 +45,62 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.length).toBe(0);
     expect(result.lexerResult.tokens[0]?.tokenType?.name).toBe('AtKeyword');
     expect(result.lexerResult.tokens[0]?.image).toBe('@content');
-    expect(String(result.tree)).toContain('$content()');
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const call = result.tree.data[0];
+      expect(isNode(call, N.Call)).toBe(true);
+      if (isNode(call, N.Call)) {
+        expect(isNode(call.name, N.Reference)).toBe(true);
+        if (isNode(call.name, N.Reference)) {
+          expect(call.name.options.type).toBe('mixin');
+          expect(String(call.name.key)).toBe('content');
+        }
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses @content($color, $count) as a mixin call with args', () => {
+    const parser = new Parser();
+    const result = parser.parse('@content($color, $count);');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const call = result.tree.data[0];
+      expect(isNode(call, N.Call)).toBe(true);
+      if (isNode(call, N.Call)) {
+        expect(isNode(call.name, N.Reference)).toBe(true);
+        if (isNode(call.name, N.Reference)) {
+          expect(call.name.options.type).toBe('mixin');
+          expect(String(call.name.key)).toBe('content');
+        }
+        expect(call.args?.value).toHaveLength(2);
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses nested property declarations as a Collection-valued declaration', () => {
+    const parser = new Parser();
+    const result = parser.parse('.a { font: { size: 1rem; weight: bold; } }');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Collection');
+    expect(serializeTypes(result.tree)).toContainString('size');
+    expect(serializeTypes(result.tree)).toContainString('weight');
+    assertValidTree(result.tree);
+  });
+
+  it('parses nested property declarations with a base value as Sequence(..., Collection)', () => {
+    const parser = new Parser();
+    const result = parser.parse('.a { margin: auto { left: 1px; right: 2px; } }');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString('(Sequence');
+    expect(serializeTypes(result.tree)).toContainString('(Collection');
+    expect(serializeTypes(result.tree)).toContainString('left');
+    expect(serializeTypes(result.tree)).toContainString('right');
     assertValidTree(result.tree);
   });
 
@@ -76,17 +131,17 @@ describe('scss-parser (baseline)', () => {
     expect(out).not.toContain('==');
     // Assert the condition is a real Condition node (not just a serialized '=')
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const ifNode = root.value.find(n => isNode(n, 'If'));
-      expect(ifNode && isNode(ifNode, 'If')).toBe(true);
-      if (ifNode && isNode(ifNode, 'If')) {
-        const cond = ifNode.value.branches[0]?.condition;
-        expect(cond && isNode(cond, 'Paren')).toBe(true);
-        if (cond && isNode(cond, 'Paren')) {
-          expect(cond.value instanceof Condition).toBe(true);
-          if (cond.value instanceof Condition) {
-            expect(cond.value.options?.negate).not.toBe(true);
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const ifNode = root.data.find(n => n.type === 'If');
+      expect(ifNode && ifNode.type === 'If').toBe(true);
+      if (ifNode && ifNode.type === 'If') {
+        const cond = ifNode.data.conditions[0];
+        expect(cond && isNode(cond, N.Paren)).toBe(true);
+        if (cond && isNode(cond, N.Paren)) {
+          expect(cond.data instanceof Condition).toBe(true);
+          if (cond.data instanceof Condition) {
+            expect(cond.data.negate).not.toBe(true);
           }
         }
       }
@@ -105,17 +160,17 @@ describe('scss-parser (baseline)', () => {
     expect(out).toContain('=');
     expect(out).not.toContain('!=');
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const ifNode = root.value.find(n => isNode(n, 'If'));
-      expect(ifNode && isNode(ifNode, 'If')).toBe(true);
-      if (ifNode && isNode(ifNode, 'If')) {
-        const cond = ifNode.value.branches[0]?.condition;
-        expect(cond && isNode(cond, 'Paren')).toBe(true);
-        if (cond && isNode(cond, 'Paren')) {
-          expect(cond.value instanceof Condition).toBe(true);
-          if (cond.value instanceof Condition) {
-            expect(cond.value.options?.negate).toBe(true);
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const ifNode = root.data.find(n => n.type === 'If');
+      expect(ifNode && ifNode.type === 'If').toBe(true);
+      if (ifNode && ifNode.type === 'If') {
+        const cond = ifNode.data.conditions[0];
+        expect(cond && isNode(cond, N.Paren)).toBe(true);
+        if (cond && isNode(cond, N.Paren)) {
+          expect(cond.data instanceof Condition).toBe(true);
+          if (cond.data instanceof Condition) {
+            expect(cond.data.negate).toBe(true);
           }
         }
       }
@@ -133,14 +188,30 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      expect(root.value.some(n => isNode(n, 'Mixin'))).toBe(true);
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      expect(root.data.some(n => isNode(n, N.Mixin))).toBe(true);
     }
     assertValidTree(result.tree);
   });
 
-  it('parses @function and rewrites @return into return: declaration', () => {
+  it('parses SCSS suffix rest params and spread args with trailing commas', () => {
+    const parser = new Parser();
+    const result = parser.parse(`
+      @mixin foo($a, $rest...,) {
+        @content;
+      }
+      @include foo(1, $args...,);
+    `);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    const serialized = serializeTypes(result.tree);
+    expect(serialized).toContainString(`(Rest`);
+    expect(serialized).toContainString(`key: 'foo'`);
+    assertValidTree(result.tree);
+  });
+
+  it('parses @function and rewrites @return into $result declaration', () => {
     const parser = new Parser();
     const result = parser.parse(`
       @function add($a, $b: 2) {
@@ -150,16 +221,16 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const fn = root.value.find(n => isNode(n, 'Func'));
-      expect(fn && isNode(fn, 'Func')).toBe(true);
-      // Ensure return: decl exists inside body
-      if (fn && isNode(fn, 'Func')) {
-        const body = fn.value.body;
-        expect(isNode(body, 'Rules')).toBe(true);
-        if (isNode(body, 'Rules')) {
-          const ret = body.find('declaration', 'return', 'Declaration', { searchParents: false });
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const fn = root.data.find(n => isNode(n, N.Func));
+      expect(fn && isNode(fn, N.Func)).toBe(true);
+      // Ensure $result var exists inside body
+      if (fn && isNode(fn, N.Func)) {
+        const body = fn.data.body;
+        expect(isNode(body, N.Rules)).toBe(true);
+        if (isNode(body, N.Rules)) {
+          const ret = body.find('declaration', 'result', 'VarDeclaration', { searchParents: false });
           expect(ret).toBeDefined();
         }
       }
@@ -173,21 +244,21 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     // Structural assertion: the call should not be wrapped in Expression
-    expect(isNode(result.tree, 'Rules')).toBe(true);
-    if (isNode(result.tree, 'Rules')) {
-      const ruleset = result.tree.value.find(n => isNode(n, 'Ruleset'));
-      expect(ruleset && isNode(ruleset, 'Ruleset')).toBe(true);
-      if (ruleset && isNode(ruleset, 'Ruleset')) {
-        const decl = ruleset.value.rules?.value.find(n => isNode(n, 'Declaration'));
-        expect(decl && isNode(decl, 'Declaration')).toBe(true);
-        if (decl && isNode(decl, 'Declaration')) {
-          const val = decl.value.value;
-          expect(isNode(val, 'Call')).toBe(true);
-          if (isNode(val, 'Call')) {
-            expect(isNode(val.value.name, 'Reference')).toBe(true);
-            if (isNode(val.value.name, 'Reference')) {
-              expect(val.value.name.options.type).toBe('function');
-              expect(val.value.name.options.fallbackValue).toBe(true);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const ruleset = result.tree.data.find(n => isNode(n, N.Ruleset));
+      expect(ruleset && isNode(ruleset, N.Ruleset)).toBe(true);
+      if (ruleset && isNode(ruleset, N.Ruleset)) {
+        const decl = ruleset.data.rules?.data.find(n => isNode(n, N.Declaration));
+        expect(decl && isNode(decl, N.Declaration)).toBe(true);
+        if (decl && isNode(decl, N.Declaration)) {
+          const val = decl.data.value;
+          expect(isNode(val, N.Call)).toBe(true);
+          if (isNode(val, N.Call)) {
+            expect(isNode(val.data.name, N.Reference)).toBe(true);
+            if (isNode(val.data.name, N.Reference)) {
+              expect(val.data.name.options.type).toBe('function');
+              expect(val.data.name.options.fallbackValue).toBe(true);
             }
           }
         }
@@ -202,10 +273,83 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const imp = root.value.find(n => isNode(n, 'StyleImport'));
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
       expect(imp && imp.options.type).toBe('compose');
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses legacy Sass @import "foo" as an import StyleImport with multiple=true', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import "foo";`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
+      expect(imp && imp.type === 'StyleImport').toBe(true);
+      if (imp && imp.type === 'StyleImport') {
+        expect(imp.options.type).toBe('import');
+        expect(imp.options.importOptions?.multiple).toBe(true);
+        expect(imp.data.path.valueOf()).toBe('foo');
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses comma-separated Sass imports as multiple StyleImport nodes', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import "a", "b";`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imports = root.data.filter(n => n.type === 'StyleImport');
+      expect(imports).toHaveLength(2);
+      expect(imports.every(n => n.type === 'StyleImport' && n.options.importOptions?.multiple === true)).toBe(true);
+      expect(imports.map(n => n.type === 'StyleImport' ? n.data.path.valueOf() : '')).toEqual(['a', 'b']);
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('parses nested Sass @import inside a ruleset', () => {
+    const parser = new Parser();
+    const result = parser.parse(`.scope { @import "foo"; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const ruleset = root.data.find(n => n.type === 'Ruleset');
+      expect(ruleset && isNode(ruleset, N.Ruleset)).toBe(true);
+      if (ruleset && isNode(ruleset, N.Ruleset)) {
+        const imp = ruleset.data.rules?.data.find(n => n.type === 'StyleImport');
+        expect(imp && imp.type === 'StyleImport').toBe(true);
+        if (imp && imp.type === 'StyleImport') {
+          expect(imp.options.type).toBe('import');
+          expect(imp.options.importOptions?.multiple).toBe(true);
+          expect(imp.data.path.valueOf()).toBe('foo');
+        }
+      }
+    }
+    assertValidTree(result.tree);
+  });
+
+  it('preserves plain CSS @import as an AtRule', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import "foo.css";`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    const root = result.tree;
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const atRule = root.data.find(n => n.type === 'AtRule');
+      expect(atRule && atRule.type === 'AtRule').toBe(true);
+      expect(root.data.some(n => n.type === 'StyleImport')).toBe(false);
     }
     assertValidTree(result.tree);
   });
@@ -216,11 +360,11 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const imp = root.value.find(n => isNode(n, 'StyleImport'));
-      expect(imp && isNode(imp, 'StyleImport')).toBe(true);
-      if (imp && isNode(imp, 'StyleImport')) {
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
+      expect(imp && imp.type === 'StyleImport').toBe(true);
+      if (imp && imp.type === 'StyleImport') {
         expect(imp.options.namespace).toBe('bar');
       }
     }
@@ -233,11 +377,11 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const imp = root.value.find(n => isNode(n, 'StyleImport'));
-      expect(imp && isNode(imp, 'StyleImport')).toBe(true);
-      if (imp && isNode(imp, 'StyleImport')) {
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
+      expect(imp && imp.type === 'StyleImport').toBe(true);
+      if (imp && imp.type === 'StyleImport') {
         expect(imp.options.namespace).toBe('*');
       }
     }
@@ -250,12 +394,12 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const imp = root.value.find(n => isNode(n, 'JsImport'));
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'JsImport');
       expect(imp).toBeDefined();
-      if (imp && isNode(imp, 'JsImport')) {
-        expect(imp.value.path.valueOf()).toBe('#sass/map');
+      if (imp && imp.type === 'JsImport') {
+        expect(imp.data.path.valueOf()).toBe('#sass/map');
         expect(imp.options.namespace).toBe('map');
       }
     }
@@ -268,11 +412,11 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const imp = root.value.find(n => isNode(n, 'StyleImport'));
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
       expect(imp).toBeDefined();
-      if (imp && isNode(imp, 'StyleImport')) {
+      if (imp && imp.type === 'StyleImport') {
         expect(imp.options.importOptions?.forward).toBe(true);
       }
     }
@@ -283,13 +427,14 @@ describe('scss-parser (baseline)', () => {
     const parser = new Parser();
     const result = parser.parse(`@forward "foo" as bar-*;`);
     expect(result.lexerResult.errors.length).toBe(0);
-    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('@forward with "as <prefix>-*" prefixing is not supported');
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const imp = root.value.find(n => isNode(n, 'StyleImport'));
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const imp = root.data.find(n => n.type === 'StyleImport');
       expect(imp).toBeDefined();
-      if (imp && isNode(imp, 'StyleImport')) {
+      if (imp && imp.type === 'StyleImport') {
         expect(imp.options.importOptions?.forward).toBe(true);
         expect(imp.options.importOptions?.forwardAsPrefix).toBe('bar-');
       }
@@ -304,11 +449,13 @@ describe('scss-parser (baseline)', () => {
       @forward "foo" hide $a, mixin-b, fn-c;
     `);
     expect(result.lexerResult.errors.length).toBe(0);
-    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(result.errors).toHaveLength(2);
+    expect(result.errors[0]?.message).toContain('@forward with "show"/"hide" lists is not supported');
+    expect(result.errors[1]?.message).toContain('@forward with "show"/"hide" lists is not supported');
     const root = result.tree;
-    expect(isNode(root, 'Rules')).toBe(true);
-    if (isNode(root, 'Rules')) {
-      const forwards = root.value.filter(n => isNode(n, 'StyleImport')) as any[];
+    expect(isNode(root, N.Rules)).toBe(true);
+    if (isNode(root, N.Rules)) {
+      const forwards = root.data.filter(n => n.type === 'StyleImport') as any[];
       expect(forwards.length).toBeGreaterThanOrEqual(2);
       const show = forwards.find(n => Array.isArray(n.options?.importOptions?.forwardShow));
       const hide = forwards.find(n => Array.isArray(n.options?.importOptions?.forwardHide));
@@ -356,6 +503,26 @@ describe('scss-parser (baseline)', () => {
     expect(result.errors.length).toBe(0);
     expect(serializeTypes(result.tree)).toContainString('(Extend');
     expect(serializeTypes(result.tree)).toContainString('(Interpolated');
+    assertValidTree(result.tree);
+  });
+
+  it('rejects compound @extend targets when only simple selectors are allowed', () => {
+    const parser = new Parser();
+    const context = new TreeContext({ allowExtendSelectors: ['simple'] });
+    const result = parser.parse(`.a { @extend .b.c; }`, 'stylesheet', { context });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('@extend only allows simple selectors');
+    expect(result.errors[0]?.message).toContain('compound selector');
+  });
+
+  it('allows selector lists when each @extend target is allowed', () => {
+    const parser = new Parser();
+    const context = new TreeContext({ allowExtendSelectors: ['simple'] });
+    const result = parser.parse(`.a { @extend .b, .c; }`, 'stylesheet', { context });
+
+    expect(result.errors).toHaveLength(0);
+    expect(serializeTypes(result.tree)).toContainString('(Extend');
     assertValidTree(result.tree);
   });
 
@@ -415,6 +582,45 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
+  it('parses SCSS bare mixin calls in @include (foo;)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include foo;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(Call`);
+    expect(serializeTypes(result.tree)).toContainString(`key: 'foo'`);
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS bare module-qualified mixin calls in @include (ns.foo;)', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include ns.foo;`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`
+      (Call
+        name: 
+          (Reference
+            target: 
+              (Reference
+                key: 'ns'
+              )
+            key: 'foo'
+    `);
+    assertValidTree(result.tree);
+  });
+
+  it('parses SCSS @include keyword args', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@include wrap($x: 1, $y: 2);`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(VarDeclaration`);
+    expect(serializeTypes(result.tree)).toContainString(`(Any [role=property] 'x')`);
+    expect(serializeTypes(result.tree)).toContainString(`(Any [role=property] 'y')`);
+    assertValidTree(result.tree);
+  });
+
   it('serializes @include ns.foo() as $ns > foo()', () => {
     const parser = new Parser();
     const result = parser.parse(`@include ns.foo();`);
@@ -438,6 +644,17 @@ describe('scss-parser (baseline)', () => {
     expect(out).toContain('|wrap(');
     expect(out).toContain(': @($c, $n)');
     expect(out).toContain('.child');
+    assertValidTree(result.tree);
+  });
+
+  it('preserves plain CSS @import url(...) in SCSS', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@import url("foo.css");`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(AtRule`);
+    expect(serializeTypes(result.tree)).toContainString(`'@import'`);
+    expect(serializeTypes(result.tree)).toContainString(`(Url`);
     assertValidTree(result.tree);
   });
 
@@ -510,9 +727,9 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`$color: red;`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(isNode(result.tree, 'Rules')).toBe(true);
-    if (isNode(result.tree, 'Rules')) {
-      expect(result.tree.value.some(n => isNode(n, 'VarDeclaration'))).toBe(true);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      expect(result.tree.data.some(n => isNode(n, N.VarDeclaration))).toBe(true);
     }
     assertValidTree(result.tree);
   });
@@ -522,9 +739,9 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`$color: red;`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(isNode(result.tree, 'Rules')).toBe(true);
-    if (isNode(result.tree, 'Rules')) {
-      expect(result.tree.value.some(n => isNode(n, 'VarDeclaration'))).toBe(true);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      expect(result.tree.data.some(n => isNode(n, N.VarDeclaration))).toBe(true);
     }
     assertValidTree(result.tree);
   });
@@ -535,10 +752,10 @@ describe('scss-parser (baseline)', () => {
     if (result.errors.length > 0) {
       console.log('Parse errors:', result.errors.map(e => e.message));
     }
-    expect(isNode(result.tree, 'Rules')).toBe(true);
-    if (isNode(result.tree, 'Rules')) {
-      const varDecls = result.tree.value.filter(n => isNode(n, 'VarDeclaration'));
-      const rulesets = result.tree.value.filter(n => isNode(n, 'Ruleset'));
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const varDecls = result.tree.data.filter(n => isNode(n, N.VarDeclaration));
+      const rulesets = result.tree.data.filter(n => isNode(n, N.Ruleset));
       expect(varDecls.length).toBeGreaterThan(0);
       expect(rulesets.length).toBeGreaterThan(0);
     }
@@ -598,18 +815,40 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
-  it('rejects SCSS interpolation inside @include mixin names', () => {
+  it('parses SCSS interpolation inside @include mixin names as an interpolated mixin reference', () => {
     const parser = new Parser();
-    expect(() => parser.parse(`@include foo-#{$bar}();`)).toThrow(
-      'SCSS does not allow interpolation in mixin names for @include.'
-    );
+    const result = parser.parse(`@include foo-#{$bar}();`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const call = result.tree.data[0];
+      expect(isNode(call, N.Call)).toBe(true);
+      if (isNode(call, N.Call)) {
+        expect(isNode(call.name, N.Reference)).toBe(true);
+        if (isNode(call.name, N.Reference)) {
+          expect(call.name.options.type).toBe('mixin');
+          expect(isNode(call.name.key as any, N.Interpolated)).toBe(true);
+        }
+      }
+    }
+    assertValidTree(result.tree);
   });
 
-  it('rejects SCSS interpolation inside @mixin names', () => {
+  it('parses SCSS interpolation inside @mixin names as an interpolated mixin name', () => {
     const parser = new Parser();
-    expect(() => parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`)).toThrow(
-      'SCSS does not allow interpolation in mixin names for @mixin.'
-    );
+    const result = parser.parse(`@mixin foo-#{$bar} { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(isNode(result.tree, N.Rules)).toBe(true);
+    if (isNode(result.tree, N.Rules)) {
+      const mixin = result.tree.data[0];
+      expect(isNode(mixin, N.Mixin)).toBe(true);
+      if (isNode(mixin, N.Mixin)) {
+        expect(isNode(mixin.name as any, N.Interpolated)).toBe(true);
+      }
+    }
+    assertValidTree(result.tree);
   });
 
   it('parses SCSS interpolation inside @media prelude', () => {
@@ -704,7 +943,7 @@ describe('scss-parser (baseline)', () => {
     assertValidTree(result.tree);
   });
 
-  it('parses @at-root and emits a warning', () => {
+  it('lowers plain @at-root to a null-parent ampersand selector', () => {
     const parser = new Parser();
     const result = parser.parse(`
       @at-root {
@@ -713,14 +952,41 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    // Should parse successfully
+    expect(result.warnings?.length ?? 0).toBe(0);
+    expect(serializeTypes(result.tree)).not.toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Ampersand');
+    assertValidTree(result.tree);
+  });
+
+  it('parses placeholder rulesets', () => {
+    const parser = new Parser();
+    const result = parser.parse(`%foo { color: red; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(serializeTypes(result.tree)).toContainString(`(BasicSelector`);
+    expect(serializeTypes(result.tree)).toContainString(`foo`);
+    assertValidTree(result.tree);
+  });
+
+  it('lowers @at-root selector shorthand to a null-parent ampersand selector', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@at-root .root-class { color: red; }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.map(e => e.message)).toEqual([]);
+    expect(result.warnings?.length ?? 0).toBe(0);
+    expect(serializeTypes(result.tree)).not.toContainString('(AtRule');
+    expect(serializeTypes(result.tree)).toContainString('(Ampersand');
+    assertValidTree(result.tree);
+  });
+
+  it('parses @at-root filter forms, reports an explicit unsupported error, and continues', () => {
+    const parser = new Parser();
+    const result = parser.parse(`@at-root (without: media) { .a { color: red; } }`);
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.message).toContain('@at-root prelude/filter forms are not yet supported in Jess');
+    expect(result.tree).toBeDefined();
     expect(serializeTypes(result.tree)).toContainString('(AtRule');
-    // Should emit a warning
-    expect(result.warnings).toBeDefined();
-    expect(result.warnings?.length).toBeGreaterThan(0);
-    expect(result.warnings?.[0]?.message).toContain('@at-root');
-    expect(result.warnings?.[0]?.message).toContain('not supported');
-    expect(result.warnings?.[0]?.message).toContain('will never be');
     assertValidTree(result.tree);
   });
 });

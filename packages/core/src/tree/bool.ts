@@ -1,8 +1,10 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Bool extends Node<boolean> {
+  type: 'Bool';
+  shortType: 'bool';
   eval(context: Context): Bool;
 }
 
@@ -10,11 +12,18 @@ export interface Bool extends Node<boolean> {
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.
  */
 export class Bool extends Node<boolean> {
-  type = 'Bool' as const;
-  shortType = 'bool' as const;
+  static override childKeys = null as null;
 
-  constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
-    super(...args);
+  readonly value!: boolean;
+
+  constructor(
+    value: boolean,
+    options?: NodeOptions,
+    location?: OptionalLocation,
+    treeContext?: TreeContext
+  ) {
+    super(value, options, location, treeContext);
+    this.value = value;
     this.addFlag(F_STATIC);
   }
 
@@ -33,4 +42,5 @@ export class Bool extends Node<boolean> {
     return w.getSince(mark);
   }
 }
+
 export const bool = defineType(Bool, 'Bool');

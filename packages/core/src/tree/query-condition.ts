@@ -1,3 +1,4 @@
+import type { Context } from '../context.js';
 import type { PrintOptions } from '..';
 import { getPrintOptions } from './util/print.js';
 import { defineType } from './node.js';
@@ -11,15 +12,17 @@ import { Sequence } from './sequence.js';
  *
  * @todo - add more structure?
  */
-export class QueryCondition extends Sequence {
-  override type = 'QueryCondition';
-  override shortType = 'query';
+export interface QueryCondition {
+  type: 'QueryCondition';
+  shortType: 'query';
+}
 
+export class QueryCondition extends Sequence {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { value } = this;
+    let value = this.get('value', options.context);
     let length = value.length;
 
     if (length === 0) {

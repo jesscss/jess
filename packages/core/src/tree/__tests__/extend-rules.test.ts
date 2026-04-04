@@ -13,8 +13,11 @@ import {
   pseudo,
   Node,
   ExtendFlag
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
+import { getParent } from '../util/field-helpers.js';
+import { F_EXTENDED } from '../node.js';
+import { processExtends } from '../util/extend-roots.js';
 
 let context: Context;
 
@@ -44,7 +47,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -54,6 +57,54 @@ describe('Rules extend', () => {
           background: blue;
         }
       `);
+    });
+
+    it('keeps canonical ruleset extended flags unset during state-only extend processing', async () => {
+      const base = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const child = ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([
+          extend({
+            target: el('.base')
+          })
+        ])
+      });
+      const node = rules([base, child]);
+
+      const evald = await node.eval(context);
+      const css = evald.render(context);
+      const evaluatedBase = evald.get('value').find(child => child.sourceNode === base);
+
+      expect(css).toContain('.base,');
+      expect(css).toContain('.child {');
+      expect(base.hasFlag(F_EXTENDED)).toBe(false);
+      expect(evaluatedBase).toBeDefined();
+      expect(evaluatedBase?.hasFlag(F_EXTENDED)).toBe(true);
+    });
+
+    it('does not re-parent canonical selector or target during a shallow clone', () => {
+      const target = el('.base');
+      const selector = el('.child');
+      const node = extend({
+        selector,
+        target
+      });
+
+      expect(selector.parent).toBe(node);
+      expect(target.parent).toBe(node);
+
+      const cloned = node.clone();
+
+      expect(cloned).not.toBe(node);
+      expect(selector.parent).toBe(node);
+      expect(target.parent).toBe(node);
+      expect(getParent(selector, context)).toBe(cloned);
+      expect(getParent(target, context)).toBe(cloned);
     });
   });
 
@@ -85,7 +136,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child1,
@@ -118,7 +169,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .parent > :is(.base, .parent > .child) {
           color: red;
@@ -151,7 +202,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .btn.primary,
         .btn.secondary {
@@ -183,7 +234,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .btn:hover {
           color: red;
@@ -223,7 +274,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .a,
         .b,
@@ -260,7 +311,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .f,
         .e,
@@ -345,7 +396,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .l,
         .m,
@@ -393,7 +444,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .x,
         .y,
@@ -443,7 +494,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         :is(.g, :is(.i, .k).j).h {
           color: black;
@@ -482,7 +533,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .va,
         .vb,
@@ -519,7 +570,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .w,
         .v.w.v {
@@ -571,7 +622,7 @@ describe('Rules extend', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .branch1,
@@ -581,6 +632,109 @@ describe('Rules extend', () => {
           color: red;
         }
       `);
+    });
+
+    it('limits downstream extend matching to roots inside the recorded namespace', () => {
+      const localBase = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const localRoot = rules([localBase]);
+
+      const importedBase = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      });
+      const importedRoot = rules([importedBase]);
+
+      const child = ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([])
+      });
+      const extension = extend({
+        target: el('.base'),
+        namespace: 'theme'
+      });
+      const ownerRoot = rules([child]);
+
+      context.extendRoots.registerRoot(localRoot);
+      context.extendRoots.registerRoot(importedRoot, undefined, { namespace: 'theme' });
+      context.extendRoots.registerRoot(ownerRoot);
+      context.extendRoots.registerRuleset(localRoot, localBase);
+      context.extendRoots.registerRuleset(importedRoot, importedBase);
+      context.extendRoots.registerRuleset(ownerRoot, child);
+
+      context.extends = [[
+        extension.get('target'),
+        child.getEffectiveSelector(false, context),
+        false,
+        ownerRoot,
+        extension,
+        undefined,
+        false,
+        'theme'
+      ]];
+
+      processExtends(context);
+
+      expect(importedBase.valueOf(context)).toContain('.child');
+      expect(localBase.valueOf(context)).not.toContain('.child');
+      expect(context.warnings).toHaveLength(0);
+    });
+
+    it('treats a namespace miss as not-found, not not-accessible', () => {
+      const localBase = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const localRoot = rules([localBase]);
+
+      const importedBase = ruleset({
+        selector: sellist([sel([el('.base')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      });
+      const importedRoot = rules([importedBase]);
+
+      const child = ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([])
+      });
+      const extension = extend({
+        target: el('.base'),
+        namespace: 'missing'
+      });
+      const ownerRoot = rules([child]);
+
+      context.extendRoots.registerRoot(localRoot);
+      context.extendRoots.registerRoot(importedRoot, undefined, { namespace: 'theme' });
+      context.extendRoots.registerRoot(ownerRoot);
+      context.extendRoots.registerRuleset(localRoot, localBase);
+      context.extendRoots.registerRuleset(importedRoot, importedBase);
+      context.extendRoots.registerRuleset(ownerRoot, child);
+
+      context.extends = [[
+        extension.get('target'),
+        child.getEffectiveSelector(false, context),
+        false,
+        ownerRoot,
+        extension,
+        undefined,
+        false,
+        'missing'
+      ]];
+
+      processExtends(context);
+
+      expect(context.warnings).toHaveLength(1);
+      expect(context.warnings[0]?.code).toBe('extend/not-found');
     });
   });
 });

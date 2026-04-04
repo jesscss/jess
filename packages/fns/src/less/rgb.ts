@@ -8,37 +8,18 @@ import {
 } from '@jesscss/core';
 import { percentOf, toNumber, splitSequence } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateRGBChannelReference } from '../util/relative-color.js';
+import { collectRawDimensions } from '../util/raw-color-args.js';
 
 function alphaChannelFromNode(node: unknown, alphaValue: number): number | [number, string] {
   if (!(node instanceof Dimension)) {
     return alphaValue;
   }
-  const unit = node.value.unit ?? '';
+  const unit = node.unit ?? '';
   if (unit === '%') {
-    const percentValue = Math.max(0, Math.min(100, node.value.number));
+    const percentValue = Math.max(0, Math.min(100, node.number));
     return [percentValue, '%'];
   }
   return alphaValue;
-}
-
-function collectDimensions(node: unknown, out: Dimension[]): void {
-  if (!node) {
-    return;
-  }
-  if (node instanceof Dimension) {
-    out.push(node);
-    return;
-  }
-  if (Array.isArray(node)) {
-    node.forEach((child) => collectDimensions(child, out));
-    return;
-  }
-  if (typeof node === 'object' && node !== null && 'value' in node) {
-    const value = (node as { value?: unknown }).value;
-    if (Array.isArray(value)) {
-      value.forEach((child) => collectDimensions(child, out));
-    }
-  }
 }
 
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
@@ -46,7 +27,7 @@ function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: 
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.value, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);
@@ -58,9 +39,9 @@ function rgbChannelFromNode(node: unknown, channelValue: number): number | [numb
   if (!(node instanceof Dimension)) {
     return channelValue;
   }
-  const unit = node.value.unit ?? '';
+  const unit = node.unit ?? '';
   if (unit === '%') {
-    return [node.value.number, '%'];
+    return [node.number, '%'];
   }
   return channelValue;
 }
@@ -75,7 +56,7 @@ function getRawRgbChannels(
     return [r, g, b];
   }
   const dimensions: Dimension[] = [];
-  collectDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.value, dimensions);
   const [rDim, gDim, bDim] = dimensions;
   return [
     rgbChannelFromNode(rDim, r),
@@ -94,24 +75,24 @@ const rgb = defineFunction(
       if (relativeData) {
         // Evaluate the origin color
         const originColor = await evaluateOriginColor(relativeData.originColor, this.context);
-        
+
         // Extract channel values from origin color
         const [originR, originG, originB] = originColor._rgb;
         const originAlpha = originColor._alpha;
-        
+
         // Evaluate channel references
         // For now, we only support simple identifiers (r, g, b, alpha)
         // Expressions like calc(r + 40) will need more complex handling
         if (relativeData.channels.length < 3) {
           throw new Error('Relative rgb() requires at least 3 channel values (r, g, b)');
         }
-        
+
         // Evaluate each channel reference
         const rChannel = relativeData.channels[0]!;
         const gChannel = relativeData.channels[1]!;
         const bChannel = relativeData.channels[2]!;
         const alphaChannel = relativeData.channels[3];
-        
+
         // Evaluate R, G, B channels
         // Channel references can reference any channel (r, g, b, alpha)
         // The helper function handles conversion (e.g., alpha 0-1 -> 0-255 for RGB channels)
@@ -119,21 +100,21 @@ const rgb = defineFunction(
         let r = await evaluateRGBChannelReference(rChannel, originColor, this.context);
         let g = await evaluateRGBChannelReference(gChannel, originColor, this.context);
         let b = await evaluateRGBChannelReference(bChannel, originColor, this.context);
-        
+
         // Handle alpha channel if present
         // Alpha can be in two places:
         // 1. As the 4th channel in the sequence: rgb(from color r g b alpha)
         // 2. Separated by /: rgb(from color r g b / 0.5) - this is in relativeData.alpha
         let alpha: number = originAlpha;
         let alphaValue: number | [number, string] = originAlpha;
-        
+
         // First check if alpha is separated by / (from parseRelativeColorSyntax)
         if (relativeData.alpha) {
           // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
           const evaluated = await relativeData.alpha.eval(this.context);
           if (evaluated instanceof Dimension) {
-            const alphaNumber = evaluated.value.number;
-            const alphaUnit = evaluated.value.unit;
+            const alphaNumber = evaluated.number;
+            const alphaUnit = evaluated.unit;
             if (alphaUnit === '%') {
               alpha = alphaNumber / 100;
             } else if (alphaUnit === '' || alphaUnit === undefined) {
@@ -159,8 +140,8 @@ const rgb = defineFunction(
             // Try to evaluate as a Dimension (for explicit alpha values like 0.5 or 50%)
             const evaluated = await alphaChannel.eval(this.context);
             if (evaluated instanceof Dimension) {
-              const alphaNumber = evaluated.value.number;
-              const alphaUnit = evaluated.value.unit;
+              const alphaNumber = evaluated.number;
+              const alphaUnit = evaluated.unit;
               if (alphaUnit === '%') {
                 alpha = alphaNumber / 100;
               } else if (alphaUnit === '' || alphaUnit === undefined) {
@@ -177,12 +158,12 @@ const rgb = defineFunction(
         }
         const hasExplicitAlpha = Boolean(relativeData.alpha || alphaChannel);
         alphaValue = getRawAlphaChannel(this?.rawArgs, alpha, hasExplicitAlpha);
-        
+
         // Clamp RGB values to 0-255
         r = Math.max(0, Math.min(255, r));
         g = Math.max(0, Math.min(255, g));
         b = Math.max(0, Math.min(255, b));
-        
+
         // Create the new color
         const color = new Color({
           rgb: [r, g, b],
@@ -191,11 +172,11 @@ const rgb = defineFunction(
           format: ColorFormat.RGB,
           modernSyntax
         });
-        
+
         return color;
       }
     }
-    
+
     // Handle overloaded signatures - check Dimension signature first (most common)
     if (args.length >= 3 && !(args[0] instanceof Color)) {
       // [Dimension, Dimension, Dimension, Dimension?] - r, g, b, optional alpha
@@ -222,7 +203,7 @@ const rgb = defineFunction(
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.RGB;
       cloned.options.modernSyntax = modernSyntax;
-      cloned.value.node = undefined;
+      cloned.setData('node', undefined);
       return cloned;
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - clone color, set format to RGB, and optionally set alpha
@@ -230,13 +211,13 @@ const rgb = defineFunction(
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.RGB;
       cloned.options.modernSyntax = modernSyntax;
-      cloned.value.node = undefined;
+      cloned.setData('node', undefined);
 
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
         const alpha = args[1] as number;
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
-        cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
+        cloned.setData('alpha', getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined));
       }
 
       return cloned;

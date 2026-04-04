@@ -2,16 +2,17 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC } from './node.js';
+import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-// import type { Context } from '../context.js'
-// import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
-  escaped: boolean;
+  escaped?: boolean;
+  delimiter?: 'paren' | 'square';
 };
+
+export type ParenChildData = { value: Node | undefined };
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
   return node instanceof Operation || node instanceof Expression;
@@ -20,27 +21,58 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 /**
  * An expression in parenthesis
  */
-export class Paren extends Node<Node | undefined, ParenOptions> {
-  type = 'Paren' as const;
-  shortType = 'paren' as const;
+export interface Paren {
+  type: 'Paren';
+  shortType: 'paren';
+  eval(context: Context): MaybePromise<Node>;
+}
 
-  constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
+export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> {
+  static override childKeys = ['value'] as const;
+
+  value: Node | undefined;
+
+  constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.value = value;
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
+  }
+
+  private _isEscaped(_context?: Context): boolean {
+    return Boolean(this.options?.escaped);
+  }
+
+  private _unwrapValue(value: Node, context?: Context): Node {
+    let current = value;
+    while (current instanceof Paren) {
+      const next = current.get('value', context);
+      if (!next) {
+        break;
+      }
+      current = next;
+    }
+    return current;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const escapeChar = this.options?.escaped ? '~' : '';
+    const parenOptions = this.options;
+    const escapeChar = parenOptions?.escaped ? '~' : '';
+    const delimiter = parenOptions?.delimiter ?? 'paren';
+    const open = delimiter === 'square' ? '[' : '(';
+    const close = delimiter === 'square' ? ']' : ')';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    w.add('(');
-    let value = this.value;
+    w.add(open);
+    let value = this.get('value', options.context);
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -49,12 +81,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         w.add(String(value), this);
       }
     }
-    w.add(')');
+    w.add(close);
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let { value } = this;
+    let value = this.get('value', context);
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {
@@ -66,27 +98,26 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (isOp) {
           context.parenFrames.pop();
         }
-        if (this.options?.escaped && value instanceof Node) {
+        if (this._isEscaped(context) && value instanceof Node) {
           return value;
         }
-        /**
-         * Removing nested parens or parens around a single
-         * dimension is a bit presumptuous, but I think Less's
-         * argument is that it's unnecessary at runtime,
-         * so it's really just a DX tool that can be ignored
-         * on output.
-         */
-        while (value instanceof Paren && value.value) {
-          value = value.value;
+        const delimiter = this.options?.delimiter ?? 'paren';
+        if (delimiter === 'paren') {
+          value = this._unwrapValue(value, context);
+          if (value instanceof Bool || value instanceof Dimension) {
+            return value;
+          }
+          if (isOp && !isOpOrExpression(value)) {
+            return value;
+          }
         }
-        if (value instanceof Bool || value instanceof Dimension) {
-          return value;
-        }
-        if (isOp && !isOpOrExpression(value)) {
-          return value;
-        }
-        let node = this.maybeClone(context);
+        const node = this.clone();
+        const previousValue = node.value;
         node.value = value;
+        if (previousValue instanceof Node && previousValue !== value) {
+          previousValue.parent = undefined;
+        }
+        node.adopt(value);
         return node;
       };
       if (isThenable(maybeEvald)) {
@@ -94,23 +125,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
       return after(maybeEvald as Node);
     }
-    let node = this;
-    node.value = value;
-    return node;
+    return this;
   }
-
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('(')
-  //   this.value.toCSS(context, out)
-  //   out.add(')')
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
-  //   out.add('$J.paren(', loc)
-  //   this.value.toModule(context, out)
-  //   out.add(')')
-  // }
 }
 
 export const paren = defineType(Paren, 'Paren');

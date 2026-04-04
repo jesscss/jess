@@ -258,6 +258,50 @@ describe('JessLanguageServiceEngine', () => {
       expect(diagnostics.length).toBeGreaterThan(0);
     });
 
+    it('uses the full saved span for unsupported SCSS @forward diagnostics', () => {
+      const engine = createEngine();
+      const input = '@forward "foo" as bar-*;';
+      const doc = createDocument('scss', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diag = diagnostics.find(d =>
+        d.code === 'parse/parser'
+        && d.message.includes('@forward with "as <prefix>-*" prefixing is not supported')
+      );
+
+      expect(diag).toBeDefined();
+      expect(diag?.range.start.line).toBe(0);
+      expect(diag?.range.start.character).toBe(0);
+
+      const lastChar = doc.positionAt(input.length - 1);
+      expect(diag?.range.end.line).toBe(lastChar.line);
+      expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
+    });
+
+    it('uses the full saved span for unsupported SCSS @at-root filter diagnostics', () => {
+      const engine = createEngine();
+      const input = `@at-root (without: media) {
+  .a { color: red; }
+}`;
+      const doc = createDocument('scss', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diag = diagnostics.find(d =>
+        d.code === 'parse/parser'
+        && d.message.includes('@at-root prelude/filter forms are not yet supported in Jess')
+      );
+
+      expect(diag).toBeDefined();
+      expect(diag?.range.start.line).toBe(0);
+      expect(diag?.range.start.character).toBe(0);
+
+      const lastChar = doc.positionAt(input.length - 1);
+      expect(diag?.range.end.line).toBe(lastChar.line);
+      expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
+    });
+
     it('reports multiple parser errors (css/less/scss)', () => {
       // Force multiple *parser* errors by inserting tokens that are structurally invalid as values.
       const inputByLang: Record<'css' | 'less' | 'scss', string> = {
@@ -394,21 +438,21 @@ describe('JessLanguageServiceEngine', () => {
       const tokens: Array<{ line: number; char: number; length: number; type: string; modifiers: number }> = [];
       let currentLine = 0;
       let currentChar = 0;
-      
+
       for (let i = 0; i < data.length; i += 5) {
         const deltaLine = data[i]!;
         const deltaStartChar = data[i + 1]!;
         const length = data[i + 2]!;
         const typeIdx = data[i + 3]!;
         const tokenModifiers = data[i + 4]!;
-        
+
         if (deltaLine === 0) {
           currentChar += deltaStartChar;
         } else {
           currentLine += deltaLine;
           currentChar = deltaStartChar;
         }
-        
+
         const type = types[typeIdx] || 'unknown';
         tokens.push({
           line: currentLine,
@@ -418,7 +462,7 @@ describe('JessLanguageServiceEngine', () => {
           modifiers: tokenModifiers
         });
       }
-      
+
       return tokens;
     }
 
@@ -426,22 +470,22 @@ describe('JessLanguageServiceEngine', () => {
       const engine = createEngine();
       const doc = createDocument('less', '@import "import/import-@{my_theme}-e.less";');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      
+
       const semanticTokens = engine.getSemanticTokens(doc.uri);
       expect(semanticTokens).toBeDefined();
       expect(semanticTokens.data).toBeDefined();
-      
+
       // Decode tokens
       const types = ['comment', 'string', 'keyword', 'enumMember', 'number', 'operator', 'function', 'variable', 'property', 'type', 'class', 'namespace'];
       const modifiers: string[] = []; // No modifiers in legend for now
       const tokens = decodeSemanticTokens(semanticTokens.data, types, modifiers);
-      
+
       // Find tokens on line 0 (the import line)
       const line0Tokens = tokens.filter(t => t.line === 0);
-      
+
       // Debug: log all tokens to see what we're getting
       console.log('Line 0 tokens:', JSON.stringify(line0Tokens, null, 2));
-      
+
       // Should have separate tokens for:
       // - @import (namespace)
       // - " (string - opening quote)
@@ -450,11 +494,11 @@ describe('JessLanguageServiceEngine', () => {
       // - -e.less (string)
       // - " (string - closing quote)
       // - ; (operator)
-      
+
       const stringTokens = line0Tokens.filter(t => t.type === 'string');
       const variableTokens = line0Tokens.filter(t => t.type === 'variable');
       const namespaceTokens = line0Tokens.filter(t => t.type === 'namespace');
-      
+
       // Should have at least 3 string tokens (opening quote, content parts, closing quote)
       expect(stringTokens.length).toBeGreaterThanOrEqual(3);
       // Should have 1 variable token for @{my_theme}
@@ -467,10 +511,10 @@ describe('JessLanguageServiceEngine', () => {
       const engine = createEngine();
       const doc = createDocument('less', '@import "import/import-@{in}@{terpolation}.less";');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      
+
       const diagnostics = engine.getDiagnostics(doc.uri);
       const varDiags = diagnostics.filter(d => d.code === 'var/undefined');
-      
+
       // Debug: log diagnostics to see what we're getting
       console.log('Variable diagnostics:', JSON.stringify(varDiags.map(d => ({
         message: d.message,
@@ -479,14 +523,14 @@ describe('JessLanguageServiceEngine', () => {
       })), null, 2));
       console.log('Document text:', JSON.stringify(doc.getText()));
       console.log('Expected: @{in} should be around char 25, @{terpolation} should be around char 31');
-      
+
       // Should have 2 separate diagnostics, one for @{in} and one for @{terpolation}
       expect(varDiags.length).toBeGreaterThanOrEqual(2);
-      
+
       // Each diagnostic should have a different range
       const ranges = varDiags.map(d => d.range);
       expect(ranges.length).toBeGreaterThanOrEqual(2);
-      
+
       // Verify the ranges are different (they should point to different interpolations)
       if (ranges.length >= 2) {
         expect(ranges[0]!.start.character).not.toBe(ranges[1]!.start.character);
@@ -507,7 +551,7 @@ describe('JessLanguageServiceEngine', () => {
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const syms = engine.getDocumentSymbols(doc.uri);
-      
+
       // Collect all symbols recursively (including children)
       const allSymbols: DocumentSymbol[] = [];
       const collect = (symbols: DocumentSymbol[]) => {
@@ -549,24 +593,24 @@ describe('JessLanguageServiceEngine', () => {
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const syms = engine.getDocumentSymbols(doc.uri);
-      
+
       // Find @media symbol
       const mediaSym = syms.find(s => s.name.includes('@media'));
       expect(mediaSym).toBeDefined();
       expect(mediaSym?.kind).toBe(SymbolKind.Namespace);
-      
+
       // @media should have .container as a child
       expect(mediaSym?.children).toBeDefined();
       const containerSym = mediaSym?.children?.find(s => s.name.includes('.container'));
       expect(containerSym).toBeDefined();
       expect(containerSym?.kind).toBe(SymbolKind.Class);
-      
+
       // .container should have @secondary and .button as children
       expect(containerSym?.children).toBeDefined();
       const secondarySym = containerSym?.children?.find(s => s.name.includes('@secondary'));
       expect(secondarySym).toBeDefined();
       expect(secondarySym?.kind).toBe(SymbolKind.Variable);
-      
+
       const buttonSym = containerSym?.children?.find(s => s.name.includes('.button'));
       expect(buttonSym).toBeDefined();
       expect(buttonSym?.kind).toBe(SymbolKind.Class);
@@ -615,7 +659,7 @@ describe('JessLanguageServiceEngine', () => {
       const target = diags.find(d => d.code === 'var/undefined');
       expect(target).toBeDefined();
 
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] } as any);
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
       expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
       expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
     });
@@ -628,7 +672,7 @@ describe('JessLanguageServiceEngine', () => {
       const target = diags.find(d => d.code === 'mixin/undefined');
       expect(target).toBeDefined();
 
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] } as any);
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
       expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
       expect(actions.some(a => a.title.includes('Create mixin'))).toBe(true);
     });
@@ -689,15 +733,15 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(2);
-      
+
       // Check that we found red and blue
-      const colorValues = colors.map(c => {
+      const colorValues = colors.map((c) => {
         const r = Math.round(c.color.red * 255);
         const g = Math.round(c.color.green * 255);
         const b = Math.round(c.color.blue * 255);
         return `${r},${g},${b}`;
       });
-      
+
       // Red is rgb(255, 0, 0)
       expect(colorValues).toContain('255,0,0');
       // Blue is rgb(0, 0, 255)
@@ -711,14 +755,14 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(2);
-      
-      const colorValues = colors.map(c => {
+
+      const colorValues = colors.map((c) => {
         const r = Math.round(c.color.red * 255);
         const g = Math.round(c.color.green * 255);
         const b = Math.round(c.color.blue * 255);
         return `${r},${g},${b}`;
       });
-      
+
       // #ff0000 is red
       expect(colorValues).toContain('255,0,0');
       // #00ff00 is green
@@ -732,14 +776,14 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(2);
-      
-      const colorValues = colors.map(c => {
+
+      const colorValues = colors.map((c) => {
         const r = Math.round(c.color.red * 255);
         const g = Math.round(c.color.green * 255);
         const b = Math.round(c.color.blue * 255);
         return `${r},${g},${b}`;
       });
-      
+
       // rgb(255, 0, 0) is red
       expect(colorValues).toContain('255,0,0');
       // rgb(0, 128, 255) is a blue
@@ -753,14 +797,14 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(2);
-      
-      const colorValues = colors.map(c => {
+
+      const colorValues = colors.map((c) => {
         const r = Math.round(c.color.red * 255);
         const g = Math.round(c.color.green * 255);
         const b = Math.round(c.color.blue * 255);
         return `${r},${g},${b}`;
       });
-      
+
       // hsl(0, 100%, 50%) is red (approximately 255, 0, 0)
       expect(colorValues.some(v => v.startsWith('255,0,0') || v.startsWith('254,0,0'))).toBe(true);
       // hsl(120, 100%, 50%) is green (approximately 0, 255, 0)
@@ -774,7 +818,7 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(1);
-      
+
       const color = colors[0]!;
       expect(Math.round(color.color.red * 255)).toBe(255);
       expect(Math.round(color.color.green * 255)).toBe(0);
@@ -789,14 +833,14 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(2);
-      
-      const colorValues = colors.map(c => {
+
+      const colorValues = colors.map((c) => {
         const r = Math.round(c.color.red * 255);
         const g = Math.round(c.color.green * 255);
         const b = Math.round(c.color.blue * 255);
         return `${r},${g},${b}`;
       });
-      
+
       // rgb(128, 64, 32)
       expect(colorValues).toContain('128,64,32');
     });
@@ -840,14 +884,14 @@ describe('JessLanguageServiceEngine', () => {
 
       const colors = await engine.getDocumentColors(doc.uri);
       expect(colors.length).toBeGreaterThanOrEqual(4);
-      
-      const colorValues = colors.map(c => {
+
+      const colorValues = colors.map((c) => {
         const r = Math.round(c.color.red * 255);
         const g = Math.round(c.color.green * 255);
         const b = Math.round(c.color.blue * 255);
         return `${r},${g},${b}`;
       });
-      
+
       // Should have red, green, blue, and yellow (from hsl)
       expect(colorValues).toContain('255,0,0'); // red
       expect(colorValues).toContain('0,255,0'); // green (#00ff00)

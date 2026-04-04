@@ -1,25 +1,31 @@
-import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
+import { Node, defineType, type OptionalLocation, type TreeContext, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
 /**
  * A JS function.
  */
+export interface JsFunction {
+  type: 'JsFunction';
+  shortType: 'jsfunc';
+}
 export class JsFunction extends Node<Fn> {
-  type = 'JsFunction' as const;
-  shortType = 'jsfunc' as const;
+  static override childKeys = null as null;
 
+  value!: Fn;
   name?: string | undefined;
 
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     const fn = typeof value === 'function' ? value : value.fn;
 
     super(fn, options, location, treeContext);
+    this.value = fn;
     this.name = typeof value === 'function' ? undefined : value.name;
   }
 }
+
 export const jsfunc = defineType(JsFunction, 'JsFunction', 'jsfunc');

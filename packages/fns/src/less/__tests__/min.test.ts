@@ -12,7 +12,7 @@ describe('min()', () => {
       new Dimension({ number: 6, unit: 'px' })
     );
     expect(result).toBeInstanceOf(Dimension);
-    expect((result as Dimension).value.number).toBe(2);
+    expect((result as Dimension).data.number).toBe(2);
   });
 
   it('returns serialized Any when values cannot be unified to one unit', async () => {
@@ -29,7 +29,7 @@ describe('min()', () => {
   it('flattens list args and throws in strict mode for incompatible units', async () => {
     const listArg = new List([new Dimension({ number: 1, unit: 'px' }), new Dimension({ number: 5, unit: 'px' })]);
     const fromList = await callWithContext(new Context(), min, listArg);
-    expect(fromList.value.number).toBe(1);
+    expect(fromList.data.number).toBe(1);
 
     await expect(() => callWithContext(
       new Context({ unitMode: 'strict' }),
@@ -62,7 +62,7 @@ describe('min()', () => {
       new Dimension({ number: 10, unit: 'px' }),
       new Dimension({ number: 2, unit: 'px' })
     ) as Dimension;
-    expect(updatedMin.value.number).toBe(2);
+    expect(updatedMin.data.number).toBe(2);
 
     const unitless = await callWithContext(
       new Context(),
@@ -70,8 +70,8 @@ describe('min()', () => {
       new Dimension({ number: 2 }),
       new Dimension({ number: 1 })
     ) as Dimension;
-    expect(unitless.value.number).toBe(1);
-    expect(unitless.value.unit).toBeUndefined();
+    expect(unitless.data.number).toBe(1);
+    expect(unitless.data.unit).toBeUndefined();
 
     const unknownUnits = await callWithContext(
       new Context(),

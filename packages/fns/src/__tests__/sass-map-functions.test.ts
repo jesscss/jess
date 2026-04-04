@@ -33,7 +33,7 @@ describe('Sass map functions', () => {
       const key = new Any('a', { role: 'property' });
       const result = get.call(context, map, key);
       expect(result).toBeInstanceOf(Num);
-      expect((result as Num).value.number).toBe(1);
+      expect((result as Num).data.number).toBe(1);
     });
 
     it('returns Nil when key not found', () => {
@@ -50,7 +50,7 @@ describe('Sass map functions', () => {
       const key2 = new Any('b', { role: 'property' });
       const result = get.call(context, map, key1, key2);
       expect(result).toBeInstanceOf(Num);
-      expect((result as Num).value.number).toBe(2);
+      expect((result as Num).data.number).toBe(2);
     });
 
     it('returns Nil for non-map intermediate value', () => {
@@ -65,7 +65,7 @@ describe('Sass map functions', () => {
       const map = createMap([['a', new Num(1)]]);
       const key = new Any('a', { role: 'property' });
       const result = get.call(context, { map, key });
-      expect((result as Num).value.number).toBe(1);
+      expect((result as Num).data.number).toBe(1);
     });
   });
 
@@ -79,8 +79,8 @@ describe('Sass map functions', () => {
       // Check that both keys exist
       const getA = get.call(context, result, new Any('a', { role: 'property' }));
       const getB = get.call(context, result, new Any('b', { role: 'property' }));
-      expect((getA as Num).value.number).toBe(1);
-      expect((getB as Num).value.number).toBe(2);
+      expect((getA as Num).data.number).toBe(1);
+      expect((getB as Num).data.number).toBe(2);
     });
 
     it('overwrites existing key', () => {
@@ -89,7 +89,7 @@ describe('Sass map functions', () => {
       const value = new Num(99);
       const result = set.call(context, map, key, value);
       const getA = get.call(context, result, new Any('a', { role: 'property' }));
-      expect((getA as Num).value.number).toBe(99);
+      expect((getA as Num).data.number).toBe(99);
     });
 
     it('preserves original map', () => {
@@ -99,7 +99,7 @@ describe('Sass map functions', () => {
       const result = set.call(context, map, key, value);
       // Original should still have only 'a'
       const originalA = get.call(context, map, new Any('a', { role: 'property' }));
-      expect((originalA as Num).value.number).toBe(1);
+      expect((originalA as Num).data.number).toBe(1);
       const originalB = get.call(context, map, new Any('b', { role: 'property' }));
       expect(originalB).toBeInstanceOf(Nil);
     });
@@ -113,8 +113,8 @@ describe('Sass map functions', () => {
       expect(result).toBeInstanceOf(Collection);
       const getA = get.call(context, result, new Any('a', { role: 'property' }));
       const getB = get.call(context, result, new Any('b', { role: 'property' }));
-      expect((getA as Num).value.number).toBe(1);
-      expect((getB as Num).value.number).toBe(2);
+      expect((getA as Num).data.number).toBe(1);
+      expect((getB as Num).data.number).toBe(2);
     });
 
     it('overwrites keys from map2', () => {
@@ -122,7 +122,7 @@ describe('Sass map functions', () => {
       const map2 = createMap([['b', new Num(2)]]);
       const result = merge.call(context, map1, map2);
       const getB = get.call(context, result, new Any('b', { role: 'property' }));
-      expect((getB as Num).value.number).toBe(2); // map2's value wins
+      expect((getB as Num).data.number).toBe(2); // map2's value wins
     });
   });
 
@@ -135,7 +135,7 @@ describe('Sass map functions', () => {
       const getA = get.call(context, result, new Any('a', { role: 'property' }));
       const getB = get.call(context, result, new Any('b', { role: 'property' }));
       expect(getA).toBeInstanceOf(Nil);
-      expect((getB as Num).value.number).toBe(2);
+      expect((getB as Num).data.number).toBe(2);
     });
 
     it('removes multiple keys', () => {
@@ -148,7 +148,7 @@ describe('Sass map functions', () => {
       const getC = get.call(context, result, new Any('c', { role: 'property' }));
       expect(getA).toBeInstanceOf(Nil);
       expect(getB).toBeInstanceOf(Nil);
-      expect((getC as Num).value.number).toBe(3);
+      expect((getC as Num).data.number).toBe(3);
     });
 
     it('returns map as-is when no keys provided', () => {
@@ -156,7 +156,7 @@ describe('Sass map functions', () => {
       const result = remove.call(context, map);
       expect(result).toBeInstanceOf(Collection);
       const getA = get.call(context, result, new Any('a', { role: 'property' }));
-      expect((getA as Num).value.number).toBe(1);
+      expect((getA as Num).data.number).toBe(1);
     });
   });
 
@@ -182,8 +182,8 @@ describe('Sass map functions', () => {
       const result = values.call(context, map);
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(2);
-      expect((result.value[0] as Num).value.number).toBe(1);
-      expect((result.value[1] as Num).value.number).toBe(2);
+      expect((result.value[0] as Num).number).toBe(1);
+      expect((result.value[1] as Num).number).toBe(2);
     });
 
     it('returns empty list for empty map', () => {
@@ -200,7 +200,7 @@ describe('Sass map functions', () => {
       const key = new Any('a', { role: 'property' });
       const result = hasKey.call(context, map, key);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(true);
+      expect((result as Bool).data).toBe(true);
     });
 
     it('returns false when key does not exist', () => {
@@ -208,7 +208,7 @@ describe('Sass map functions', () => {
       const key = new Any('b', { role: 'property' });
       const result = hasKey.call(context, map, key);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(false);
+      expect((result as Bool).data).toBe(false);
     });
 
     it('checks nested keys', () => {
@@ -218,7 +218,7 @@ describe('Sass map functions', () => {
       const key2 = new Any('b', { role: 'property' });
       const result = hasKey.call(context, map, key1, key2);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(true);
+      expect((result as Bool).data).toBe(true);
     });
 
     it('returns false for non-map intermediate value', () => {
@@ -227,7 +227,7 @@ describe('Sass map functions', () => {
       const key2 = new Any('b', { role: 'property' });
       const result = hasKey.call(context, map, key1, key2);
       expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(false);
+      expect((result as Bool).data).toBe(false);
     });
   });
 });

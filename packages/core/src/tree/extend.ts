@@ -1,15 +1,19 @@
-import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND } from './node.js';
+import type { Class } from 'type-fest';
+import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND, type NodeOptions } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
-import { ComplexSelector } from './selector-complex.js';
+import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
-import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
+import { getImplicitSelector, selectorHasAuthoredAmpersand, wrapParentSelectorForNestedContext } from './util/selector-utils.js';
+import { addParentEdge } from './util/cursor.js';
+import { CANONICAL, EVAL } from './node-base.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -40,28 +44,94 @@ export type ExtendValue = {
  * @note - there is some pseudo-code somewhere that smartly
  * registers selectors by a string code.
  */
-export interface Extend extends Node<ExtendValue> {
+export type ExtendChildData = {
+  selector: Selector | undefined;
+  target: Selector;
+  namespace: string | undefined;
+  flag: ExtendFlag | undefined;
+};
+
+export interface Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
+  type: 'Extend';
+  shortType: 'extend';
   eval(context: Context): MaybePromise<Selector>;
 }
 
-export class Extend extends Node<ExtendValue> {
-  type = 'Extend' as const;
-  shortType = 'extend' as const;
+export class Extend extends Node<ExtendValue, NodeOptions, ExtendChildData> {
+  static override childKeys = ['selector', 'target'] as const;
+
+  readonly selector: ExtendValue['selector'];
+  readonly target!: Selector;
+  private readonly namespace: string | undefined;
+  private readonly flag: ExtendFlag | undefined;
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const selector = this.get('selector', ctx);
+    const target = this.get('target', ctx);
+    const namespace = this.get('namespace', ctx);
+    const flag = this.get('flag', ctx);
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const options = this._meta?.options;
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep) {
+      priorChildParents = [];
+      if (selector instanceof Node) {
+        priorChildParents.push([selector, selector.parent]);
+      }
+      if (target instanceof Node) {
+        priorChildParents.push([target, target.parent]);
+      }
+    }
+    const newNode = new (this.constructor as Class<this>)(
+      {
+        selector: deep && selector instanceof Node ? cloneChild(selector) : selector,
+        target: deep ? cloneChild(target) : target,
+        namespace,
+        flag
+      },
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    if (priorChildParents) {
+      const renderKey = ctx?.renderKey ?? (this.renderKey === CANONICAL ? EVAL : this.renderKey);
+      for (const [child, priorParent] of priorChildParents) {
+        addParentEdge(child, renderKey, newNode);
+        (child as unknown as { parent?: Node }).parent = priorParent;
+      }
+    }
+    newNode.inherit(this);
+    return newNode;
+  }
 
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.selector = value.selector;
+    this.target = value.target;
+    this.namespace = value.namespace;
+    this.flag = value.flag;
+    if (this.selector instanceof Node) {
+      this.adopt(this.selector);
+    }
+    if (this.target instanceof Node) {
+      this.adopt(this.target);
+    }
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_NON_STATIC);
   }
 
-  override valueOf() {
-    return `$extend ${this.value.target.valueOf()}`;
+  override valueOf(context?: Context) {
+    return `$extend ${this.get('target', context).valueOf()}`;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag, namespace } = this.value;
+    const context = options.context;
+    let target = this.get('target', context);
+    let selector = this.get('selector', context);
+    let flag = this.get('flag', context);
+    let namespace = this.get('namespace', context);
     const mark = w.mark();
     w.add('$extend');
     if (selector) {
@@ -87,7 +157,11 @@ export class Extend extends Node<ExtendValue> {
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    let { selector, target, flag } = this.value;
+    let selector = this.get('selector', context);
+    let target = this.get('target', context);
+    let flag = this.get('flag', context);
+    let namespace = this.get('namespace', context);
+    const hasExplicitSelector = selector !== undefined;
 
     const currentFrame = context.rulesetFrames.at(-1);
 
@@ -120,76 +194,23 @@ export class Extend extends Node<ExtendValue> {
         }
         // Resolve ampersand to its current parent selector if needed (live resolution for extend)
         let resolvedSel: Selector = sel;
-        if (isNode(sel, 'Ampersand')) {
+        if (isNode(sel, N.Ampersand)) {
           const ampResolved = sel.getResolvedSelector();
           if (ampResolved && !(ampResolved instanceof Nil)) {
             resolvedSel = ampResolved;
           }
         }
-        // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
-        // selector (e.g. .issue-2586-somepage .content not just .content).
-        if (currentFrame && isNode(currentFrame, 'Ruleset')) {
-          const rs = currentFrame as Ruleset;
-          const fullSel = rs.value?.selector;
-          let usedParentListComposition = false;
-          if (!this.value.selector) {
-            const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-            const parentFrame = context.rulesetFrames.at(-2);
-            const parentSel = (
-              parentFrame && isNode(parentFrame, 'Ruleset')
-                ? (parentFrame as Ruleset).value?.selector
-                : undefined
-            );
-            if (
-              ownSel
-              && parentSel
-              && !(parentSel instanceof Nil)
-              && isNode(parentSel, 'SelectorList')
-            ) {
-              const parentIs = PseudoSelector.create({
-                name: ':is',
-                arg: (parentSel as Selector).copy(true)
-              });
-              parentIs.generated = true;
-              resolvedSel = ComplexSelector.create([
-                parentIs,
-                Combinator.create(' '),
-                ownSel.copy(true)
-              ]) as unknown as Selector;
-              usedParentListComposition = true;
-            }
-          }
-          if (!this.value.selector && !usedParentListComposition) {
-            if (fullSel && !(fullSel instanceof Nil)) {
-              resolvedSel = fullSel as Selector;
-            } else {
-              // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-              // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-              if (isNode(currentFrame, 'Ruleset')) {
-                const parentSel = (currentFrame as Ruleset).value?.selector;
-                if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
-                  resolvedSel = ComplexSelector.create([
-                    (parentSel as Selector).copy(true),
-                    Combinator.create(' '),
-                    resolvedSel.copy(true)
-                  ]) as unknown as Selector;
-                }
-              }
-            }
-          }
-        }
-        const beforeMaterialize = resolvedSel.valueOf();
+        resolvedSel = resolveExtendSelectorInFrame(
+          resolvedSel,
+          hasExplicitSelector,
+          currentFrame,
+          context
+        );
         resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
-        const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
-        // Extends declared while traversing a reference branch are tagged so the
-        // extend resolver can keep them non-side-effecting outside that branch.
-        const fromReferenceScope = (
-          context.inReferenceImportScope
-          || extendRootOptions.referenceMode === true
-        );
-        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
+        const fromReferenceScope = context.inReferenceImportScope;
+        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope, namespace]);
         return new Nil();
       });
     }
@@ -199,75 +220,23 @@ export class Extend extends Node<ExtendValue> {
     }
     // Resolve ampersand to its current parent selector if needed (live resolution for extend)
     let resolvedSel: Selector = sel;
-    if (isNode(sel, 'Ampersand')) {
+    if (isNode(sel, N.Ampersand)) {
       const ampResolved = sel.getResolvedSelector();
       if (ampResolved && !(ampResolved instanceof Nil)) {
         resolvedSel = ampResolved;
       }
     }
-    // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
-    // selector (e.g. .issue-2586-somepage .content not just .content).
-    if (currentFrame && isNode(currentFrame, 'Ruleset')) {
-      const rs = currentFrame as Ruleset;
-      const fullSel = rs.value?.selector;
-      let usedParentListComposition = false;
-      if (!this.value.selector) {
-        const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-        const parentFrame = context.rulesetFrames.at(-2);
-        const parentSel = (
-          parentFrame && isNode(parentFrame, 'Ruleset')
-            ? (parentFrame as Ruleset).value?.selector
-            : undefined
-        );
-        if (
-          ownSel
-          && parentSel
-          && !(parentSel instanceof Nil)
-          && isNode(parentSel, 'SelectorList')
-        ) {
-          const parentIs = PseudoSelector.create({
-            name: ':is',
-            arg: (parentSel as Selector).copy(true)
-          });
-          parentIs.generated = true;
-          resolvedSel = ComplexSelector.create([
-            parentIs,
-            Combinator.create(' '),
-            ownSel.copy(true)
-          ]) as unknown as Selector;
-          usedParentListComposition = true;
-        }
-      }
-      if (!this.value.selector && !usedParentListComposition) {
-        if (fullSel && !(fullSel instanceof Nil)) {
-          resolvedSel = fullSel as Selector;
-        } else {
-          // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-          // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-          if (isNode(currentFrame, 'Ruleset')) {
-            const parentSel = (currentFrame as Ruleset).value?.selector;
-            if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
-              resolvedSel = ComplexSelector.create([
-                (parentSel as Selector).copy(true),
-                Combinator.create(' '),
-                resolvedSel.copy(true)
-              ]) as unknown as Selector;
-            }
-          }
-        }
-      }
-    }
-    const beforeMaterialize = resolvedSel.valueOf();
-    resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
-    const rs = currentFrame && isNode(currentFrame, 'Ruleset') ? currentFrame as Ruleset : undefined;
-    const docOrder = getDocumentOrderForExtend(rs, context);
-    const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
-    // Same reference-scope tagging for sync path.
-    const fromReferenceScope = (
-      context.inReferenceImportScope
-      || extendRootOptions.referenceMode === true
+    resolvedSel = resolveExtendSelectorInFrame(
+      resolvedSel,
+      hasExplicitSelector,
+      currentFrame,
+      context
     );
-    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
+    resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
+    const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame as Ruleset : undefined;
+    const docOrder = getDocumentOrderForExtend(rs, context);
+    const fromReferenceScope = context.inReferenceImportScope;
+    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope, namespace]);
     return new Nil();
   }
 }
@@ -277,7 +246,7 @@ function materializeImplicitAmpersands(
   includeNonListImplicit: boolean
 ): Selector {
   const materialize = (node: Selector): Selector => {
-    if (isNode(node, 'Ampersand')) {
+    if (isNode(node, N.Ampersand)) {
       const amp = node as Ampersand;
       const n = amp as unknown as Node;
       if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -285,7 +254,7 @@ function materializeImplicitAmpersands(
         if (
           resolved
           && !(resolved instanceof Nil)
-          && (includeNonListImplicit || isNode(resolved, 'SelectorList'))
+          && (includeNonListImplicit || isNode(resolved, N.SelectorList))
         ) {
           return materialize(resolved.copy(true) as Selector);
         }
@@ -293,11 +262,11 @@ function materializeImplicitAmpersands(
       return node.copy(true) as Selector;
     }
 
-    if (isNode(node, 'ComplexSelector')) {
+    if (isNode(node, N.ComplexSelector)) {
       const complex = node as ComplexSelector;
       const parts: Selector[] = [];
-      for (const part of complex.value as unknown as Selector[]) {
-        if (isNode(part, 'Ampersand')) {
+      for (const part of complex.get('value') as unknown as Selector[]) {
+        if (isNode(part, N.Ampersand)) {
           const amp = part as Ampersand;
           const n = amp as unknown as Node;
           if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -305,11 +274,11 @@ function materializeImplicitAmpersands(
             if (
               resolved
               && !(resolved instanceof Nil)
-              && (includeNonListImplicit || isNode(resolved, 'SelectorList'))
+              && (includeNonListImplicit || isNode(resolved, N.SelectorList))
             ) {
               const repl = materialize(resolved.copy(true) as Selector);
-              if (isNode(repl, 'ComplexSelector')) {
-                parts.push(...((repl as ComplexSelector).value as unknown as Selector[]).map(x => x.copy(true) as Selector));
+              if (isNode(repl, N.ComplexSelector)) {
+                parts.push(...((repl as ComplexSelector).get('value') as unknown as Selector[]).map(x => x.copy(true) as Selector));
               } else {
                 parts.push(repl);
               }
@@ -320,7 +289,7 @@ function materializeImplicitAmpersands(
         const repl = materialize(part);
         parts.push(repl);
       }
-      return ComplexSelector.create(parts as any).inherit(node) as Selector;
+      return ComplexSelector.create(parts as ComplexSelectorComponent[]).inherit(node) as Selector;
     }
 
     const value = (node as Selector & { value?: Selector[] }).value;
@@ -353,3 +322,70 @@ function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): n
   return context.extends.length;
 }
 export const extend = defineType(Extend, 'Extend');
+
+function resolveExtendSelectorInFrame(
+  selector: Selector,
+  hasExplicitSelector: boolean,
+  currentFrame: Node | undefined,
+  context: Context
+): Selector {
+  if (!currentFrame || !isNode(currentFrame, N.Ruleset)) {
+    return selector;
+  }
+
+  const rs = currentFrame as Ruleset;
+  const fullSel = rs.getEffectiveSelector(false, context);
+  let resolvedSel = selector;
+  let usedParentListComposition = false;
+
+  if (!hasExplicitSelector) {
+    const ownSel = rs.getOwnSelector(context);
+    const parentFrame = context.rulesetFrames.at(-2);
+    const parentSel = (
+      parentFrame && isNode(parentFrame, N.Ruleset)
+        ? (parentFrame as Ruleset).getEffectiveSelector(false, context)
+        : undefined
+    );
+    if (
+      ownSel
+      && parentSel
+      && !(parentSel instanceof Nil)
+      && isNode(parentSel, N.SelectorList)
+    ) {
+      resolvedSel = ComplexSelector.create([
+        wrapParentSelectorForNestedContext(parentSel as Selector),
+        Combinator.create(' '),
+        ownSel.copy(true) as Selector
+      ] as unknown as ComplexSelectorComponent[]) as unknown as Selector;
+      usedParentListComposition = true;
+    }
+  }
+
+  if (!hasExplicitSelector && !usedParentListComposition) {
+    if (fullSel && !(fullSel instanceof Nil)) {
+      return fullSel as Selector;
+    }
+
+    const parentSel = rs.getEffectiveSelector(false, context);
+    if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+      return ComplexSelector.create([
+        (parentSel as Selector).copy(true),
+        Combinator.create(' '),
+        resolvedSel.copy(true)
+      ]) as unknown as Selector;
+    }
+
+    return resolvedSel;
+  }
+
+  if (
+    hasExplicitSelector
+    && selectorHasAuthoredAmpersand(resolvedSel)
+    && fullSel
+    && !(fullSel instanceof Nil)
+  ) {
+    return getImplicitSelector(resolvedSel, fullSel as Selector, false);
+  }
+
+  return resolvedSel;
+}

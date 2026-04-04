@@ -31,7 +31,7 @@ describe('source map segments', () => {
       })
     ]);
     // attach fake locations and files
-    const rs = (nested.value[0] as any).value.rules;
+    const rs = (nested.value[0] as any).rules;
     (rs.value[0] as any)._location = [0, 1, 3, 0, 1, 8];
     (nested as any).treeContext.file = { name: 'nested.jess', path: '.', fullPath: '/abs/nested.jess' };
     const css = nested.toString(getPrintOptions({ writer: w }));

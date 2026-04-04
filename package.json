@@ -14,10 +14,10 @@
     "@rollup/plugin-sucrase": "^5.0.1",
     "@stylistic/eslint-plugin": "~5.1.0",
     "@types/glob": "^8.1.0",
-    "@types/node": "^18.15.13",
+    "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.2",
     "cross-env": "~7.0.3",
     "eslint": "^9.31.0",
     "eslint-plugin-import": "^2.32.0",
@@ -26,19 +26,21 @@
     "glob": "^10.2.1",
     "globals": "~16.3.0",
     "husky": "~8.0.3",
+    "less": "^4.6.3",
     "lint-staged": "13.2.1",
     "lite-server": "^2.6.1",
     "puppeteer": "^19.10.1",
     "rollup": "^3.20.7",
     "shx": "^0.3.4",
     "ts-node": "^9.1.1",
+    "tsdown": "~0.21.7",
     "tslib": "^2.6.2",
     "type-fest": "^4.32.0",
     "typescript": "~5.8.2",
     "typescript-eslint": "~8.36.0",
     "vite": "^6.3.5",
     "vite-plugin-circular-dependency": "~0.5.0",
-    "vitest": "^3.2.3"
+    "vitest": "^4.1.2"
   },
   "scripts": {
     "ci": "pnpm run -r ci && pnpm run lint",
@@ -48,6 +50,7 @@
     "lint:fix": "eslint --fix '**/*.{mjs,cjs,js,ts}'",
     "lint": "eslint '**/*.{mjs,cjs,js,ts}'",
     "test": "vitest",
+    "test:core:debug": "cross-env TEST=true node scripts/test-core-debug.mjs",
     "test:coverage": "vitest --coverage",
     "preinstall": "npx only-allow pnpm",
     "test:less": "node scripts/test-less.js",
@@ -56,6 +59,8 @@
     "test:less:functions": "node scripts/test-less.js functions",
     "test:less:custom": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less --exclude=**/all-less.test.ts",
     "test:less:test-data": "pnpm --filter @jesscss/core build && vitest packages/jess/test/less/all-less.test.ts",
+    "bench:css:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/css-parser",
+    "bench:less:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/less-parser",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "release:alpha:check": "pnpm run verify:baseline && node scripts/release/validate-alpha-publish-set.mjs && node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
     "release:alpha:version": "node scripts/release/increment-alpha.mjs",
@@ -88,6 +93,9 @@
   "pnpm": {
     "patchedDependencies": {
       "superstruct@1.0.3": "patches/superstruct@1.0.3.patch"
+    },
+    "overrides": {
+      "chevrotain": "^12.0.0"
     }
   },
   "packageManager": "pnpm@8.15.0+sha512.ea45517d5285d123eac02c3793505fa1fd6da90a2fc60d1e8d9e0c1e9292886ecfaff513f062b9d1cc8021bb8615033b1ac5bea3b2ee3fc165a6d7034bbe6b03"

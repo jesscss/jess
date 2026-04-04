@@ -4,6 +4,10 @@ User-facing documentation is maintained in the Docusaurus site under `packages/d
 
 This `docs/` folder is kept only for a small set of **dev-facing architecture notes** (notably extend-roots), plus an `_archive/` of older brainstorming.
 
+Forward-looking refactor and design work lives under:
+
+- `docs/future/`
+
 If you’re looking for current docs:
 - `packages/docs/docs/` (features, syntax, functions)
 - package `README.md` files under `packages/*/`

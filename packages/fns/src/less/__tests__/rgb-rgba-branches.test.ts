@@ -21,7 +21,7 @@ describe('rgb()/rgba() branch coverage', () => {
       rgbInternal.call(
         {
           context: new Context(),
-          rawArgs: [],
+          rawArgs: new List([]),
           args: async () => []
         },
         Number.NaN
@@ -35,7 +35,7 @@ describe('rgb()/rgba() branch coverage', () => {
       {
         caller: { options: { modernSyntax: true } },
         context: new Context(),
-        rawArgs: [],
+        rawArgs: new List([]),
         args: async () => []
       },
       255,
@@ -105,9 +105,7 @@ describe('rgb()/rgba() branch coverage', () => {
       51,
       76.5
     );
-    const raw = (result as unknown as {
-      value: { rgb: Array<number | [number, string]> };
-    }).value.rgb;
+    const raw = result._rgbChannels!;
 
     expect(raw[0]).toEqual([10, '%']);
     expect(raw[1]).toEqual([20, '%']);

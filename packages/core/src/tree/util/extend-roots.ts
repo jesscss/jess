@@ -1,55 +1,239 @@
 import type { Context } from '../../context.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import type { AtRule } from '../at-rule.js';
-import { Combinator } from '../combinator.js';
-import { ComplexSelector } from '../selector-complex.js';
+import type { Node } from '../node.js';
 import type { Rules } from '../rules.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
+import { CompoundSelector } from '../selector-compound.js';
+import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
-import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
-import { findExtendableLocations } from './extend-helpers.js';
+
 import { isNode } from './is-node.js';
-import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
+import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
-import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
-import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './ruleset-trace.js';
-import { getImplicitSelector as getImplicitSelectorUtil } from './selector-utils.js';
+import { F_EXTENDED, F_VISIBLE } from '../node.js';
+import { selectorMatch } from './selector-match-core.js';
+import { tryExtendSelector } from './extend-core.js';
+import { getCurrentParentNode, getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, hasSourceExtendWrapperParent, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
 
 /**
- * Fast check: would applying a single extend instruction change the selector?
+ * Extend-root orchestration is intentionally record-driven:
  *
- * Uses the walk-and-consume dry-run for SimpleSelector find targets (O(depth)),
- * falls back to the full applyExtendsToSelector + valueOf comparison for complex targets.
+ * 1. During eval, qualifying scopes register themselves as extend roots.
+ * 2. Rulesets register directly against the current extend root.
+ * 3. Extend processing consumes only recorded roots/rulesets/instructions.
+ *
+ * This file should not discover roots or child roots by walking the node tree.
+ * Extend support must stay close to zero-cost when no extends are present, so
+ * all expensive work is deferred until we have both recorded rulesets and
+ * recorded extend instructions to apply.
+ *
+ * @todo Once the extend test matrix is green, do a dedicated performance review
+ * of extend-root orchestration. Re-check:
+ * - zero-work behavior when no extends are present
+ * - repeat-pass behavior and termination characteristics under load
+ * - cache invalidation costs
+ * - whether any remaining selector rewrites can be deferred to serialization
  */
-function wouldInstructionChangeSel(
-  selector: Selector,
-  instruction: ExtendInstruction
-): boolean {
-  const { target, extendWith, partial } = instruction;
-  // Walk-and-consume fast path for SimpleSelector targets
-  if (canUseWalkAndConsume(selector, target)) {
-    return wouldExtendChange(selector, target, extendWith, partial);
+
+function invalidateSelectorCache(selector?: Selector | Nil): void {
+  if (!selector || isNode(selector, N.Nil)) {
+    return;
   }
-  // Fallback: full extend + compare
-  const after = applyExtendsToSelector(selector, [instruction]);
-  return after.valueOf() !== selector.valueOf();
+  selector.invalidateCache();
 }
 
+function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): void {
+  ruleset.invalidateSelectorValueCache();
+  invalidateSelectorCache(ruleset.get('selector', context));
+  invalidateSelectorCache(context ? ruleset.get('_extendedSelector', context) : ruleset.getExtendedSelector());
+  invalidateSelectorCache(ruleset.getOwnSelector(context));
+  invalidateSelectorCache(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend());
+  const rules = ruleset.enterRules(context);
+  if (!rules || !isNode(rules, N.Rules)) {
+    return;
+  }
+  for (const child of (rules as Rules).value) {
+    if (isNode(child, N.Ruleset)) {
+      invalidateRulesetSelectorCaches(child as Ruleset, context);
+    }
+  }
+}
+
+function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context): void {
+  const rules = parentRuleset.enterRules(context);
+  if (!rules || !isNode(rules, N.Rules)) {
+    return;
+  }
+
+  const parentSelector = parentRuleset.getEffectiveSelector(false, context);
+  if (!parentSelector || isNode(parentSelector, N.Nil)) {
+    return;
+  }
+
+  for (const child of (rules as Rules).value) {
+    if (!isNode(child, N.Ruleset)) {
+      continue;
+    }
+
+    const childRuleset = child as Ruleset;
+    syncRulesetDerivedSelector(childRuleset, context);
+    refreshNestedRulesetSelectors(childRuleset, context);
+  }
+}
+
+function hasReferenceBoundaryParent(ruleset: Ruleset, context?: Context): boolean {
+  const parent = getCurrentParentNode(ruleset, context);
+  return Boolean(
+    parent
+    && isNode(parent, N.Rules)
+    && (parent as Rules).options?.referenceMode === true
+  );
+}
+
+function parentRulesetOwnsDerivedSelectorState(parentRuleset: Ruleset, context?: Context): boolean {
+  const extendedSelector = context
+    ? parentRuleset.get('_extendedSelector', context)
+    : parentRuleset.getExtendedSelector();
+  if (extendedSelector !== undefined) {
+    return true;
+  }
+  const selectorBeforeExtend = context
+    ? parentRuleset.get('selectorBeforeExtend', context)
+    : parentRuleset.getSelectorBeforeExtend();
+  if (selectorBeforeExtend !== undefined) {
+    return true;
+  }
+  return getRulesetHoistToRoot(parentRuleset, context) === true;
+}
+
+function getDerivedSelectorFromParent(ruleset: Ruleset, context?: Context): Selector | Nil | undefined {
+  const ownSelector = ruleset.getOwnSelector(context);
+  if (!ownSelector || isNode(ownSelector, N.Nil)) {
+    return undefined;
+  }
+  if (isBareAmpersandOwnSelector(ownSelector) && hasReferenceBoundaryParent(ruleset, context)) {
+    return undefined;
+  }
+
+  const parentRuleset = getParentRuleset(ruleset, context);
+  if (!parentRuleset || !parentRulesetOwnsDerivedSelectorState(parentRuleset, context)) {
+    return undefined;
+  }
+  const parentSelector = parentRuleset?.getEffectiveSelector(false, context);
+  if (!parentSelector || isNode(parentSelector, N.Nil)) {
+    return undefined;
+  }
+
+  const composedSelector = getImplicitSelector(ownSelector, parentSelector, false);
+  const currentSelector = ruleset.get('selector', context);
+  if (!isNode(currentSelector, N.Nil) && composedSelector.valueOf() === currentSelector.valueOf()) {
+    return undefined;
+  }
+
+  return composedSelector;
+}
+
+function syncRulesetDerivedSelector(ruleset: Ruleset, context?: Context): void {
+  const derivedSelector = getDerivedSelectorFromParent(ruleset, context);
+  ruleset.setExtendedSelector(derivedSelector, context);
+}
+
+function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false): Selector {
+  if (isNode(selector, N.SelectorList)) {
+    return SelectorList.create(
+      (selector as SelectorList).get('value').map(item => normalizeGeneratedIsOrder(item as Selector, insideGeneratedIs))
+    ).inherit(selector) as Selector;
+  }
+
+  if (isNode(selector, N.ComplexSelector)) {
+    return ComplexSelector.create(
+      (selector as ComplexSelector).get('value').map(part =>
+        normalizeGeneratedIsOrder(part as Selector, insideGeneratedIs) as ComplexSelectorComponent
+      )
+    ).inherit(selector) as Selector;
+  }
+
+  if (isNode(selector, N.CompoundSelector)) {
+    const normalizedMembers = (selector as CompoundSelector).get('value').map(child =>
+      normalizeGeneratedIsOrder(child as Selector, insideGeneratedIs)
+    );
+    if (!insideGeneratedIs) {
+      return CompoundSelector.create(normalizedMembers).inherit(selector) as Selector;
+    }
+    const generatedIs = normalizedMembers.filter(member =>
+      isNode(member, N.PseudoSelector)
+      && member.generated
+      && member.get('name') === ':is'
+    );
+    if (generatedIs.length !== 1 || generatedIs[0] === normalizedMembers[0]) {
+      return CompoundSelector.create(normalizedMembers).inherit(selector) as Selector;
+    }
+    const leadingGeneratedIs = generatedIs[0]!;
+    const others = normalizedMembers.filter(member => member !== leadingGeneratedIs);
+    return CompoundSelector.create([
+      leadingGeneratedIs,
+      ...others
+    ]).inherit(selector) as Selector;
+  }
+
+  if (isNode(selector, N.PseudoSelector)) {
+    const arg = selector.get('arg');
+    if (arg && isNode(arg, N.Selector)) {
+      const copy = selector.copy(true) as PseudoSelector;
+      const nextArg = normalizeGeneratedIsOrder(
+        arg as Selector,
+        insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
+      );
+      copy.adopt(nextArg);
+      copy.arg = nextArg;
+      return copy as Selector;
+    }
+  }
+
+  return selector;
+}
+
+type ExtendRootRecord = {
+  rules: Rules;
+  parent?: Rules;
+  children: Set<Rules>;
+  rulesets: Set<Ruleset>;
+  layerName?: string;
+  isProtected: boolean;
+  isCompose: boolean;
+  namespace?: string;
+};
+
 export class ExtendRootRegistry {
-  private parentRoot = new WeakMap<Rules, Rules>();
-  private childrenRoots = new WeakMap<Rules, Set<Rules>>();
-  private layerName = new WeakMap<Rules, string>();
-  private isProtected = new WeakMap<Rules, boolean>();
-  private isCompose = new WeakMap<Rules, boolean>();
+  private rootRecords = new WeakMap<Rules, ExtendRootRecord>();
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private layerNames = new WeakMap<AtRule, string>();
   private allRoots = new Set<Rules>();
+  private visibleRootsCache = new WeakMap<Rules, Set<Rules>>();
 
   root?: Rules;
   extendRootStack: Rules[] = [];
+
+  private ensureRootRecord(rules: Rules): ExtendRootRecord {
+    let record = this.rootRecords.get(rules);
+    if (!record) {
+      record = {
+        rules,
+        children: new Set(),
+        rulesets: new Set(),
+        isProtected: false,
+        isCompose: false
+      };
+      this.rootRecords.set(rules, record);
+      this.allRoots.add(rules);
+      this.visibleRootsCache = new WeakMap();
+    }
+    return record;
+  }
 
   getCurrentExtendRoot(): Rules | undefined {
     return this.extendRootStack[this.extendRootStack.length - 1];
@@ -60,26 +244,19 @@ export class ExtendRootRegistry {
     parent?: Rules,
     options?: { layerName?: string; isProtected?: boolean; isCompose?: boolean; namespace?: string }
   ): void {
-    this.allRoots.add(rules);
-    if (parent) {
-      this.allRoots.add(parent);
-    }
+    const record = this.ensureRootRecord(rules);
     if (!this.root) {
       this.root = rules;
     }
 
     if (parent) {
-      this.parentRoot.set(rules, parent);
-      let children = this.childrenRoots.get(parent);
-      if (!children) {
-        children = new Set<Rules>();
-        this.childrenRoots.set(parent, children);
-      }
-      children.add(rules);
+      const parentRecord = this.ensureRootRecord(parent);
+      record.parent = parent;
+      parentRecord.children.add(rules);
     }
 
     if (options?.layerName) {
-      this.layerName.set(rules, options.layerName);
+      record.layerName = options.layerName;
       let layerRoots = this.rootsByLayerName.get(options.layerName);
       if (!layerRoots) {
         layerRoots = new Set<Rules>();
@@ -89,6 +266,7 @@ export class ExtendRootRegistry {
     }
 
     if (options?.namespace) {
+      record.namespace = options.namespace;
       let nsRoots = this.rootsByNamespace.get(options.namespace);
       if (!nsRoots) {
         nsRoots = new Set<Rules>();
@@ -98,11 +276,33 @@ export class ExtendRootRegistry {
     }
 
     if (options?.isProtected) {
-      this.isProtected.set(rules, true);
+      record.isProtected = true;
     }
     if (options?.isCompose) {
-      this.isCompose.set(rules, true);
+      record.isCompose = true;
     }
+    this.visibleRootsCache = new WeakMap();
+  }
+
+  registerRuleset(root: Rules, ruleset: Ruleset): void {
+    if (!root || !ruleset) {
+      return;
+    }
+    this.ensureRootRecord(root).rulesets.add(ruleset);
+  }
+
+  getRulesets(root: Rules): ReadonlySet<Ruleset> | undefined {
+    return this.rootRecords.get(root)?.rulesets;
+  }
+
+  clearRegisteredRulesets(): void {
+    for (const root of this.allRoots) {
+      this.rootRecords.get(root)?.rulesets.clear();
+    }
+  }
+
+  getAllRoots(): Set<Rules> {
+    return new Set(this.allRoots);
   }
 
   pushExtendRoot(rules: Rules): void {
@@ -118,6 +318,11 @@ export class ExtendRootRegistry {
   }
 
   getAccessibleRoots(root: Rules): Set<Rules> {
+    const cached = this.visibleRootsCache.get(root);
+    if (cached) {
+      return cached;
+    }
+
     const accessible = new Set<Rules>();
     const visited = new Set<Rules>();
 
@@ -128,44 +333,30 @@ export class ExtendRootRegistry {
       visited.add(currentRoot);
       accessible.add(currentRoot);
 
-      if (this.isProtected.get(currentRoot)) {
+      const currentRecord = this.rootRecords.get(currentRoot);
+      if (!currentRecord) {
         return;
       }
 
-      const children = this.childrenRoots.get(currentRoot);
-      if (children) {
-        for (const child of children) {
-          if (this.isProtected.get(child)) {
+      if (currentRecord.isProtected) {
+        return;
+      }
+
+      if (currentRecord.children.size) {
+        for (const child of currentRecord.children) {
+          if (this.rootRecords.get(child)?.isProtected) {
             continue;
           }
           traverseChildren(child);
         }
       }
 
-      if (currentRoot.value?.length) {
-        for (const node of currentRoot.value) {
-          if (node && isNode(node, 'Ruleset') && node.value?.rules && isNode(node.value.rules, 'Rules')) {
-            const innerRules = node.value.rules as Rules;
-            if (!visited.has(innerRules)) {
-              accessible.add(innerRules);
-              traverseChildren(innerRules);
-            }
-          } else if (node && isNode(node, 'Rules')) {
-            const innerRules = node as Rules;
-            if (!visited.has(innerRules)) {
-              accessible.add(innerRules);
-              traverseChildren(innerRules);
-            }
-          }
-        }
-      }
-
-      const layer = this.layerName.get(currentRoot);
+      const layer = currentRecord.layerName;
       if (layer) {
         const sameLayerRoots = this.rootsByLayerName.get(layer);
         if (sameLayerRoots) {
           for (const layerRoot of sameLayerRoots) {
-            if (layerRoot !== currentRoot && !visited.has(layerRoot) && !this.isProtected.get(layerRoot)) {
+            if (layerRoot !== currentRoot && !visited.has(layerRoot) && !this.rootRecords.get(layerRoot)?.isProtected) {
               accessible.add(layerRoot);
               traverseChildren(layerRoot);
             }
@@ -175,27 +366,45 @@ export class ExtendRootRegistry {
     };
 
     traverseChildren(root);
+    this.visibleRootsCache.set(root, accessible);
     return accessible;
+  }
+
+  isRootInNamespace(root: Rules, namespace: string): boolean {
+    const namespaceRoots = this.rootsByNamespace.get(namespace);
+    if (!namespaceRoots?.size) {
+      return false;
+    }
+    for (const namespaceRoot of namespaceRoots) {
+      if (this.getAccessibleRoots(namespaceRoot).has(root)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   isSameOrDescendantRoot(rulesetRoot: Rules, extendRoot: Rules): boolean {
     if (rulesetRoot === extendRoot) {
       return true;
     }
-    if (this.isProtected.get(rulesetRoot)) {
+    const rulesetRecord = this.rootRecords.get(rulesetRoot);
+    if (!rulesetRecord) {
       return false;
     }
-    const layerA = this.layerName.get(rulesetRoot);
-    const layerB = this.layerName.get(extendRoot);
+    if (rulesetRecord.isProtected) {
+      return false;
+    }
+    const layerA = rulesetRecord.layerName;
+    const layerB = this.rootRecords.get(extendRoot)?.layerName;
     if (layerA && layerB && layerA === layerB) {
       return true;
     }
-    const children = this.childrenRoots.get(extendRoot);
-    if (!children) {
+    const extendRecord = this.rootRecords.get(extendRoot);
+    if (!extendRecord || extendRecord.children.size === 0) {
       return false;
     }
-    for (const child of children) {
-      if (this.isProtected.get(child)) {
+    for (const child of extendRecord.children) {
+      if (this.rootRecords.get(child)?.isProtected) {
         continue;
       }
       if (this.isSameOrDescendantRoot(rulesetRoot, child)) {
@@ -221,36 +430,9 @@ export class ExtendRootRegistry {
     return layer;
   }
 
-  getAllRoots(): Set<Rules> {
-    return new Set(this.allRoots);
-  }
-
   isProtectedRoot(rules: Rules): boolean {
-    return this.isProtected.get(rules) === true;
+    return this.rootRecords.get(rules)?.isProtected === true;
   }
-}
-
-const rulesetsByRoot = new Map<Rules, Set<Ruleset>>();
-
-function getSourceNodeTraceId(ruleset: Ruleset): number | null {
-  const sourceNode = ruleset.sourceNode as Ruleset | undefined;
-  if (!sourceNode) {
-    return null;
-  }
-  return getOptionalRulesetTraceId(sourceNode) ?? null;
-}
-
-export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
-  if (!root || !ruleset) {
-    return;
-  }
-  let set = rulesetsByRoot.get(root);
-  if (!set) {
-    set = new Set<Ruleset>();
-    rulesetsByRoot.set(root, set);
-  }
-  set.add(ruleset);
-  const sourceNode = ruleset.sourceNode;
 }
 
 function isInstructionVisibleForRoot(
@@ -259,17 +441,24 @@ function isInstructionVisibleForRoot(
   instruction: {
     extendRoot?: Rules;
     fromReferenceScope: boolean;
-  }
+    namespace?: string;
+  },
+  getCachedVisibleRoots?: (root: Rules) => Set<Rules>
 ): boolean {
   if (!instruction.extendRoot) {
     return false;
   }
   if (instruction.fromReferenceScope === true) {
-    // Less parity: extends declared while evaluating a reference import are non-side-effecting.
     return false;
   }
   if (context.extendRoots.isProtectedRoot(rootRules) && instruction.extendRoot !== rootRules) {
     return false;
+  }
+  if (instruction.namespace) {
+    if (instruction.namespace === '*') {
+      return true;
+    }
+    return context.extendRoots.isRootInNamespace(rootRules, instruction.namespace);
   }
   if (instruction.extendRoot === rootRules) {
     return true;
@@ -277,523 +466,626 @@ function isInstructionVisibleForRoot(
   if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
     return true;
   }
-  const visibleRoots = context.extendRoots.getVisibleRoots(instruction.extendRoot);
+  const visibleRoots = getCachedVisibleRoots
+    ? getCachedVisibleRoots(instruction.extendRoot)
+    : context.extendRoots.getVisibleRoots(instruction.extendRoot);
   return visibleRoots.has(rootRules);
 }
 
-function rootHasTargetMatch(root: Rules, target: Selector, partial: boolean): boolean {
-  const targetValue = target.valueOf();
-  const stack: unknown[] = [...root.value];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== 'object') {
-      continue;
+function isRootWithinInstructionNamespace(
+  context: Context,
+  rootRules: Rules,
+  instruction: {
+    namespace?: string;
+  }
+): boolean {
+  if (!instruction.namespace || instruction.namespace === '*') {
+    return true;
+  }
+  return context.extendRoots.isRootInNamespace(rootRules, instruction.namespace);
+}
+
+type RecordedExtendInstruction = {
+  target: Selector;
+  extendWith: Selector;
+  partial: boolean;
+  extendRoot: Rules;
+  extendNode: Node;
+  fromReferenceScope: boolean;
+  namespace?: string;
+};
+
+type TargetInfo = ReturnType<typeof getRulesetExtendTarget>;
+type TargetInfoCache = WeakMap<Ruleset, Map<RecordedExtendInstruction, TargetInfo>>;
+
+function getCachedTargetInfo(
+  cache: TargetInfoCache | undefined,
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  context?: Context
+): TargetInfo {
+  if (cache) {
+    let perRuleset = cache.get(ruleset);
+    if (perRuleset?.has(instruction)) {
+      return perRuleset.get(instruction);
     }
-    if (isNode(node, 'Ruleset')) {
-      const selector = (node as Ruleset).value.selector as Selector | undefined;
-      if (!selector || isNode(selector, 'Nil')) {
-        continue;
-      }
-      const selectorValue = selector.valueOf();
-      if (selectorValue.includes(targetValue)) {
-        return true;
-      }
-      if (findExtendableLocations(selector, target).hasMatches) {
-        return true;
-      }
-      const rules = (node as Ruleset).value.rules;
-      if (rules && isNode(rules, 'Rules')) {
-        stack.push(...rules.value);
-      }
-      continue;
+    const result = getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
+    if (!perRuleset) {
+      perRuleset = new Map();
+      cache.set(ruleset, perRuleset);
     }
-    if (isNode(node, 'Rules')) {
-      stack.push(...(node as Rules).value);
-      continue;
+    perRuleset.set(instruction, result);
+    return result;
+  }
+  return getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
+}
+
+function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset): void {
+  cache.delete(ruleset);
+  const rules = ruleset.get('rules');
+  if (!rules || !isNode(rules, N.Rules)) {
+    return;
+  }
+  for (const child of (rules as Rules).value) {
+    if (isNode(child, N.Ruleset)) {
+      invalidateTargetInfoCacheTree(cache, child as Ruleset);
     }
-    if (isNode(node, 'AtRule')) {
-      const value = (node as any).value;
-      if (value && isNode(value, 'Rules')) {
-        stack.push(...(value as Rules).value);
-      }
+  }
+}
+
+function getRulesetInstructionSignature(
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  cache?: TargetInfoCache,
+  context?: Context
+): string | undefined {
+  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  if (!targetInfo) {
+    return undefined;
+  }
+
+  return [
+    targetInfo.selector.valueOf(),
+    targetInfo.parent?.valueOf() ?? '',
+    targetInfo.usingOwnSelector ? 'own' : 'full'
+  ].join('\u0000');
+}
+
+function isNodeInsideRules(node: Node, rules: Rules): boolean {
+  let current: Node | undefined = node;
+  while (current) {
+    if (current === rules) {
+      return true;
     }
+    current = current.parent;
   }
   return false;
 }
 
-export function processExtends(context: Context): void {
-  const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => ({
-    target,
-    extendWith: selectorWithExtend,
-    partial,
-    extendRoot,
-    extendNode,
-    fromReferenceScope: fromReferenceScope === true
-  }));
-
-  if (!instructions.length) {
-    return;
+function getRulesetExtendTarget(
+  ruleset: Ruleset,
+  find: Selector,
+  partial: boolean,
+  context?: Context
+): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
+  const selector = ruleset.getEffectiveSelector(false, context);
+  if (!selector || isNode(selector, N.Nil)) {
+    return undefined;
   }
 
-  const instructionStats = new Map(instructions.map(i => [i, { visibleMatchCount: 0, blockedMatchCount: 0 }]));
+  const ownSelector = ruleset.getOwnSelector(context);
+  if (hasSourceExtendWrapperParent(ruleset)) {
+    return {
+      selector,
+      usingOwnSelector: false
+    };
+  }
+  // Bare `&` rulesets are pure mirrors of their parent selector and are updated
+  // by refreshNestedRulesetSelectors when the parent is extended. Skip direct
+  // extend processing so selectorBeforeExtend is not incorrectly set on them.
+  if (ownSelector && !isNode(ownSelector, N.Nil) && isBareAmpersandOwnSelector(ownSelector)) {
+    return undefined;
+  }
+  const parentRs = getParentRuleset(ruleset, context);
+  const parentSelectorBeforeExtend = parentRs
+    ? (context ? parentRs.get('selectorBeforeExtend', context) : parentRs.getSelectorBeforeExtend())
+    : undefined;
+  const activeParentSelector = parentRs?.getEffectiveSelector(false, context);
+  const parentSelector = (
+    !partial
+    && parentSelectorBeforeExtend
+    && !isNode(parentSelectorBeforeExtend, N.Nil)
+      ? parentSelectorBeforeExtend
+      : activeParentSelector
+  );
+  if (
+    ownSelector
+    && !isNode(ownSelector, N.Nil)
+    && ownSelector.valueOf() !== selector.valueOf()
+    && parentSelector
+    && !isNode(parentSelector, N.Nil)
+  ) {
+    const ownMatch = selectorMatch(find, ownSelector, parentSelector, context);
+    const rawOwnMatch = partial
+      ? selectorMatch(find, ownSelector, undefined, context)
+      : undefined;
+    const shouldUseOwnSelector = partial
+      ? (
+          ownMatch.fullMatch
+          || ownMatch.partialMatch
+          || Boolean(rawOwnMatch?.fullMatch)
+          || Boolean(rawOwnMatch?.partialMatch)
+        )
+      : (
+          ownMatch.fullMatch
+          && ownMatch.crossesAmpersand
+        );
 
-  for (const [rootRules, rulesetSet] of rulesetsByRoot) {
-    if (!rootRules) {
-      continue;
+    if (shouldUseOwnSelector) {
+      return {
+        selector: ownSelector,
+        parent: parentSelector,
+        usingOwnSelector: true
+      };
     }
-    const visibleExtendSet = new Set(instructions.filter(instruction =>
-      isInstructionVisibleForRoot(context, rootRules, instruction)
-    ));
+
+    if (
+      !partial
+      && activeParentSelector
+      && !isNode(activeParentSelector, N.Nil)
+      && activeParentSelector.valueOf() !== parentSelector.valueOf()
+    ) {
+      const activeOwnMatch = selectorMatch(find, ownSelector, activeParentSelector, context);
+      if (activeOwnMatch.fullMatch && activeOwnMatch.crossesAmpersand) {
+        return {
+          selector: ownSelector,
+          parent: activeParentSelector,
+          usingOwnSelector: true
+        };
+      }
+    }
+
+    if (!partial && selectorHasAuthoredAmpersand(ownSelector as Selector)) {
+      const composedMatch = selectorMatch(find, selector, undefined, context);
+      if (composedMatch.fullMatch) {
+        return {
+          selector,
+          usingOwnSelector: false
+        };
+      }
+    }
+
+    // Target doesn't match ownSelector (with parent context). Don't fall
+    // through to the full composed selector — any match there would be in
+    // the parent-prefix portion, which is handled when the parent ruleset
+    // itself is extended + refreshNestedRulesetSelectors propagates changes.
+    return undefined;
+  }
+
+  return {
+    selector,
+    usingOwnSelector: false
+  };
+}
+
+function markExtendedSelector(selector: Selector, context?: Context): void {
+  if (context) {
+    selector._addFlag(F_EXTENDED, context);
+    selector._addFlag(F_VISIBLE, context);
+  } else {
+    selector.addFlag(F_EXTENDED);
+    selector.addFlag(F_VISIBLE);
+  }
+  if (isNode(selector, N.SelectorList)) {
+    for (const item of (selector as SelectorList).get('value')) {
+      if (context) {
+        (item as Selector)._addFlag(F_EXTENDED, context);
+        (item as Selector)._addFlag(F_VISIBLE, context);
+      } else {
+        (item as Selector).addFlag(F_EXTENDED);
+        (item as Selector).addFlag(F_VISIBLE);
+      }
+    }
+  }
+}
+
+function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?: Context): void {
+  const rulesetFlagTarget = ruleset;
+  if (context) {
+    rulesetFlagTarget._addFlag(F_EXTENDED, context);
+    rulesetFlagTarget._addFlag(F_VISIBLE, context);
+  } else {
+    rulesetFlagTarget.addFlag(F_EXTENDED);
+    rulesetFlagTarget.addFlag(F_VISIBLE);
+  }
+  markExtendedSelector(selector, context);
+}
+
+function selectorHasTopLevelValue(selector: Selector | Nil | undefined, value: string): boolean {
+  if (!selector || isNode(selector, N.Nil)) {
+    return false;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    return ((selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === value);
+  }
+  return selector.valueOf() === value;
+}
+
+function getExactOwnSelectorFallbackTarget(
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  currentTargetInfo: { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined,
+  context?: Context
+): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
+  if (instruction.partial || currentTargetInfo?.usingOwnSelector) {
+    return undefined;
+  }
+
+  const ownSelector = ruleset.getOwnSelector(context);
+  if (!ownSelector || isNode(ownSelector, N.Nil)) {
+    return undefined;
+  }
+
+  const parentRuleset = getParentRuleset(ruleset, context);
+  const parentOwnSelector = parentRuleset?.getOwnSelector(context);
+  if (
+    parentOwnSelector
+    && !isNode(parentOwnSelector, N.Nil)
+    && isNode(parentOwnSelector, N.SelectorList)
+  ) {
+    return undefined;
+  }
+  const parentSelectorBeforeExtend = parentRuleset
+    ? (context ? parentRuleset.get('selectorBeforeExtend', context) : parentRuleset.getSelectorBeforeExtend())
+    : undefined;
+  const activeParentSelector = parentRuleset?.getEffectiveSelector(false, context);
+  const parentSelector = (
+    parentSelectorBeforeExtend
+    && !isNode(parentSelectorBeforeExtend, N.Nil)
+      ? parentSelectorBeforeExtend
+      : activeParentSelector
+  );
+  if (!parentSelector || isNode(parentSelector, N.Nil)) {
+    return undefined;
+  }
+
+  if (selectorHasTopLevelValue(activeParentSelector, instruction.extendWith.valueOf())) {
+    return undefined;
+  }
+
+  const ownMatch = selectorMatch(instruction.target, ownSelector, parentSelector, context);
+  if (!ownMatch.partialMatch || ownMatch.crossesAmpersand) {
+    return undefined;
+  }
+
+  return {
+    selector: ownSelector,
+    parent: parentSelector,
+    usingOwnSelector: true
+  };
+}
+
+function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
+  const rulesetFlagTarget = ruleset;
+  if (context) {
+    rulesetFlagTarget._removeFlag(F_EXTENDED, context);
+  } else {
+    rulesetFlagTarget.removeFlag(F_EXTENDED);
+  }
+  if (getRulesetHoistToRoot(ruleset, context) !== undefined) {
+    setRulesetHoistToRoot(ruleset, undefined, context);
+  }
+  const selector = ((context ? ruleset.get('_extendedSelector', context) : ruleset.getExtendedSelector()) ?? ruleset.get('selector', context));
+  if (selector && !isNode(selector, N.Nil)) {
+    if (context) {
+      selector._removeFlag(F_EXTENDED, context);
+    } else {
+      selector.removeFlag(F_EXTENDED);
+    }
+  }
+  syncRulesetDerivedSelector(ruleset, context);
+}
+
+function getRulesetHoistToRoot(ruleset: Ruleset, _context?: Context): boolean | undefined {
+  return ruleset.hoistToRoot;
+}
+
+function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, _context?: Context): void {
+  ruleset.hoistToRoot = value;
+}
+
+function applyInstructionToRuleset(
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  cache?: TargetInfoCache,
+  context?: Context
+): { matched: boolean; changed: boolean } {
+  let targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  if (!targetInfo) {
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, undefined, context);
+    if (!fallbackTargetInfo) {
+      return { matched: false, changed: false };
+    }
+    targetInfo = fallbackTargetInfo;
+  }
+
+  let targetMatch = selectorMatch(
+    instruction.target,
+    targetInfo.selector,
+    targetInfo.parent,
+    context
+  );
+  if (!targetMatch.partialMatch) {
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, targetInfo, context);
+    if (!fallbackTargetInfo) {
+      return { matched: false, changed: false };
+    }
+    targetInfo = fallbackTargetInfo;
+    targetMatch = selectorMatch(
+      instruction.target,
+      targetInfo.selector,
+      targetInfo.parent,
+      context
+    );
+    if (!targetMatch.partialMatch) {
+      return { matched: false, changed: false };
+    }
+  }
+
+  const currentSelector = ruleset.get('selector', context);
+  const selectorBeforeExtend = targetInfo.usingOwnSelector
+    ? targetInfo.selector
+    : currentSelector;
+  if (
+    !(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend())
+    && selectorBeforeExtend
+    && !isNode(selectorBeforeExtend, N.Nil)
+  ) {
+    ruleset.setSelectorBeforeExtend(selectorBeforeExtend.copy(true) as Selector, context!);
+  }
+
+  if (
+    isNodeInsideRules(instruction.extendNode, ruleset.enterRules(context))
+    && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
+    && targetMatch.fullMatch
+  ) {
+    activateExtendedRuleset(ruleset, targetInfo.selector, context);
+    return { matched: true, changed: false };
+  }
+
+  const extendWithVal = instruction.extendWith.valueOf();
+  const extendWithAlreadyTopLevel = isNode(targetInfo.selector, N.SelectorList)
+    ? ((targetInfo.selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
+    : targetInfo.selector.valueOf() === extendWithVal;
+  if (extendWithAlreadyTopLevel) {
+    activateExtendedRuleset(ruleset, targetInfo.selector, context);
+    return { matched: true, changed: false };
+  }
+
+  const before = targetInfo.selector.valueOf();
+  const selectorInput = targetInfo.selector.copy(true) as Selector;
+  const result = tryExtendSelector(
+    selectorInput,
+    instruction.target,
+    instruction.extendWith,
+    instruction.partial,
+    targetInfo.parent,
+    context
+  );
+  if (result.error) {
+    if (instruction.extendWith.valueOf() === targetInfo.selector.valueOf()) {
+      activateExtendedRuleset(ruleset, targetInfo.selector, context);
+    }
+    return { matched: true, changed: false };
+  }
+
+  const normalizedResult = normalizeGeneratedIsOrder(result.value);
+  const after = normalizedResult.valueOf();
+  activateExtendedRuleset(ruleset, normalizedResult, context);
+  if (before === after) {
+    return { matched: true, changed: false };
+  }
+
+  let shouldHoist = (
+    normalizedResult.hoistToRoot
+    || (
+      targetInfo.usingOwnSelector
+      && targetMatch.fullMatch
+      && targetMatch.crossesAmpersand
+      && normalizedResult !== targetInfo.selector
+    )
+    || (
+      !targetInfo.usingOwnSelector
+      && Boolean(ruleset.getOwnSelector() && !isNode(ruleset.getOwnSelector()!, N.Nil))
+      && selectorHasAuthoredAmpersand(ruleset.getOwnSelector() as Selector)
+    )
+  );
+
+  let nextSelector = normalizedResult;
+  if (targetInfo.usingOwnSelector) {
+    const nextOwnSelector = (
+      shouldHoist || !targetInfo.parent
+    )
+      ? normalizedResult
+      : localizeSelectorAgainstParent(normalizedResult, targetInfo.parent);
+    ruleset.setOwnSelector(nextOwnSelector, context);
+
+    if (!shouldHoist && targetInfo.parent) {
+      nextSelector = getImplicitSelector(nextOwnSelector, targetInfo.parent, false);
+    }
+  }
+  ruleset.setExtendedSelector(nextSelector, context);
+  if (shouldHoist) {
+    setRulesetHoistToRoot(ruleset, true, context);
+    refreshNestedRulesetSelectors(ruleset, context);
+  } else if (getRulesetHoistToRoot(ruleset, context) || ruleset.treeContext?.opts?.collapseNesting === true) {
+    refreshNestedRulesetSelectors(ruleset, context);
+  }
+  invalidateRulesetSelectorCaches(ruleset, context);
+  return { matched: true, changed: true };
+}
+
+function instructionCouldAffectRuleset(
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  cache?: TargetInfoCache,
+  context?: Context
+): boolean {
+  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  if (!targetInfo) {
+    return false;
+  }
+  const result = selectorMatch(instruction.target, targetInfo.selector, targetInfo.parent, context);
+  return result.fullMatch || result.partialMatch;
+}
+
+export function processExtends(context: Context): void {
+  try {
+    const instructions: RecordedExtendInstruction[] = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope, namespace]) => ({
+      target,
+      extendWith: selectorWithExtend,
+      partial,
+      extendRoot,
+      extendNode,
+      fromReferenceScope: fromReferenceScope === true,
+      namespace
+    }));
+
+    if (!instructions.length) {
+      return;
+    }
+
+    const instructionMatched = new Set<RecordedExtendInstruction>();
+    const seenRulesetInstructionStates = new WeakMap<Ruleset, Map<RecordedExtendInstruction, string>>();
+    const appliedRulesetInstructions = new WeakMap<Ruleset, Set<RecordedExtendInstruction>>();
+    const visibleRootsCache = new Map<Rules, Set<Rules>>();
+    const getCachedVisibleRoots = (extendRoot: Rules): Set<Rules> => {
+      let cached = visibleRootsCache.get(extendRoot);
+      if (!cached) {
+        cached = context.extendRoots.getVisibleRoots(extendRoot);
+        visibleRootsCache.set(extendRoot, cached);
+      }
+      return cached;
+    };
+
+    let targetInfoCache: TargetInfoCache = new WeakMap();
+    let changed = true;
+    while (changed) {
+      changed = false;
+
+      for (const rootRules of context.extendRoots.getAllRoots()) {
+        const rulesetSet = context.extendRoots.getRulesets(rootRules);
+        if (!rulesetSet?.size) {
+          continue;
+        }
+
+        const savedRenderKey = context.renderKey;
+        const savedRulesContext = context.rulesContext;
+        context.renderKey = rootRules.renderKey;
+        context.rulesContext = rootRules;
+
+        try {
+          const visibleInstructions = instructions.filter(instruction =>
+            isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+          );
+          if (!visibleInstructions.length) {
+            continue;
+          }
+
+          for (const ruleset of rulesetSet) {
+            let rulesetMatched = false;
+            for (const instruction of visibleInstructions) {
+              const appliedInstructions = appliedRulesetInstructions.get(ruleset);
+              if (appliedInstructions?.has(instruction)) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+                continue;
+              }
+
+              const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
+              const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
+              if (
+                signatureBefore !== undefined
+                && perInstructionStates?.get(instruction) === signatureBefore
+              ) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+                continue;
+              }
+
+              const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
+              if (outcome.matched) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+
+                let nextStates = perInstructionStates;
+                if (!nextStates) {
+                  nextStates = new Map<RecordedExtendInstruction, string>();
+                  seenRulesetInstructionStates.set(ruleset, nextStates);
+                }
+                nextStates.set(
+                  instruction,
+                  getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
+                );
+              }
+              if (outcome.changed) {
+                invalidateTargetInfoCacheTree(targetInfoCache, ruleset);
+                targetInfoCache = new WeakMap();
+                let nextAppliedInstructions = appliedInstructions;
+                if (!nextAppliedInstructions) {
+                  nextAppliedInstructions = new Set<RecordedExtendInstruction>();
+                  appliedRulesetInstructions.set(ruleset, nextAppliedInstructions);
+                }
+                nextAppliedInstructions.add(instruction);
+                changed = true;
+              }
+            }
+
+            if (!rulesetMatched) {
+              clearExtendedRuleset(ruleset, context);
+            }
+          }
+        } finally {
+          context.renderKey = savedRenderKey;
+          context.rulesContext = savedRulesContext;
+        }
+      }
+    }
+
     for (const instruction of instructions) {
-      const selectorDiagnostics: Array<{ selector: string; hasMatches: boolean }> = [];
-      const matchedInRoot = Array.from(rulesetSet).some((ruleset) => {
-        const selector = ruleset.value.selector as Selector | undefined;
-        if (!selector || isNode(selector, 'Nil')) {
+      if (instruction.fromReferenceScope || instructionMatched.has(instruction)) {
+        continue;
+      }
+
+      const target = instruction.target.valueOf();
+      const targetLocation = instruction.target.location;
+      const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
+      const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
+      const targetFile = instruction.target.treeContext?.file;
+      const targetFilePath = targetFile?.fullPath;
+
+      const blockedProtectedRootExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
+        if (!isRootWithinInstructionNamespace(context, root, instruction)) {
           return false;
         }
-        const locations = findExtendableLocations(selector, instruction.target);
-        if (instruction.target.valueOf() === '.base') {
-          selectorDiagnostics.push({ selector: selector.valueOf(), hasMatches: locations.hasMatches });
+        if (isInstructionVisibleForRoot(context, root, instruction, getCachedVisibleRoots)) {
+          return false;
         }
-        return locations.hasMatches;
-      });
-      if (!matchedInRoot) {
-        continue;
-      }
-      const stats = instructionStats.get(instruction);
-      if (!stats) {
-        continue;
-      }
-      if (visibleExtendSet.has(instruction)) {
-        stats.visibleMatchCount += 1;
-      } else {
-        stats.blockedMatchCount += 1;
-      }
-    }
-    const visibleExtends = Array.from(visibleExtendSet);
-    if (!visibleExtends.length) {
-      continue;
-    }
-    const activatingExtends = visibleExtends;
-    for (const ruleset of rulesetSet) {
-      const selector = ruleset.value.selector as Selector | undefined;
-      if (!selector || isNode(selector, 'Nil')) {
-        ruleset.removeFlag(F_EXTENDED);
-        continue;
-      }
-      const isActivatedByVisibleExtend = activatingExtends.some(instruction =>
-        (
-          !instruction.partial
-          || instruction.target.valueOf() === instruction.extendWith.valueOf()
-        )
-        && findExtendableLocations(selector, instruction.target).hasMatches
-      );
-      if (isActivatedByVisibleExtend) {
-        ruleset.addFlag(F_EXTENDED);
-        // If a reference-scoped/import-scoped ruleset is externally extended, it must become
-        // visible in output so the merged selector can render.
-        ruleset.addFlag(F_VISIBLE);
-        if (isNode(selector, 'SelectorList')) {
-          for (const item of (selector as SelectorList).value) {
-            item.addFlag(F_EXTENDED);
-            item.addFlag(F_VISIBLE);
-          }
-        } else {
-          selector.addFlag(F_EXTENDED);
-          selector.addFlag(F_VISIBLE);
+
+        const rulesets = context.extendRoots.getRulesets(root);
+        if (!rulesets?.size) {
+          return false;
         }
-      } else {
-        ruleset.removeFlag(F_EXTENDED);
-      }
-      const ownSelector = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
-      const hasResolvedNestedSelector = Boolean(
-        ownSelector
-        && ownSelector.valueOf() !== selector.valueOf()
-      );
-      const hasOnlyPartialExtends = visibleExtends.length > 0 && visibleExtends.every(instruction => instruction.partial);
-      if (ownSelector && hasResolvedNestedSelector && hasOnlyPartialExtends) {
-        const ownNewSelector = applyExtendsToSelector(ownSelector, visibleExtends);
-        const fullNewSelector = applyExtendsToSelector(selector, visibleExtends);
-        const ownBefore = ownSelector.valueOf();
-        const ownAfter = ownNewSelector.valueOf();
-        const fullBefore = selector.valueOf();
-        const fullAfter = fullNewSelector.valueOf();
-        if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
-          ruleset.value.selector = ownNewSelector;
-          (ruleset.options as { ownSelector?: Selector }).ownSelector = ownNewSelector;
-          ruleset.invalidateSelectorValueCache();
-          if (ownNewSelector.hoistToRoot) {
-            ruleset.hoistToRoot = true;
-          }
-          continue;
-        }
-        if (fullAfter === fullBefore) {
-          continue;
-        }
-      }
-      if (ownSelector && hasResolvedNestedSelector) {
-        const partialOnly = visibleExtends.filter(instruction => instruction.partial);
-        const nonPartialOnly = visibleExtends.filter(instruction => !instruction.partial);
-        if (partialOnly.length > 0 && nonPartialOnly.length === 0) {
-          const ownAfterPartialOnly = applyExtendsToSelector(ownSelector, partialOnly);
-          const fullAfterPartialOnly = applyExtendsToSelector(selector, partialOnly);
-          const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
-          const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
-          const parentSelector = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-              ? (ruleset.parent.parent as Ruleset).value.selector
-              : null
-          );
-          const canDeriveOwnFromGeneratedIs = Boolean(
-            !ownChangedByPartialOnly
-            && fullChangedByPartialOnly
-            && parentSelector
-            && !(parentSelector instanceof Nil)
-            && isNode(fullAfterPartialOnly, 'ComplexSelector')
-            && !ownSelector.hasFlag(F_AMPERSAND)
-          );
-          if (canDeriveOwnFromGeneratedIs) {
-            const complex = fullAfterPartialOnly as ComplexSelector;
-            const last = complex.value.at(-1);
-            if (
-              last
-              && isNode(last, 'PseudoSelector')
-              && (last as PseudoSelector).value.name === ':is'
-              && (last as PseudoSelector).value.arg
-              && isNode((last as PseudoSelector).value.arg!, 'SelectorList')
-            ) {
-              const derivedOwn = ((last as PseudoSelector).value.arg as SelectorList).copy(true) as Selector;
-              ruleset.value.selector = derivedOwn;
-              (ruleset.options as { ownSelector?: Selector }).ownSelector = derivedOwn;
-              ruleset.invalidateSelectorValueCache();
-              continue;
-            }
+
+        for (const ruleset of rulesets) {
+          if (instructionCouldAffectRuleset(ruleset, instruction, targetInfoCache, context)) {
+            return true;
           }
         }
-        if (partialOnly.length === 0 && nonPartialOnly.length > 0) {
-          const parentSelectorForOwnSplit = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-              ? (ruleset.parent.parent as Ruleset).value.selector
-              : null
-          );
-          const nonPartialDiagnostics = nonPartialOnly.map((instruction) => {
-            // Walk fast path for ownSelector (no implicit ampersand boundary).
-            // Full resolved selector has implicit parent/own boundary that
-            // the walk can't detect, so always use legacy for that.
-            const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
-            const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
-            const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
-            const parentHasTargetMatch = Boolean(
-              parentSelectorForOwnSplit
-              && !(parentSelectorForOwnSplit instanceof Nil)
-              && findExtendableLocations(
-                parentSelectorForOwnSplit as Selector,
-                instruction.target
-              ).hasMatches
-            );
-            return {
-              instruction,
-              ownChangedSingle,
-              fullChangedSingle,
-              parentHasTargetMatch
-            };
-          });
-          const fullChangedExtendWith = new Set(
-            nonPartialDiagnostics
-              .filter(d => d.fullChangedSingle)
-              .map(d => d.instruction.extendWith.valueOf())
-          );
-          const nonPartialWithInclusion = nonPartialDiagnostics.map((d) => {
-            const includeOwnOnly = (
-              d.ownChangedSingle
-              && !d.fullChangedSingle
-              && !d.parentHasTargetMatch
-              && !fullChangedExtendWith.has(d.instruction.extendWith.valueOf())
-            );
-            return { ...d, includeOwnOnly };
-          });
-          const nonPartialOwnOnly = nonPartialWithInclusion
-            .filter(x => x.includeOwnOnly)
-            .map(x => x.instruction);
-          const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
-          const hasAncestorDrivenNonPartial = nonPartialWithInclusion.some(d =>
-            !d.ownChangedSingle
-            && d.fullChangedSingle
-            && d.parentHasTargetMatch
-          );
-          if (hasAncestorDrivenNonPartial) {
-            // Parent already carries this non-partial effect; keep nested selector local.
-            ruleset.value.selector = ownAfterOwnOnly;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-        }
-        if (partialOnly.length > 0 && nonPartialOnly.length > 0) {
-          const parentSelectorForOwnSplit = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-              ? (ruleset.parent.parent as Ruleset).value.selector
-              : null
-          );
-          const nonPartialDiagnostics = nonPartialOnly.map((instruction) => {
-            const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
-            const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
-            const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
-            const parentHasTargetMatch = Boolean(
-              parentSelectorForOwnSplit
-              && !(parentSelectorForOwnSplit instanceof Nil)
-              && findExtendableLocations(
-                parentSelectorForOwnSplit as Selector,
-                instruction.target
-              ).hasMatches
-            );
-            return {
-              instruction,
-              ownChangedSingle,
-              fullChangedSingle,
-              parentHasTargetMatch
-            };
-          });
-          const fullChangedExtendWith = new Set(
-            nonPartialDiagnostics
-              .filter(d => d.fullChangedSingle)
-              .map(d => d.instruction.extendWith.valueOf())
-          );
-          const nonPartialWithInclusion = nonPartialDiagnostics.map((d) => {
-            const includeOwnOnly = (
-              d.ownChangedSingle
-              && !d.fullChangedSingle
-              && !d.parentHasTargetMatch
-              && !fullChangedExtendWith.has(d.instruction.extendWith.valueOf())
-            );
-            return { ...d, includeOwnOnly };
-          });
-          const nonPartialOwnOnly = nonPartialWithInclusion
-            .filter(x => x.includeOwnOnly)
-            .map(x => x.instruction);
-          const ownAfterPartialAndOwnOnlyNonPartial = applyExtendsToSelector(
-            ownSelector,
-            [...partialOnly, ...nonPartialOwnOnly]
-          );
-          const ownAfterPartial = applyExtendsToSelector(ownSelector, partialOnly);
-          const ownAfterNonPartial = applyExtendsToSelector(ownSelector, nonPartialOnly);
-          const fullAfterNonPartial = applyExtendsToSelector(selector, nonPartialOnly);
-          const ownChangedByNonPartial = ownAfterNonPartial.valueOf() !== ownSelector.valueOf();
-          const fullChangedByNonPartial = fullAfterNonPartial.valueOf() !== selector.valueOf();
-          const nonPartialBoundaryOnly = !ownChangedByNonPartial && fullChangedByNonPartial;
-          const ownChangedByPartial = ownAfterPartial.valueOf() !== ownSelector.valueOf();
-          const hasAncestorDrivenNonPartial = nonPartialWithInclusion.some(d =>
-            !d.ownChangedSingle
-            && d.fullChangedSingle
-            && d.parentHasTargetMatch
-          );
-          const shouldDeferToParentForNonPartial = Boolean(
-            !ownChangedByPartial
-            && nonPartialOwnOnly.length === 0
-            && hasAncestorDrivenNonPartial
-          );
-          const hasParentMatchedOwnOnlyNonPartial = nonPartialWithInclusion.some(d =>
-            d.ownChangedSingle
-            && !d.fullChangedSingle
-            && d.parentHasTargetMatch
-          );
-          // When non-partial extends match only the full (cross-product) selector and not
-          // the own selector, and partial extends would incorrectly alter the own selector,
-          // the non-partial extend takes precedence. Applying partial extends to the own
-          // selector here blocks cross-product de-distribution (`:is(parent) :is(own), .rep_ace`).
-          if (nonPartialBoundaryOnly && (ownChangedByPartial || nonPartialOwnOnly.length > 0)) {
-            const newSel = applyExtendsToSelector(selector, nonPartialOnly);
-            if (newSel.valueOf() !== selector.valueOf()) {
-              newSel.hoistToRoot = true;
-              ruleset.value.selector = newSel;
-              ruleset.invalidateSelectorValueCache();
-              ruleset.hoistToRoot = true;
-            }
-            continue;
-          }
-          // For nested rulesets, apply partial (`all`) updates to own selector, but do not
-          // fold non-partial changes into own selector. Non-partial changes are handled
-          // through full-selector assignment path below when needed.
-          if (ownChangedByPartial || nonPartialOwnOnly.length > 0) {
-            ruleset.value.selector = ownAfterPartialAndOwnOnlyNonPartial;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartialAndOwnOnlyNonPartial;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-          if (hasParentMatchedOwnOnlyNonPartial) {
-            // Less parity: exact extends that only match nested own selector while parent already
-            // carries the target should remain parent-scoped (do not inject extender into child selector).
-            ruleset.value.selector = ownAfterPartial;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-          if (shouldDeferToParentForNonPartial) {
-            // Parent selector already carries the non-partial extend effect.
-            // Keep this nested ruleset relative to its own selector to avoid
-            // re-materializing parent prefixes inside nested blocks.
-            ruleset.value.selector = ownAfterPartial;
-            (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterPartial;
-            ruleset.invalidateSelectorValueCache();
-            continue;
-          }
-        }
-      }
-      let newSelector = applyExtendsToSelector(selector, visibleExtends);
-      if (newSelector !== selector) {
-        const beforeValue = selector.valueOf();
-        const ownRelevantExtends = (ownSelector && hasResolvedNestedSelector)
-          ? visibleExtends.filter(instruction => instruction.partial)
-          : visibleExtends;
-        const ownAfterRelevant = (ownSelector && hasResolvedNestedSelector)
-          ? applyExtendsToSelector(ownSelector, ownRelevantExtends)
-          : null;
-        const ownChangedByRelevant = Boolean(
-          ownSelector
-          && ownAfterRelevant
-          && ownAfterRelevant.valueOf() !== ownSelector.valueOf()
-        );
-        const parentRuleset = (
-          ruleset.parent?.parent && isNode(ruleset.parent.parent, 'Ruleset')
-            ? (ruleset.parent.parent as Ruleset)
-            : null
-        );
-        const parentSelectorForBoundary = parentRuleset?.value.selector;
-        const parentHasCombinatorContext = Boolean(
-          parentSelectorForBoundary
-          && !(parentSelectorForBoundary instanceof Nil)
-          && (() => {
-            try {
-              for (const n of (parentSelectorForBoundary as Selector).nodes()) {
-                if (isNode(n, 'Combinator')) {
-                  return true;
-                }
-              }
-            } catch {}
-            return false;
-          })()
-        );
-        const parentHoistedBoundaryCompose = Boolean(
-          ownSelector
-          && hasResolvedNestedSelector
-          && !hasOnlyPartialExtends
-          && !ownChangedByRelevant
-          && (rootRules.options as any)?.referenceMode !== true
-          && parentRuleset?.hoistToRoot
-          && !newSelector.hoistToRoot
-        );
-        if (parentHoistedBoundaryCompose) {
-          const parentSelector = parentRuleset?.value.selector;
-          if (parentSelector && !(parentSelector instanceof Nil) && isNode(parentSelector, 'SelectorList')) {
-            const parentItems = (parentSelector as SelectorList).value;
-            const complexItems = parentItems.filter(item => isNode(item, 'ComplexSelector')) as ComplexSelector[];
-            if (complexItems.length === parentItems.length && complexItems.length >= 2) {
-              const first = complexItems[0]!;
-              const allTri = complexItems.every(c => c.value.length === 3 && isNode(c.value[1], 'Combinator'));
-              if (allTri) {
-                const leftKey = first.value[0]!.valueOf();
-                const combKey = first.value[1]!.valueOf();
-                const samePrefix = complexItems.every(c =>
-                  c.value[0]!.valueOf() === leftKey
-                  && c.value[1]!.valueOf() === combKey
-                );
-                if (samePrefix) {
-                  const ownSelectorNode = ownSelector as Selector;
-                  const middleIs = PseudoSelector.create({
-                    name: ':is',
-                    arg: SelectorList.create(
-                      complexItems.map(c => c.value[2]!.copy(true) as Selector)
-                    )
-                  });
-                  const parentFactored = ComplexSelector.create([
-                    first.value[0]!.copy(true) as Selector,
-                    (first.value[1] as Combinator).copy(true),
-                    middleIs
-                  ]);
-                  const ownArg = isNode(ownSelectorNode, 'SelectorList')
-                    ? SelectorList.create((ownSelectorNode as SelectorList).value.map(s => s.copy(true) as Selector))
-                    : SelectorList.create([ownSelectorNode.copy(true) as Selector]);
-                  const ownIs = PseudoSelector.create({ name: ':is', arg: ownArg });
-                  newSelector = ComplexSelector.create([
-                    ...parentFactored.value.map(c => c.copy(true)),
-                    Combinator.create(' '),
-                    ownIs
-                  ]).inherit(newSelector) as Selector;
-                  newSelector.hoistToRoot = true;
-                }
-              }
-            }
-          }
-        }
-        const boundaryOnlyNestedExactChange = Boolean(
-          ownSelector
-          && hasResolvedNestedSelector
-          && !hasOnlyPartialExtends
-          && !ownChangedByRelevant
-          && parentHasCombinatorContext
-          && !(
-            ruleset.parent?.parent
-            && isNode(ruleset.parent.parent, 'Ruleset')
-            && Boolean((ruleset.parent.parent as Ruleset).hoistToRoot)
-          )
-          && !newSelector.hoistToRoot
-        );
-        if (boundaryOnlyNestedExactChange) {
-          newSelector.hoistToRoot = true;
-        }
-        const finalAfterValue = newSelector.valueOf();
-        if (beforeValue === finalAfterValue) {
-          continue;
-        }
-        if (hasOnlyPartialExtends && isNode(newSelector, 'SelectorList')) {
-          const previousValues = new Set<string>();
-          if (isNode(selector, 'SelectorList')) {
-            for (const item of (selector as SelectorList).value) {
-              previousValues.add(item.valueOf());
-            }
-          } else {
-            previousValues.add(selector.valueOf());
-          }
-          for (const item of (newSelector as SelectorList).value) {
-            if (!previousValues.has(item.valueOf())) {
-              item.addFlag(F_EXTENDED);
-            }
-          }
-        }
-        ruleset.value.selector = newSelector;
-        ruleset.invalidateSelectorValueCache();
-        if (newSelector.hoistToRoot) {
-          ruleset.hoistToRoot = true;
-        }
-      }
-    }
-  }
-  for (const instruction of instructions) {
-    const stats = instructionStats.get(instruction);
-    if (!stats || instruction.fromReferenceScope === true) {
-      continue;
-    }
-    if (stats.visibleMatchCount > 0) {
-      continue;
-    }
-    const target = instruction.target.valueOf();
-    const targetLocation = instruction.target.location;
-    const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
-    const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
-    const targetFile = instruction.target.treeContext?.file;
-    const targetFilePath = targetFile?.fullPath;
-    const inaccessibleMatchExists = Array.from(context.extendRoots.getAllRoots()).some((root) => {
-      if (isInstructionVisibleForRoot(context, root, instruction)) {
         return false;
-      }
-      return rootHasTargetMatch(root, instruction.target, instruction.partial);
-    });
-    const blockedProtectedRootExists = Array.from(context.extendRoots.getAllRoots()).some(root =>
-      !isInstructionVisibleForRoot(context, root, instruction)
-      && context.extendRoots.isProtectedRoot(root)
-    );
-    const diagnostic = (
-      stats.blockedMatchCount > 0 || inaccessibleMatchExists || blockedProtectedRootExists
+      });
+
+      const diagnostic = blockedProtectedRootExists
         ? WARN.extendNotAccessible({
             ctx: targetFile ? { file: targetFile } : undefined,
             filePath: targetFilePath,
@@ -807,8 +1099,10 @@ export function processExtends(context: Context): void {
             line: targetLine,
             column: targetColumn,
             meta: { target }
-          })
-    );
-    context.warnings.push(toDiagnostic(diagnostic));
+          });
+      context.warnings.push(toDiagnostic(diagnostic));
+    }
+  } finally {
+    context.extendRoots.clearRegisteredRulesets();
   }
 }

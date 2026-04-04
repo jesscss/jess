@@ -1,14 +1,18 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import type { Any, AnyRole } from './any.js';
+import { Any as AnyCtor } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
-import { Mixin } from './mixin.js';
-import { getFunctionFromMixins } from './rules.js';
-import { cast } from './util/cast.js';
+import type { VarDeclaration } from './declaration-var.js';
+import { VarDeclaration as VarDeclarationCtor } from './declaration-var.js';
+import { Nil } from './nil.js';
+import { N } from './node-type.js';
+import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { getParent, getSourceParent, setChildren } from './util/field-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -34,18 +38,47 @@ export type FuncOptions = {
   returnName?: string;
 };
 
-export class Func extends Node<FuncValue, FuncOptions> {
-  type = 'Func' as const;
-  shortType = 'fn' as const;
+export type FuncChildData = {
+  name: FuncValue['name'];
+  params: FuncValue['params'];
+  body: Node;
+};
 
-  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
+export interface Func extends Node<FuncValue, FuncOptions, FuncChildData> {
+  type: 'Func';
+  shortType: 'fn';
+}
+
+export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
+  static override childKeys = ['name', 'params', 'body'] as const;
+
+  name: FuncValue['name'];
+  params: FuncValue['params'];
+  body!: Node;
+
+  constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    // Like mixins/functions in source languages: not emitted directly.
+    this.name = value.name;
+    this.params = value.params;
+    this.body = value.body;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.params instanceof Node) {
+      this.adopt(this.params);
+    }
+    if (this.body instanceof Node) {
+      this.adopt(this.body);
+    }
     this.removeFlag(F_VISIBLE);
   }
 
   get nameKey(): string | undefined {
-    const { name } = this.value;
+    return this.getNameKey();
+  }
+
+  getNameKey(context?: Context): string | undefined {
+    const name = this.get('name', context);
     if (!name) {
       return undefined;
     }
@@ -56,7 +89,10 @@ export class Func extends Node<FuncValue, FuncOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, params, body } = this.value;
+    const context = options.context;
+    const name = this.get('name', context);
+    const params = this.get('params', context);
+    const body = this.get('body', context);
 
     w.add('$function', this);
     w.add(' ');
@@ -77,49 +113,142 @@ export class Func extends Node<FuncValue, FuncOptions> {
   /**
    * Execute the function and return its looked-up value.
    *
-   * We intentionally reuse the mixin-call machinery for argument binding & scoped evaluation
-   * to avoid duplicating complex param matching logic.
+   * Functions follow the same scoped-body model as simple mixins:
+   * bind args into an ephemeral param scope, evaluate one render-keyed body
+   * wrapper, then read the return declaration from that evaluated scope.
    */
-  async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
+  async evalCall(context: Context, args: List<Node> = list([]), _contentNode?: Node): Promise<Node> {
     const returnName = this.options?.returnName ?? 'return';
+    const name = this.get('name', context);
+    const params = this.get('params', context);
+    const bodyNode = this.get('body', context);
+    const renderKey = context.nextRenderKey();
+    const invocationParent = context.caller
+      ? getParent(context.caller, context) ?? context.rulesContext
+      : context.rulesContext ?? getParent(this, context);
+    const callerSourceNode = context.caller && isNode(context.caller, N.Call) && context.caller.get('name') instanceof Node
+      ? context.caller.get('name')
+      : context.caller;
+    const sourceParent = callerSourceNode
+      ? getSourceParent(callerSourceNode as Node, context)
+      : getSourceParent(this, context);
+    const scope = this._createInvocationScope(params, args, renderKey, invocationParent, context);
+    const bodyRules = this._createInvocationBodyRules(bodyNode, renderKey, scope ?? invocationParent, sourceParent, context);
 
-    // Normalize body to a Rules node so it can be evaluated/scoped consistently.
-    const bodyNode = this.value.body;
-    const bodyRules = bodyNode instanceof Rules
-      ? bodyNode
-      : Rules.create([bodyNode]);
-
-    // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
-    const mixinLike = new Mixin(
-      { rules: bodyRules, params: this.value.params },
-      undefined,
-      Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined,
-      this.treeContext
-    );
-    // Ensure it participates in the same parent chain as this function definition.
-    if (this.parent) {
-      this.parent.adopt(mixinLike);
+    const previousRulesContext = context.rulesContext;
+    const previousLookupScope = context.lookupScope;
+    const previousRenderKey = context.renderKey;
+    context.rulesContext = scope ?? bodyRules;
+    context.lookupScope = scope ?? bodyRules;
+    context.renderKey = renderKey;
+    let evaluated: Rules;
+    try {
+      evaluated = await bodyRules.eval(context);
+    } finally {
+      context.rulesContext = previousRulesContext;
+      context.lookupScope = previousLookupScope;
+      context.renderKey = previousRenderKey;
     }
-
-    const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
-      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
+      throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must evaluate to rules`);
     }
 
-    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined;
+    const returnLookupOptions = { searchParents: false, context };
+    const decl = evaluated.find('declaration', returnName, 'Declaration', returnLookupOptions) as Declaration | undefined
+      ?? evaluated.find('declaration', returnName, 'VarDeclaration', returnLookupOptions) as VarDeclaration | undefined;
     if (!decl) {
-      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
+      throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
-    // Return the declaration's value (already in the correct scope).
-    return await decl.value.value.eval(context);
+    context.rulesContext = scope ?? evaluated;
+    context.lookupScope = scope ?? evaluated;
+    context.renderKey = evaluated.renderKey;
+    try {
+      const returnValue = (decl as Declaration).get('value', context);
+      return await returnValue.eval(context);
+    } finally {
+      context.rulesContext = previousRulesContext;
+      context.lookupScope = previousLookupScope;
+      context.renderKey = previousRenderKey;
+    }
+  }
+
+  private _createInvocationScope(
+    params: List<Node> | undefined,
+    args: List<Node>,
+    renderKey: symbol,
+    parent: Node | undefined,
+    context: Context
+  ): Rules | undefined {
+    if (!params) {
+      return undefined;
+    }
+    const scope = Rules.create([], {
+      rulesVisibility: {
+        Ruleset: 'public',
+        Declaration: 'public',
+        VarDeclaration: 'public',
+        Mixin: 'public'
+      }
+    });
+    scope.renderKey = renderKey;
+    scope.parent = parent;
+
+    const invocationContext = {
+      ...context,
+      renderKey,
+      rulesContext: scope,
+      lookupScope: scope
+    };
+    const argItems = args.get('value', context);
+    const paramItems = params.get('value', context);
+
+    for (let i = 0; i < paramItems.length; i++) {
+      const param = paramItems[i]!;
+      if (!isNode(param, N.VarDeclaration)) {
+        continue;
+      }
+      const boundParam = new VarDeclarationCtor({
+        name: new AnyCtor(String(param.get('name', context).valueOf()), { role: 'property' }),
+        value: new Nil()
+      }, { ...(param.options ?? {}), paramVar: true }, param.location, this.treeContext);
+      boundParam.index = param.index ?? -(i + 1);
+      scope.push(boundParam);
+
+      const boundValue = argItems[i] ?? param.get('value', context);
+      if (boundValue) {
+        boundParam.setCurrentValue(boundValue, invocationContext);
+      }
+    }
+
+    return scope;
+  }
+
+  private _createInvocationBodyRules(
+    bodyNode: Node,
+    renderKey: symbol,
+    parent: Node | undefined,
+    sourceParent: Node | undefined,
+    context: Context
+  ): Rules {
+    let bodyRules: Rules;
+    if (bodyNode instanceof Rules) {
+      bodyRules = bodyNode.createShallowBodyWrapper(undefined, renderKey);
+    } else {
+      bodyRules = Rules.create([], undefined, Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined, this.treeContext);
+      bodyRules.renderKey = renderKey;
+      setChildren(bodyRules, [bodyNode], { ...context, renderKey }, { markDirty: false });
+    }
+    bodyRules.parent = parent;
+    bodyRules.sourceParent = sourceParent;
+    bodyRules.index = this.index;
+    return bodyRules;
   }
 }
 
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Node },
   options?: FuncOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => Func;

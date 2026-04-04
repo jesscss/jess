@@ -1,24 +1,16 @@
-/**
- * Sass list.length() function
- * 
- * Returns the length of a list.
- * 
- * @example
- * length(1 2 3) // 3
- * length([a, b, c]) // 3
- */
-import { defineFunction, List, Dimension } from '@jesscss/core';
+import { defineFunction, Node, Dimension } from '@jesscss/core';
+import lessLength from '../../less/length.js';
 
 const length = defineFunction(
   'length',
-  function(list: List): Dimension {
-    return new Dimension({ number: list.length, unit: undefined });
+  function(list: Node): Dimension {
+    return lessLength(list);
   },
   {
     params: [
       {
         name: 'list',
-        type: List
+        type: Node
       }
     ]
   }

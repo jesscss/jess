@@ -1,8 +1,8 @@
 /**
  * Sass compatible() function (global) / math.compatible() (module)
- * 
+ *
  * Checks if two numbers have compatible units (can be compared/operated on).
- * 
+ *
  * @example
  * compatible(10px, 20px) // true
  * compatible(10px, 20rem) // false (incompatible length units)
@@ -23,36 +23,36 @@ const compatible = defineFunction(
         context = this as Context;
       }
     }
-    
+
     // Check if units are compatible
-    const unit1 = number1.value.unit;
-    const unit2 = number2.value.unit;
-    
+    const unit1 = number1.unit;
+    const unit2 = number2.unit;
+
     // Both unitless = compatible
     if (!unit1 && !unit2) {
       return new Bool(true);
     }
-    
+
     // One unitless, one with unit = incompatible for comparison
     if (!unit1 || !unit2) {
       return new Bool(false);
     }
-    
+
     // Same unit = compatible
     if (unit1 === unit2) {
       return new Bool(true);
     }
-    
+
     // Check if units are in the same conversion group
     const unitToGroup = number1.unitToGroup;
     const group1 = unitToGroup.get(unit1);
     const group2 = unitToGroup.get(unit2);
-    
+
     // Same group = compatible (can be converted)
     if (group1 && group2 && group1 === group2) {
       return new Bool(true);
     }
-    
+
     // Different groups or unknown units = incompatible
     return new Bool(false);
   },

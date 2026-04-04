@@ -1,6 +1,6 @@
 import type { Color as LSPColor, ColorInformation, ColorPresentation } from 'vscode-languageserver-types';
 import type { Node, Color, Call, Any, Context, Rules } from '@jesscss/core';
-import { isNode, getValues, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
+import { isNode, getValues, N, Context as ContextClass, Rules as RulesClass, JsFunction, TreeContext } from '@jesscss/core';
 import { Color as ColorClass } from '@jesscss/core';
 import type * as LessFunctions from '@jesscss/fns';
 
@@ -173,7 +173,7 @@ export function colorToLSP(color: Color): LSPColor {
  * Get the text span of a node for creating a Range
  */
 export function getNodeSpan(node: Node): { start: number; end: number } | null {
-  const loc = (node as any).location as unknown;
+  const loc: unknown = node.location;
   if (Array.isArray(loc) && loc.length === 6) {
     const start = Number(loc[0]);
     const end = Number(loc[3]);
@@ -187,11 +187,11 @@ export function getNodeSpan(node: Node): { start: number; end: number } | null {
 /**
  * Check if a node is a color keyword identifier
  */
-function isColorKeyword(node: Node): boolean {
-  if (node.type !== 'Any') {
+function isColorKeyword(node: Node): node is Any {
+  if (!isNode(node, N.Any)) {
     return false;
   }
-  const anyNode = node as Any;
+  const anyNode = node;
   // Any nodes have value as a string
   const text = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
   if (!text || text === 'none') {
@@ -205,13 +205,14 @@ function isColorKeyword(node: Node): boolean {
  */
 function isColorFunction(call: Call): boolean {
   let name: string | null = null;
-  
-  if (typeof call.value.name === 'string') {
-    name = call.value.name.toLowerCase();
-  } else if (call.value.name) {
+
+  const callName = call.get('name');
+  if (typeof callName === 'string') {
+    name = callName.toLowerCase();
+  } else if (callName) {
     // Name is a Node - try multiple ways to extract the string value
-    const nameNode = call.value.name as any;
-    
+    const nameNode = callName;
+
     // Try valueOf first (works for most Node types)
     if (typeof nameNode.valueOf === 'function') {
       try {
@@ -220,32 +221,23 @@ function isColorFunction(call: Call): boolean {
         // valueOf failed, try other methods
       }
     }
-    
+
     // If valueOf didn't work, try type-specific extraction
     if (!name) {
-      if (nameNode.type === 'Any') {
-        // Any node - extract the value
-        const value = typeof nameNode.value === 'string' ? nameNode.value : String(nameNode.value ?? '');
-        name = value.toLowerCase();
-      } else if (nameNode.type === 'Reference') {
-        // Reference node - try to get the key
-        const key = nameNode.value?.key;
-        if (typeof key === 'string') {
-          name = key.toLowerCase();
-        } else if (key && typeof key.valueOf === 'function') {
-          name = String(key.valueOf()).toLowerCase();
+      if (nameNode.type === 'Any' || nameNode.type === 'Reference') {
+        // Try valueOf for any node type
+        const str = String(nameNode.valueOf() ?? '');
+        if (str) {
+          name = str.toLowerCase();
         }
-      } else if (typeof nameNode.value === 'string') {
-        // Generic node with string value
-        name = nameNode.value.toLowerCase();
       }
     }
   }
-  
+
   if (!name) {
     return false;
   }
-  
+
   const colorFunctions = ['rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'lab', 'lch', 'oklab', 'oklch'];
   return colorFunctions.includes(name);
 }
@@ -257,15 +249,18 @@ function isColorFunction(call: Call): boolean {
 async function createEvaluationContext(): Promise<Context> {
   const context = new ContextClass();
   const tree = RulesClass.create([]);
-  
+
   try {
     // Dynamically import functions
     const lessFunctions = await import('@jesscss/fns');
-    
+
     // Register all Less functions (including color functions like rgb, hsl, etc.)
     for (const [key, value] of Object.entries(lessFunctions)) {
-      if (typeof value === 'function' || (value && typeof (value as any).default === 'function')) {
-        const fn = (value as any).default || value;
+      if (typeof value === 'function') {
+        tree.register('function', new JsFunction({ name: key, fn: value }));
+      } else if (value && typeof value === 'object' && 'default' in value && typeof value.default === 'function') {
+        const defaultFn = value.default;
+        const fn = (...args: unknown[]) => defaultFn(...args);
         tree.register('function', new JsFunction({ name: key, fn }));
       }
     }
@@ -273,18 +268,18 @@ async function createEvaluationContext(): Promise<Context> {
     // If import fails, we'll just skip function evaluation
     // This is okay - we'll still detect Color nodes and keywords
   }
-  
+
   // Set up context properties needed for evaluation
   context.treeContext = new TreeContext();
   context.rulesContext = tree;
   context.root = tree;
   context.treeRoot = tree;
   context.allRoots = [tree];
-  
+
   // Note: extendRoots is initialized in Context constructor
   // callStack and parenFrames are getters that return arrays
   // They will be initialized automatically when accessed
-  
+
   return context;
 }
 
@@ -301,12 +296,12 @@ async function tryEvaluateColorCall(call: Call, context?: Context): Promise<Colo
     // Use provided context or create a minimal one
     const evalContext = context || await createEvaluationContext();
     const result = await call.eval(evalContext);
-    
+
     // Check if the result is a Color node
-    if (result && result.type === 'Color') {
-      return result as Color;
+    if (isNode(result, N.Color)) {
+      return result;
     }
-    
+
     return null;
   } catch (e) {
     // Evaluation failed - this might be due to missing variables, invalid args, etc.
@@ -333,14 +328,13 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     seen.add(node);
 
     // Check if this node is a Color
-    if (node.type === 'Color') {
-      const colorNode = node as Color;
-      colors.push({ node: colorNode, color: colorNode });
+    if (isNode(node, N.Color)) {
+      colors.push({ node, color: node });
     }
 
     // Check if this is a color keyword (Any node with color keyword text)
     if (isColorKeyword(node)) {
-      const anyNode = node as Any;
+      const anyNode = node;
       const keyword = typeof anyNode.value === 'string' ? anyNode.value.toLowerCase() : String(anyNode.value ?? '').toLowerCase();
       if (keyword && keyword in colorKeywords) {
         const hexValue = colorKeywords[keyword];
@@ -357,18 +351,17 @@ export async function findColorsInAST(root: Node): Promise<Array<{ node: Node; c
     }
 
     // Check if this is a Call node that might be a color function
-    if (node.type === 'Call') {
-      const callNode = node as Call;
-      if (isColorFunction(callNode)) {
-        callNodes.push(callNode);
+    if (isNode(node, N.Call)) {
+      if (isColorFunction(node)) {
+        callNodes.push(node);
       }
     }
 
     // Traverse children
-    const value = (node as any).value;
+    const value = Reflect.get(node, 'data');
     for (const child of getValues(value)) {
       if (isNode(child)) {
-        stack.push(child as Node);
+        stack.push(child);
       }
     }
   }
@@ -643,14 +636,14 @@ function rgbToOKLAB(r: number, g: number, b: number): { l: number; a: number; b:
   const s = 0.0482003018 * xyz.x + 0.2643662691 * xyz.y + 0.6338517070 * xyz.z;
 
   // Apply non-linearity
-  const l_ = Math.cbrt(l);
-  const m_ = Math.cbrt(m);
-  const s_ = Math.cbrt(s);
+  const lCbrt = Math.cbrt(l);
+  const mCbrt = Math.cbrt(m);
+  const sCbrt = Math.cbrt(s);
 
   // Convert to OKLab
   return {
-    l: 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
-    a: 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
-    b: 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
+    l: 0.2104542553 * lCbrt + 0.7936177850 * mCbrt - 0.0040720468 * sCbrt,
+    a: 1.9779984951 * lCbrt - 2.4285922050 * mCbrt + 0.4505937099 * sCbrt,
+    b: 0.0259040371 * lCbrt + 0.7827717662 * mCbrt - 0.8086757660 * sCbrt
   };
 }

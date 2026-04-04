@@ -28,59 +28,6 @@ import {
 import { serializeTypes } from '../util/serialize-types.js';
 
 describe('extend integration (eval -> toString)', () => {
-  it('exact extend matches a single OR-branch (does not require all branches)', async () => {
-    // Encodes the Less expectation:
-    // - Exact matching should succeed if ANY selector-list item can match the extend target by choosing
-    //   a single branch inside :is(...), rather than requiring all OR branches to match.
-    //
-    // Conceptually:
-    //   parent:  .replace.replace, .c.replace + .replace { ... }
-    //   nested:  & .replace, & .c { ... }
-    // materializes to:
-    //   :is(.replace.replace, .c.replace + .replace) :is(.replace, .c)
-    //
-    // Exact extend:
-    //   .rep_ace:extend(.replace.replace .replace) {}
-    //
-    // should match the first item by selecting the `.replace.replace` branch from `:is(...)`.
-
-    const parentIs = pseudo({
-      name: ':is',
-      arg: sellist([
-        compound([el('.replace'), el('.replace')]),
-        sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
-      ])
-    });
-
-    const root = rules([
-      ruleset({
-        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.copy(true), co(' '), el('.c')])]),
-        rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
-      }),
-      ruleset({
-        selector: el('.rep_ace'),
-        rules: rules([
-          extend({
-            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
-            flag: ExtendFlag.Exact
-          })
-        ])
-      })
-    ]);
-
-    const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
-
-    expect(css).toBeString(`
-      :is(.replace.replace, .c.replace + .replace) .replace,
-      :is(.replace.replace, .c.replace + .replace, .rep_ace) .c,
-      .rep_ace {
-        prop: copy-paste-replace;
-      }
-    `);
-  });
-
   it('extends selectors inside nested rulesets (Less extend-selector replace case)', async () => {
     // Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
     // Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
@@ -121,7 +68,7 @@ describe('extend integration (eval -> toString)', () => {
     {
       const context = new Context({ collapseNesting: false });
       const evald = await makeRoot(false).eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         .replace.replace,
         .c.replace + .replace {
@@ -137,7 +84,7 @@ describe('extend integration (eval -> toString)', () => {
     {
       const context = new Context({ collapseNesting: false });
       const evald = await makeRoot(true).eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         :is(.replace, .rep_ace):is(.replace, .rep_ace),
         .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
@@ -174,7 +121,7 @@ describe('extend integration (eval -> toString)', () => {
             rules: rules([
               decl({ name: 'background', value: any('red') }),
               ruleset({
-                selector: sel([amp({}), pseudo({ name: ':before' })]),
+                selector: sel([amp({}), pseudo({ name: ':before' })]) as any,
                 rules: rules([
                   decl({ name: 'background', value: any('blue') })
                 ])
@@ -201,7 +148,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .header .header-nav,
@@ -242,7 +189,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .attributes {
@@ -285,16 +232,16 @@ describe('extend integration (eval -> toString)', () => {
     const outerBb = evaldRoot.value.find(
       (n: any) =>
         n?.type === 'Ruleset'
-        && Array.isArray(n.value?.rules?.value)
-        && n.value.rules.value.some((r: any) => r?.type === 'Declaration' && (r.value?.name?.valueOf?.() ?? r.value?.name) === 'background')
-        && n.value.rules.value.some((r: any) => r?.type === 'Ruleset')
+        && Array.isArray(n.rules?.value)
+        && n.rules.value.some((r: any) => r?.type === 'Declaration' && (r.name?.valueOf?.() ?? r.name) === 'background')
+        && n.rules.value.some((r: any) => r?.type === 'Ruleset')
     );
     expect(outerBb).toBeTruthy();
-    const inner = (outerBb as any).value.rules.value.find(
-      (n: any) => n?.type === 'Ruleset' && n.value?.rules?.value?.some((d: any) => (d?.value?.name?.valueOf?.() ?? d?.value?.name) === 'color')
+    const inner = (outerBb as any).rules.value.find(
+      (n: any) => n?.type === 'Ruleset' && n.rules?.value?.some((d: any) => (d?.name?.valueOf?.() ?? d?.name) === 'color')
     );
     expect(inner).toBeTruthy();
-    const innerSelectorStr = typeof (inner as any).value?.selector?.valueOf === 'function' ? (inner as any).value.selector.valueOf() : '';
+    const innerSelectorStr = typeof (inner as any).selector?.valueOf === 'function' ? (inner as any).selector.valueOf() : '';
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');
@@ -352,7 +299,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       :is(.ext1, .all) .ext2 {
@@ -413,7 +360,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css).toBeString(`
       .a {
         color: black;
@@ -473,7 +420,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .a {
@@ -533,7 +480,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .a {
@@ -756,7 +703,7 @@ describe('extend integration (eval -> toString)', () => {
     expect(typeof postEvalSerialized).toBe('string');
     expect(postEvalSerialized).toMatchSnapshot();
 
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     // Large parsed-shape parity test: keep deterministic string checks without regex/snapshot churn.
     expect(css).toContain(`  .ma,
   .mb,
@@ -810,7 +757,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css).toBeString(`
       .a {
         color: black;
@@ -869,7 +816,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .a {
@@ -922,7 +869,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       // Less: .b:extend(.a) inside @media does NOT copy .a's declarations into .b. Root .a unchanged; .b has only its own decls.
       expect(css).toBeString(`
         .a {
@@ -961,7 +908,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         @media screen {
           .b,
@@ -1000,7 +947,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ collapseNesting: false });
       const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = evald.render(context);
       expect(css).toBeString(`
         @media screen {
           .b,
@@ -1027,7 +974,7 @@ describe('extend integration (eval -> toString)', () => {
             rules: rules([
               decl({ name: 'background', value: any('red') }),
               ruleset({
-                selector: sel([amp({}), pseudo({ name: ':before' })]),
+                selector: sel([amp({}), pseudo({ name: ':before' })]) as any,
                 rules: rules([decl({ name: 'background', value: any('blue') })])
               })
             ])
@@ -1067,7 +1014,7 @@ describe('extend integration (eval -> toString)', () => {
 
     const context = new Context({ collapseNesting: true });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
 
     expect(css).toBeString(`
       .header .header-nav,

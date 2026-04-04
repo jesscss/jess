@@ -1,5 +1,5 @@
 import { Parser } from '../src/index.js';
-import { serializeTypes } from '@jesscss/core';
+import { Ampersand, Nil, serializeTypes, TreeContext } from '@jesscss/core';
 
 const parser = new Parser();
 
@@ -153,6 +153,24 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
+    it('should parse empty quoted ampersand template as an explicit empty parent template', () => {
+      const { errors, tree } = parser.parse('.parent { &(\"\").utility { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
+      expect(amp).toBeDefined();
+      expect(amp?.template).toBeInstanceOf(Nil);
+    });
+
+    it('should parse &(nil) as an explicit nil parent template', () => {
+      const { errors, tree } = parser.parse('.parent { &(nil).utility { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
+      expect(amp).toBeDefined();
+      expect(amp?.template).toBeInstanceOf(Nil);
+    });
+
     it('should parse pseudo selector', () => {
       // Pseudo selectors need an element or be nested
       const { errors, tree } = parser.parse('.test:hover { color: red; }');
@@ -236,6 +254,15 @@ describe('Selector Productions', () => {
     it('should parse &:extend() with multiple targets', () => {
       const { errors, tree } = parser.parse('.parent { &:extend(.base, .other); }');
       expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Extend');
+    });
+
+    it('allows selector lists when each extend target is allowed', () => {
+      const context = new TreeContext({ allowExtendSelectors: ['simple'] });
+      const localParser = new Parser();
+      const { errors, tree } = localParser.parse('.parent { &:extend(.base, .other); }', 'stylesheet', { context });
+
+      expect(errors).toHaveLength(0);
       expect(serializeTypes(tree)).toContainString('(Extend');
     });
   });

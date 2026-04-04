@@ -1,15 +1,18 @@
 import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
-import { type Quoted } from './quoted.js';
+import { Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
-import type { Ruleset } from './ruleset.js';
+import { N } from './node-type.js';
+import { getParent, getChildren, setIndex } from './util/field-helpers.js';
 import type { Collection } from './collection.js';
-import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
+import { AtRule } from './at-rule.js';
+import { Sequence } from './sequence.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -107,23 +110,79 @@ export type StyleImportOptions = {
 export type StyleImportValue = {
   path: Quoted | Url;
 
-  /** Values to inject */
-  with?: {
-    node: Reference | Collection;
-    /**
-     * For use / ref / include statements, will affect how this module is evaluated
-     * every time. 'set' can be used once per module, 'with' can be used multiple.
-     * In Sass, 'set' is called 'with' and 'with' will be parsed as 'set'.
-     *   e.g.
-     *     `@-use 'library' set { $foo: 1 };` -- $foo will be set to 1 every time
-     *     `@-use 'library' with { $foo: 1 };` -- $foo will be set to 1 just for this scope.
-     */
-    type: 'with' | 'set';
-  };
+  /** The node to inject values from (Reference or Collection). */
+  withNode?: Reference | Collection;
+
+  /**
+   * How the injected values are applied.
+   * 'set' can be used once per module, 'with' can be used multiple.
+   * In Sass, 'set' is called 'with' and 'with' will be parsed as 'set'.
+   *   e.g.
+   *     `@-use 'library' set { $foo: 1 };` -- $foo will be set to 1 every time
+   *     `@-use 'library' with { $foo: 1 };` -- $foo will be set to 1 just for this scope.
+   */
+  withType?: 'with' | 'set';
 };
 
-export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+export type StyleImportChildData = {
+  path: Quoted | Url;
+  withNode: Reference | Collection | undefined;
+  withType: 'with' | 'set' | undefined;
+};
+
+export interface StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
+  type: 'StyleImport';
+  shortType: 'style';
   eval(context: Context): MaybePromise<Rules>;
+}
+
+function isWithRulesNode(value: Node): value is Rules | Collection {
+  return isNode(value, N.Rules | N.Collection);
+}
+
+function isPlainCssImportPath(finalPath: string, importOptions: ImportOptions | undefined): boolean {
+  if (importOptions?.inline === true) {
+    return false;
+  }
+  const explicitType = typeof importOptions?.type === 'string'
+    ? importOptions.type.toLowerCase()
+    : undefined;
+  if (explicitType === 'css') {
+    return true;
+  }
+  if (explicitType === 'less') {
+    return false;
+  }
+  if (explicitType) {
+    return false;
+  }
+  const normalizedPath = finalPath.split(/[?#]/)[0] ?? finalPath;
+  if (/\.less$/i.test(normalizedPath)) {
+    return false;
+  }
+  return /\.css$/i.test(normalizedPath) || /^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(finalPath);
+}
+
+function materializeCssImportPathNode(
+  resolvedPathNode: Quoted | Url,
+  finalPath: string,
+  context: Context
+): Quoted | Url {
+  if (resolvedPathNode instanceof Url) {
+    const rawValue = resolvedPathNode.get('value', context);
+    const nextValue = isNode(rawValue, N.Quoted)
+      ? new Quoted(finalPath, {
+          quote: rawValue.quote,
+          escaped: rawValue.escaped
+        }, rawValue.location, rawValue.treeContext)
+      : new Any(finalPath, { role: 'urlvalue' }, rawValue.location, rawValue.treeContext);
+    return new Url(nextValue, undefined, resolvedPathNode.location, resolvedPathNode.treeContext);
+  }
+
+  return new Quoted(finalPath, {
+    quote: resolvedPathNode.quote,
+    escaped: resolvedPathNode.escaped
+  }, resolvedPathNode.location, resolvedPathNode.treeContext);
 }
 /**
  * This is a generic class for:
@@ -134,17 +193,96 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  *
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
-export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
-  type = 'StyleImport' as const;
-  shortType = 'style' as const;
+export class StyleImport extends Node<StyleImportValue, StyleImportOptions, StyleImportChildData> {
+  static override childKeys = ['path', 'withNode'] as const;
+
+  readonly path!: Quoted | Url;
+  readonly withNode: Reference | Collection | undefined;
+  private withType: 'with' | 'set' | undefined;
+
+  override clone(deep?: boolean): this {
+    const options = this._meta?.options;
+    const newNode: this = Reflect.construct(this.constructor, [
+      {
+        path: deep ? this.path.clone(deep) : this.path,
+        withNode: deep && this.withNode instanceof Node ? this.withNode.clone(deep) : this.withNode,
+        withType: this.withType
+      },
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    ]);
+    newNode.inherit(this);
+    return newNode;
+  }
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // Style imports are always non-static and may be async
+    this.path = value.path;
+    this.withNode = value.withNode;
+    this.withType = value.withType;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
+    if (this.withNode instanceof Node) {
+      this.adopt(this.withNode);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  getFinalRules(evaluatedRules: Rules) {
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const path = this.get('path', options.context);
+    const { type, namespace, importOptions } = this.options;
+
+    if (type === 'compose') {
+      const keyword = importOptions?.forward ? '@-export' : '@-compose';
+      w.add(`${keyword} `);
+    } else {
+      w.add('@-import ');
+    }
+    path.toString(options);
+    if (namespace) {
+      w.add(` as ${namespace}`);
+    }
+    w.add(';');
+    return w.getSince(mark);
+  }
+
+  /** @removal-target — node-copy-reduction: clone(true) on prelude nodes.
+   * Prelude should be read from canonical + position patches. */
+  private materializePostludePrelude(current: Node, context: Context): {
+    atRuleName: '@media' | '@supports' | '@layer';
+    prelude: Node;
+  } {
+    if (isNode(current, N.Call)) {
+      const callName = String(current.get('name')).toLowerCase();
+      if (callName === 'media' || callName === 'supports' || callName === 'layer') {
+        const args = current.get('args')?.get('value') ?? [];
+        const prelude = args.length <= 1 ? args[0] : current.get('args');
+        if (prelude) {
+          return {
+            atRuleName: `@${callName}` as '@media' | '@supports' | '@layer',
+            prelude: prelude.clone(false, undefined, context)
+          };
+        }
+      }
+    }
+
+    return {
+      atRuleName: '@media',
+      prelude: current.clone(false, undefined, context)
+    };
+  }
+
+  private createPlacementRules(rules: Rules, context: Context): Rules {
+    const placementRenderKey = context.nextRenderKey();
+    return rules.createPlacementWrapper(context, placementRenderKey);
+  }
+
+  getFinalRules(evaluatedRules: Rules, context: Context) {
     let { importOptions, type } = this.options;
     const reference = importOptions!.reference;
     const isForward = importOptions!.forward === true;
@@ -159,9 +297,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     let Mixin: RulesVisibility = 'public';
     let VarDeclaration: RulesVisibility = 'public';
 
+    const isImplicitDedupeReference = (
+      type === 'import'
+      && importOptions?._dedupe === true
+      && reference !== true
+      && !importOptions?.multiple
+    );
+
     if (isProtected) {
       Ruleset = 'private';
-    } else if (reference) {
+    } else if (reference || isImplicitDedupeReference) {
       /**
        * Not sure if this is true.
        * They won't be output, but that's not the same as being optional,
@@ -187,14 +332,19 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    // De-duped imports mutate node options during markReferenceMode; use deep clone so
-    // repeated imports do not retroactively mutate previously emitted import trees.
-    // Keep explicit reference imports on shallow clone to preserve existing extend wiring.
-    const useDeepClone = Boolean(
-      type === 'import'
-      && (importOptions!.multiple === true || importOptions!._dedupe === true)
-    );
-    let out = (useDeepClone ? evaluatedRules.clone(true) : evaluatedRules.clone()) as Rules;
+    const materializeConfiguredComposeChildren = type === 'compose' && this.get('withNode', context) != null;
+    // Every import placement gets its own render-owned Rules wrapper so the same
+    // source module can be imported multiple times without clone-driven cleanup.
+    const out = evaluatedRules.sourceNode === this
+      ? evaluatedRules
+      : evaluatedRules.createPlacementWrapper(context, context.nextRenderKey());
+    if (materializeConfiguredComposeChildren) {
+      const placementContext: Context = { ...context, renderKey: out.renderKey, rulesContext: out };
+      const children = getChildren(out, placementContext);
+      for (let i = 0; i < children.length; i++) {
+        setIndex(children[i]!, i, placementContext);
+      }
+    }
     // Import type: variables are visible and re-exported (not local)
     // Compose type: variables are visible to parent but not transitive by default (`local: true`)
     // Forward: not visible locally but *is* transitive (`local: false`)
@@ -205,35 +355,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       local: isLocal,
       forward: isForward,
       referenceMode: isReferenceMode,
+      referenceRenderOnExtend: reference === true,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
-    if (isReferenceMode) {
-      const markReferenceMode = (node: Node): void => {
-        const nodeOptions = node.options as { referenceMode?: boolean };
-        nodeOptions.referenceMode = true;
-        const maybeRulesValue = node.value as { rules?: Node } | undefined;
-        const rules = maybeRulesValue?.rules;
-        if (rules && isNode(rules, 'Rules')) {
-          markReferenceMode(rules);
-        }
-        const children = node.value;
-        if (Array.isArray(children)) {
-          for (const child of children) {
-            if (isNode(child, ['Rules', 'Ruleset', 'AtRule'])) {
-              markReferenceMode(child as Node);
-            }
-          }
-        }
-      };
-      markReferenceMode(out as unknown as Node);
-    }
     // Forwarded modules should never render output at this scope.
     if (isForward) {
       out.removeFlag(F_VISIBLE);
     }
     // Set sourceNode so variable lookups know they can cross import boundaries
     out.sourceNode = this;
-    this.adopt(out);
+    this.adopt(out, context);
     return out;
   }
 
@@ -256,7 +387,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, with: withValues } = node.value;
+    const path = node.get('path', context);
+    const withNode = node.get('withNode', context);
+    const withType = node.get('withType', context);
+    let withValues = withNode != null ? { node: withNode, type: withType! } : undefined;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
@@ -284,7 +418,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * work.
      */
 
-    const finalize = async (finalPath: string) => {
+    const finalize = async (finalPath: string, resolvedPathNode: Quoted | Url) => {
       const previousTreeContext = context.treeContext;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
@@ -294,7 +428,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
-      if (node.treeContext) {
+      if (node.treeContext?.file) {
         context.treeContext = node.treeContext;
       }
       if (importOptions!.multiple || importOptions!.reference) {
@@ -310,6 +444,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
         let resolvedPath: string;
+        if (type === 'import' && isPlainCssImportPath(finalPath, importOptions)) {
+          const pathPreludeNode = materializeCssImportPathNode(resolvedPathNode, finalPath, context);
+          const postlude = importOptions!.postlude;
+          const prelude = postlude
+            ? new Sequence(
+                [
+                  pathPreludeNode,
+                  ...(isNode(postlude, N.Sequence | N.List) ? postlude.get('value', context) : [postlude])
+                ],
+                undefined,
+                undefined,
+                context.treeContext
+              )
+            : pathPreludeNode;
+          const cssImport = new AtRule({
+            name: new Any('@import', { role: 'atkeyword' }),
+            prelude
+          });
+          await cssImport.preEval(context);
+          return Rules.create([]);
+        }
         if (isInlineImport) {
           const resolved = await context.resolveImportPath(finalPath);
           resolvedPath = resolved.resolvedPath;
@@ -319,7 +474,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = new Any(source, { role: 'any' });
-          rules = this.wrapInlineSourceWithPostlude(sourceNode, importOptions!.postlude);
+          rules = this.wrapInlineSourceWithPostlude(sourceNode, importOptions!.postlude, context);
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
@@ -344,124 +499,132 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // - Subsequent compose imports reuse the cached evaluated Rules (so re-imports don't re-run evaluation).
         // - Subsequent compose imports default to "reference" mode unless `multiple: true` is set,
         //   so rulesets / at-rules are not output again.
+        const cachedSetValues = context.composeSetValues.get(resolvedPath);
+        const needsFreshSetBaselinePlacement = (
+          type === 'compose'
+          && evaldRules != null
+          && cachedSetValues != null
+          && withValues == null
+          && importOptions!.multiple === true
+        );
         if (type === 'compose' && evaldRules) {
-          if (withValues) {
-          // Sass-style: once configured, cannot be configured again.
-          // (We keep parsing show/hide/prefix metadata elsewhere; this is for with/set configs.)
+          if (withValues?.type === 'set') {
+            // `set` establishes the cached module baseline and cannot be applied twice.
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // Reuse cached evaluated rules tree.
-          rules = evaldRules;
+          if (withValues?.type !== 'with' && !needsFreshSetBaselinePlacement) {
+            // Reuse cached evaluated rules tree for plain compose re-imports and `set` baselines.
+            rules = evaldRules;
+          }
           // Default: de-dupe output for compose re-imports unless explicitly multiple.
           if (!importOptions!.multiple) {
             importOptions!.reference = true;
           }
+        }
+        if (needsFreshSetBaselinePlacement) {
+          withValues = { node: cachedSetValues!, type: 'with' };
         }
         const inMultipleImportBranch = context.inMultipleImportScope;
         if (type === 'import' && importOptions!.once !== false && !importOptions!.multiple && !inMultipleImportBranch && evaldRules) {
           rules = evaldRules;
           importOptions!._dedupe = true;
         }
-
         if (withValues) {
-        // Once configured, cannot be configured again (handled above for compose+cache).
+          // Once configured, cannot be configured again (handled above for compose+cache).
           if (withValues.type === 'set' && evaldRules) {
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // Clone the imported rules BEFORE evaluation so registries are populated on the clone
-          let modifiedRules = rules.clone(true) as Rules;
-          // withValues.node might be a Reference, so evaluate it first to get Rules
+          // Evaluate withValues.node if it's a Reference to get the actual Rules
           let withRulesNode = withValues.node;
-          if (isNode(withRulesNode, 'Reference')) {
-          // Evaluate the reference to get the actual Rules
+          if (isNode(withRulesNode, N.Reference)) {
             const evaluated = await withRulesNode.eval(context);
-            if (!isNode(evaluated, 'Collection')) {
+            if (!isWithRulesNode(evaluated)) {
               throw new Error('with/set node must evaluate to a Collection');
             }
             withRulesNode = evaluated;
           }
-          // withRules don't need to be cloned because they are used once
-          let withRules = withRulesNode as Rules;
-
-          // Build the declaration registry for efficient lookups
-          // This avoids O(n*m) complexity when we have many injected variables
-          // First, register all nodes in modifiedRules so they're in the registry
-          for (const node of modifiedRules.value) {
-            modifiedRules.registerNode(node);
+          if (!isWithRulesNode(withRulesNode)) {
+            throw new Error('with/set node must evaluate to a Collection');
           }
-          const declarationRegistry = modifiedRules.getRegistry('declaration');
-          declarationRegistry.indexPendingItems();
+          let withRules: Rules = isNode(withRulesNode, N.Rules)
+            ? withRulesNode
+            : Rules.create([...withRulesNode.value]);
+          if (type === 'compose' && withValues.type === 'with' && cachedSetValues) {
+            const mergedConfig = new Map<string, Node>();
+            for (const configuredNode of cachedSetValues.value) {
+              if (!isNode(configuredNode, N.VarDeclaration)) {
+                continue;
+              }
+              const key = String(configuredNode.get('name')?.valueOf() ?? '');
+              if (key) {
+                mergedConfig.set(key, configuredNode);
+              }
+            }
+            for (const configuredNode of withRules.value) {
+              if (!isNode(configuredNode, N.VarDeclaration)) {
+                continue;
+              }
+              const key = String(configuredNode.get('name')?.valueOf() ?? '');
+              if (key) {
+                mergedConfig.set(key, configuredNode);
+              }
+            }
+            withRules = Rules.create([...mergedConfig.values()]);
+          }
 
-          // Separate injected variables into two groups:
-          // 1. Variables that replace existing ones (found in imported rules)
-          // 2. Variables that are new (not found in imported rules)
+          // Build a name→index map over canonical top-level VarDeclarations for O(1) lookup.
+          // This replaces the previous rules.clone(true) + registry approach — we no longer
+          // deep-clone the entire imported tree just to find which declarations to override.
+          // A session created in the evaluation block below ensures that evaluated/preEvaluated
+          // tracking does not permanently mark canonical nodes as evaluated.
+          const topLevelVarIndex = new Map<string, number>();
+          for (let i = 0; i < rules.value.length; i++) {
+            const n = rules.value[i]!;
+            if (isNode(n, N.VarDeclaration)) {
+              const varName = String(n.get('name')?.valueOf() ?? '');
+              if (varName && !topLevelVarIndex.has(varName)) {
+                topLevelVarIndex.set(varName, i);
+              }
+            }
+          }
+
+          // Separate injected variables into replacements (matched in canonical) and new variables.
+          const replacementAt = new Map<number, Node>();
           const newVariables: Node[] = [];
 
-          // For each injected variable, find and replace the first matching declaration
-          // in the imported rules, OR if not found, add it to newVariables to inject at the top.
-          // This ensures the injected value "overrides" the original.
-          // Works correctly for both scope lookup ($var) and linear lookup ($^var):
-          // - For linear lookup: injected vars come first, so they're found first
-          // - For scope lookup: original is replaced, so injected value wins
           for (const injectedNode of withRules.value) {
-            if (isNode(injectedNode, 'VarDeclaration')) {
-              const varName = injectedNode.value.name?.toString();
+            if (isNode(injectedNode, N.VarDeclaration)) {
+              const varName = String(injectedNode.get('name')?.valueOf() ?? '');
               if (varName) {
-              // Use the registry for efficient lookup instead of linear search
-                const declarations = declarationRegistry.index.get(varName);
-                if (declarations) {
-                // Find the first VarDeclaration in the set (sorted by index)
-                  const existingDecl = Array.from(declarations).find(decl => isNode(decl, 'VarDeclaration'));
-
-                  if (existingDecl) {
-                  // Remove the old declaration from the registry
-                    declarations.delete(existingDecl);
-                    // Find its index in the array and replace it
-                    const index = modifiedRules.value.indexOf(existingDecl);
-                    if (index !== -1) {
-                    // Adopt the new node and replace in array
-                      modifiedRules.adopt(injectedNode);
-                      modifiedRules.value[index] = injectedNode;
-                      // Add the new declaration to the registry
-                      declarations.add(injectedNode);
-                      // Register the new node so it's properly indexed
-                      modifiedRules.registerNode(injectedNode);
-                    }
-                  } else {
-                  // Not found, add to newVariables to inject at the top
-                    newVariables.push(injectedNode);
-                  }
+                const existingIdx = topLevelVarIndex.get(varName);
+                if (existingIdx !== undefined) {
+                  replacementAt.set(existingIdx, injectedNode);
                 } else {
-                // Not found in registry, add to newVariables to inject at the top
                   newVariables.push(injectedNode);
                 }
               } else {
-              // Non-variable nodes (if any) are kept as-is
                 newVariables.push(injectedNode);
               }
             } else {
-            // Non-VarDeclaration nodes are kept as-is
               newVariables.push(injectedNode);
             }
           }
 
-          // Create the final rules structure:
-          // [new injected variables (not found in imported), ...all nodes from modified imported rules (with replacements)]
-          // Injected variables that aren't found should be at the TOP so they're found first
-          // for linear lookup ($^var)
-          // We flatten the structure so all variables are in the same Rules scope
-          const finalRules = Rules.create([]);
-          // First, add new injected variables that weren't found in imported rules (at the top)
+          // Build finalRules like mixin params: injected variables are pushed
+          // canonically (they're new nodes), library children keep their canonical
+          // parents untouched. We directly set the value array to avoid adopt()
+          // mutating canonical library node parents.
+          const finalChildren: Node[] = [];
           for (const newNode of newVariables) {
-            finalRules.adopt(newNode);
-            finalRules.value.push(newNode);
+            finalChildren.push(newNode);
           }
-          // Then, add all nodes from the modified imported rules (flattened, with replacements)
-          for (const node of modifiedRules.value) {
-            finalRules.adopt(node);
-            finalRules.value.push(node);
+          for (let i = 0; i < rules.value.length; i++) {
+            finalChildren.push(replacementAt.get(i) ?? rules.value[i]!);
           }
-          rules = finalRules;
+          rules = rules.createPlacementWrapperWithChildren(finalChildren, context.nextRenderKey());
+          if (type === 'compose' && withValues.type === 'set') {
+            context.composeSetValues.set(resolvedPath, withRules);
+          }
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
@@ -486,10 +649,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
-        let evaluatedInImplicitReferenceMode = false;
+        const activeParent = getParent(this, context);
+        const shouldIsolateSelectorFrames = !isNode(activeParent ? getParent(activeParent, context) : undefined, N.Ruleset | N.AtRule);
+        const prevRulesetFrames = shouldIsolateSelectorFrames ? context.rulesetFrames : undefined;
+        const prevFrames = shouldIsolateSelectorFrames ? context.frames : undefined;
         if (withValues || !evaldRules || type === 'import') {
-          const preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
@@ -498,7 +662,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && !importOptions!.multiple
           );
           if (isImplicitReferenceModeForEval) {
-            evaluatedInImplicitReferenceMode = true;
             // Dedupe re-imports behave like an implicit reference traversal:
             // evaluate for symbol availability, but avoid outward extend side effects.
             context.pushImportScope({ reference: true });
@@ -521,6 +684,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
 
           try {
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = [];
+              context.frames = [];
+            }
+            if (withValues || !evaldRules) {
+              rules = this.createPlacementRules(rules, context);
+            }
             // Call preEval first to get the cloned Rules (if cloning occurs)
             // sourceNode is already set above, so the cloned Rules will have it
             rules = await rules.preEval(context);
@@ -530,34 +700,44 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.preserveOriginalNodes = preserveOriginalNodes;
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
             if (shouldUseLocalExtendRoot) {
               context.extendRoots.popExtendRoot();
             }
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = prevRulesetFrames!;
+              context.frames = prevFrames!;
+            }
           }
 
           // Cache compose modules (and configured modules) after first evaluation.
           if (
-            type === 'compose'
+            (type === 'compose' && withValues?.type !== 'with')
             || withValues?.type === 'set'
             || (type === 'import' && importOptions!.once !== false)
           ) {
             context.evaldTrees.set(resolvedPath, rules);
           }
         } else {
-        // Clone the unevaluated rules BEFORE evaluation so registries are populated on the clone
-        // This ensures registration happens post-clone, not on the cached evaldRules
-        // sourceNode is already set above, so the cloned Rules will have it
-          rules = rules.clone(true) as Rules;
-          let preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
+        // Shallow-clone the cached rules BEFORE evaluation so registries are populated
+        // on the clone, not on the cached evaldRules.
+          rules = rules.createShallowBodyWrapper(context, context.nextRenderKey());
           // Note: For compose type, we don't set rules.parent = node
           // (only import type needs this for older import behavior)
-          rules = await rules.eval(context);
-          context.preserveOriginalNodes = preserveOriginalNodes;
+          try {
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = [];
+              context.frames = [];
+            }
+            rules = await rules.eval(context);
+          } finally {
+            if (shouldIsolateSelectorFrames) {
+              context.rulesetFrames = prevRulesetFrames!;
+              context.frames = prevFrames!;
+            }
+          }
         }
 
         // Pop extend root if we pushed one
@@ -565,20 +745,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
-        if (evaluatedInImplicitReferenceMode) {
-          (rules.options as { referenceMode?: boolean }).referenceMode = false;
-        }
-        let finalRules = node.getFinalRules(rules);
-        if (evaluatedInImplicitReferenceMode) {
-          (finalRules.options as { referenceMode?: boolean }).referenceMode = false;
-        }
+        let finalRules = node.getFinalRules(rules, context);
         if (importOptions!.postlude && !isInlineImport) {
-          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
+          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude, context);
         }
+        // configuredWithCanonicalParents restore removed — canonical parents are not mutated.
 
         // For import type, register the final Rules as a child root of the parent
-        // so extends from the parent can find rulesets in the imported Rules
-        // Do this AFTER getFinalRules because it returns a cloned Rules
+        // so extends from the parent can find rulesets in the imported Rules.
         if (type === 'import') {
           const currentParentExtendRoot = context.extendRoots.getCurrentExtendRoot();
           // Import type is mutable by default (unless explicitly mutable: false)
@@ -588,7 +762,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && importOptions!.reference !== true
             && !importOptions!.multiple
           );
-          const shouldReRegisterLocalRootRulesets = isImportProtected || isImplicitReferenceModeForRegistration;
+          const shouldReRegisterLocalRootRulesets = (
+            isImportProtected
+            || isImplicitReferenceModeForRegistration
+            || importOptions!.reference === true
+          );
           context.extendRoots.registerRoot(finalRules, currentParentExtendRoot, {
             isProtected: isImportProtected,
             namespace: node.options.namespace
@@ -600,10 +778,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
           // we need to re-register rulesets in finalRules' registry.
           if (shouldReRegisterLocalRootRulesets) {
-            const finalRulesRegistry = finalRules.getRegistry('ruleset');
-            for (const maybeRuleset of finalRules.nodes()) {
-              if (isNode(maybeRuleset, 'Ruleset')) {
-                finalRulesRegistry.add(maybeRuleset as Ruleset);
+            for (const maybeNode of finalRules.nodes()) {
+              if (isNode(maybeNode, N.Ruleset | N.Mixin)) {
+                finalRules.registerNode(maybeNode, undefined, context);
               }
             }
           }
@@ -613,6 +790,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
         return finalRules;
       } finally {
+        // dedupedCachedRules/dedupedCanonicalParents restore removed —
+        // eval writes stay on derived nodes, canonical tree is not mutated.
         context.treeContext = previousTreeContext;
         if (pushedImportScope) {
           context.popImportScope();
@@ -620,53 +799,43 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         importOptions!.reference = previousExplicitReference;
       }
     };
-    if (isThenable(maybePath)) {
-      return (maybePath as Promise<Quoted | Url>).then(async (p) => {
-        const finalPath = p.valueOf();
-        context.depth = originalDepth;
-        return finalize(finalPath);
-      });
-    }
-    const finalPath = maybePath.valueOf();
-    context.depth = originalDepth;
-    return finalize(finalPath as string);
+    const getFinalPath = (resolvedPath: Quoted | Url): string => {
+      if (resolvedPath instanceof Url) {
+        return resolvedPath.pathValue(context);
+      }
+      const quotedValue = resolvedPath.get('value', context);
+      if (isNode(quotedValue)) {
+        return String(quotedValue.valueOf());
+      }
+      return String(quotedValue);
+    };
+
+    return Promise.resolve(maybePath).then(async (p: Quoted | Url) => {
+      const finalPath = getFinalPath(p);
+      context.depth = originalDepth;
+      return finalize(finalPath, p);
+    });
   }
 
   /**
    * Applies CSS import postlude wrappers around inline source content.
    * Falls back to `@media <postlude>` for plain query nodes.
    */
-  private wrapInlineSourceWithPostlude(sourceNode: Node, postlude?: Node): Rules {
+  private wrapInlineSourceWithPostlude(sourceNode: Node, postlude: Node | undefined, context: Context): Rules {
     if (!postlude) {
       return Rules.create([sourceNode]);
     }
 
     let wrapped: Node = sourceNode;
-    const postludeNodes = isNode(postlude, ['Sequence', 'List']) ? postlude.value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...postlude.get('value', context)] : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       const body = Rules.create([wrapped]);
-
-      if (isNode(current, 'Call')) {
-        const callName = String(current.value.name).toLowerCase();
-        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
-          if (prelude) {
-            wrapped = new AtRule({
-              name: new Any(`@${callName}`, { role: 'atkeyword' }),
-              prelude,
-              rules: body
-            });
-            continue;
-          }
-        }
-      }
-
+      const { atRuleName, prelude } = this.materializePostludePrelude(current, context);
       wrapped = new AtRule({
-        name: new Any('@media', { role: 'atkeyword' }),
-        prelude: current,
+        name: new Any(atRuleName, { role: 'atkeyword' }),
+        prelude,
         rules: body
       });
     }
@@ -678,37 +847,21 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Applies CSS import postlude wrappers around evaluated stylesheet rules.
    * Used for Less-style imports with media/layer/supports postludes.
    */
-  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
+  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude: Node | undefined, context: Context): Rules {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes = isNode(postlude, ['Sequence', 'List']) ? postlude.value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? [...postlude.get('value', context)] : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
-      if (isNode(current, 'Call')) {
-        const callName = String(current.value.name).toLowerCase();
-        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
-          if (prelude) {
-            const wrappedAtRule = new AtRule({
-              name: new Any(`@${callName}`, { role: 'atkeyword' }),
-              prelude,
-              rules: wrappedRules
-            });
-            wrappedRules = Rules.create([wrappedAtRule]);
-            continue;
-          }
-        }
-      }
-
-      const mediaAtRule = new AtRule({
-        name: new Any('@media', { role: 'atkeyword' }),
-        prelude: current,
+      const { atRuleName, prelude } = this.materializePostludePrelude(current, context);
+      const wrappedAtRule = new AtRule({
+        name: new Any(atRuleName, { role: 'atkeyword' }),
+        prelude,
         rules: wrappedRules
       });
-      wrappedRules = Rules.create([mediaAtRule]);
+      wrappedRules = Rules.create([wrappedAtRule]);
     }
 
     return wrappedRules;

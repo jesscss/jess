@@ -1,22 +1,27 @@
 {
   "name": "styles-config",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "version": "2.0.0-alpha.5",
   "description": "General-purpose configuration for styling frameworks (Jess, Less, Sass, Tailwind, etc.)",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     }
   },
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsc -p tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest"
   },
   "dependencies": {
@@ -28,8 +33,9 @@
     "@types/node": "^22.10.2",
     "@types/picomatch": "^3.0.1",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.0"
   },
   "author": "Matthew Dean",
-  "license": "MIT"
+  "license": "MIT",
+  "module": "lib/index.js"
 }

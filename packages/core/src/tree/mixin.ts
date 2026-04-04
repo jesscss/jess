@@ -1,4 +1,4 @@
-import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
+import { CANONICAL, EVAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
 import type { Any, AnyRole } from './any.js';
@@ -7,6 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { setParent } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -74,12 +75,92 @@ export type MixinOptions = {
  *
  * @todo - Even though we allow a selector as a name.
  */
-export class Mixin extends Node<MixinValue, MixinOptions> {
-  type = 'Mixin';
-  shortType = 'mixin';
+export type MixinChildData = {
+  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  rules: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
+};
 
-  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
+export interface Mixin {
+  type: 'Mixin';
+  shortType: 'mixin';
+}
+
+export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
+  static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
+
+  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  rules!: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const name = this.get('name', ctx);
+    const rules = this.get('rules', ctx);
+    const params = this.get('params', ctx);
+    const guard = this.get('guard', ctx);
+    const cloneData: MixinValue = {
+      name: deep && name instanceof Node ? name.clone(deep, cloneFn, ctx) : name,
+      rules: deep ? rules.clone(deep, cloneFn, ctx) : rules,
+      params: deep && params instanceof Node ? params.clone(deep, cloneFn, ctx) : params,
+      guard: deep && guard instanceof Node ? guard.clone(deep, cloneFn, ctx) : guard
+    };
+
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep && ctx) {
+      priorChildParents = [];
+      if (cloneData.name instanceof Node) {
+        priorChildParents.push([cloneData.name, cloneData.name.parent]);
+      }
+      if (cloneData.rules instanceof Node) {
+        priorChildParents.push([cloneData.rules, cloneData.rules.parent]);
+      }
+      if (cloneData.params instanceof Node) {
+        priorChildParents.push([cloneData.params, cloneData.params.parent]);
+      }
+      if (cloneData.guard instanceof Node) {
+        priorChildParents.push([cloneData.guard, cloneData.guard.parent]);
+      }
+    }
+
+    const options = this._meta?.options;
+    const newNode: this = Reflect.construct(this.constructor, [
+      cloneData,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    ]);
+
+    if (priorChildParents) {
+      for (const [child, priorParent] of priorChildParents) {
+        setParent(child, newNode, ctx!);
+        Reflect.set(child, 'parent', priorParent);
+      }
+    }
+
+    newNode.inherit(this);
+    return newNode;
+  }
+
+  constructor(value: MixinValue, options?: MixinOptions, location?: OptionalLocation, context?: TreeContext) {
     super(value, options, location, context);
+    this.name = value.name;
+    this.rules = value.rules;
+    this.params = value.params;
+    this.guard = value.guard;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
+    if (this.params instanceof Node) {
+      this.adopt(this.params);
+    }
+    if (this.guard instanceof Node) {
+      this.adopt(this.guard);
+    }
     this.removeFlag(F_VISIBLE);
   }
 
@@ -87,10 +168,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   /** Return a selector-like keySet */
   private _keySet: Set<string> | undefined;
+
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
-      let { name } = this.value;
+      const name = this.name;
       if (!name) {
         return (this._keySet = new Set());
       }
@@ -99,10 +181,25 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return keySet;
   }
 
+  getKeySet(context?: Context): Set<string> {
+    if (!context) {
+      return this.keySet;
+    }
+    const name = this.get('name', context);
+    if (!name) {
+      return new Set();
+    }
+    return new Set([name.valueOf()]);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.value;
+    const context = options.context;
+    const name = this.get('name', context);
+    const rules = this.get('rules', context).withRenderOwner(this, context?.renderKey, context);
+    const params = this.get('params', context);
+    const guard = this.get('guard', context);
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -132,29 +229,43 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    let node = this.maybeClone(context);
+    const edgeContext = {
+      ...context,
+      renderKey: context.renderKey ?? EVAL
+    } as Context;
+    let node = this.clone(false, undefined, edgeContext);
     node.preEvaluated = true;
     node.sourceNode ??= this;
+    node.renderKey = edgeContext.renderKey;
 
-    let { name, rules } = node.value;
-    if (context.leakyRules) {
-      rules.options.rulesVisibility.Mixin = 'public';
-      // Keep Less mixin-definition vars as fallback by default. Call-time scope
-      // controls for params/local vars are handled in mixin evaluation paths.
-      rules.options.rulesVisibility.VarDeclaration = 'optional';
-    } else {
-      rules.options.rulesVisibility.Mixin = 'private';
-      rules.options.rulesVisibility.VarDeclaration = 'private';
+    const name = node.get('name', context);
+    let rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);
+    if (rules.renderKey === CANONICAL) {
+      const wrappedRules = rules.createShallowBodyWrapper(context);
+      node.rules = wrappedRules;
+      node.adopt(wrappedRules, context);
+      rules = wrappedRules;
     }
+    // Set visibility on the canonical rules options — mixin body visibility
+    // is set on the derived mixin body wrapper for this eval path.
+    const rulesVisibility = { ...(rules.options.rulesVisibility ?? {}) };
+    if (context.leakyRules) {
+      rulesVisibility.Mixin = 'public';
+      rulesVisibility.VarDeclaration = 'optional';
+    } else {
+      rulesVisibility.Mixin = 'private';
+      rulesVisibility.VarDeclaration = 'private';
+    }
+    rules.options = { ...rules.options, rulesVisibility };
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
-        return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          node.value.name = key;
+        return maybeKey.then((key) => {
+          node.name = key;
           return node;
         });
       }
-      node.value.name = maybeKey as Any<'name'>;
+      node.name = maybeKey;
     }
     return node;
   }
@@ -165,7 +276,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   // override async evalNode(context: Context): Promise<Rules | Expression> {
-  //   let { name, body, params, guard } = this.value
+  //   let { name, body, params, guard } = this.data
   //   if (name instanceof Interpolated) {
   //     name
   // }

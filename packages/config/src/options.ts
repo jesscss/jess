@@ -94,8 +94,7 @@ function getMatchingOptions<T extends FileMatchOptions>(
     // Include if: no file pattern (default), or file pattern matches
     if (!opt.file || (filePath && matchesFile(opt.file, filePath))) {
       // Merge this entry's options, excluding the 'file' property
-      const rest = { ...opt } as Record<string, unknown>;
-      delete rest.file;
+      const { file: _file, ...rest } = opt;
       result = { ...result, ...rest };
     }
   }
@@ -157,6 +156,7 @@ export function getOptions(
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
     equalityMode: compile.equalityMode,
+    allowExtendSelectors: compile.allowExtendSelectors,
     paths: compile.searchPaths,
     javascriptEnabled: compile.enableJavaScript,
 

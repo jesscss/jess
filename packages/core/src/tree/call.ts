@@ -1,25 +1,18 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
+import { CALLER, CANONICAL, Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
+import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
-import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
-let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
-
-// Lazy getter for Rules to break circular dependency:
-// rules.ts → cast.ts → color.ts → call.ts → rules.ts
-async function getRules() {
-  if (!rulesCtorPromise) {
-    rulesCtorPromise = import('./rules.js').then(({ Rules }) => Rules);
-  }
-  return rulesCtorPromise;
-}
+import { getParent, mergeDependencies, setDependency, setParent, setSourceParent } from './util/field-helpers.js';
+import { finalizeInvocationOutputRules } from './util/mixin-instance-primitives.js';
+import { addParentEdge } from './util/cursor.js';
 
 export type CallValue = {
   /**
@@ -70,24 +63,116 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
-export class Call extends Node<CallValue, CallOptions> {
-  type = 'Call' as const;
-  shortType = 'call' as const;
-  override _requiredSemi = true;
+export type CallChildData = { name: string | Node; args: List<Node> | undefined; contentNode: Node | undefined };
 
-  constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
+export interface Call {
+  type: 'Call';
+  shortType: 'call';
+}
+
+export class Call extends Node<CallValue, CallOptions, CallChildData> {
+  static override childKeys = ['name', 'args', 'contentNode'] as const;
+
+  name!: string | Node;
+  args: List<Node> | undefined;
+  contentNode: Node | undefined;
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const name = this.get('name', ctx);
+    const args = this.get('args', ctx);
+    const contentNode = this.get('contentNode', ctx);
+    const cloneData: CallValue = {
+      name: deep && name instanceof Node ? name.clone(deep, cloneFn, ctx) : name,
+      args: deep && args instanceof Node ? args.clone(deep, cloneFn, ctx) : args,
+      contentNode: deep && contentNode instanceof Node ? contentNode.clone(deep, cloneFn, ctx) : contentNode
+    };
+
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep) {
+      priorChildParents = [];
+      if (cloneData.name instanceof Node) {
+        priorChildParents.push([cloneData.name, cloneData.name.parent]);
+      }
+      if (cloneData.args instanceof Node) {
+        priorChildParents.push([cloneData.args, cloneData.args.parent]);
+      }
+      if (cloneData.contentNode instanceof Node) {
+        priorChildParents.push([cloneData.contentNode, cloneData.contentNode.parent]);
+      }
+    }
+
+    const options = this._meta?.options;
+    const newNode: this = Reflect.construct(this.constructor, [
+      cloneData,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    ]);
+
+    if (priorChildParents) {
+      for (const [child, priorParent] of priorChildParents) {
+        if (ctx) {
+          setParent(child, newNode, ctx);
+        }
+        Reflect.set(child, 'parent', priorParent);
+      }
+    }
+
+    newNode.inherit(this);
+    return newNode;
+  }
+
+  constructor(value: CallValue, options?: CallOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.name = value.name;
+    this.args = value.args;
+    this.contentNode = value.contentNode;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.args instanceof Node) {
+      this.adopt(this.args);
+    }
+    if (this.contentNode instanceof Node) {
+      this.adopt(this.contentNode);
+    }
+    this.requiredSemi = true;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
+  private _serializeCallArg(node: Node, options: PrintOptions): string {
+    const context = options.context;
+    if (isNode(node, N.Sequence)) {
+      const children = node.get('value', context);
+      const isQuotedConcatSequence = (
+        children.some(child => isNode(child, N.Quoted))
+        && children.every(child => isNode(child, N.Quoted | N.Any | N.Interpolated))
+      );
+      return children
+        .map(child => this._serializeCallArg(child, options).replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''))
+        .join(isQuotedConcatSequence ? '' : ' ');
+    }
+    if (isNode(node, N.List)) {
+      const sep = node.options?.sep ?? ',';
+      const joiner = sep === '/' ? ' / ' : `${sep} `;
+      return node.get('value', context)
+        .map(child => this._serializeCallArg(child, options).replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''))
+        .join(joiner);
+    }
+    return options.writer!.capture(() => node.toString(options))
+      .replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, '');
+  }
+
   override toTrimmedString(options?: PrintOptions) {
-    const { silentFail } = this.options;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, contentNode } = this.value;
-    const args = this.value.args;
+    const context = options.context;
+    const { silentFail, markImportant } = this.options ?? {};
+    const name = this.get('name', context);
+    const args = this.get('args', context);
+    const contentNode = this.get('contentNode', context);
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -98,20 +183,18 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const normalizedArgs = args.value.filter(Boolean);
+      const normalizedArgs = args.get('value', context).filter(Boolean);
       const last = normalizedArgs.length - 1;
       for (let i = 0; i <= last; i++) {
         const arg = normalizedArgs[i]!;
-        const argOut = w.capture(() => arg.toString(options));
-        // Normalize boundary whitespace so calls serialize with stable comma spacing.
-        w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
+        w.add(this._serializeCallArg(arg, options), arg);
         if (i < last) {
           w.add(', ');
         }
       }
     }
     w.add(')');
-    if (this.options?.markImportant) {
+    if (markImportant) {
       w.add(' !important');
     }
     if (contentNode) {
@@ -122,16 +205,29 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   /** Recursively makes declarations important */
-  makeImportant(rules: Rules): Rules {
-    let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
-    for (const rule of rules.value) {
-      if (isNode(rule, 'Declaration')) {
-        rule.value.important = important;
-      } else if (isNode(rule, 'Rules')) {
-        this.makeImportant(rule);
-      } else if (isNode(rule, ['AtRule', 'Ruleset'])) {
-        if (rule.value.rules) {
-          this.makeImportant(rule.value.rules);
+  makeImportant(rules: Rules, context?: Context): Rules {
+    const effectiveContext = (
+      context
+      && rules.renderKey !== CANONICAL
+      && context.renderKey !== rules.renderKey
+    )
+      ? { ...context, renderKey: rules.renderKey }
+      : context;
+    const important: Any<'flag'> = new Any('!important', { role: 'flag' });
+    for (const rule of rules.get('value', effectiveContext)) {
+      if (isNode(rule, N.Declaration)) {
+        rule.setCurrentImportant(important, effectiveContext);
+      } else if (isNode(rule, N.Rules)) {
+        this.makeImportant(rule, effectiveContext);
+      } else if (isNode(rule, N.AtRule)) {
+        const nestedRules = rule.get('rules');
+        if (nestedRules) {
+          this.makeImportant(nestedRules, effectiveContext);
+        }
+      } else if (isNode(rule, N.Ruleset)) {
+        const nestedRules = rule.get('rules');
+        if (nestedRules) {
+          this.makeImportant(nestedRules, effectiveContext);
         }
       }
     }
@@ -139,216 +235,351 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
-  override async evalNode(context: Context): Promise<Node> {
-    let { name } = this.value;
-    let args = this.value.args;
-    let { markImportant } = this.options;
-    const adoptCallWhitespace = <T extends Node>(node: T): T => {
-      node.pre = this.pre;
-      node.post = this.post;
-      node.sourceParent = this;
-      return node;
-    };
-    const evalArgNodes = async (nodes?: List<Node>) => {
-      if (!nodes) {
-        return undefined;
-      }
-      const out: Node[] = [];
-      for (const node of nodes.value) {
-        out.push(await node.eval(context) as Node);
-      }
-      return list(out, nodes.options);
-    };
+  override evalNode(context: Context): Promise<Node> {
+    return (async () => {
+      let name = this.get('name', context);
+      let args = this.get('args', context);
+      const callOptions = this.options ?? {};
+      let { markImportant } = callOptions;
+      const applyDependencyToResult = <T extends Node>(
+        result: T,
+        nodes?: readonly (Node | undefined)[]
+      ): T => {
+        const dependency = mergeDependencies(
+          nodes ? [result, ...nodes] : [result],
+          context
+        );
+        if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+          setDependency(result, {
+            dependsOn: new Set(dependency.dependsOn),
+            sourceExpr: this
+          }, context);
+        }
+        return result;
+      };
+      const adoptCallWhitespace = <T extends Node>(node: T): T => {
+        node.pre = this.pre;
+        node.post = this.post;
+        node.sourceParent ??= this;
+        return node;
+      };
+      const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
+        return node.clone();
+      };
+      const materializeDownstreamResult = <T extends Node>(node: T): T => {
+        if (node === node.sourceNode) {
+          const childKeys = Reflect.get(node.constructor, 'childKeys');
+          if (childKeys === null) {
+            return cloneLeafDownstreamResult(node);
+          }
+          return node;
+        }
+        return node;
+      };
+      const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
+        if (node === node.sourceNode && isNode(node, N.Rules)) {
+          return node.clone(false, undefined, context);
+        }
+        return materializeDownstreamResult(node);
+      };
+      const evalArgNodes = async (nodes?: List<Node>) => {
+        if (!nodes) {
+          return undefined;
+        }
+        const out: Node[] = [];
+        for (const node of nodes.get('value')) {
+          out.push(await node.eval(context));
+        }
+        return list(out, nodes.options);
+      };
+      const anchorCallArgNodes = (nodes?: List<Node>) => {
+        if (!nodes) {
+          return;
+        }
+        for (const argNode of nodes.get('value')) {
+          // Anchor property refs and callback mixins to the call-site scope
+          // without cloning the arg tree.
+          if (isNode(argNode, N.Reference) && argNode.options?.type === 'property') {
+            setSourceParent(argNode, this, context);
+          } else if (isNode(argNode, N.Mixin)) {
+            setSourceParent(argNode, this, context);
+          }
+        }
+      };
 
-    context.callStack.push(this);
-    context.parenFrames.push(false);
+      context.callStack.push(this);
+      context.parenFrames.push(false);
 
-    let n = typeof name === 'string' ? name : await name.eval(context);
-    // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
-    if (isNode(n, 'Reference') && n.options?.type === 'mixin-ruleset') {
-      n = await n.eval(context);
-    }
-    // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
-    // by parsers that support them. We intentionally avoid implicit string→function lookup here
-    // to prevent surprising behavior for plain CSS function-like calls.
-    // If the evaluated name is a Call node, execute it directly
-    // This handles cases like @alias: .something(foo); @alias();
-    if (isNode(n, 'Call')) {
-      // Execute the inner Call node (it will handle its own callStack push/pop)
-      const result = await n.eval(context);
-      // Apply markImportant if needed
-      if (markImportant && isNode(result, 'Rules')) {
-        this.makeImportant(result);
+      if (process.env.JESS_DEBUG_LOCK === 'throw-call') {
+        const rawName = String(name?.valueOf?.() ?? '');
+        if (rawName.includes('.inner-locked-mixin')) {
+          throw new Error(`[lock-call:raw] ${JSON.stringify({
+            rawName,
+            parent: this.parent?.type,
+            sourceParent: this.sourceParent?.type,
+            renderKey: String(this.renderKey),
+            rulesContext: context.rulesContext?.type,
+            lookupScope: context.lookupScope?.type
+          })}`);
+        }
       }
-      // Always pop the outer call's stack entries
-      context.callStack.pop();
-      context.parenFrames.pop();
-      return result;
-    } else if (isNode(n, 'Mixin') || isNode(n, 'Ruleset') || Array.isArray(n)) {
-      n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
-    } else if (isNode(n, 'Func')) {
-      // Execute stylesheet-defined functions via their evalCall behavior.
-      const argNodes = await evalArgNodes(args) ?? list([]);
-      const result = await (n as any).evalCall(context, argNodes);
-      context.callStack.pop();
-      context.parenFrames.pop();
-      return result;
-    } else if (isNode(n, 'Collection')) {
-      // If the evaluated name is Rules or Collection (detached rulesets),
-      // return those rules directly, but only if args are empty
-      // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.value.length > 0) {
+      let n = typeof name === 'string' ? name : await name.eval(context);
+      const debugRawKey = isNode(name, N.Reference)
+        ? String(name.key?.valueOf?.() ?? '')
+        : '';
+      if (process.env.JESS_DEBUG_LOCK === 'log-call' && debugRawKey.includes('inner-locked-mixin')) {
+        console.log('[lock-call]', {
+          debugRawKey,
+          resolvedType: Array.isArray(n) ? 'array' : n?.type ?? typeof n,
+          resolvedName: typeof n === 'string' ? n : n?.valueOf?.(),
+          parent: this.parent?.type,
+          sourceParent: this.sourceParent?.type,
+          rulesContext: context.rulesContext?.type,
+          lookupScope: context.lookupScope?.type
+        });
+      }
+      if (process.env.JESS_DEBUG_LOCK === 'throw-call-resolved') {
+        const resolvedName = String(n?.valueOf?.() ?? '');
+        const rawName = String(name?.valueOf?.() ?? '');
+        if (rawName.includes('.inner-locked-mixin') || resolvedName.includes('.inner-locked-mixin')) {
+          throw new Error(`[lock-call:resolved] ${JSON.stringify({
+            rawName,
+            resolvedName,
+            resolvedType: Array.isArray(n) ? 'array' : n?.type,
+            parent: this.parent?.type,
+            sourceParent: this.sourceParent?.type,
+            renderKey: String(this.renderKey),
+            rulesContext: context.rulesContext?.type,
+            lookupScope: context.lookupScope?.type
+          })}`);
+        }
+      }
+      // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
+      if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
+        n = await n.eval(context);
+      }
+      // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
+      // by parsers that support them. We intentionally avoid implicit string→function lookup here
+      // to prevent surprising behavior for plain CSS function-like calls.
+      // If the evaluated name is a Call node, execute it directly
+      // This handles cases like @alias: .something(foo); @alias();
+      if (isNode(n, N.Call)) {
+        // Execute the inner Call node (it will handle its own callStack push/pop)
+        const result = materializeDownstreamResult(await n.eval(context));
+        // Apply markImportant if needed
+        if (markImportant && isNode(result, N.Rules)) {
+          this.makeImportant(result, context);
+        }
+        // Always pop the outer call's stack entries
         context.callStack.pop();
         context.parenFrames.pop();
-        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
-      }
-      const Rules = await getRules();
-      let rules = Rules.create(n.value, n.options);
-      // Inherit from Collection (n) to preserve definition-scope parent chain
-      // This ensures variables like @a resolve from where the detached ruleset was defined
-      // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
-      rules.inherit(n);
-      // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
-      // to this call so leaky fallback can resolve call-site variables (e.g. @d).
-      rules.sourceParent = this;
-      rules = await rules.eval(context);
-      context.callStack.pop();
-      context.parenFrames.pop();
-      // Apply markImportant if needed
-      if (markImportant) {
-        this.makeImportant(n);
-      }
-      return rules;
-    }
-
-    let fn = isNode(n, 'JsFunction') ? n.value : n;
-    if (typeof fn === 'function') {
-      const originalCaller = context.caller;
-      context.caller = this;
-      let didPopCallStack = false;
-      try {
-        /** Freeze args */
-        if (args) {
-          const copiedArgs = args.copy(true, freezeChildren);
-          for (const copied of copiedArgs.value) {
-            // Anchor copied references to this Call so nested property refs
-            // (e.g. $list-1) can walk back to call-site Rules.
-            // Also anchor copied Mixin callback args to call-site source scope
-            // so callback bodies can resolve surrounding variables.
-            if (isNode(copied, 'Reference') && copied.options?.type === 'property') {
-              copied.sourceParent = this;
-            } else if (isNode(copied, 'Mixin')) {
-              copied.sourceParent = this;
-            }
-            copied.frozen = true;
+        return adoptCallWhitespace(result);
+      } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
+        // Direct mixin invocation — skip getFunctionFromMixins/callWithContext wrapper
+        const originalCaller = context.caller;
+        context.caller = this;
+        try {
+          const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
+          if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(result, N.Nil)) {
+            throw new Error(`[lock-call:direct-nil] ${JSON.stringify({
+              debugRawKey,
+              resolvedType: Array.isArray(n) ? 'array' : n?.type,
+              parent: this.parent?.type,
+              sourceParent: this.sourceParent?.type,
+              rulesContext: context.rulesContext?.type,
+              lookupScope: context.lookupScope?.type
+            })}`);
           }
-          args = copiedArgs;
+          // Result is already fully evaluated by the dispatch primitives — no re-eval.
+          if (markImportant && isNode(result, N.Rules)) {
+            this.makeImportant(result, context);
+          }
+          context.callStack.pop();
+          context.parenFrames.pop();
+          return adoptCallWhitespace(result);
+        } finally {
+          context.caller = originalCaller;
         }
-        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
-        const result = await (
-          args
-            ? (
-                shouldPassListArgs
-                  ? callWithContext(context, fn, args)
-                  : callWithContext(context, fn, ...args.value)
-              )
-            : callWithContext(context, fn)
-        );
-        context.caller = originalCaller;
+      } else if (isNode(n, N.Func)) {
+        // Execute stylesheet-defined functions via their evalCall behavior.
+        const argNodes = await evalArgNodes(args) ?? list([]);
+        const contentNode = this.get('contentNode', context);
+        const originalCaller = context.caller;
+        context.caller = this;
+        try {
+          const result = await n.evalCall(context, argNodes, contentNode);
+          if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(result, N.Nil)) {
+            throw new Error(`[lock-call:func-nil] ${JSON.stringify({
+              debugRawKey,
+              resolvedType: n.type,
+              parent: this.parent?.type,
+              sourceParent: this.sourceParent?.type,
+              rulesContext: context.rulesContext?.type,
+              lookupScope: context.lookupScope?.type
+            })}`);
+          }
+          context.callStack.pop();
+          context.parenFrames.pop();
+          return applyDependencyToResult(
+            adoptCallWhitespace(materializeStylesheetFunctionRulesBoundary(result)),
+            argNodes.get('value')
+          );
+        } finally {
+          context.caller = originalCaller;
+        }
+      } else if (isNode(n, N.Collection)) {
+        // If the evaluated name is Rules or Collection (detached rulesets),
+        // return those rules directly, but only if args are empty
+        // If args are provided, throw an error - you can't call Rules/Collection with arguments
+        if (args && args.get('value').length > 0) {
+          context.callStack.pop();
+          context.parenFrames.pop();
+          throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+        }
+        let rules: Rules = n.createPlacementWrapper(context, context.nextRenderKey());
+        const placementContext: Context = {
+          ...context,
+          renderKey: rules.renderKey,
+          rulesContext: rules
+        };
+        // Detached-ruleset invocation keeps the definition-owned `.parent` /
+        // `.sourceParent` chain and exposes caller ancestry through an
+        // explicit secondary edge.
+        addParentEdge(rules, CALLER, this);
+        rules = await rules.eval(context);
+        finalizeInvocationOutputRules(rules, placementContext);
         context.callStack.pop();
-        didPopCallStack = true;
-        if (isNode(result)) {
-          let evald = result.eval(context);
-          if (isThenable(evald)) {
-            evald = await evald;
-            if (markImportant && isNode(evald, 'Rules')) {
-              this.makeImportant(evald);
+        context.parenFrames.pop();
+        // Apply markImportant if needed
+        if (markImportant) {
+          this.makeImportant(rules, context);
+        }
+        return rules;
+      }
+
+      let fn = isNode(n, N.JsFunction) ? n.value : n;
+      if (typeof fn === 'function') {
+        const originalCaller = context.caller;
+        context.caller = this;
+        let didPopCallStack = false;
+        try {
+          const fnOptions = Reflect.get(fn, 'options');
+          const hasParamMetadata = Boolean(fnOptions && Reflect.get(fnOptions, 'params'));
+          if (args) {
+            anchorCallArgNodes(args);
+            if (!hasParamMetadata) {
+              args = await evalArgNodes(args);
+              anchorCallArgNodes(args);
+            }
+          }
+          const result = await (
+            args
+              ? (
+                  hasParamMetadata
+                    ? callWithContext(context, fn, args)
+                    : callWithContext(context, fn, ...[...args.get('value')])
+                )
+              : callWithContext(context, fn)
+          );
+          if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(result, N.Nil)) {
+            throw new Error(`[lock-call:jsfn-nil] ${JSON.stringify({
+              debugRawKey,
+              resolvedType: typeof fn,
+              parent: this.parent?.type,
+              sourceParent: this.sourceParent?.type,
+              rulesContext: context.rulesContext?.type,
+              lookupScope: context.lookupScope?.type
+            })}`);
+          }
+          context.caller = originalCaller;
+          context.callStack.pop();
+          didPopCallStack = true;
+          if (isNode(result)) {
+            let evald = result.eval(context);
+            if (isThenable(evald)) {
+              evald = await evald;
+            }
+            if (process.env.JESS_DEBUG_LOCK === 'throw-nil-call' && debugRawKey.includes('inner-locked-mixin') && isNode(evald, N.Nil)) {
+              throw new Error(`[lock-call:jsfn-post-eval-nil] ${JSON.stringify({
+                debugRawKey,
+                resultType: result.type,
+                parent: this.parent?.type,
+                sourceParent: this.sourceParent?.type,
+                rulesContext: context.rulesContext?.type,
+                lookupScope: context.lookupScope?.type
+              })}`);
+            }
+            if (markImportant && isNode(evald, N.Rules)) {
+              this.makeImportant(evald, context);
             }
             return adoptCallWhitespace(evald);
           }
-          if (markImportant && isNode(evald, 'Rules')) {
-            this.makeImportant(evald);
+          let castResult = cast(result);
+          if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+            return adoptCallWhitespace(castResult.value[0]!);
           }
-          return adoptCallWhitespace(evald);
-        }
-        let castResult = cast(result);
-        if (isNode(castResult, 'Rules') && castResult.value.length === 1) {
-          return adoptCallWhitespace(castResult.value[0]!);
-        }
-        return adoptCallWhitespace(castResult);
-      } catch (e) {
-        const unitMode = context?.opts?.unitMode ?? 'loose';
-        const shouldRethrowForMode = unitMode === 'strict';
-        if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (this.parent?.type === 'SelectorCapture') {
-            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+          return adoptCallWhitespace(castResult);
+        } catch (e) {
+          const unitMode = context?.opts?.unitMode ?? 'loose';
+          const shouldRethrowForMode = unitMode === 'strict';
+          if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+            if (getParent(this, context)?.type === 'SelectorCapture') {
+              return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+            }
+            if (isNode(name, N.Reference)) {
+              throw new ReferenceError(`No matching mixins found for '${name.get('key').valueOf()}'`);
+            }
+            throw e;
           }
-          if (isNode(name, 'Reference')) {
-            throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+          if (!callOptions.silentFail || shouldRethrowForMode) {
+            throw e;
           }
-          throw e;
-        }
-        if (!this.options?.silentFail || shouldRethrowForMode) {
-          throw e;
-        }
-        let newCall = this.clone().inherit(this);
-        /** Remove this flag for serialization */
-        newCall.options.silentFail = false;
-        newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
-          ? String(name.value.key)
-          : String(n.valueOf());
-        newCall.value.args = await evalArgNodes(args);
-        newCall.value.args?.value.forEach((arg, argIndex) => {
-          // Normalize fallback-call arg spacing to Less-style call serialization.
-          arg.pre = argIndex === 0 ? 0 : 1;
-          if (isNode(arg, 'Sequence')) {
-            arg.value.forEach((child, childIndex) => {
-              child.pre = childIndex === 0 ? 0 : 1;
-            });
-          } else if (isNode(arg, 'List')) {
-            arg.value.forEach((child) => {
-              if (isNode(child, 'Sequence')) {
-                child.value.forEach((nested, nestedIndex) => {
-                  nested.pre = nestedIndex === 0 ? 0 : 1;
-                });
-              }
-            });
+          let newCall = this.clone().inherit(this);
+          /** Remove this flag for serialization */
+          newCall.options.silentFail = false;
+          newCall.name = isNode(name, N.Reference) && name.options.fallbackValue === true
+            ? String(name.get('key'))
+            : String(n.valueOf());
+          newCall.args = await evalArgNodes(args);
+          return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
+        } finally {
+          context.caller = originalCaller;
+          context.parenFrames.pop();
+          if (!didPopCallStack) {
+            context.callStack.pop();
           }
-        });
-        return adoptCallWhitespace(newCall);
-      } finally {
-        context.caller = originalCaller;
-        context.parenFrames.pop();
-        if (!didPopCallStack) {
-          context.callStack.pop();
         }
-      }
-    } else {
-      if (n === 'calc') {
-        context.calcFrames++;
-      }
-      const evaluatedArgs = await evalArgNodes(args);
+      } else {
+        if (n === 'calc') {
+          context.calcFrames++;
+        }
+        const evaluatedArgs = await evalArgNodes(args);
 
-      if (n === 'calc') {
-        context.calcFrames--;
-      }
-      context.parenFrames.pop();
-      context.callStack.pop();
-      const node = this.clone();
-      node.options.silentFail = false;
-      if (
-        n === 'calc' && evaluatedArgs
-      ) {
-        if (isNode(evaluatedArgs.value[0], 'Dimension')) {
-          return evaluatedArgs.value[0]!;
-        } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.value[0]!);
+        if (n === 'calc') {
+          context.calcFrames--;
         }
+        context.parenFrames.pop();
+        context.callStack.pop();
+        const needsMaterializedClone = Boolean(callOptions.silentFail);
+        const node = needsMaterializedClone
+          ? this.clone()
+          : this.clone();
+        node.options.silentFail = false;
+        if (
+          n === 'calc' && evaluatedArgs
+        ) {
+          const evalArgItems = evaluatedArgs.get('value');
+          if (isNode(evalArgItems[0], N.Dimension)) {
+            return applyDependencyToResult(evalArgItems[0]!, evalArgItems);
+          } else if (context.calcFrames !== 0) {
+            return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
+          }
+        }
+        node.name = n;
+        node.args = evaluatedArgs;
+        return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
       }
-      node.value.name = n;
-      node.value.args = evaluatedArgs;
-      return adoptCallWhitespace(node);
-    };
+    })().then(value => value);
   }
 }
 

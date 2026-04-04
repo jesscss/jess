@@ -1,6 +1,7 @@
 import type { Context } from '../../context.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
+import type { Node } from '../node.js';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -21,8 +22,14 @@ export type PrintOptions = {
   referenceMode?: boolean;
   /** Effective render state while in referenceMode. */
   referenceRenderEnabled?: boolean;
+  /** Whether extended descendants can activate rendering while in referenceMode. */
+  referenceRenderOnExtend?: boolean;
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
+  /** Skip Comment nodes during rendering (replaces copy(true) for comment suppression). */
+  suppressComments?: boolean;
+  /** Internal: allow a captured child container to keep its own frame open for sibling continuation. */
+  preserveCapturedContainerFrame?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -76,6 +83,7 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   options.lastRenderedFrames ??= [];
   options.referenceMode ??= false;
   options.referenceRenderEnabled ??= true;
+  options.referenceRenderOnExtend ??= true;
   options.referenceFilterTargets ??= false;
   return options as FinalPrintOptions;
 }
@@ -132,11 +140,11 @@ export class OutputWriter implements OutputWriter {
     }
 
     // Record a mapping segment if we have origin location info
-    const origin: any = originParam as any;
-    const loc: any = origin && origin.location;
+    const origin = originParam as { location?: unknown; treeContext?: { file?: { fullPath?: string; path?: string; name?: string } } } | undefined;
+    const loc = origin?.location;
     if (loc && Array.isArray(loc) && loc.length === 6) {
-      const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
-      const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
+      const startLine = ((loc[1] as number) ?? 1) - 1;     // convert to 0-based
+      const startColumn = ((loc[2] as number) ?? 1) - 1;   // convert to 0-based
       const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
       this._segments.push({
         genLine: this._line,
@@ -284,4 +292,12 @@ export class OutputWriter implements OutputWriter {
   getLastNewlineOrigin(): unknown {
     return this._lastNewlineOrigin;
   }
+}
+
+/**
+ * Render a node to a string with optional print options.
+ * Use `suppressComments: true` to skip Comment nodes without cloning.
+ */
+export function render(node: Node, options?: PrintOptions): string {
+  return node.toString(options);
 }

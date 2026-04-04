@@ -1,6 +1,6 @@
 /**
  * Shared functions between Less and Sass
- * 
+ *
  * These functions have identical behavior in both Less and Sass,
  * so they are implemented once and re-exported by both libraries.
  */

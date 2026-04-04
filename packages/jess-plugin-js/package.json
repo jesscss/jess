@@ -2,13 +2,15 @@
   "name": "@jesscss/plugin-js",
   "version": "2.0.0-alpha.5",
   "description": "Jess plugin for JavaScript/TypeScript module imports with Deno runtime checks",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs",
+      "default": "./lib/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -17,8 +19,8 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
-    "dev": "tsc -b tsconfig.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'",
     "test": "vitest --run --passWithNoTests"
@@ -30,11 +32,13 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "type": "module",
+  "module": "lib/index.js"
 }

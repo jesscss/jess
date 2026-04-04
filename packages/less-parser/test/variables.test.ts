@@ -24,10 +24,11 @@ describe('varDeclarationOrCall', () => {
     expect(errors.length).toBe(0);
   });
 
-  it('should hard error on legacy unquoted selector-like variables', () => {
-    const { errors } = parse('@classes: .a, .b, .c;', 'stylesheet');
-    expect(errors.length).toBeGreaterThanOrEqual(1);
-    expect(errors[0]!.message).toMatch(/Unquoted selector capture/);
+  it('should warn on legacy unquoted selector-like variables', () => {
+    const { errors, warnings } = parse('@classes: .a, .b, .c;', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(warnings[0]!.message).toMatch(/Unquoted selector capture/);
   });
 });
 

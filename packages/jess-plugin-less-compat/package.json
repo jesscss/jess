@@ -6,23 +6,26 @@
   "description": "Less.js compatibility layer for Jess - enables Less plugins and visitors to work with Jess AST",
   "version": "2.0.0-alpha.5",
   "type": "module",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.js"
     },
     "./transform": {
-      "import": "./lib/transform/index.js",
       "types": "./lib/transform/index.d.ts",
-      "source": "./src/transform/index.ts"
+      "source": "./src/transform/index.ts",
+      "import": "./lib/transform/index.js",
+      "require": "./lib/transform/index.cjs"
     },
     "./less-compat-structures": {
-      "import": "./lib/less-compat-structures.js",
       "types": "./lib/less-compat-structures.d.ts",
-      "source": "./src/less-compat-structures.ts"
+      "source": "./src/less-compat-structures.ts",
+      "import": "./lib/less-compat-structures.js",
+      "require": "./lib/less-compat-structures.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -33,7 +36,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
-    "compile": "tsc -b tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "cross-env TEST=true vitest --run",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
@@ -53,5 +56,6 @@
   "bugs": {
     "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/jesscss/jess#readme"
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "module": "lib/index.js"
 }

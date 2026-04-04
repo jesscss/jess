@@ -70,8 +70,6 @@ export const invalidLess: string[] = [
   'tests-unit/permissive-parse/permissive-parse.less',
   'tests-unit/permissive-parse/legacy/permissive-parse.less',
   'tests-unit/property-name-interp/property-name-interp.less',
-  // 'tests-config/compression/compression.less',
-
   // // 'tests-config/math/parens-division/new-division.less',
   // 'tests-config/math-strict/css.less',
   // 'tests-unit/import/invalid-css.less',
@@ -95,5 +93,25 @@ export const invalidLess: string[] = [
   'tests-unit/container/container.less',
 
   /** Has an unsupported token - `5_large` numeric separator */
-  'tests-unit/variables/variables.less'
+  'tests-unit/variables/variables.less',
+
+  /** Numeric property name `{5:-}` on last line */
+  'tests-unit/css-guards/css-guards.less',
+
+  /** `.3D` tokenized as DimensionNum instead of class selector */
+  'tests-unit/extract-and-length/extract-and-length.less',
+
+  /** `*-z-${name}` splits into LegacyPropIdent + InterpolatedIdent */
+  'tests-unit/parser-property-interp/parser-property-interp.less',
+
+  /** `/deep/` combinator not supported (deprecated CSS) */
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+
+  /** Obsolete Less parent selectors `^` / `^^` were removed in Less v5 */
+  'tests-config/compression/legacy/compression.less',
+
+  /** Inline JavaScript using backticks is intentionally unsupported */
+  'tests-unit/javascript/javascript.less',
+  'tests-config/js-type-errors/js-type-error.less',
+  'tests-config/no-js-errors/no-js-errors.less'
 ];

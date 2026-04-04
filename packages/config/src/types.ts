@@ -12,6 +12,7 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
  * Equality/coercion modes for guard comparisons.
  */
 export type EqualityMode = 'coerce' | 'strict';
+export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 export interface JavaScriptSandboxConfig {
   /**
@@ -37,6 +38,12 @@ export type CompileJavaScriptOption = true | JavaScriptSandboxConfig;
  * Based on less.js default-options.js and bin/lessc
  */
 export interface LessOptions {
+  /**
+   * Restrict which selector shapes are allowed in extend targets.
+   * When set, any other selector kind is a parse error.
+   */
+  allowExtendSelectors?: ExtendSelectorKind[];
+
   /**
    * Inline Javascript - @plugin still allowed
    * @default false
@@ -259,6 +266,15 @@ export interface LessOptions {
   bubbleRootAtRules?: boolean;
 }
 
+export interface ScssOptions {
+  allowExtendSelectors?: ExtendSelectorKind[];
+  unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
+  collapseNesting?: boolean;
+
+  [key: string]: any;
+}
+
 /**
  * Base interface for file-matching options
  */
@@ -278,6 +294,7 @@ export interface InputOptions extends FileMatchOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   equalityMode?: EqualityMode;
+  allowExtendSelectors?: ExtendSelectorKind[];
   searchPaths?: string[];
   enableJavaScript?: boolean;
 
@@ -336,6 +353,7 @@ export interface StylesConfig {
     mathMode?: MathMode;
     unitMode?: UnitMode;
     equalityMode?: EqualityMode;
+    allowExtendSelectors?: ExtendSelectorKind[];
   };
   /**
    * Input file options. Can be a single object for defaults, or an array
@@ -351,9 +369,9 @@ export interface StylesConfig {
   output?: OutputOptions | OutputOptions[];
   language?: {
     less?: LessOptions;
-    scss?: Record<string, any>;
+    scss?: ScssOptions;
     css?: Record<string, any>;
     jess?: Record<string, any>;
-    [key: string]: LessOptions | Record<string, any> | undefined;
+    [key: string]: LessOptions | ScssOptions | Record<string, any> | undefined;
   };
 }

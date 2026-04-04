@@ -40,27 +40,27 @@ describe('extend.less inner .bb selector trace', () => {
       if (!r || typeof r !== 'object') {
         return null;
       }
-      if (r.type === 'Ruleset' && r.value?.rules?.value) {
+      if (r.type === 'Ruleset' && r.data?.rules?.data) {
         const parent = r.parent;
         const isNested = parent?.type === 'Rules' && parent?.parent?.type === 'Ruleset';
-        const hasColorDecl = r.value.rules.value.some((c: any) => c?.value?.name?.valueOf?.() === 'color' || c?.value?.name === 'color');
+        const hasColorDecl = r.data.rules.data.some((c: any) => c?.data?.name?.valueOf?.() === 'color' || c?.data?.name === 'color');
         if (isNested && hasColorDecl) {
-          const grandparentSel = parent?.parent?.value?.selector?.valueOf?.() ?? parent?.parent?.value?.selector ?? '';
+          const grandparentSel = parent?.parent?.data?.selector?.valueOf?.() ?? parent?.parent?.data?.selector ?? '';
           if (String(grandparentSel).includes('.bb')) {
             return r;
           }
         }
       }
-      if (Array.isArray(r.value)) {
-        for (const child of r.value) {
+      if (Array.isArray(r.data)) {
+        for (const child of r.data) {
           const found = findInnerBbRuleset(child, depth + 1);
           if (found) {
             return found;
           }
         }
       }
-      if (r.value?.rules?.value) {
-        for (const child of r.value.rules.value) {
+      if (r.data?.rules?.data) {
+        for (const child of r.data.rules.data) {
           const found = findInnerBbRuleset(child, depth + 1);
           if (found) {
             return found;
@@ -70,7 +70,7 @@ describe('extend.less inner .bb selector trace', () => {
       return null;
     }
     const inner = findInnerBbRuleset(evald, 0);
-    const sel = inner?.value?.selector;
+    const sel = inner?.data?.selector;
     const selStr = typeof sel?.valueOf === 'function' ? sel.valueOf() : String(sel);
     const selType = sel?.type ?? (sel && 'type' in sel ? (sel as any).type : undefined);
     syncLog({

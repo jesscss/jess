@@ -16,7 +16,7 @@ describe('Sass remaining string functions', () => {
     it('returns a unique unquoted string', () => {
       const result = uniqueId();
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
       expect((result as Quoted).valueOf()).toMatch(/^u[0-9a-z]{6}$/);
     });
 
@@ -71,7 +71,7 @@ describe('Sass remaining string functions', () => {
       const insert = new Quoted('X');
       const index = new Dimension({ number: 3 });
       const result = strInsert(str, insert, index);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
   });
 
@@ -81,14 +81,14 @@ describe('Sass remaining string functions', () => {
       const substring = new Quoted('ll');
       const result = strIndex(str, substring);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).value.number).toBe(3);
+      expect((result as Dimension).data.number).toBe(3);
     });
 
     it('returns 1 for first character', () => {
       const str = new Quoted('Hello');
       const substring = new Quoted('H');
       const result = strIndex(str, substring);
-      expect((result as Dimension).value.number).toBe(1);
+      expect((result as Dimension).data.number).toBe(1);
     });
 
     it('returns null when substring is not found', () => {
@@ -102,7 +102,7 @@ describe('Sass remaining string functions', () => {
       const str = new Quoted('Hello Hello');
       const substring = new Quoted('ll');
       const result = strIndex(str, substring);
-      expect((result as Dimension).value.number).toBe(3);
+      expect((result as Dimension).data.number).toBe(3);
     });
   });
 
@@ -143,7 +143,7 @@ describe('Sass remaining string functions', () => {
       const start = new Dimension({ number: 1 });
       const end = new Dimension({ number: 3 });
       const result = strSlice(str, start, end);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
   });
 });

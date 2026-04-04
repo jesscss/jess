@@ -55,6 +55,6 @@ describe('Sass color wrapper functions', () => {
     const input = new Color({ rgb: [90, 23, 148], alpha: 0.5 });
     const result = ieHexStr(input) as Color;
 
-    expect(result.value.node).toBe('#805a1794');
+    expect(result.node).toBe('#805a1794');
   });
 });

@@ -3,7 +3,7 @@ import { Any, defineFunction, Dimension } from '@jesscss/core';
 const getUnit = defineFunction(
   'get-unit',
   function(value: Dimension) {
-    return new Any(value.value.unit ?? '', { role: 'keyword' });
+    return new Any(value.unit ?? '', { role: 'keyword' });
   },
   {
     params: [{

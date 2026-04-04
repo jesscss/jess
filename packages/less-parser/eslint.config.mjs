@@ -6,16 +6,25 @@ export default tseslint.config([
   {
     files: ['*.ts', '*.tsx'],
     languageOptions: {
-          parser: tseslint.parser,
-          parserOptions: {
-            projectService: true,
-            tsconfigRootDir: import.meta.dirname,
-          },
-        },
+      parser: tseslint.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
+      }
+    }
   },
   {
     rules: {
-      'no-return-assign': 'off'
+      'no-return-assign': 'off',
+      '@typescript-eslint/no-unsafe-type-assertion': 'error'
+    }
+  },
+  {
+    files: [
+      'src/lessTokens.ts'
+    ],
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'off'
     }
   }
 ]);

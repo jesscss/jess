@@ -3,18 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     },
     "./server": {
-      "import": "./lib/server.js",
       "types": "./lib/server.d.ts",
-      "source": "./src/server.ts"
+      "source": "./src/server.ts",
+      "import": "./lib/server.js",
+      "require": "./lib/server.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -36,16 +38,16 @@
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
-    "@types/node": "^18.15.13",
+    "@types/node": "^20.0.0",
     "cross-env": "~7.0.3",
     "typescript": "~5.8.2",
-    "vitest": "^3.2.3"
+    "vitest": "^4.1.0"
   },
   "scripts": {
     "build": "pnpm compile",
-    "compile": "pnpm exec tsc -b tsconfig.build.json",
-    "dev": "pnpm exec tsc -b tsconfig.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "vitest --watch=false"
-  }
+  },
+  "module": "lib/index.js"
 }
-
