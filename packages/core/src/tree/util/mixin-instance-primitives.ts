@@ -285,7 +285,6 @@ export function seedMixinGuardScope(
   }
   for (const child of activeChildren) {
     setParent(child, nextScope, context);
-    nextScope.registerNode(child, undefined, context);
   }
   if (guardNode) {
     nextScope.adopt(guardNode, context);
