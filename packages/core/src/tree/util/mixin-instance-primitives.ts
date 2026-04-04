@@ -1740,14 +1740,6 @@ export async function evaluateCandidateOutput(
     context.renderKey = rules.renderKey;
     let newRules: Rules;
     try {
-      const evalContext = {
-        ...context,
-        renderKey: rules.renderKey,
-        rulesContext: rules
-      } as Context;
-      for (const child of rules.getRegistryChildren(evalContext)) {
-        addParentEdge(child, EVAL, rules);
-      }
       newRules = await rules.eval(context);
     } finally {
       context.renderKey = previousRenderKey;
