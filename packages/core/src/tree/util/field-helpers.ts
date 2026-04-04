@@ -1,4 +1,4 @@
-import { CANONICAL, EVAL, type Node } from '../node-base.js';
+import { CANONICAL, EVAL, type Node, type RenderKey } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
@@ -27,12 +27,100 @@ function getParentEdgeRenderKeys(
 }
 
 function setRulesValueArray(rules: Rules, nodes: Node[]): void {
-  const setter = Reflect.get(rules, '_setValueArray');
-  if (typeof setter === 'function') {
-    setter.call(rules, nodes);
+  const mutableRules = rules as Rules & { _setValueArray?: (nodes: Node[]) => void };
+  if (typeof mutableRules._setValueArray !== 'function') {
+    throw new Error('Rules is missing _setValueArray');
+  }
+  mutableRules._setValueArray(nodes);
+}
+
+type ChildWriteTarget =
+  | {
+    kind: 'canonical';
+    currentChildren: readonly Node[];
+  }
+  | {
+    kind: 'wrapper';
+    renderKey: RenderKey;
+    currentChildren: readonly Node[];
+  }
+  | {
+    kind: 'overlay';
+    renderKey: RenderKey;
+    currentChildren: readonly Node[];
+  };
+
+function resolveChildWriteTarget(
+  rules: Rules,
+  ctx: Context
+): ChildWriteTarget {
+  const resolvedRenderKey = ctx.renderKey ?? rules.renderKey;
+  const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
+  if (renderKey === undefined) {
+    return {
+      kind: 'canonical',
+      currentChildren: rules.value
+    };
+  }
+  if (rules.renderKey !== undefined && rules.renderKey === renderKey) {
+    return {
+      kind: 'wrapper',
+      renderKey,
+      currentChildren: rules.value
+    };
+  }
+  return {
+    kind: 'overlay',
+    renderKey,
+    currentChildren: rules.get('value', ctx)
+  };
+}
+
+function maybeMarkScopeDirty(
+  rules: Rules,
+  ctx: Context,
+  options: { markDirty?: boolean }
+): void {
+  if (options.markDirty !== false) {
+    markScopeDirty(rules, ctx);
   }
 }
 
+function connectRenderChildren(
+  rules: Rules,
+  nodes: readonly Node[],
+  renderKey: RenderKey
+): void {
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]!;
+    addEdgeAt(rules, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, rules);
+  }
+}
+
+function disconnectMissingRenderChildren(
+  previous: readonly Node[],
+  next: readonly Node[],
+  renderKey: RenderKey
+): void {
+  for (const child of previous) {
+    if (!next.includes(child)) {
+      removeParentEdge(child, renderKey);
+    }
+  }
+}
+
+/**
+ * Resolve the effective parent for the current render placement.
+ *
+ * Node graph invariants:
+ * - `node.parent` stores the canonical fallback parent.
+ * - `node.parentEdges` stores placement-specific parent overrides keyed by render key.
+ * - callers should treat this as the primary upward traversal surface when rebuilding
+ *   the current render path (for example, reconstructing the active Ruleset / AtRule frames).
+ * - secondary lookup lanes such as `CALLER` are intentionally not followed here; they are
+ *   opt-in traversal choices layered on top of the primary parent walk.
+ */
 export function getParent(
   node: Node,
   ctx: Context
@@ -46,6 +134,18 @@ export function getParent(
   return node.parent;
 }
 
+/**
+ * Write the primary parent for a node.
+ *
+ * For canonical writes this mutates `node.parent`.
+ * For render-keyed writes this records a placement override in `node.parentEdges`
+ * without disturbing canonical parentage.
+ *
+ * This should be the default way eval/adoption code captures the "current frame"
+ * onto emitted nodes. If later serialization needs to guess the parent from text,
+ * the real bug is usually that `setParent(...)` was not called with the correct
+ * render placement when the node was created.
+ */
 export function setParent(
   node: Node,
   parent: Node | undefined,
@@ -135,49 +235,21 @@ export function setChildren(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  const resolvedRenderKey = ctx.renderKey ?? rules.renderKey;
-  const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
-  if (renderKey !== undefined && rules.renderKey !== undefined && rules.renderKey === renderKey) {
-    const previous = rules.value;
-    setRulesValueArray(rules, [...nodes]);
-    for (const child of previous) {
-      if (!nodes.includes(child)) {
-        removeParentEdge(child, renderKey);
-      }
-    }
-    for (let index = 0; index < nodes.length; index++) {
-      const node = nodes[index]!;
-      addEdgeAt(rules, 'value', index, renderKey, node);
-      addParentEdge(node, renderKey, rules);
-    }
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
-    return;
-  }
-  if (renderKey === undefined) {
+  const target = resolveChildWriteTarget(rules, ctx);
+  if (target.kind === 'canonical') {
     setRulesValueArray(rules, [...nodes]);
     for (const node of nodes) {
       rules.adopt(node, ctx);
     }
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
+    maybeMarkScopeDirty(rules, ctx, options);
     return;
   }
-  const previous = rules.get('value', ctx);
-  for (const child of previous) {
-    if (!nodes.includes(child)) {
-      removeParentEdge(child, renderKey);
-    }
+  if (target.kind === 'wrapper') {
+    setRulesValueArray(rules, [...nodes]);
   }
-  nodes.forEach((node, index) => {
-    addEdgeAt(rules, 'value', index, renderKey, node);
-    addParentEdge(node, renderKey, rules);
-  });
-  if (options.markDirty !== false) {
-    markScopeDirty(rules, ctx);
-  }
+  disconnectMissingRenderChildren(target.currentChildren, nodes, target.renderKey);
+  connectRenderChildren(rules, nodes, target.renderKey);
+  maybeMarkScopeDirty(rules, ctx, options);
 }
 
 export function setChildAt(
@@ -187,44 +259,26 @@ export function setChildAt(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  const resolvedRenderKey = ctx.renderKey ?? rules.renderKey;
-  const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
-  if (renderKey !== undefined) {
-    if (rules.renderKey !== undefined && rules.renderKey === renderKey) {
-      const currentChildren = rules.value;
-      if (currentChildren[index] === node) {
-        return;
-      }
-      const previous = currentChildren[index];
-      const nextValue = [...currentChildren];
+  const target = resolveChildWriteTarget(rules, ctx);
+  if (target.kind !== 'canonical') {
+    if (target.currentChildren[index] === node) {
+      return;
+    }
+    const previous = target.currentChildren[index];
+    if (target.kind === 'wrapper') {
+      const nextValue = [...target.currentChildren];
       nextValue[index] = node;
       setRulesValueArray(rules, nextValue);
-      if (previous && previous !== node) {
-        removeParentEdge(previous, renderKey);
-      }
-      addEdgeAt(rules, 'value', index, renderKey, node);
-      addParentEdge(node, renderKey, rules);
-      if (options.markDirty !== false) {
-        markScopeDirty(rules, ctx);
-      }
-      return;
     }
-    const currentChildren = rules.get('value', ctx);
-    if (currentChildren[index] === node) {
-      return;
-    }
-    const previous = currentChildren[index];
     if (previous && previous !== node) {
-      removeParentEdge(previous, renderKey);
+      removeParentEdge(previous, target.renderKey);
     }
-    addEdgeAt(rules, 'value', index, renderKey, node);
-    addParentEdge(node, renderKey, rules);
-    if (options.markDirty !== false) {
-      markScopeDirty(rules, ctx);
-    }
+    addEdgeAt(rules, 'value', index, target.renderKey, node);
+    addParentEdge(node, target.renderKey, rules);
+    maybeMarkScopeDirty(rules, ctx, options);
     return;
   }
-  const currentChildren = [...rules.value];
+  const currentChildren = [...target.currentChildren];
   const prev = currentChildren[index];
   if (prev === node) {
     return;
@@ -232,9 +286,7 @@ export function setChildAt(
   currentChildren[index] = node;
   setRulesValueArray(rules, currentChildren);
   rules.adopt(node, ctx);
-  if (options.markDirty !== false) {
-    markScopeDirty(rules, ctx);
-  }
+  maybeMarkScopeDirty(rules, ctx, options);
 }
 
 export function markScopeDirty(

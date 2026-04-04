@@ -1546,17 +1546,21 @@ describe('Style import', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.only-with-visible')]), sel([el('.z')])]),
-          rules: rules([
-            decl({ name: any('color'), value: any('green') }),
-            ruleset({
-              selector: sellist([compound([amp(), pseudo({ name: ':hover' })])]),
-              rules: rules([decl({ name: any('color'), value: any('green') })])
-            }),
-            ruleset({
-              selector: sellist([sel([amp(), co('+'), amp()])]),
-              rules: rules([
-                decl({ name: any('color'), value: any('green') }),
-                ruleset({
+            rules: rules([
+              decl({ name: any('color'), value: any('green') }),
+              ruleset({
+                selector: sellist([compound([amp(), pseudo({ name: ':hover' })])]),
+                rules: rules([decl({ name: any('color'), value: any('green') })])
+              }),
+              ruleset({
+                selector: sellist([sel([amp()])]),
+                rules: rules([decl({ name: any('color'), value: any('green') })])
+              }),
+              ruleset({
+                selector: sellist([sel([amp(), co('+'), amp()])]),
+                rules: rules([
+                  decl({ name: any('color'), value: any('green') }),
+                  ruleset({
                   selector: sellist([sel([el('.sub')])]),
                   rules: rules([decl({ name: any('color'), value: any('green') })])
                 })
@@ -1599,18 +1603,23 @@ describe('Style import', () => {
       expect(css).toBeString(`
         .b {
           color: red;
+        }
+        .b .c {
+          color: green;
+        }
+        .b {
           color: green;
         }
         .b:hover {
           color: green;
         }
+        .b {
+          color: green;
+        }
         .b + .b {
           color: green;
         }
-        :is(.b + .b) .sub {
-          color: green;
-        }
-        .b .c {
+        .b + .b .sub {
           color: green;
         }
         .y {

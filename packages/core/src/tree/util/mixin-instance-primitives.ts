@@ -926,9 +926,23 @@ export async function replayWinningMixinDefaultCandidates<TCandidate>(
 export function assembleMixinInvocationOutput(
   outputRules: Rules[],
   restrictMixinOutputLookup: boolean,
-  _context: Context
+  context: Context
 ): Rules {
   outputRules.sort(comparePosition);
+
+  if (outputRules.length === 0) {
+    const output = Rules.create([], {
+      rulesVisibility: {
+        Ruleset: 'public',
+        Declaration: 'public',
+        VarDeclaration: 'public',
+        Mixin: 'public'
+      },
+      isMixinOutput: restrictMixinOutputLookup
+    });
+    output.renderKey = context.renderKey ?? output.renderKey;
+    return output;
+  }
 
   if (outputRules.length === 1) {
     const output = outputRules[0]!;
@@ -936,12 +950,40 @@ export function assembleMixinInvocationOutput(
     return output;
   }
 
-  // Generated node — safe to build canonically before returning.
   for (let i = 0; i < outputRules.length; i++) {
-    outputRules[i]!.frozen = true;
-    outputRules[i]!.index = i;
+    const candidateOutput = outputRules[i]!;
+    candidateOutput.frozen = true;
+    candidateOutput.index = i;
   }
-  const output = Rules.create(outputRules, {
+
+  const nextRenderKey = context.renderKey ?? EVAL;
+  const output = outputRules[0]!.createPlacementWrapperWithChildren(
+    outputRules,
+    nextRenderKey
+  );
+  const outputContext = {
+    ...context,
+    renderKey: output.renderKey,
+    rulesContext: output
+  } as Context;
+  for (const child of outputRules) {
+    if (isNode(child, N.Rules)) {
+      const childContext = {
+        ...outputContext,
+        renderKey: (child as Rules).renderKey,
+        rulesContext: child as Rules
+      } as Context;
+      setParent(child, output, childContext);
+      projectCurrentRenderParents(
+        child as Rules,
+        childContext
+      );
+      continue;
+    }
+    setParent(child, output, outputContext);
+  }
+  output.options = {
+    ...output.options,
     rulesVisibility: {
       Ruleset: 'public',
       Declaration: 'public',
@@ -949,7 +991,7 @@ export function assembleMixinInvocationOutput(
       Mixin: 'public'
     },
     isMixinOutput: restrictMixinOutputLookup
-  });
+  };
 
   return output;
 }
@@ -1022,6 +1064,9 @@ export function finalizeInvocationOutputRules(
   const children = rules.get('value', scopedContext);
   for (let index = 0; index < children.length; index++) {
     let child = children[index]!;
+    if (isNode(child, N.Rules)) {
+      continue;
+    }
     if (isNode(child, N.Ruleset | N.AtRule) && getCurrentParentNode(child, scopedContext) !== rules) {
       child = child.clone(false, undefined, scopedContext);
       rules._setChildAt(index, child, scopedContext, false);
@@ -1051,6 +1096,42 @@ export function finalizeInvocationOutputRules(
       const childRules = (child as AtRule).enterRules(scopedContext);
       if (childRules) {
         finalizeInvocationOutputRules(childRules, scopedContext);
+      }
+    }
+  }
+}
+
+function projectCurrentRenderParents(
+  rules: Rules,
+  context: Context
+): void {
+  const scopedContext = {
+    ...context,
+    renderKey: rules.renderKey,
+    rulesContext: rules
+  } as Context;
+  const children = rules.get('value', scopedContext);
+  for (const child of children) {
+    setParent(child, rules, scopedContext);
+    if (isNode(child, N.Rules)) {
+      if ((child as Rules).renderKey !== rules.renderKey) {
+        (child as Rules).renderKey = rules.renderKey;
+      }
+      projectCurrentRenderParents(child as Rules, {
+        ...scopedContext,
+        renderKey: (child as Rules).renderKey,
+        rulesContext: child as Rules
+      } as Context);
+      continue;
+    }
+    if (isNode(child, N.Ruleset | N.AtRule)) {
+      const nestedRules = child.enterRules(scopedContext);
+      if (nestedRules) {
+        projectCurrentRenderParents(nestedRules, {
+          ...scopedContext,
+          renderKey: nestedRules.renderKey,
+          rulesContext: nestedRules
+        } as Context);
       }
     }
   }
@@ -1688,6 +1769,16 @@ export async function evaluateCandidateOutput(
       } as Context;
       for (const child of outputChildren) {
         setParent(child, outputContainer, outputContext);
+        if (isNode(child, N.Rules)) {
+          projectCurrentRenderParents(
+            child as Rules,
+            {
+              ...outputContext,
+              renderKey: (child as Rules).renderKey,
+              rulesContext: child as Rules
+            } as Context
+          );
+        }
         bindStructuralSourceParent(child, capturedOuterSourceParent ?? outerRules, outputContext);
       }
       setParent(outputContainer, outerRules, outputContext);

@@ -122,10 +122,12 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 
 ## Current Narrow Frontier
 
-- `tests-unit/import/import-reference.less` is fixed. Keep the reference-owned
-  activation model simple: print suppression defaults off under reference
-  boundaries, and only explicit activation paths opt specific descendants back
-  in.
+- `tests-unit/import/import-reference.less` is fixed again after the parser-backed
+  reference-import activation / ancestry work. The key correction was in
+  `assembleMixinInvocationOutput(...)`: multi-candidate return assembly must
+  rebind candidate output wrappers onto the caller-owned output path without
+  flattening away the candidate wrappers or rebasing their own render-key/state
+  lanes.
 - `tests-unit/property-accessors/property-accessors.less` is fixed.
   The useful permanent proof is now the focused core repro in
   `packages/core/src/tree/__tests__/declaration.test.ts`; keep debugging on the
@@ -133,6 +135,8 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - Two narrow guarded-mixin proofs are green again:
   - `tests-unit/mixins-closure/mixins-closure.less`
   - `tests-unit/mixins/mixins-advanced.less`
+- `tests-unit/mixins-guards/mixins-guards.less` is green again after preserving
+  per-candidate wrapper state during multi-output mixin assembly.
 - `tests-unit/mixins-interpolated/mixins-interpolated.less` is green again.
   The fix came from restoring the start-aware ampersand / parent-selector
   composition path so explicit leading parent selectors no longer get wrapped
@@ -145,10 +149,13 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 
 ## Current Jess Red Set
 
-After the latest rebuild and runtime fixes, the guarded-mixin runtime red is
-gone and `mixins-interpolated.less` is green. The remaining reds in
+After the latest rebuild and runtime fixes, `import-reference.less` and
+`mixins-guards.less` are green again. The remaining reds in
 `packages/jess/test/less/all-less.test.ts` should be treated as the new
 frontier.
+
+Each red needs its own tracked disposition. Do not let one fixture imply the
+solution for another.
 
 Likely exact-output / fixture-drift cases:
 
@@ -161,7 +168,7 @@ Likely exact-output / fixture-drift cases:
 Still-real runtime / semantic cases:
 
 - `tests-unit/extend/extend.less`
-- `tests-unit/import/import-reference.less`
+- `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
 
 Borderline / mixed:
 
@@ -181,6 +188,30 @@ Current extend-specific state:
   `.dd` branch. The live bug appears after earlier local `all` extension has
   widened a nested own-selector list, so the later exact `.ff:extend(.dd, ...)`
   instruction no longer lands on the local nested target.
+
+Per-fixture next action:
+
+- `tests-unit/css-3/css-3.less`
+  action: treat as serialization/parsing-shape audit, not runtime lookup work.
+- `tests-unit/css-grid/css-grid.less`
+  action: treat as formatting/serialization drift unless a semantic mismatch is
+  proven.
+- `tests-unit/extend-nest/extend-nest.less`
+  action: selector-shape decision only. Decide whether Jess should preserve the
+  split `.button:hover, .submit:hover` form or keep the semantically-equivalent
+  generated `:is(...)` form.
+- `tests-unit/extend/extend.less`
+  action: keep reproducing parser-backed in core. This is a real runtime seam,
+  not a serializer-only diff.
+- `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
+  action: reproduce in focused core first. Current diff is narrow: a
+  same-selector guarded/default mixin result is being emitted as two blocks
+  instead of one merged block after the multi-candidate output assembly fix.
+- `tests-unit/rulesets/rulesets.less`
+  action: decide block-by-block whether each `:is(...)` route is semantic drift
+  or a real selector-composition regression.
+- `tests-unit/whitespace/whitespace.less`
+  action: treat as formatting unless a value/token boundary changes.
 
 Serialization note:
 

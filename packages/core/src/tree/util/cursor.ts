@@ -41,6 +41,17 @@ export function lookupEdge<T>(
   return edges?.get(key);
 }
 
+/**
+ * Resolve the primary parent cursor for a node/render-key pair.
+ *
+ * This mirrors `getParent(...)` at the cursor layer:
+ * - prefer the active render-key parent edge
+ * - fall back to canonical `node.parent`
+ *
+ * It deliberately does not follow secondary lanes such as `CALLER`. Traversals that
+ * want caller fallback must opt into that separately so the main render path stays
+ * stable and predictable.
+ */
 export function getParentEdge(cursor: Cursor): Cursor | undefined {
   const overridden = lookupEdge(cursor.node.parentEdges, cursor.renderKey);
   if (overridden !== undefined) {
@@ -124,6 +135,16 @@ export function addParentEdge(
   renderKey: RenderKey,
   parent: Node
 ): void {
+  /**
+   * Parent edges represent render-placement overrides, not a second canonical parent.
+   *
+   * Invariants:
+   * - `CANONICAL` must continue to live on `node.parent`
+   * - non-canonical writes may override the active parent for a render key
+   * - special keys such as `CALLER` are allowed here, but they are secondary lanes;
+   *   they should not be treated as the default upward render path unless a traversal
+   *   explicitly asks for them
+   */
   if (renderKey === CANONICAL) {
     if (node.parent === parent) {
       return;

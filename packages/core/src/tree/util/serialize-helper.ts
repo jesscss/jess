@@ -250,7 +250,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
-  const deferredExpandedChildren: Node[] = [];
   const withNodePosition = <T>(target: Node, fn: () => T): T => {
     const ctx = options.context;
     const position = positionMap.get(target);
@@ -268,23 +267,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       ctx.renderKey = previousRenderKey;
     }
   };
-  const sourceChainHas = (start: Node | undefined, predicate: (n: Node) => boolean): boolean => {
-    const seen = new Set<Node>();
-    const queue: Array<Node | undefined> = [start];
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (!current || seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      if (predicate(current)) {
-        return true;
-      }
-      queue.push(current.sourceNode, current.sourceParent, current.parent);
-    }
-    return false;
-  };
-  const originatesFromCall = (n: Node | undefined): boolean => sourceChainHas(n, current => current.type === 'Call');
   if (rulesToRender.length === 0) {
     options.referenceMode = previousReferenceMode;
     options.referenceRenderEnabled = previousReferenceRenderEnabled;
@@ -343,31 +325,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   for (let idx = 0; idx < rulesToRender.length; idx++) {
     let n = rulesToRender[idx]!;
     const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
-    const getLaterExternalNonContainer = (currentChild: Node, childSelector?: string): Node | undefined => {
-      const laterCandidates = rulesToRender.slice(idx + 1);
-      return laterCandidates.find((later) => {
-        if (!isVisibleInContext(later, options.context) && !later.fullRender) {
-          return false;
-        }
-        if (isContainerNode(later)) {
-          return false;
-        }
-        if (isDeclarationNode(later) && skippedDuplicateDeclarations.has(later)) {
-          return false;
-        }
-        const ownedByCurrentChild = sourceChainHas(later, (current) => {
-          if (current === currentChild) {
-            return true;
-          }
-          if (!childSelector || !isRulesetNode(current)) {
-            return false;
-          }
-          const currentSelector = getRenderableSelectorString(current, options.collapseNesting, options.context);
-          return currentSelector !== '' && currentSelector === childSelector;
-        });
-        return !ownedByCurrentChild;
-      });
-    };
 
     // Push per-node position from the position map so patched fields resolve
     const skipped = withNodePosition(n, () => {
@@ -405,48 +362,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       }
       const isLeafAtRule = isAtRuleNode(n) && !n.enterRules(options.context);
       if (isContainerNode(n) && !isLeafAtRule) {
-        if (isRulesetNode(node) && isRulesetNode(n)) {
-          const parentSelector = getRenderableSelectorString(node, options.collapseNesting, options.context);
-          const childSelector = getRenderableSelectorString(n, options.collapseNesting, options.context);
-          const childContinuation = parentSelector !== '' && childSelector.startsWith(parentSelector)
-            ? childSelector[parentSelector.length]
-            : undefined;
-          const isExpandedDescendant = parentSelector !== '' && (
-            childContinuation === ' '
-            || childContinuation === '.'
-            || childContinuation === '#'
-            || childContinuation === ':'
-            || childContinuation === '['
-            || childContinuation === '>'
-            || childContinuation === '+'
-            || childContinuation === '~'
-            || childContinuation === '|'
-          );
-          const isSelfWrappedDescendant = parentSelector !== ''
-            && (
-              childSelector === `${parentSelector} ${parentSelector}`
-              || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
-            );
-          const hasLaterExternalNonContainer = Boolean(getLaterExternalNonContainer(n, childSelector));
-          const shouldDeferExpandedDescendant = (
-            options.collapseNesting === true
-            && isExpandedDescendant
-            && !isSelfWrappedDescendant
-            && hasLaterExternalNonContainer
-          );
-          if (
-            (shouldDeferExpandedDescendant || hasLaterExternalNonContainer)
-            && (
-              isExpandedDescendant
-              || isAtRuleNode(n)
-              || originatesFromCall(n)
-            )
-            && !isSelfWrappedDescendant
-          ) {
-            deferredExpandedChildren.push(n);
-            return true;
-          }
-        }
         const childReferenceRenderEnabled = (
           inReferenceMode
           && isAtRuleNode(node)
@@ -503,8 +418,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       for (let i = 0; i < lastRenderedFrames.length; i++) {
         const currentFrame = inFrames[i];
         const priorFrame = lastRenderedFrames[i];
-        const sameValueOf = currentFrame?.valueOf() === priorFrame?.valueOf();
-        if (!sameValueOf) {
+        if (currentFrame !== priorFrame) {
           break;
         }
         matches = i;
@@ -589,26 +503,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
   if (prevTreeFrames) {
     treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
-  }
-  for (const deferred of deferredExpandedChildren) {
-    const deferredWriter = new OutputWriter();
-    const childOptions: FinalPrintOptions = {
-      ...options,
-      writer: deferredWriter,
-      frameHeaders,
-      lastRenderedFrames,
-      treeFrames,
-      inFrames: treeFrames,
-      referenceMode: inReferenceMode,
-      referenceRenderEnabled: renderEnabled,
-      referenceRenderOnExtend: previousReferenceRenderOnExtend
-    };
-    const childOut = withNodePosition(deferred, () => deferred.toTrimmedString(childOptions));
-    if (!childOut) {
-      continue;
-    }
-
-    w.add(childOut, deferred);
   }
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;
