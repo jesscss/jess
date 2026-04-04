@@ -74,6 +74,8 @@ export type ProcessPreparedMixinCandidateOptions<TCandidate> = {
   ) => MaybePromise<void>;
 };
 
+const bindableParamTemplates = new WeakMap<Node, VarDeclaration>();
+
 function getCurrentRulesetGuard(
   ruleset: Ruleset,
   context: Context
@@ -92,6 +94,23 @@ function getCanonicalSourceParent(
   node: Node | undefined
 ): Node | undefined {
   return node?.sourceParent;
+}
+
+function getBindableParamTemplate(
+  param: Node,
+  context: Context
+): VarDeclaration {
+  const cached = bindableParamTemplates.get(param);
+  if (cached) {
+    return cached;
+  }
+  const name = String(param.valueOf());
+  const template = new VarDeclarationCtor({
+    name: new Any(name, { role: 'property' }),
+    value: new Nil()
+  }, { paramVar: true }, param.location, context.treeContext);
+  bindableParamTemplates.set(param, template);
+  return template;
 }
 
 /**
@@ -568,13 +587,18 @@ function buildBoundMixinParams(
   const cloneDefaultParamValue = (value: Node): Node => {
     return value.clone(false, undefined, bindingContext);
   };
-  const cloneBoundParamTemplate = (param: VarDeclaration, boundValue: Node): VarDeclaration => {
+  const cloneBoundParamTemplate = (
+    param: VarDeclaration,
+    boundValue: Node | undefined
+  ): VarDeclaration => {
     const boundParam = param.clone(false, undefined, bindingContext) as VarDeclaration;
     boundParam.renderKey = renderKey;
     boundParam.options = { ...(boundParam.options ?? {}), paramVar: true };
     boundParam.preEvaluated = true;
     boundParam.evaluated = true;
-    boundParam.setCurrentValue(boundValue, bindingContext);
+    if (boundValue) {
+      boundParam.setCurrentValue(boundValue, bindingContext);
+    }
     return boundParam;
   };
 
@@ -607,11 +631,6 @@ function buildBoundMixinParams(
 
     if (isNode(param, N.Any) && param.role === 'property') {
       const name = String(param.valueOf());
-      const boundParam = new VarDeclarationCtor({
-        name: new Any(name, { role: 'property' }),
-        value: new Nil()
-      }, { paramVar: true }, param.location, context.treeContext);
-      boundParam.index = -(index + 1);
       const hasNamedArg = namedArgs.has(name);
       const hasPositionalArg = positionalIndex < positionalArgs.length;
       const boundValue = hasNamedArg
@@ -619,20 +638,17 @@ function buildBoundMixinParams(
         : hasPositionalArg
           ? positionalArgs[positionalIndex++]!
           : undefined;
-      if (boundValue) {
-        if (
-          (hasNamedArg || hasPositionalArg)
-          && bindingSourceParent
-          && isNode(boundValue)
-        ) {
-          anchorCallSiteValue(boundValue, bindingSourceParent, bindingContext);
-        }
-        (boundParam as unknown as { value: Node }).value = boundValue;
-        setParent(boundValue, boundParam, bindingContext);
+      if (
+        boundValue
+        && (hasNamedArg || hasPositionalArg)
+        && bindingSourceParent
+        && isNode(boundValue)
+      ) {
+        anchorCallSiteValue(boundValue, bindingSourceParent, bindingContext);
       }
-      boundParam.renderKey = renderKey;
-      boundParam.preEvaluated = true;
-      boundParam.evaluated = true;
+      const template = getBindableParamTemplate(param, context);
+      const boundParam = cloneBoundParamTemplate(template, boundValue);
+      boundParam.index = -(index + 1);
       boundParams.push(boundParam);
       namedArgs.delete(name);
       continue;
