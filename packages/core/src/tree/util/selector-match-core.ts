@@ -263,19 +263,37 @@ function markComplexBranchRequirements(
   return requirements;
 }
 
-function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalContext): MatchGroupRequirement[] {
+function buildGroupRequirements(
+  node: Node,
+  parent?: Selector,
+  context?: EvalContext,
+  activePath: Set<Node> = new Set()
+): MatchGroupRequirement[] {
+  if (activePath.has(node)) {
+    return [createRequirement()];
+  }
+  activePath.add(node);
+
   if (isNode(node, N.BasicSelector)) {
     const requirement = createRequirement();
     addRequirementValue(requirement, selectorValueOf(node, context));
+    activePath.delete(node);
     return [requirement];
   }
 
   if (isNode(node, N.Ampersand)) {
     const resolved = node.getResolvedSelector(context) ?? parent;
     if (resolved && !isNode(resolved, N.Nil)) {
-      return buildGroupRequirements(resolved, parent, context);
+      if (activePath.has(resolved)) {
+        activePath.delete(node);
+        return [createRequirement()];
+      }
+      const result = buildGroupRequirements(resolved, parent, context, activePath);
+      activePath.delete(node);
+      return result;
     }
 
+    activePath.delete(node);
     return [createRequirement()];
   }
 
@@ -284,7 +302,7 @@ function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalCon
       const component = (node as ComplexSelector).get('value')[i]!;
       if (!isNode(component, N.Combinator)) {
         return markComplexBranchRequirements(
-          buildGroupRequirements(component, parent, context),
+          buildGroupRequirements(component, parent, context, activePath),
           node as unknown as Selector & { value?: readonly Node[] },
           parent,
           context
@@ -292,27 +310,31 @@ function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalCon
       }
     }
 
+    activePath.delete(node);
     return [createRequirement()];
   }
 
   if (isNode(node, N.PseudoSelector) && node.get('name') !== ':is') {
     const requirement = createRequirement();
     addRequirementValue(requirement, selectorValueOf(node, context));
+    activePath.delete(node);
     return [requirement];
   }
 
   if (isSearchablePseudoBoundary(node)) {
+    activePath.delete(node);
     return [createRequirement()];
   }
 
   if (isNode(node, N.SelectorList)) {
     const alternatives: MatchGroupRequirement[] = [];
     for (let i = 0; i < (node as SelectorList).get('value').length; i++) {
-      const nested = buildGroupRequirements((node as SelectorList).get('value')[i]!, parent, context);
+      const nested = buildGroupRequirements((node as SelectorList).get('value')[i]!, parent, context, activePath);
       for (let j = 0; j < nested.length; j++) {
         alternatives.push(nested[j]!);
       }
     }
+    activePath.delete(node);
     return alternatives;
   }
 
@@ -321,7 +343,7 @@ function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalCon
   let child = children.next();
 
   while (!child.done) {
-    const childRequirements = buildGroupRequirements(child.value, parent, context);
+    const childRequirements = buildGroupRequirements(child.value, parent, context, activePath);
     const nextRequirements: MatchGroupRequirement[] = [];
     for (let i = 0; i < requirements.length; i++) {
       for (let j = 0; j < childRequirements.length; j++) {
@@ -334,6 +356,7 @@ function buildGroupRequirements(node: Node, parent?: Selector, context?: EvalCon
     child = children.next();
   }
 
+  activePath.delete(node);
   return requirements;
 }
 
@@ -473,11 +496,17 @@ function consumeGroupBasics(
   states: MatchGroupState[],
   insideAmpersand = false,
   parent?: Selector,
-  context?: EvalContext
+  context?: EvalContext,
+  activePath: Set<Node> = new Set()
 ): MatchGroupState[] {
   if (states.length === 0) {
     return states;
   }
+
+  if (activePath.has(node)) {
+    return states;
+  }
+  activePath.add(node);
 
   if (isNode(node, N.BasicSelector) || (isNode(node, N.PseudoSelector) && node.get('name') !== ':is')) {
     const idx = group.basicSelectorIndex.get(selectorValueOf(node, context));
@@ -501,19 +530,28 @@ function consumeGroupBasics(
       }
     }
 
+    activePath.delete(node);
     return states;
   }
 
   if (isNode(node, N.Ampersand)) {
     const resolved = node.getResolvedSelector(context) ?? parent;
     if (resolved && !isNode(resolved, N.Nil)) {
-      return consumeGroupBasics(resolved, group, states, true, parent, context);
+      if (activePath.has(resolved)) {
+        activePath.delete(node);
+        return states;
+      }
+      const result = consumeGroupBasics(resolved, group, states, true, parent, context, activePath);
+      activePath.delete(node);
+      return result;
     }
 
+    activePath.delete(node);
     return states;
   }
 
   if (isSearchablePseudoBoundary(node)) {
+    activePath.delete(node);
     return states;
   }
 
@@ -539,11 +577,13 @@ function consumeGroupBasics(
           cloneGroupStates(states),
           insideAmpersand,
           parent,
-          context
+          context,
+          activePath
         )
       );
     }
 
+    activePath.delete(node);
     return nextStates;
   }
 
@@ -552,10 +592,11 @@ function consumeGroupBasics(
   let child = children.next();
 
   while (!child.done && nextStates.length > 0 && !allStatesAreTerminalPartial(nextStates)) {
-    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand, parent, context);
+    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand, parent, context, activePath);
     child = children.next();
   }
 
+  activePath.delete(node);
   return nextStates;
 }
 

@@ -1,8 +1,9 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword, EVAL } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getSourceParent, setField, setParent } from '../util/field-helpers.js';
+import { getSourceParent } from '../util/field-helpers.js';
+import { addParentEdge, getParentEdge } from '../util/cursor.js';
 
 let context: Context;
 
@@ -166,7 +167,7 @@ describe('reference', () => {
       `);
     });
 
-    it('evaluates with a state-patched variable key', async () => {
+    it('evaluates with a cloned variable key', async () => {
       const lookup = ref({ key: 'foo' }, { type: 'variable' });
       const scope = rules([
         vardecl({
@@ -182,18 +183,20 @@ describe('reference', () => {
           value: lookup
         })
       ]);
+      const clonedScope = scope.clone(true);
+      const clonedLookup = (clonedScope.at(2, context) as ReturnType<typeof decl>).get('value') as ReturnType<typeof ref>;
 
-      setField(lookup, 'key', 'bar', context);
-      const preEvald = await scope.preEval(context);
+      (clonedLookup as unknown as { key: string }).key = 'bar';
+      const preEvald = await clonedScope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
 
-      const evald = await lookup.eval(context);
+      const evald = await clonedLookup.eval(context);
       expect(evald.render(context)).toBe('blue');
       expect(lookup.get('key')).toBe('foo');
     });
 
-    it('evaluates with a state-patched target reference', async () => {
+    it('evaluates with a cloned target reference', async () => {
       const target = ref({ key: '.theme-a' }, { type: 'mixin-ruleset' });
       const lookup = ref({ target, key: 'primary' }, { type: 'property' });
       const scope = rules([
@@ -214,18 +217,17 @@ describe('reference', () => {
           value: lookup
         })
       ]);
+      const clonedScope = scope.clone(true);
+      const clonedLookup = (clonedScope.at(2, context) as ReturnType<typeof decl>).get('value') as ReturnType<typeof ref>;
+      const patchedTarget = ref({ key: '.theme-b' }, { type: 'mixin-ruleset' });
 
-      setField(
-        lookup,
-        'target',
-        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' }),
-        context
-      );
-      const preEvald = await scope.preEval(context);
+      clonedLookup.adopt(patchedTarget, context);
+      (clonedLookup as unknown as { target: ReturnType<typeof ref> }).target = patchedTarget;
+      const preEvald = await clonedScope.preEval(context);
       context.root = preEvald;
       context.rulesContext = preEvald;
 
-      const evald = await lookup.eval(context);
+      const evald = await clonedLookup.eval(context);
       expect(evald.render(context)).toBe('blue');
       expect(lookup.get('target')).toBe(target);
     });
@@ -251,7 +253,7 @@ describe('reference', () => {
       `);
     });
 
-    it('uses the state parent chain to anchor linear variable resolution', async () => {
+    it('uses the render-key parent edge to anchor linear variable resolution', async () => {
       const scope = rules([
         vardecl({
           name: any('foo'),
@@ -274,23 +276,26 @@ describe('reference', () => {
       scope.value.forEach((child, index) => {
         child.index = index;
       });
-      context.root = scope;
-      context.rulesContext = scope;
+      context.renderKey = EVAL;
+      const evalScope = scope.createShallowBodyWrapper(context, EVAL);
+      context.root = evalScope;
+      context.rulesContext = evalScope;
 
-      const hostDecl = scope.at(2, context);
+      const hostDecl = evalScope.at(2, context);
       if (!hostDecl || !isNode(hostDecl)) {
         throw new Error('Expected host declaration at index 2');
       }
 
       const lookup = ref({ key: 'foo' }, { type: 'variable', resolution: 'linear' });
-      setParent(lookup, hostDecl, context);
+      addParentEdge(lookup, EVAL, hostDecl);
+      expect(getParentEdge({ node: lookup, renderKey: EVAL })?.node).toBe(hostDecl);
 
       const evald = await lookup.eval(context);
 
       expect(evald.render(context)).toBe('red');
     });
 
-    it('uses the state parent chain to anchor default variable resolution without rulesContext', async () => {
+    it('uses the render-key parent edge to anchor default variable resolution without rulesContext', async () => {
       const scope = rules([
         vardecl({
           name: any('foo'),
@@ -302,22 +307,24 @@ describe('reference', () => {
         })
       ]);
 
-      context.root = scope;
+      context.renderKey = EVAL;
+      const evalScope = scope.createShallowBodyWrapper(context, EVAL);
+      context.root = evalScope;
 
-      const hostDecl = scope.at(1, context);
+      const hostDecl = evalScope.at(1, context);
       if (!hostDecl || !isNode(hostDecl)) {
         throw new Error('Expected host declaration at index 1');
       }
 
       const lookup = ref({ key: 'foo' }, { type: 'variable' });
-      setParent(lookup, hostDecl, context);
+      addParentEdge(lookup, EVAL, hostDecl);
 
       const evald = await lookup.eval(context);
 
       expect(evald.render(context)).toBe('red');
     });
 
-    it('uses the state parent chain for mixin lookup without an explicit target', async () => {
+    it('uses the render-key parent edge for mixin lookup without an explicit target', async () => {
       const outer = rules([
         mixin({
           name: any('feature'),
@@ -330,11 +337,13 @@ describe('reference', () => {
         call({ name: ref({ key: 'feature' }, { type: 'mixin' }) })
       ]);
 
+      context.renderKey = EVAL;
+      const evalInner = inner.createShallowBodyWrapper(context, EVAL);
       context.root = outer;
-      context.rulesContext = inner;
-      setParent(inner, outer, context);
+      context.rulesContext = evalInner;
+      addParentEdge(evalInner, EVAL, outer);
 
-      const evald = await inner.at(0, context)!.eval(context);
+      const evald = await evalInner.at(0, context)!.eval(context);
 
       expect(evald.render(context)).toContainString('color: red');
     });
@@ -379,7 +388,7 @@ describe('reference', () => {
 
       expect(resolved.type).toBe('JsFunction');
       expect(getSourceParent(theme, context)).toBe(themeLookup);
-      expect(theme.sourceParent).toBeUndefined();
+      expect(theme.sourceParent).toBe(themeLookup);
     });
 
     it('should register and resolve escaped class selector via string key', async () => {

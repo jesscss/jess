@@ -5,7 +5,6 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
-import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -78,12 +77,9 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.render(context, { collapseNesting: true });
-    // Position model: separate blocks (frames not carried through position yet)
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
-      }
-      .one.two {
         inner: one two;
       }`
     );
@@ -97,15 +93,10 @@ describe('Ampersand', () => {
     let evald = await node.eval(context);
 
     const css = evald.render(context, { collapseNesting: true });
-    // Bare & with SelectorList parent: no :is() wrapping needed.
-    // Output has two blocks (same selector) — semantically identical to merged.
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
-      }
-      .one,
-      .two {
         inner: one two;
       }`
     );
@@ -131,12 +122,9 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.render(context, { collapseNesting: true });
-    // Position model: separate blocks (frames not carried through position yet)
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
-      }
-      .one.two {
         inner: one two;
       }`
     );
@@ -147,17 +135,39 @@ describe('Ampersand', () => {
     context = new Context({ collapseNesting: true });
     let evald = await node.eval(context);
     const css = evald.render(context, { collapseNesting: true });
-    // Empty template with SelectorList parent: no :is() wrapping needed.
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
-      }
-      .one,
-      .two {
         inner: one two;
       }`
     );
+  });
+
+  it('does not wrap a hoisted leading implicit ampersand when the resolved parent is a single complex selector', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('#foo-foo'), co('>'), el('.bar')]),
+        rules: rules([
+          ruleset({
+            selector: el('.baz'),
+            rules: rules([
+              decl({ name: 'c', value: any('c') })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    context = new Context({ collapseNesting: true });
+    const evald = await node.eval(context);
+    const css = evald.render(context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      #foo-foo > .bar .baz {
+        c: c;
+      }
+    `);
   });
 
   it('should render explicit ampersand template forms', () => {
@@ -246,8 +256,10 @@ describe('Ampersand', () => {
     expect(css).toContain('.fruit-quoted-satsuma');
     expect(css).toContain('.fruit-quoted-banana');
     expect(css).toContain('.fruit-quoted-pear');
-    // Each item should get the prefix — verify no bare (unprefixed) items
-    expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
+    // The distributed child selector should not contain any bare unprefixed items.
+    const generatedList = css.match(/:is\(([^)]*)\)/)?.[1] ?? '';
+    expect(generatedList).toContain('.fruit-quoted-apple');
+    expect(generatedList).not.toMatch(/(^|,\s*)satsuma(,|$)/);
   });
 
   it('should validate each item individually when distributing template', async () => {
@@ -366,96 +378,5 @@ describe('Ampersand', () => {
     expect(parent.get('selector').pre).toBe(1);
     expect(parent.get('selector').post).toBe(1);
     expect(parent.get('selector').hoistToRoot).toBeUndefined();
-  });
-
-  it('valueOf(context) and getResolvedSelector(context) read a state-patched parent selector', () => {
-    context = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    const node = amp({ selectorContainer: parent as any });
-    node.addFlag(F_IMPLICIT_AMPERSAND);
-
-    setField(parent, 'selector', el('.beta'), context);
-
-    expect(node.valueOf(context)).toBe('.beta');
-    expect(node.valueOf()).toBe('.alpha');
-    expect(node.getResolvedSelector(context)?.valueOf()).toBe('.beta');
-    expect(node.getResolvedSelector()?.valueOf()).toBe('.alpha');
-    expect(parent.get('selector').valueOf()).toBe('.alpha');
-  });
-
-  it('keeps keySet canonical when only the parent selector is state-patched', () => {
-    context = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    parent.get('selector').keySetLibrary = context.selectorBits;
-
-    const patched = el('.beta');
-    patched.keySetLibrary = context.selectorBits;
-
-    const node = amp({ selectorContainer: parent as any });
-    node.keySetLibrary = context.selectorBits;
-
-    setField(parent, 'selector', patched, context);
-
-    expect(node.valueOf(context)).toBe('.beta');
-    expect(node.keySet.equals(context.selectorBits.getBitset(['.alpha']))).toBe(true);
-    expect(node.keySet.equals(context.selectorBits.getBitset(['.beta']))).toBe(false);
-  });
-
-  it('cannot derive a state-specific keySet when two eval states patch the same parent selector differently', () => {
-    const contextA = new Context();
-    const contextB = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    parent.get('selector').keySetLibrary = contextA.selectorBits;
-
-    const beta = el('.beta');
-    beta.keySetLibrary = contextA.selectorBits;
-    const gamma = el('.gamma');
-    gamma.keySetLibrary = contextA.selectorBits;
-
-    const node = amp({ selectorContainer: parent as any });
-    node.keySetLibrary = contextA.selectorBits;
-
-    setField(parent, 'selector', beta, contextA);
-    setField(parent, 'selector', gamma, contextB);
-
-    expect(node.valueOf(contextA)).toBe('.beta');
-    expect(node.valueOf(contextB)).toBe('.gamma');
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.alpha']))).toBe(true);
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.beta']))).toBe(false);
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(false);
-  });
-
-  it('can derive a state-specific keySet through getKeySet(context) without changing canonical keySet', () => {
-    const contextA = new Context();
-    const contextB = new Context();
-    const parent = ruleset({
-      selector: el('.alpha'),
-      rules: rules([])
-    });
-    parent.get('selector').keySetLibrary = contextA.selectorBits;
-
-    const beta = el('.beta');
-    beta.keySetLibrary = contextA.selectorBits;
-    const gamma = el('.gamma');
-    gamma.keySetLibrary = contextA.selectorBits;
-
-    const node = amp({ selectorContainer: parent as any });
-    node.keySetLibrary = contextA.selectorBits;
-
-    setField(parent, 'selector', beta, contextA);
-    setField(parent, 'selector', gamma, contextB);
-
-    expect(node.getKeySet(contextA).equals(contextA.selectorBits.getBitset(['.beta']))).toBe(true);
-    expect(node.getKeySet(contextB).equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(true);
-    expect(node.keySet.equals(contextA.selectorBits.getBitset(['.alpha']))).toBe(true);
   });
 });

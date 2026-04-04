@@ -4,7 +4,6 @@ import {
   ruleset,
   sel,
   el,
-  amp,
   sellist,
   decl,
   extend,
@@ -16,8 +15,8 @@ import {
   ExtendFlag
 } from '../index.js';
 import { Context } from '../../context.js';
-import { getField, getParent, setField } from '../util/field-helpers.js';
-import { F_EXTENDED, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { getParent } from '../util/field-helpers.js';
+import { F_EXTENDED } from '../node.js';
 import { processExtends } from '../util/extend-roots.js';
 
 let context: Context;
@@ -79,96 +78,13 @@ describe('Rules extend', () => {
 
       const evald = await node.eval(context);
       const css = evald.render(context);
+      const evaluatedBase = evald.get('value').find(child => child.sourceNode === base);
 
       expect(css).toContain('.base,');
       expect(css).toContain('.child {');
       expect(base.hasFlag(F_EXTENDED)).toBe(false);
-      expect(base._hasFlag(F_EXTENDED, context)).toBe(true);
-    });
-
-    it('keeps hoistToRoot state-local when extend hoists across an implicit ampersand boundary', async () => {
-      const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
-      (implicitAmp as unknown as { generated?: boolean }).generated = true;
-      implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
-      implicitAmp.removeFlag(F_VISIBLE);
-      const implicitSpace = co(' ');
-      implicitSpace.generated = true;
-      implicitSpace.removeFlag(F_VISIBLE);
-
-      const headerNav = ruleset({
-        selector: sel([implicitAmp, implicitSpace, el('.header-nav')]) as any,
-        rules: rules([])
-      });
-      const header = ruleset({
-        selector: sellist([sel([el('.header')])]),
-        rules: rules([headerNav])
-      });
-      const footerNav = ruleset({
-        selector: sellist([sel([el('.footer'), co(' '), el('.footer-nav')])]),
-        rules: rules([
-          extend({
-            target: sel([el('.header'), co(' '), el('.header-nav')]),
-            flag: ExtendFlag.All
-          })
-        ])
-      });
-      const root = rules([header, footerNav]);
-
-      await root.eval(context);
-
-      expect(getField(headerNav, 'hoistToRoot', context)).toBe(true);
-      expect(headerNav.hoistToRoot).toBeUndefined();
-    });
-
-    it('clears a stale state-local hoistToRoot when a later extend pass no longer matches', async () => {
-      const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
-      (implicitAmp as unknown as { generated?: boolean }).generated = true;
-      implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);
-      implicitAmp.removeFlag(F_VISIBLE);
-      const implicitSpace = co(' ');
-      implicitSpace.generated = true;
-      implicitSpace.removeFlag(F_VISIBLE);
-
-      const headerNav = ruleset({
-        selector: sel([implicitAmp, implicitSpace, el('.header-nav')]) as any,
-        rules: rules([])
-      });
-      const header = ruleset({
-        selector: sellist([sel([el('.header')])]),
-        rules: rules([headerNav])
-      });
-      const extension = extend({
-        target: sel([el('.header'), co(' '), el('.header-nav')]),
-        flag: ExtendFlag.All
-      });
-      const footerNav = ruleset({
-        selector: sellist([sel([el('.footer'), co(' '), el('.footer-nav')])]),
-        rules: rules([
-          extension
-        ])
-      });
-      const miss = extend({
-        target: el('.does-not-match')
-      });
-      const root = rules([header, footerNav]);
-
-      await root.eval(context);
-
-      expect(getField(headerNav, 'hoistToRoot', context)).toBe(true);
-
-      context.extendRoots.registerRuleset(root, header);
-      context.extendRoots.registerRuleset(root, headerNav);
-      context.extendRoots.registerRuleset(root, footerNav);
-      context.extends = [[
-        miss.get('target'),
-        footerNav.getEffectiveSelector(false, context),
-        false,
-        root,
-        miss
-      ] as any];
-      processExtends(context);
-
-      expect(getField(headerNav, 'hoistToRoot', context)).toBeUndefined();
+      expect(evaluatedBase).toBeDefined();
+      expect(evaluatedBase?.hasFlag(F_EXTENDED)).toBe(true);
     });
 
     it('does not re-parent canonical selector or target during a shallow clone', () => {
@@ -182,103 +98,13 @@ describe('Rules extend', () => {
       expect(selector.parent).toBe(node);
       expect(target.parent).toBe(node);
 
-      const cloned = node.clone(false, undefined, context);
+      const cloned = node.clone();
 
       expect(cloned).not.toBe(node);
       expect(selector.parent).toBe(node);
       expect(target.parent).toBe(node);
       expect(getParent(selector, context)).toBe(cloned);
       expect(getParent(target, context)).toBe(cloned);
-    });
-
-    it('preserves state-patched extend fields during clone without mutating the canonical node', () => {
-      const node = extend({
-        target: el('.base'),
-        namespace: 'base',
-        flag: ExtendFlag.Exact
-      });
-
-      setField(node, 'target', el('.other'), context);
-      setField(node, 'namespace', 'patched', context);
-      setField(node, 'flag', ExtendFlag.All, context);
-
-      const cloned = node.clone(false, undefined, context);
-
-      expect(cloned.get('target').valueOf()).toBe('.other');
-      expect(cloned.get('namespace')).toBe('patched');
-      expect(cloned.get('flag')).toBe(ExtendFlag.All);
-      expect(node.get('target').valueOf()).toBe('.base');
-      expect(node.get('namespace')).toBe('base');
-      expect(node.get('flag')).toBe(ExtendFlag.Exact);
-    });
-
-    it('registers a state-patched extend target without mutating the canonical extend node', async () => {
-      const extension = extend({
-        target: el('.base')
-      });
-      const rootRules = rules([]);
-
-      context.extendRoots.registerRoot(rootRules);
-      context.extendRoots.pushExtendRoot(rootRules);
-      setField(extension, 'target', el('.other'), context);
-
-      await extension.evalNode(context);
-
-      expect(context.extends).toHaveLength(1);
-      expect(context.extends[0]![0].valueOf()).toBe('.other');
-      expect(extension.get('target').valueOf()).toBe('.base');
-    });
-
-    it('records a state-patched extend namespace in the instruction tuple without mutating the canonical node', async () => {
-      const extension = extend({
-        target: el('.base'),
-        namespace: 'base'
-      });
-      const rootRules = rules([]);
-
-      context.extendRoots.registerRoot(rootRules);
-      context.extendRoots.pushExtendRoot(rootRules);
-      setField(extension, 'namespace', 'patched', context);
-
-      await extension.evalNode(context);
-
-      expect(context.extends).toHaveLength(1);
-      expect(context.extends[0]![7]).toBe('patched');
-      expect(extension.get('namespace')).toBe('base');
-    });
-
-    it('valueOf(context) reflects a state-patched target without mutating the canonical node', () => {
-      const extension = extend({
-        target: el('.base')
-      });
-
-      setField(extension, 'target', el('.other'), context);
-
-      expect(extension.valueOf(context)).toBe('$extend .other');
-      expect(extension.valueOf()).toBe('$extend .base');
-      expect(extension.get('target').valueOf()).toBe('.base');
-    });
-
-    it('treats a state-patched selector as explicit during extend registration', async () => {
-      const extension = extend({
-        target: el('.base')
-      });
-      const rootRules = rules([]);
-      const frame = ruleset({
-        selector: sellist([sel([el('.child')])]),
-        rules: rules([extension])
-      });
-
-      context.extendRoots.registerRoot(rootRules);
-      context.extendRoots.pushExtendRoot(rootRules);
-      context.rulesetFrames.push(frame);
-      setField(extension, 'selector', el('.patched'), context);
-
-      await extension.evalNode(context);
-
-      expect(context.extends).toHaveLength(1);
-      expect(context.extends[0]![1].valueOf()).toBe('.patched');
-      expect(extension.get('selector')).toBeUndefined();
     });
   });
 
@@ -806,91 +632,6 @@ describe('Rules extend', () => {
           color: red;
         }
       `);
-    });
-
-    it('extends through state-patched nested rules with the active parent context', async () => {
-      const nestedLeaf = ruleset({
-        selector: sellist([sel([el('.leaf')])]),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const base = ruleset({
-        selector: sellist([sel([el('.base')])]),
-        rules: rules([])
-      });
-      const patchedBaseRules = rules([nestedLeaf]);
-      const mid = ruleset({
-        selector: sellist([sel([el('.mid')])]),
-        rules: rules([
-          extend({
-            target: el('.base')
-          })
-        ])
-      });
-      const end = ruleset({
-        selector: sellist([sel([el('.end')])]),
-        rules: rules([
-          extend({
-            target: sel([el('.mid'), co(' '), el('.leaf')])
-          })
-        ])
-      });
-      const node = rules([
-        base,
-        mid,
-        end
-      ]);
-
-      setField(base, 'rules', patchedBaseRules, context);
-
-      const evald = await node.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toContain(':is(.base, .mid) .leaf,');
-      expect(css).toContain('.end {');
-      expect(css).toContain('color: red;');
-      expect(context.warnings).toHaveLength(0);
-      expect(getParent(patchedBaseRules, context)).toBe(base);
-      expect(getParent(nestedLeaf, context)).toBe(patchedBaseRules);
-      expect(nestedLeaf.parent).toBe(patchedBaseRules);
-      expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toBe(':is(.base,.mid) :is(.leaf),.end');
-      expect(nestedLeaf.valueOf(context)).toBe(':is(.base,.mid) :is(.leaf),.end');
-      expect(patchedBaseRules.parent).toBeUndefined();
-      expect(base.get('rules')?.value).toHaveLength(0);
-    });
-
-    it('extends a nested ampersand selector through a state-patched parent selector', async () => {
-      const nestedLeaf = ruleset({
-        selector: sellist([sel([amp(), co(' '), el('.leaf')])]),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const base = ruleset({
-        selector: sellist([sel([el('.alpha')])]),
-        rules: rules([nestedLeaf])
-      });
-      const end = ruleset({
-        selector: sellist([sel([el('.end')])]),
-        rules: rules([
-          extend({
-            target: sel([el('.beta'), co(' '), el('.leaf')])
-          })
-        ])
-      });
-      const node = rules([base, end]);
-
-      setField(base, 'selector', sellist([sel([el('.beta')])]), context);
-
-      const evald = await node.eval(context);
-      const css = evald.render(context);
-
-      expect(css).toContain('color: red;');
-      expect(context.warnings).toHaveLength(0);
-      expect(base.getEffectiveSelector(false, context).valueOf()).toBe('.beta');
-      expect(nestedLeaf.getEffectiveSelector(false, context).valueOf()).toContain('.end');
-      expect(base.get('selector').valueOf()).toBe('.alpha');
     });
 
     it('limits downstream extend matching to roots inside the recorded namespace', () => {

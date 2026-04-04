@@ -4,6 +4,8 @@ import { Dimension } from '../dimension.js';
 import { Negative } from '../negative.js';
 import { Operation } from '../operation.js';
 import { Paren } from '../paren.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('Negative', () => {
   it('serializes with a leading minus sign', () => {
@@ -23,5 +25,21 @@ describe('Negative', () => {
     const evald = await node.eval(ctx);
 
     expect(evald.toTrimmedString()).toBe('-3px');
+  });
+
+  it('keeps the canonical child direct while the cursor can select an alternate child', () => {
+    const canonical = new Dimension({ number: 2, unit: 'px' });
+    const alternate = new Dimension({ number: 4, unit: 'px' });
+    const node = new Negative(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node, renderKey: key };
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
+    expect(node.value).toBe(canonical);
   });
 });

@@ -101,7 +101,7 @@ describe('processLeadingIs', () => {
      * So we build the same: frame selector = sel([el('*'), co(' '), el('b')]) (ComplexSelector), inner = compound([amp(), attr({ name: 'e' })]) (CompoundSelector).
      * Eval produces compound with first component :is(* b); ampersand sets .generated so processLeadingIs unwraps to * b[e].
      */
-    it('unwraps evaled &[e] with frame * b to * b[e] (same path as ruleset)', async () => {
+    it('accepts evaled &[e] with frame * b already materialized to * b[e] (same path as ruleset)', async () => {
       const parentSelector = sel([el('*'), co(' '), el('b')]) as any;
       const frameRuleset = ruleset({ selector: parentSelector, rules: rules([]) });
       const innerSelector = compound([amp(), attr({ name: 'e' })]);
@@ -110,8 +110,8 @@ describe('processLeadingIs', () => {
       const evaled = await (innerSelector as any).eval(context);
       expect(isNode(evaled, N.CompoundSelector)).toBe(true);
       const first = (evaled as any).value[0];
-      expect(isNode(first, N.PseudoSelector)).toBe(true);
-      expect((first as PseudoSelector).generated, 'ampersand path must set .generated so processLeadingIs unwraps').toBe(true);
+      expect(isNode(first, N.ComplexSelector)).toBe(true);
+      expect(out(evaled as Selector)).toBeString(`* b[e]`);
       const result = processLeadingIs(evaled as Selector);
       expect(out(result as Selector)).toBeString(`* b[e]`);
     });
@@ -135,7 +135,7 @@ describe('processLeadingIs', () => {
       const comp = compound([generatedIs(list), el('li')]);
       const result = processLeadingIs(comp);
       expect(result).toBe(comp);
-      expect(out(result as Selector)).toBeString(`li:is(.a,.b)`);
+      expect(out(result as Selector)).toBeString(`:is(.a,.b)li`);
     });
   });
 

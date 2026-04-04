@@ -33,6 +33,7 @@
     "rollup": "^3.20.7",
     "shx": "^0.3.4",
     "ts-node": "^9.1.1",
+    "tsdown": "~0.21.7",
     "tslib": "^2.6.2",
     "type-fest": "^4.32.0",
     "typescript": "~5.8.2",
@@ -49,6 +50,7 @@
     "lint:fix": "eslint --fix '**/*.{mjs,cjs,js,ts}'",
     "lint": "eslint '**/*.{mjs,cjs,js,ts}'",
     "test": "vitest",
+    "test:core:debug": "cross-env TEST=true node scripts/test-core-debug.mjs",
     "test:coverage": "vitest --coverage",
     "preinstall": "npx only-allow pnpm",
     "test:less": "node scripts/test-less.js",
@@ -91,6 +93,9 @@
   "pnpm": {
     "patchedDependencies": {
       "superstruct@1.0.3": "patches/superstruct@1.0.3.patch"
+    },
+    "overrides": {
+      "chevrotain": "^12.0.0"
     }
   },
   "packageManager": "pnpm@8.15.0+sha512.ea45517d5285d123eac02c3793505fa1fd6da90a2fc60d1e8d9e0c1e9292886ecfaff513f062b9d1cc8021bb8615033b1ac5bea3b2ee3fc165a6d7034bbe6b03"

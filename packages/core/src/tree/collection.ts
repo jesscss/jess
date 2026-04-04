@@ -34,12 +34,11 @@ export class Collection extends Rules {
   }
 
   override preEval(context: Context): this | Promise<this> {
-    if (this._isPreEvaluated(context)) {
+    if (this.preEvaluated) {
       return this;
     }
-    const node = this.maybeClone(context) as this;
-    node._setPreEvaluated(true, context);
-    return node;
+    this.preEvaluated = true;
+    return this;
   }
 }
 

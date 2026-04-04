@@ -1,8 +1,14 @@
 import '@ungap/set-methods';
 // export * from './scope'
 export * from './tree/index.js';
-export * from './context.js';
-export * from './eval-state.js';
+export {
+  Context,
+  TreeContext
+} from './context.js';
+export type {
+  ContextOptions,
+  TreeContextOptions
+} from './context.js';
 export * from './logger.js';
 export * from './logger/deprecation-processing.js';
 export * from './plugin.js';

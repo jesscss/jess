@@ -3,7 +3,6 @@ import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeCon
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type SelectorCaptureChildData = { value: Selector };
 
@@ -20,7 +19,7 @@ export interface SelectorCapture extends Node<Selector, NodeOptions, SelectorCap
 export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCaptureChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Selector;
+  readonly value!: Selector;
 
   constructor(value: Selector, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -38,7 +37,7 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.get('value', options.context);
+    const value = this.value;
     w.add('*[', this);
     value.toString(options);
     w.add(']', this);
@@ -46,19 +45,19 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this._isPreEvaluated(context)) {
+    if (this.preEvaluated) {
       return this;
     }
-    const node = this.maybeClone(context) as this;
-    node._setPreEvaluated(true, context);
-    const value = this.get('value', context);
+    const node = this.clone() as this;
+    node.preEvaluated = true;
     const applyValue = (preEvald: Selector): this => {
-      if (node.get('value', context) !== preEvald) {
-        setField(node, 'value', preEvald, context);
+      if (node.value !== preEvald) {
+        node.adopt(preEvald, context);
+        (node as unknown as { value: Selector }).value = preEvald;
       }
       return node;
     };
-    const out = value.preEval(context);
+    const out = this.value.preEval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then(applyValue);
     }
@@ -66,7 +65,7 @@ export class SelectorCapture extends Node<Selector, NodeOptions, SelectorCapture
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.get('value', context).eval(context);
+    const out = this.value.eval(context);
     if (isThenable(out)) {
       return (out as Promise<Selector>).then((selector) => {
         return selector;

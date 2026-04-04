@@ -49,7 +49,7 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   static override childKeys = null as null;
 
-  /** @internal */ readonly value!: string;
+  readonly value!: string;
   readonly role: Role | undefined;
 
   constructor(
@@ -65,7 +65,7 @@ export class Any<
   }
 
   override preEval(context: Context): this | Nil {
-    this._setPreEvaluated(true, context);
+    this.preEvaluated = true;
     // Index should already be assigned by parent Rules
     if (this.role === 'charset') {
       if (!context.currentCharset) {
@@ -78,7 +78,7 @@ export class Any<
   }
 
   // Any values are static and don't need evaluation
-  override evalNode(context: Context): MaybePromise<Node> {
+  override evalNode(_context: Context): MaybePromise<Node> {
     return this;
   }
 
@@ -95,13 +95,15 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      if (!('number' in other) || typeof other.number !== 'number') {
+      const otherNumber = Reflect.get(other, 'number');
+      const otherUnit = Reflect.get(other, 'unit');
+      if (typeof otherNumber !== 'number') {
         return undefined;
       }
-      if (other.type === 'Dimension' && 'unit' in other && other.unit) {
+      if (other.type === 'Dimension' && otherUnit) {
         return undefined;
       }
-      return Number(text) === other.number ? 0 : undefined;
+      return Number(text) === otherNumber ? 0 : undefined;
     }
     if (typeof other.toString === 'function') {
       const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();

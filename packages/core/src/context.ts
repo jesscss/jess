@@ -7,20 +7,21 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
-import { EvalState } from './eval-state.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
+import type { RenderKey } from './tree/node-base.js';
 import type { PluginInterface } from './plugin.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError, type JessErrorCode } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
+import type { EvalDependency } from './tree/util/field-helpers.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -255,6 +256,13 @@ export class Context {
   /** The call that is currently being evaluated */
   caller?: Call;
 
+  /**
+   * Current render-key selection for parent/edge-sensitive traversal.
+   *
+   * Canonical traversal falls back when no alternate edge exists.
+   */
+  renderKey?: RenderKey;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 
@@ -278,12 +286,29 @@ export class Context {
    * When doing any kind of lookup, the current node and resolved
    * nodes in the search chain are added to prevent recursion errors.
    *
-   * We use a set here because we look it up for filtering.
+   * Search-scope identity is canonical when available (`sourceNode ?? node`)
+   * so derived wrappers do not bypass recursion guards.
    * Also used to track mixins currently being evaluated to prevent infinite recursion.
    */
   private _searchScope: Set<Node> | undefined;
   get searchScope() {
     return (this._searchScope ??= new Set());
+  }
+
+  getSearchScopeIdentity(node: Node): Node {
+    return node.sourceNode ?? node;
+  }
+
+  hasInSearchScope(node: Node): boolean {
+    return this.searchScope.has(this.getSearchScopeIdentity(node));
+  }
+
+  addToSearchScope(node: Node): void {
+    this.searchScope.add(this.getSearchScopeIdentity(node));
+  }
+
+  deleteFromSearchScope(node: Node): void {
+    this.searchScope.delete(this.getSearchScopeIdentity(node));
   }
 
   /**
@@ -294,6 +319,7 @@ export class Context {
    */
   id = generateId();
   ruleCounter = 0;
+  renderCounter = 0;
 
   /** Rules depth, used to figure out source order */
   depth = -1;
@@ -308,6 +334,12 @@ export class Context {
 
   /** Frames for nested rulesets, used for selector evaluation */
   rulesetFrames: Ruleset[] = [];
+  /**
+   * When mixin eval clears `rulesetFrames`, this preserves the caller's
+   * last ruleset frame so at-rule hoisting can still pick up the caller's
+   * selector for the wrapper Ruleset.
+   */
+  callerRulesetFrame: Ruleset | undefined;
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 
@@ -429,6 +461,10 @@ export class Context {
     return (this._exports ??= new Set());
   }
 
+  nextRenderKey(): RenderKey {
+    return ++this.renderCounter;
+  }
+
   /**
    * currently generating a runtime module or not
    * @todo - remove in favor of ToModuleVisitor?
@@ -445,52 +481,7 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  /**
-   * Root eval state for this evaluation pass.
-   * Lazy — allocated on first access, zero cost if never used.
-   */
-  private _evalState: EvalState | undefined;
-
-  get evalState(): EvalState {
-    return (this._evalState ??= new EvalState());
-  }
-
-  /**
-   * The currently active eval state. Set by pushState/popState during
-   * eval, or by save/restore during registry walks and serialization.
-   * All field reads/writes go through this.
-   */
-  private _activeState: EvalState | undefined;
-
-  get activeState(): EvalState {
-    return this._activeState ?? this.evalState;
-  }
-
-  set activeState(value: EvalState) {
-    this._activeState = value;
-  }
-
-  /** Push a new eval state, saving the current as its parent. */
-  pushState(state: EvalState): void {
-    state.parent = this.activeState;
-    this._activeState = state;
-  }
-
-  /** Pop the current eval state, restoring its parent. */
-  popState(): EvalState | undefined {
-    const popped = this._activeState;
-    this._activeState = popped?.parent;
-    return popped;
-  }
-
-  /** Maps output nodes (mixin/import/loop results) to their call-site EvalState.
-   *  Global lookup — works from any context, any direction. */
-  readonly subtreeMap = new WeakMap<Node, EvalState>();
-
-  /** @deprecated — use activeState directly */
-  resolveField(node: Node, field: string): unknown {
-    return this.activeState.peek(node)?._fields?.get(field);
-  }
+  readonly dependencyMap = new WeakMap<Node, EvalDependency>();
 
   _leakyRules: boolean | undefined;
   get leakyRules() {
@@ -517,6 +508,7 @@ export class Context {
   /** Full resolved path -> tree */
   sourceTrees = new Map<string, Rules>();
   evaldTrees = new Map<string, Rules>();
+  composeSetValues = new Map<string, Rules>();
 
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
@@ -696,7 +688,7 @@ export class Context {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
       throw new JessError({
-        code: firstError.code as JessErrorCode,
+        code: firstError.code,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,
@@ -744,7 +736,7 @@ export class Context {
       column: 1
     });
     return {
-      node: null as unknown as Rules,
+      node: null,
       triedPaths,
       resolvedPath
     };

@@ -5,7 +5,7 @@ import { defineFunction, Node, type Context } from '@jesscss/core';
  */
 const max = defineFunction(
   'max',
-  function(this: Context, ...values: Node[]) {
+  function(this: Context, ...values: Node[]): Node {
     values = values.slice().sort((a, b) => {
       let compare = b.compare(a);
       if (compare === undefined) {
@@ -13,7 +13,7 @@ const max = defineFunction(
       }
       return compare;
     });
-    return values[0];
+    return values[0]!;
   },
   {
     params: [{

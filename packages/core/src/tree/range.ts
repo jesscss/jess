@@ -34,9 +34,9 @@ export interface Range {
 export class Range extends Node<RangeValue, RangeOptions, RangeChildData> {
   static override childKeys = ['start', 'end', 'step'] as const;
 
-  /** @internal */ start!: Node;
-  /** @internal */ end!: Node;
-  /** @internal */ step: Node | undefined;
+  start!: Node;
+  end!: Node;
+  step: Node | undefined;
 
   constructor(value: RangeValue, options?: RangeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);

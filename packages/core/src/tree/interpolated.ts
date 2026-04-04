@@ -4,13 +4,11 @@ import type { Context } from '../context.js';
 import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
 import type { Selector } from './selector.js';
-import type { Reference } from './reference.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
-import { isEvaluated, setField, setEvaluated } from './util/field-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -87,8 +85,8 @@ export class Interpolated<
 > extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
   static override childKeys = ['source', 'replacements'] as const;
 
-  /** @internal */ source!: string;
-  /** @internal */ replacements!: Node[];
+  source!: string;
+  replacements!: Node[];
 
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -103,8 +101,40 @@ export class Interpolated<
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
+  override clone(deep?: boolean): this {
+    const replacements = deep
+      ? this.replacements.map(replacement => replacement.clone(true))
+      : this.replacements;
+    const node = new (this.constructor as typeof Interpolated<Role>)(
+      { source: this.source, replacements: [] },
+      this.options ? { ...this.options } : undefined,
+      this.location,
+      this.treeContext
+    ) as this;
+    node.inherit(this);
+    node.replacements = replacements;
+    if (deep) {
+      for (const replacement of replacements) {
+        node.adopt(replacement);
+      }
+    }
+    return node;
+  }
+
   override valueOf(): string {
     return this.source;
+  }
+
+  private _withReplacements(replacements: Node[]): this {
+    const node = new (this.constructor as typeof Interpolated<Role>)(
+      { source: this.source, replacements: [] },
+      this.options ? { ...this.options } : undefined,
+      this.location,
+      this.treeContext
+    ) as this;
+    node.inherit(this);
+    node.replacements = replacements;
+    return node;
   }
 
   replace(replacements?: Node[], options?: PrintOptions): string {
@@ -172,7 +202,7 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (context && !isEvaluated(replacement, context)) {
+      if (context && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
@@ -182,7 +212,7 @@ export class Interpolated<
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (context && !isEvaluated(replacement, context)) {
+      if (context && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();
@@ -240,11 +270,49 @@ export class Interpolated<
    * because depending on the context, it will turn into different
    * node types.
    */
+  override preEval(context: Context): MaybePromise<this> {
+    if (this.preEvaluated) {
+      return this;
+    }
+    const node = this.clone() as this;
+    node.preEvaluated = true;
+    const replacements = [...this.replacements];
+    let changed = false;
+    const maybe = serialForEach(replacements, (replacement, idx) => {
+      const out = replacement.preEval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((result) => {
+          if (result !== replacement) {
+            replacements[idx] = result;
+            changed = true;
+          }
+        });
+      }
+      if ((out as Node) !== replacement) {
+        replacements[idx] = out as Node;
+        changed = true;
+      }
+      return undefined;
+    });
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(() => {
+        if (changed) {
+          node.replacements = replacements;
+        }
+        return node;
+      });
+    }
+    if (changed) {
+      node.replacements = replacements;
+    }
+    return node;
+  }
+
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
     let replacements = [...node.get('replacements', context)];
     const markEvaluated = (result: Node): Node => {
-      setEvaluated(result, true, context);
+      result.evaluated = true;
       return result;
     };
 
@@ -260,11 +328,17 @@ export class Interpolated<
     });
     if (isThenable(maybe)) {
       return maybe.then(() => {
-        setField(node, 'replacements', replacements, context);
+        if (node === this) {
+          return this._withReplacements(replacements);
+        }
+        node.replacements = replacements;
         return node;
       });
     }
-    setField(node, 'replacements', replacements, context);
+    if (node === this) {
+      return this._withReplacements(replacements);
+    }
+    node.replacements = replacements;
     return node;
   }
 }

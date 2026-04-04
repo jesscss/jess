@@ -6,7 +6,6 @@ import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { getField, setField, setParent } from './util/field-helpers.js';
 
 export type ParenOptions = {
   escaped?: boolean;
@@ -31,7 +30,7 @@ export interface Paren {
 export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value: Node | undefined;
+  value: Node | undefined;
 
   constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -44,14 +43,8 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
     }
   }
 
-  private _getOptions(context?: Context): ParenOptions | undefined {
-    return context
-      ? getField<ParenOptions | undefined>(this, 'options', context)
-      : this.options;
-  }
-
-  private _isEscaped(context?: Context): boolean {
-    return Boolean(this._getOptions(context)?.escaped);
+  private _isEscaped(_context?: Context): boolean {
+    return Boolean(this.options?.escaped);
   }
 
   private _unwrapValue(value: Node, context?: Context): Node {
@@ -70,7 +63,7 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const parenOptions = this._getOptions(options.context);
+    const parenOptions = this.options;
     const escapeChar = parenOptions?.escaped ? '~' : '';
     const delimiter = parenOptions?.delimiter ?? 'paren';
     const open = delimiter === 'square' ? '[' : '(';
@@ -108,7 +101,7 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
         if (this._isEscaped(context) && value instanceof Node) {
           return value;
         }
-        const delimiter = this._getOptions(context)?.delimiter ?? 'paren';
+        const delimiter = this.options?.delimiter ?? 'paren';
         if (delimiter === 'paren') {
           value = this._unwrapValue(value, context);
           if (value instanceof Bool || value instanceof Dimension) {
@@ -118,17 +111,13 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
             return value;
           }
         }
-        let node = this.maybeClone(context);
-        if (node === this) {
-          const prevValue = this.get('value', context);
-          setField(node, 'value', value, context);
-          if (prevValue instanceof Node && prevValue !== value) {
-            setParent(prevValue, undefined, context);
-          }
-          setParent(value, node, context);
-        } else {
-          node.setData('value', value);
+        const node = this.clone();
+        const previousValue = node.value;
+        node.value = value;
+        if (previousValue instanceof Node && previousValue !== value) {
+          previousValue.parent = undefined;
         }
+        node.adopt(value);
         return node;
       };
       if (isThenable(maybeEvald)) {

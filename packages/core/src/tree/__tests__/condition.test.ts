@@ -1,6 +1,5 @@
 import { amp, bool, co, condition, dimension, el, num, rules, ruleset, sel, sellist, seq } from '../index.js';
 import { Context } from '../../context.js';
-import { setField } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -118,20 +117,25 @@ describe('Condition', () => {
     });
   });
 
-  describe('eval state', () => {
-    it('renders patched operands and negate from the active eval state without mutating the canonical node', () => {
+  describe('cloned mutation', () => {
+    it('renders cloned operands and negate without mutating the canonical node', () => {
       const node = condition([
         bool(true),
         '=',
         bool(false)
       ]);
+      const clonedNode = node.clone();
+      const left = bool(false);
+      const right = bool(true);
 
-      setField(node, 'left', bool(false), context);
-      setField(node, 'operator', 'or', context);
-      setField(node, 'right', bool(true), context);
-      setField(node, 'negate', true, context);
+      clonedNode.adopt(left, context);
+      clonedNode.adopt(right, context);
+      (clonedNode as unknown as { left: ReturnType<typeof bool> }).left = left;
+      (clonedNode as unknown as { operator: string }).operator = 'or';
+      (clonedNode as unknown as { right: ReturnType<typeof bool> }).right = right;
+      (clonedNode as unknown as { negate: boolean }).negate = true;
 
-      expect(node.toTrimmedString({ context })).toBe('not (false or true)');
+      expect(clonedNode.toTrimmedString({ context })).toBe('not (false or true)');
       expect(node.toTrimmedString()).toBe('(true = false)');
       expect(node.get('left').toTrimmedString()).toBe('true');
       expect(node.get('operator')).toBe('=');
@@ -139,18 +143,23 @@ describe('Condition', () => {
       expect(node.get('negate')).toBe(false);
     });
 
-    it('evaluates patched operands and operator from the active eval state without mutating the canonical node', async () => {
+    it('evaluates cloned operands and operator without mutating the canonical node', async () => {
       const node = condition([
         bool(true),
         'and',
         bool(false)
       ]);
+      const clonedNode = node.clone();
+      const left = bool(false);
+      const right = bool(true);
 
-      setField(node, 'left', bool(false), context);
-      setField(node, 'operator', 'or', context);
-      setField(node, 'right', bool(true), context);
+      clonedNode.adopt(left, context);
+      clonedNode.adopt(right, context);
+      (clonedNode as unknown as { left: ReturnType<typeof bool> }).left = left;
+      (clonedNode as unknown as { operator: string }).operator = 'or';
+      (clonedNode as unknown as { right: ReturnType<typeof bool> }).right = right;
 
-      const evald = await node.eval(context);
+      const evald = await clonedNode.eval(context);
 
       expect(evald.render(context)).toBe('true');
       expect(`${await node.eval(new Context())}`).toBe('false');
@@ -159,86 +168,19 @@ describe('Condition', () => {
       expect(node.get('right')?.toTrimmedString()).toBe('false');
     });
 
-    it('evaluates patched negate from the active eval state without mutating the canonical node', async () => {
+    it('evaluates cloned negate without mutating the canonical node', async () => {
       const node = condition([
         bool(true)
       ]);
+      const clonedNode = node.clone();
 
-      setField(node, 'negate', true, context);
+      (clonedNode as unknown as { negate: boolean }).negate = true;
 
-      const evald = await node.eval(context);
+      const evald = await clonedNode.eval(context);
 
       expect(evald.render(context)).toBe('false');
       expect(`${await node.eval(new Context())}`).toBe('true');
       expect(node.get('negate')).toBe(false);
-    });
-
-    it('uses compare(context) for selector guard comparisons when an eval state is active', async () => {
-      const parent = ruleset({
-        selector: el('.alpha'),
-        rules: rules([])
-      });
-      parent.get('selector').keySetLibrary = context.selectorBits;
-
-      const patched = el('.beta');
-      patched.keySetLibrary = context.selectorBits;
-
-      const find = sel([
-        amp({ selectorContainer: parent as any }),
-        co('>'),
-        el('.tail')
-      ]);
-      find.keySetLibrary = context.selectorBits;
-      for (const child of find.get('value') as any[]) {
-        if ('keySetLibrary' in child) {
-          child.keySetLibrary = context.selectorBits;
-        }
-      }
-
-      const left = sellist([find]);
-      left.keySetLibrary = context.selectorBits;
-
-      const right = sel([el('.beta'), co('>'), el('.tail')]);
-      const otherBits = new Context().selectorBits;
-      right.keySetLibrary = otherBits;
-      for (const child of right.get('value') as any[]) {
-        if ('keySetLibrary' in child) {
-          child.keySetLibrary = otherBits;
-        }
-      }
-
-      const node = condition([
-        left,
-        '=',
-        right
-      ]);
-
-      setField(parent, 'selector', patched, context);
-
-      const evaldLeft = await left.eval(context);
-      const evaldRight = await right.eval(context);
-
-      expect((evaldLeft as any).compare(evaldRight as any, context)).toBe(0);
-      expect(`${await node.eval(context)}`).toBe('true');
-      expect(`${await node.eval(new Context())}`).toBe('false');
-      expect(parent.get('selector').valueOf()).toBe('.alpha');
-    });
-
-    it('uses compare(context) for sequence guard comparisons when an eval state is active', async () => {
-      const left = seq([num(10), num(20)]);
-      const right = seq([num(30), num(40)]);
-      const node = condition([
-        left,
-        '=',
-        right
-      ]);
-
-      setField(left, 'value', [num(30), num(40)], context);
-
-      expect(left.compare(right)).toBe(-1);
-      expect(left.compare(right, context)).toBe(0);
-      expect(`${await node.eval(context)}`).toBe('true');
-      expect(`${await node.eval(new Context())}`).toBe('false');
     });
   });
 });

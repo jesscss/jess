@@ -16,8 +16,7 @@ import { Nil } from '../nil.js';
 import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
-import { getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, isBareAmpersandOwnSelector } from './selector-utils.js';
-import { getField, setField } from './field-helpers.js';
+import { getCurrentParentNode, getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, hasSourceExtendWrapperParent, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -48,11 +47,11 @@ function invalidateSelectorCache(selector?: Selector | Nil): void {
 
 function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): void {
   ruleset.invalidateSelectorValueCache();
-  invalidateSelectorCache(ruleset.getCurrentSelector(context));
-  invalidateSelectorCache(ruleset.getExtendedSelector(context));
+  invalidateSelectorCache(ruleset.get('selector', context));
+  invalidateSelectorCache(context ? ruleset.get('_extendedSelector', context) : ruleset.getExtendedSelector());
   invalidateSelectorCache(ruleset.getOwnSelector(context));
-  invalidateSelectorCache(ruleset.getSelectorBeforeExtend(context));
-  const rules = ruleset.getCurrentRules(context);
+  invalidateSelectorCache(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend());
+  const rules = ruleset.enterRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
@@ -64,7 +63,7 @@ function invalidateRulesetSelectorCaches(ruleset: Ruleset, context?: Context): v
 }
 
 function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context): void {
-  const rules = parentRuleset.getCurrentRules(context);
+  const rules = parentRuleset.enterRules(context);
   if (!rules || !isNode(rules, N.Rules)) {
     return;
   }
@@ -85,20 +84,51 @@ function refreshNestedRulesetSelectors(parentRuleset: Ruleset, context?: Context
   }
 }
 
+function hasReferenceBoundaryParent(ruleset: Ruleset, context?: Context): boolean {
+  const parent = getCurrentParentNode(ruleset, context);
+  return Boolean(
+    parent
+    && isNode(parent, N.Rules)
+    && (parent as Rules).options?.referenceMode === true
+  );
+}
+
+function parentRulesetOwnsDerivedSelectorState(parentRuleset: Ruleset, context?: Context): boolean {
+  const extendedSelector = context
+    ? parentRuleset.get('_extendedSelector', context)
+    : parentRuleset.getExtendedSelector();
+  if (extendedSelector !== undefined) {
+    return true;
+  }
+  const selectorBeforeExtend = context
+    ? parentRuleset.get('selectorBeforeExtend', context)
+    : parentRuleset.getSelectorBeforeExtend();
+  if (selectorBeforeExtend !== undefined) {
+    return true;
+  }
+  return getRulesetHoistToRoot(parentRuleset, context) === true;
+}
+
 function getDerivedSelectorFromParent(ruleset: Ruleset, context?: Context): Selector | Nil | undefined {
   const ownSelector = ruleset.getOwnSelector(context);
   if (!ownSelector || isNode(ownSelector, N.Nil)) {
     return undefined;
   }
+  if (isBareAmpersandOwnSelector(ownSelector) && hasReferenceBoundaryParent(ruleset, context)) {
+    return undefined;
+  }
 
   const parentRuleset = getParentRuleset(ruleset, context);
+  if (!parentRuleset || !parentRulesetOwnsDerivedSelectorState(parentRuleset, context)) {
+    return undefined;
+  }
   const parentSelector = parentRuleset?.getEffectiveSelector(false, context);
   if (!parentSelector || isNode(parentSelector, N.Nil)) {
     return undefined;
   }
 
   const composedSelector = getImplicitSelector(ownSelector, parentSelector, false);
-  const currentSelector = ruleset.getCurrentSelector(context);
+  const currentSelector = ruleset.get('selector', context);
   if (!isNode(currentSelector, N.Nil) && composedSelector.valueOf() === currentSelector.valueOf()) {
     return undefined;
   }
@@ -153,13 +183,12 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
     const arg = selector.get('arg');
     if (arg && isNode(arg, N.Selector)) {
       const copy = selector.copy(true) as PseudoSelector;
-      copy.setData(
-        'arg',
-        normalizeGeneratedIsOrder(
-          arg as Selector,
-          insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
-        )
+      const nextArg = normalizeGeneratedIsOrder(
+        arg as Selector,
+        insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
       );
+      copy.adopt(nextArg);
+      copy.arg = nextArg;
       return copy as Selector;
     }
   }
@@ -545,6 +574,12 @@ function getRulesetExtendTarget(
   }
 
   const ownSelector = ruleset.getOwnSelector(context);
+  if (hasSourceExtendWrapperParent(ruleset)) {
+    return {
+      selector,
+      usingOwnSelector: false
+    };
+  }
   // Bare `&` rulesets are pure mirrors of their parent selector and are updated
   // by refreshNestedRulesetSelectors when the parent is extended. Skip direct
   // extend processing so selectorBeforeExtend is not incorrectly set on them.
@@ -552,7 +587,9 @@ function getRulesetExtendTarget(
     return undefined;
   }
   const parentRs = getParentRuleset(ruleset, context);
-  const parentSelectorBeforeExtend = parentRs?.getSelectorBeforeExtend(context);
+  const parentSelectorBeforeExtend = parentRs
+    ? (context ? parentRs.get('selectorBeforeExtend', context) : parentRs.getSelectorBeforeExtend())
+    : undefined;
   const activeParentSelector = parentRs?.getEffectiveSelector(false, context);
   const parentSelector = (
     !partial
@@ -569,9 +606,20 @@ function getRulesetExtendTarget(
     && !isNode(parentSelector, N.Nil)
   ) {
     const ownMatch = selectorMatch(find, ownSelector, parentSelector, context);
+    const rawOwnMatch = partial
+      ? selectorMatch(find, ownSelector, undefined, context)
+      : undefined;
     const shouldUseOwnSelector = partial
-      ? (ownMatch.fullMatch || ownMatch.partialMatch)
-      : (ownMatch.fullMatch && ownMatch.crossesAmpersand);
+      ? (
+          ownMatch.fullMatch
+          || ownMatch.partialMatch
+          || Boolean(rawOwnMatch?.fullMatch)
+          || Boolean(rawOwnMatch?.partialMatch)
+        )
+      : (
+          ownMatch.fullMatch
+          && ownMatch.crossesAmpersand
+        );
 
     if (shouldUseOwnSelector) {
       return {
@@ -593,6 +641,16 @@ function getRulesetExtendTarget(
           selector: ownSelector,
           parent: activeParentSelector,
           usingOwnSelector: true
+        };
+      }
+    }
+
+    if (!partial && selectorHasAuthoredAmpersand(ownSelector as Selector)) {
+      const composedMatch = selectorMatch(find, selector, undefined, context);
+      if (composedMatch.fullMatch) {
+        return {
+          selector,
+          usingOwnSelector: false
         };
       }
     }
@@ -632,26 +690,92 @@ function markExtendedSelector(selector: Selector, context?: Context): void {
 }
 
 function activateExtendedRuleset(ruleset: Ruleset, selector: Selector, context?: Context): void {
+  const rulesetFlagTarget = ruleset;
   if (context) {
-    ruleset._addFlag(F_EXTENDED, context);
-    ruleset._addFlag(F_VISIBLE, context);
+    rulesetFlagTarget._addFlag(F_EXTENDED, context);
+    rulesetFlagTarget._addFlag(F_VISIBLE, context);
   } else {
-    ruleset.addFlag(F_EXTENDED);
-    ruleset.addFlag(F_VISIBLE);
+    rulesetFlagTarget.addFlag(F_EXTENDED);
+    rulesetFlagTarget.addFlag(F_VISIBLE);
   }
   markExtendedSelector(selector, context);
 }
 
+function selectorHasTopLevelValue(selector: Selector | Nil | undefined, value: string): boolean {
+  if (!selector || isNode(selector, N.Nil)) {
+    return false;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    return ((selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === value);
+  }
+  return selector.valueOf() === value;
+}
+
+function getExactOwnSelectorFallbackTarget(
+  ruleset: Ruleset,
+  instruction: RecordedExtendInstruction,
+  currentTargetInfo: { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined,
+  context?: Context
+): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
+  if (instruction.partial || currentTargetInfo?.usingOwnSelector) {
+    return undefined;
+  }
+
+  const ownSelector = ruleset.getOwnSelector(context);
+  if (!ownSelector || isNode(ownSelector, N.Nil)) {
+    return undefined;
+  }
+
+  const parentRuleset = getParentRuleset(ruleset, context);
+  const parentOwnSelector = parentRuleset?.getOwnSelector(context);
+  if (
+    parentOwnSelector
+    && !isNode(parentOwnSelector, N.Nil)
+    && isNode(parentOwnSelector, N.SelectorList)
+  ) {
+    return undefined;
+  }
+  const parentSelectorBeforeExtend = parentRuleset
+    ? (context ? parentRuleset.get('selectorBeforeExtend', context) : parentRuleset.getSelectorBeforeExtend())
+    : undefined;
+  const activeParentSelector = parentRuleset?.getEffectiveSelector(false, context);
+  const parentSelector = (
+    parentSelectorBeforeExtend
+    && !isNode(parentSelectorBeforeExtend, N.Nil)
+      ? parentSelectorBeforeExtend
+      : activeParentSelector
+  );
+  if (!parentSelector || isNode(parentSelector, N.Nil)) {
+    return undefined;
+  }
+
+  if (selectorHasTopLevelValue(activeParentSelector, instruction.extendWith.valueOf())) {
+    return undefined;
+  }
+
+  const ownMatch = selectorMatch(instruction.target, ownSelector, parentSelector, context);
+  if (!ownMatch.partialMatch || ownMatch.crossesAmpersand) {
+    return undefined;
+  }
+
+  return {
+    selector: ownSelector,
+    parent: parentSelector,
+    usingOwnSelector: true
+  };
+}
+
 function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
+  const rulesetFlagTarget = ruleset;
   if (context) {
-    ruleset._removeFlag(F_EXTENDED, context);
+    rulesetFlagTarget._removeFlag(F_EXTENDED, context);
   } else {
-    ruleset.removeFlag(F_EXTENDED);
+    rulesetFlagTarget.removeFlag(F_EXTENDED);
   }
   if (getRulesetHoistToRoot(ruleset, context) !== undefined) {
     setRulesetHoistToRoot(ruleset, undefined, context);
   }
-  const selector = (ruleset.getExtendedSelector(context) ?? ruleset.getCurrentSelector(context));
+  const selector = ((context ? ruleset.get('_extendedSelector', context) : ruleset.getExtendedSelector()) ?? ruleset.get('selector', context));
   if (selector && !isNode(selector, N.Nil)) {
     if (context) {
       selector._removeFlag(F_EXTENDED, context);
@@ -662,17 +786,11 @@ function clearExtendedRuleset(ruleset: Ruleset, context?: Context): void {
   syncRulesetDerivedSelector(ruleset, context);
 }
 
-function getRulesetHoistToRoot(ruleset: Ruleset, context?: Context): boolean | undefined {
-  return context
-    ? getField<boolean | undefined>(ruleset, 'hoistToRoot', context)
-    : ruleset.hoistToRoot;
+function getRulesetHoistToRoot(ruleset: Ruleset, _context?: Context): boolean | undefined {
+  return ruleset.hoistToRoot;
 }
 
-function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, context?: Context): void {
-  if (context) {
-    setField(ruleset, 'hoistToRoot', value, context);
-    return;
-  }
+function setRulesetHoistToRoot(ruleset: Ruleset, value: boolean | undefined, _context?: Context): void {
   ruleset.hoistToRoot = value;
 }
 
@@ -682,28 +800,52 @@ function applyInstructionToRuleset(
   cache?: TargetInfoCache,
   context?: Context
 ): { matched: boolean; changed: boolean } {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  let targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
   if (!targetInfo) {
-    return { matched: false, changed: false };
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, undefined, context);
+    if (!fallbackTargetInfo) {
+      return { matched: false, changed: false };
+    }
+    targetInfo = fallbackTargetInfo;
   }
 
-  const targetMatch = selectorMatch(
+  let targetMatch = selectorMatch(
     instruction.target,
     targetInfo.selector,
     targetInfo.parent,
     context
   );
   if (!targetMatch.partialMatch) {
-    return { matched: false, changed: false };
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, targetInfo, context);
+    if (!fallbackTargetInfo) {
+      return { matched: false, changed: false };
+    }
+    targetInfo = fallbackTargetInfo;
+    targetMatch = selectorMatch(
+      instruction.target,
+      targetInfo.selector,
+      targetInfo.parent,
+      context
+    );
+    if (!targetMatch.partialMatch) {
+      return { matched: false, changed: false };
+    }
   }
 
-  const currentSelector = ruleset.getCurrentSelector(context);
-  if (!ruleset.getSelectorBeforeExtend(context) && currentSelector && !isNode(currentSelector, N.Nil)) {
-    ruleset.setSelectorBeforeExtend(currentSelector.copy(true) as Selector, context!);
+  const currentSelector = ruleset.get('selector', context);
+  const selectorBeforeExtend = targetInfo.usingOwnSelector
+    ? targetInfo.selector
+    : currentSelector;
+  if (
+    !(context ? ruleset.get('selectorBeforeExtend', context) : ruleset.getSelectorBeforeExtend())
+    && selectorBeforeExtend
+    && !isNode(selectorBeforeExtend, N.Nil)
+  ) {
+    ruleset.setSelectorBeforeExtend(selectorBeforeExtend.copy(true) as Selector, context!);
   }
 
   if (
-    isNodeInsideRules(instruction.extendNode, ruleset.getCurrentRules(context))
+    isNodeInsideRules(instruction.extendNode, ruleset.enterRules(context))
     && instruction.extendWith.valueOf() === targetInfo.selector.valueOf()
     && targetMatch.fullMatch
   ) {
@@ -740,7 +882,7 @@ function applyInstructionToRuleset(
   const normalizedResult = normalizeGeneratedIsOrder(result.value);
   const after = normalizedResult.valueOf();
   activateExtendedRuleset(ruleset, normalizedResult, context);
-  if (!result.isChanged || before === after) {
+  if (before === after) {
     return { matched: true, changed: false };
   }
 
@@ -752,13 +894,20 @@ function applyInstructionToRuleset(
       && targetMatch.crossesAmpersand
       && normalizedResult !== targetInfo.selector
     )
+    || (
+      !targetInfo.usingOwnSelector
+      && Boolean(ruleset.getOwnSelector() && !isNode(ruleset.getOwnSelector()!, N.Nil))
+      && selectorHasAuthoredAmpersand(ruleset.getOwnSelector() as Selector)
+    )
   );
 
   let nextSelector = normalizedResult;
   if (targetInfo.usingOwnSelector) {
-    const nextOwnSelector = targetInfo.parent
-      ? localizeSelectorAgainstParent(normalizedResult, targetInfo.parent)
-      : normalizedResult;
+    const nextOwnSelector = (
+      shouldHoist || !targetInfo.parent
+    )
+      ? normalizedResult
+      : localizeSelectorAgainstParent(normalizedResult, targetInfo.parent);
     ruleset.setOwnSelector(nextOwnSelector, context);
 
     if (!shouldHoist && targetInfo.parent) {
@@ -830,65 +979,75 @@ export function processExtends(context: Context): void {
           continue;
         }
 
-        const visibleInstructions = instructions.filter(instruction =>
-          isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
-        );
-        if (!visibleInstructions.length) {
-          continue;
-        }
+        const savedRenderKey = context.renderKey;
+        const savedRulesContext = context.rulesContext;
+        context.renderKey = rootRules.renderKey;
+        context.rulesContext = rootRules;
 
-        for (const ruleset of rulesetSet) {
-          let rulesetMatched = false;
-          for (const instruction of visibleInstructions) {
-            const appliedInstructions = appliedRulesetInstructions.get(ruleset);
-            if (appliedInstructions?.has(instruction)) {
-              instructionMatched.add(instruction);
-              rulesetMatched = true;
-              continue;
-            }
-
-            const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
-            const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
-            if (
-              signatureBefore !== undefined
-              && perInstructionStates?.get(instruction) === signatureBefore
-            ) {
-              instructionMatched.add(instruction);
-              rulesetMatched = true;
-              continue;
-            }
-
-            const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
-            if (outcome.matched) {
-              instructionMatched.add(instruction);
-              rulesetMatched = true;
-
-              let nextStates = perInstructionStates;
-              if (!nextStates) {
-                nextStates = new Map<RecordedExtendInstruction, string>();
-                seenRulesetInstructionStates.set(ruleset, nextStates);
-              }
-              nextStates.set(
-                instruction,
-                getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
-              );
-            }
-            if (outcome.changed) {
-              invalidateTargetInfoCacheTree(targetInfoCache, ruleset);
-              targetInfoCache = new WeakMap();
-              let nextAppliedInstructions = appliedInstructions;
-              if (!nextAppliedInstructions) {
-                nextAppliedInstructions = new Set<RecordedExtendInstruction>();
-                appliedRulesetInstructions.set(ruleset, nextAppliedInstructions);
-              }
-              nextAppliedInstructions.add(instruction);
-              changed = true;
-            }
+        try {
+          const visibleInstructions = instructions.filter(instruction =>
+            isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+          );
+          if (!visibleInstructions.length) {
+            continue;
           }
 
-          if (!rulesetMatched) {
-            clearExtendedRuleset(ruleset, context);
+          for (const ruleset of rulesetSet) {
+            let rulesetMatched = false;
+            for (const instruction of visibleInstructions) {
+              const appliedInstructions = appliedRulesetInstructions.get(ruleset);
+              if (appliedInstructions?.has(instruction)) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+                continue;
+              }
+
+              const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
+              const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
+              if (
+                signatureBefore !== undefined
+                && perInstructionStates?.get(instruction) === signatureBefore
+              ) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+                continue;
+              }
+
+              const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
+              if (outcome.matched) {
+                instructionMatched.add(instruction);
+                rulesetMatched = true;
+
+                let nextStates = perInstructionStates;
+                if (!nextStates) {
+                  nextStates = new Map<RecordedExtendInstruction, string>();
+                  seenRulesetInstructionStates.set(ruleset, nextStates);
+                }
+                nextStates.set(
+                  instruction,
+                  getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
+                );
+              }
+              if (outcome.changed) {
+                invalidateTargetInfoCacheTree(targetInfoCache, ruleset);
+                targetInfoCache = new WeakMap();
+                let nextAppliedInstructions = appliedInstructions;
+                if (!nextAppliedInstructions) {
+                  nextAppliedInstructions = new Set<RecordedExtendInstruction>();
+                  appliedRulesetInstructions.set(ruleset, nextAppliedInstructions);
+                }
+                nextAppliedInstructions.add(instruction);
+                changed = true;
+              }
+            }
+
+            if (!rulesetMatched) {
+              clearExtendedRuleset(ruleset, context);
+            }
           }
+        } finally {
+          context.renderKey = savedRenderKey;
+          context.rulesContext = savedRulesContext;
         }
       }
     }

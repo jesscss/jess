@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { defineType, Node, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_NON_STATIC, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { Selector } from './selector.js';
 import type { BitSetLibrary } from './util/bitset.js';
@@ -42,7 +42,7 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated, NodeO
 export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptions, InterpolatedSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Interpolated;
+  readonly value!: Interpolated;
 
   constructor(value: Interpolated, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -50,6 +50,8 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
     if (this.value instanceof Node) {
       this.adopt(this.value);
     }
+    this.addFlag(F_NON_STATIC);
+    this.addFlag(F_MAY_ASYNC);
   }
 
   get isClass() {
@@ -65,7 +67,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const result = this.get('value', context).evalToSelector(context);
+    const result = this.value.evalToSelector(context);
     const library = context.selectorBits;
     if (isThenable(result)) {
       return (result as Promise<Selector>).then((sel) => {
@@ -81,7 +83,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated, NodeOptio
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this.get('value', options.context).toString(options);
+    this.value.toString(options);
     return w.getSince(mark);
   }
 

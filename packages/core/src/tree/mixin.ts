@@ -1,5 +1,4 @@
-import type { Class } from 'type-fest';
-import { F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
+import { CANONICAL, EVAL, F_VISIBLE, Node, defineType, type OptionalLocation } from './node.js';
 import type { Condition } from './condition.js';
 import { type List } from './list.js';
 import type { Any, AnyRole } from './any.js';
@@ -8,7 +7,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField, setParent } from './util/field-helpers.js';
+import { setParent } from './util/field-helpers.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -91,22 +90,21 @@ export interface Mixin {
 export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   static override childKeys = ['name', 'rules', 'params', 'guard'] as const;
 
-  /** @internal */ name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
-  /** @internal */ rules!: Rules;
-  /** @internal */ params: List<Node> | undefined;
-  /** @internal */ guard: Condition | undefined;
+  name: Any<AnyRole> | Interpolated<AnyRole> | undefined;
+  rules!: Rules;
+  params: List<Node> | undefined;
+  guard: Condition | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     const name = this.get('name', ctx);
     const rules = this.get('rules', ctx);
     const params = this.get('params', ctx);
     const guard = this.get('guard', ctx);
-    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
     const cloneData: MixinValue = {
-      name: deep && name instanceof Node ? cloneChild(name) as Any<'name'> | Interpolated<'name'> : name as Any<'name'> | Interpolated<'name'> | undefined,
-      rules: deep ? cloneChild(rules) as Rules : rules,
-      params: deep && params instanceof Node ? cloneChild(params) as List<Node> : params,
-      guard: deep && guard instanceof Node ? cloneChild(guard) as Condition : guard
+      name: deep && name instanceof Node ? name.clone(deep, cloneFn, ctx) : name,
+      rules: deep ? rules.clone(deep, cloneFn, ctx) : rules,
+      params: deep && params instanceof Node ? params.clone(deep, cloneFn, ctx) : params,
+      guard: deep && guard instanceof Node ? guard.clone(deep, cloneFn, ctx) : guard
     };
 
     let priorChildParents: Array<[Node, Node | undefined]> | undefined;
@@ -127,17 +125,17 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     }
 
     const options = this._meta?.options;
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       cloneData,
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
 
     if (priorChildParents) {
       for (const [child, priorParent] of priorChildParents) {
         setParent(child, newNode, ctx!);
-        (child as unknown as { parent?: Node }).parent = priorParent;
+        Reflect.set(child, 'parent', priorParent);
       }
     }
 
@@ -199,7 +197,7 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     const w = options.writer!;
     const context = options.context;
     const name = this.get('name', context);
-    const rules = this.get('rules', context);
+    const rules = this.get('rules', context).withRenderOwner(this, context?.renderKey, context);
     const params = this.get('params', context);
     const guard = this.get('guard', context);
     const mark = w.mark();
@@ -224,23 +222,32 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    if (this._isPreEvaluated(context)) {
+    if (this.preEvaluated) {
       return this;
     }
     // Mixins should NOT pre-evaluate their rules during initial registration.
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    /** @removal-target — node-copy-reduction: maybeClone → return this.
-     * Name interpolation result should go through position.setField. */
-    let node = this.maybeClone(context);
-    node._setPreEvaluated(true, context);
+    const edgeContext = {
+      ...context,
+      renderKey: context.renderKey ?? EVAL
+    } as Context;
+    let node = this.clone(false, undefined, edgeContext);
+    node.preEvaluated = true;
     node.sourceNode ??= this;
+    node.renderKey = edgeContext.renderKey;
 
     const name = node.get('name', context);
-    const rules = node.get('rules', context);
+    let rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);
+    if (rules.renderKey === CANONICAL) {
+      const wrappedRules = rules.createShallowBodyWrapper(context);
+      node.rules = wrappedRules;
+      node.adopt(wrappedRules, context);
+      rules = wrappedRules;
+    }
     // Set visibility on the canonical rules options — mixin body visibility
-    // is set once during preEval, same as dev baseline.
+    // is set on the derived mixin body wrapper for this eval path.
     const rulesVisibility = { ...(rules.options.rulesVisibility ?? {}) };
     if (context.leakyRules) {
       rulesVisibility.Mixin = 'public';
@@ -253,12 +260,12 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
-        return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          setField(node, 'name', key, context);
+        return maybeKey.then((key) => {
+          node.name = key;
           return node;
         });
       }
-      setField(node, 'name', maybeKey as Any<'name'>, context);
+      node.name = maybeKey;
     }
     return node;
   }

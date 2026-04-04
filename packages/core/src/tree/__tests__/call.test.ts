@@ -1,7 +1,6 @@
-import { vi } from 'vitest';
-import { any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
+import { Node, any, call, coll, decl, expr, fn, interpolated, jsfunc, list, num, ref, rules, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { getParent, setField } from '../util/field-helpers.js';
+import { defineFunction } from '../../define-function.js';
 
 let context: Context;
 describe('Call', () => {
@@ -48,7 +47,7 @@ describe('Call', () => {
     expect(evald.toTrimmedString({ context })).toBe('blur(4px)');
   });
 
-  it('materializes fallback-call args without mutating canonical nested sequence spacing', async () => {
+  it('renders fallback-call args with normalized nested sequence spacing without mutating canonical args', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
@@ -74,7 +73,7 @@ describe('Call', () => {
     expect(arg.toTrimmedString()).toBe('12');
   });
 
-  it('uses state-patched args when materializing a fallback call without mutating the patched source args', async () => {
+  it('renders fallback-call args from replaced source args without mutating the canonical source args', async () => {
     const originalSecond = num(2);
     originalSecond.pre = 0;
     const originalArg = seq([num(1), originalSecond]);
@@ -95,10 +94,14 @@ describe('Call', () => {
       }),
       node
     ]);
+    const clonedRoot = root.clone(true);
+    const clonedNode = clonedRoot.at(1, context) as ReturnType<typeof call>;
+    const patchedArgs = list([patchedArg]);
 
-    setField(node, 'args', list([patchedArg]), context);
+    clonedNode.adopt(patchedArgs, context);
+    (clonedNode as unknown as { args: ReturnType<typeof list> }).args = patchedArgs;
 
-    const evald = await root.eval(context);
+    const evald = await clonedRoot.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('fn(3 4)');
     expect(originalSecond.pre).toBe(0);
@@ -107,7 +110,7 @@ describe('Call', () => {
     expect(patchedArg.toTrimmedString()).toBe('34');
   });
 
-  it('preserves a state-patched content node across fallback-call materialization without mutating the canonical call', async () => {
+  it('preserves a cloned content node across fallback-call materialization without mutating the canonical call', async () => {
     const failingFn = () => {
       throw new Error('boom');
     };
@@ -122,20 +125,25 @@ describe('Call', () => {
       }),
       node
     ]);
+    const clonedRoot = root.clone(true);
+    const clonedNode = clonedRoot.at(1, context) as ReturnType<typeof call>;
+    const patchedContent = any('patched');
 
-    setField(node, 'contentNode', any('patched'), context);
+    clonedNode.adopt(patchedContent, context);
+    (clonedNode as unknown as { contentNode: ReturnType<typeof any> }).contentNode = patchedContent;
 
-    const evald = await root.eval(context);
+    const evald = await clonedRoot.eval(context);
 
     expect(evald.toTrimmedString({ context })).toContain('fn(1): patched');
     expect(node.get('contentNode')).toBeUndefined();
     expect(node.toTrimmedString()).toBe('$fn??(1)');
   });
 
-  it('passes state-patched nested args into JS function calls without mutating the canonical arg nodes', async () => {
+  it('passes the current evaluated arg nodes into JS function calls without mutating the canonical arg nodes', async () => {
     const second = num(2);
     second.pre = 0;
     const arg = seq([num(1), second]);
+    let seenArg: unknown;
     const node = call({
       name: ref('fn', { type: 'variable' }),
       args: list([arg])
@@ -143,19 +151,70 @@ describe('Call', () => {
     const root = rules([
       vardecl({
         name: any('fn'),
-        value: jsfunc({ name: 'fn', fn: (value: unknown) => value })
+        value: jsfunc({
+          name: 'fn',
+          fn: (value: unknown) => {
+            seenArg = value;
+            return value;
+          }
+        })
+      }),
+      node
+    ]);
+    const clonedRoot = root.clone(true);
+    const clonedNode = clonedRoot.at(1, context) as ReturnType<typeof call>;
+    const clonedArg = clonedNode.get('args').at(0, context) as ReturnType<typeof seq>;
+    const clonedSecond = num(4);
+    clonedSecond.pre = 0;
+
+    (clonedArg as unknown as { value: ReturnType<typeof num>[] }).value = [num(3), clonedSecond];
+
+    const evald = await clonedRoot.eval(context);
+
+    expect(seenArg).toBe(clonedArg);
+    expect(evald.toTrimmedString({ context })).toContain('34');
+    expect(arg.toTrimmedString()).toBe('12');
+    expect(second.pre).toBe(0);
+    expect(clonedArg.toTrimmedString()).toBe('34');
+    expect(clonedSecond.pre).toBe(0);
+  });
+
+  it('defers lazy defineFunction args until callWithContext requests them', async () => {
+    const lazyFn = defineFunction(
+      'lazy-if',
+      async function(_condition: Node, thenValue: () => Promise<Node>, elseValue: () => Promise<Node>) {
+        return await elseValue();
+      },
+      {
+        params: [{
+          name: 'condition',
+          type: Node
+        }, {
+          name: 'thenValue',
+          type: Node,
+          lazy: true
+        }, {
+          name: 'elseValue',
+          type: Node,
+          lazy: true
+        }]
+      }
+    );
+    const node = call({
+      name: ref('fn', { type: 'variable' }),
+      args: list([any('ignored'), ref('missingThen'), num(2)])
+    });
+    const root = rules([
+      vardecl({
+        name: any('fn'),
+        value: jsfunc({ name: 'fn', fn: lazyFn })
       }),
       node
     ]);
 
-    setField(arg, 'value', [num(3), num(4)], context);
-
     const evald = await root.eval(context);
 
-    expect(evald.toTrimmedString({ context })).toContain('3 4');
-    expect(arg.toTrimmedString({ context })).toBe('3 4');
-    expect(arg.toTrimmedString()).toBe('12');
-    expect(second.pre).toBe(0);
+    expect(evald.toTrimmedString({ context })).toContain('2');
   });
 
   it('does not clear canonical silentFail in the non-function branch during patch-only eval', async () => {
@@ -171,46 +230,35 @@ describe('Call', () => {
     expect(node.options.silentFail).toBe(true);
   });
 
-  it('reads a state-patched silentFail option during serialization without mutating canonical output', () => {
+  it('reads a cloned silentFail option during serialization without mutating canonical output', () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
     });
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { silentFail: true }, context);
+    clonedNode.options = { silentFail: true };
 
-    expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
+    expect(clonedNode.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
     expect(node.options.silentFail).toBeUndefined();
   });
 
-  it('reads a state-patched silentFail option during non-function eval without mutating canonical options', async () => {
+  it('reads a cloned silentFail option during non-function eval without mutating canonical options', async () => {
     const node = call({
       name: 'rgb',
       args: list([num(1)])
     });
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { silentFail: true }, context);
+    clonedNode.options = { silentFail: true };
 
-    const evald = await node.eval(context);
+    const evald = await clonedNode.eval(context);
 
     expect(evald.toTrimmedString({ context })).toBe('rgb(1)');
-    expect(node.toTrimmedString({ context })).toBe('rgb?(1)');
+    expect(clonedNode.toTrimmedString({ context })).toBe('rgb?(1)');
     expect(node.toTrimmedString()).toBe('rgb(1)');
     expect(node.options.silentFail).toBeUndefined();
-  });
-
-  it('keeps canonical child parents intact on shallow clones while exposing the wrapper through the state parent chain', () => {
-    const name = ref('rgb', { type: 'function' });
-    const args = list([num(1)]);
-    const node = call({ name, args });
-
-    const clone = node.clone(false, undefined, context);
-
-    expect(name.parent).toBe(node);
-    expect(args.parent).toBe(node);
-    expect(getParent(name, context)).toBe(clone);
-    expect(getParent(args, context)).toBe(clone);
   });
 
   it('uses the call-local shallow clone in the silent-fail non-function branch without canonically reparenting children', async () => {
@@ -227,128 +275,7 @@ describe('Call', () => {
     expect(node.toTrimmedString()).toBe('rgb?(1)');
   });
 
-  it('materializes stylesheet-function return nodes before applying call result provenance', async () => {
-    const returnValue = any('ok');
-    returnValue.pre = 0;
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const node = call({
-      name: functionNode,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toBe('ok');
-    expect(result).not.toBe(returnValue);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-    expect(returnValue.pre).toBe(0);
-    expect(returnValue.post).toBeUndefined();
-    expect(returnValue.sourceParent).toBeUndefined();
-  });
-
-  it('materializes stylesheet-function rules results without reusing canonical child identity', async () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const node = call({
-      name: functionNode,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toContain('color: red;');
-    expect(result).not.toBe(returnValue);
-    expect(result.value[0]).not.toBe(childDecl);
-    expect(childDecl.parent).toBe(returnValue);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-  });
-
-  it('materializes nested-call results before applying outer call provenance', async () => {
-    const returnValue = any('ok');
-    returnValue.pre = 0;
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const aliasCall = call({
-      name: functionNode,
-      args: list([])
-    });
-    const aliasRef = ref('alias', { type: 'variable' });
-    vi.spyOn(aliasRef, 'eval').mockResolvedValue(aliasCall);
-    const node = call({
-      name: aliasRef,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toBe('ok');
-    expect(result).not.toBe(returnValue);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-    expect(returnValue.pre).toBe(0);
-    expect(returnValue.post).toBeUndefined();
-    expect(returnValue.sourceParent).toBeUndefined();
-  });
-
-  it('keeps nested-call composite Rules results out of the remaining same-source owner branch', async () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const functionNode = fn({
-      name: any('make'),
-      body: rules([
-        decl({ name: 'return', value: returnValue })
-      ])
-    });
-    const aliasCall = call({
-      name: functionNode,
-      args: list([])
-    });
-    const aliasRef = ref('alias', { type: 'variable' });
-    vi.spyOn(aliasRef, 'eval').mockResolvedValue(aliasCall);
-    const node = call({
-      name: aliasRef,
-      args: list([])
-    });
-    node.pre = 2;
-    node.post = 1;
-
-    const result = await node.eval(context);
-
-    expect(result.toTrimmedString({ context })).toContain('color: red;');
-    expect(result).not.toBe(returnValue);
-    expect(result.value[0]).not.toBe(childDecl);
-    expect(result.pre).toBe(2);
-    expect(result.post).toBe(1);
-    expect(result.sourceParent).toBe(node);
-    expect(childDecl.parent).toBe(returnValue);
-  });
-
-  it('materializes collection results without mutating canonical collection children', async () => {
+  it('returns a collection through a placement-owned Rules boundary without mutating canonical children', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const collectionNode = coll([childDecl]);
     const node = call({
@@ -357,14 +284,16 @@ describe('Call', () => {
     }, { markImportant: true });
 
     const result = await node.eval(context);
+    const resultContext = { ...context, renderKey: (result as typeof result & { renderKey: symbol | number }).renderKey };
 
     expect(result.toTrimmedString({ context })).toContain('color: red !important;');
-    expect(result.value[0]).not.toBe(childDecl);
+    expect(result.at(0, context)).toBe(childDecl);
+    expect(childDecl.getCurrentImportant(resultContext)?.toTrimmedString()).toBe('!important');
     expect(childDecl.parent).toBe(collectionNode);
     expect(childDecl.toTrimmedString({ context })).toBe('color: red');
   });
 
-  it('characterizes composite same-source Rules results as still needing a returned-tree boundary, not a shallow clone', () => {
+  it('keeps canonical collection children on the source Rules when the returned boundary is marked important', () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const returnValue = rules([childDecl]);
     const node = call({
@@ -372,73 +301,33 @@ describe('Call', () => {
       args: list([])
     }, { markImportant: true });
 
-    const shallow = returnValue.clone(false, undefined, context);
+    const shallow = returnValue.createPlacementWrapper(context, context.nextRenderKey());
+    const shallowContext = { ...context, renderKey: shallow.renderKey };
 
     expect(shallow.value[0]).toBe(childDecl);
-    expect(childDecl.parent).toBe(shallow);
+    expect(childDecl.parent).toBe(returnValue);
     expect(returnValue.value[0]).toBe(childDecl);
 
-    node.makeImportant(shallow);
+    node.makeImportant(shallow, context);
 
-    expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
-  });
-
-  it('characterizes composite same-source Rules results as still needing a child-identity-breaking returned-tree boundary, not a lookup-safe wrapper', () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const node = call({
-      name: returnValue,
-      args: list([])
-    }, { markImportant: true });
-
-    const wrapper = returnValue.cloneLookupSafeShallowWrapper(context);
-
-    expect(wrapper.value[0]).toBe(childDecl);
-    expect(childDecl.parent).toBe(returnValue);
-    expect(getParent(childDecl, context)).toBe(wrapper);
-
-    node.makeImportant(wrapper);
-
-    expect(childDecl.get('important')?.toTrimmedString()).toBe('!important');
-  });
-
-  it('characterizes the exact lower helper contract for stylesheet-function same-source Rules results', () => {
-    const childDecl = decl({ name: 'color', value: any('red') });
-    const returnValue = rules([childDecl]);
-    const node = call({
-      name: returnValue,
-      args: list([])
-    }, { markImportant: true });
-    node.pre = 2;
-    node.post = 1;
-
-    const returned = returnValue.cloneDetachedMaterializedWrapper(context);
-    node.makeImportant(returned);
-    returned.pre = node.pre;
-    returned.post = node.post;
-    returned.sourceParent = node;
-
-    expect(returned).not.toBe(returnValue);
-    expect(returned.value[0]).not.toBe(childDecl);
-    expect(childDecl.parent).toBe(returnValue);
-    expect(returned.value[0].toTrimmedString({ context })).toBe('color: red !important');
-    expect(returned.pre).toBe(2);
-    expect(returned.post).toBe(1);
-    expect(returned.sourceParent).toBe(node);
+    expect(shallow.at(0, context)).toBe(childDecl);
+    expect(shallow.toTrimmedString({ context })).toContain('!important');
+    expect(childDecl.get('important', shallowContext)?.toTrimmedString()).toBe('!important');
     expect(childDecl.get('important')).toBeUndefined();
   });
 
-  it('reads a state-patched markImportant option for collection results without mutating canonical options', async () => {
+  it('reads a cloned markImportant option for collection results without mutating canonical options', async () => {
     const childDecl = decl({ name: 'color', value: any('red') });
     const collectionNode = coll([childDecl]);
     const node = call({
       name: collectionNode,
       args: list([])
     });
+    const clonedNode = node.clone();
 
-    setField(node, 'options', { markImportant: true }, context);
+    clonedNode.options = { markImportant: true };
 
-    const result = await node.eval(context);
+    const result = await clonedNode.eval(context);
 
     expect(result.toTrimmedString({ context })).toContain('color: red !important;');
     expect(node.options.markImportant).toBeUndefined();

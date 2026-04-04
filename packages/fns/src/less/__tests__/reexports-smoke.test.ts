@@ -10,18 +10,21 @@ import lessRound from '../round.js';
 
 describe('tiny re-export wrappers', () => {
   it('executes shared wrapper modules and returns expected values', () => {
-    expect(lessAbs(new Dimension({ number: -3, unit: 'px' })).data).toEqual({ number: 3, unit: 'px' });
-    expect(lessCeil(new Dimension({ number: 2.1, unit: 'px' })).data).toEqual({ number: 3, unit: 'px' });
-    expect(lessRound(new Dimension({ number: 2.49, unit: 'px' })).data).toEqual({ number: 2, unit: 'px' });
+    expect(lessAbs(new Dimension({ number: -3, unit: 'px' })).number).toBe(3);
+    expect(lessAbs(new Dimension({ number: -3, unit: 'px' })).unit).toBe('px');
+    expect(lessCeil(new Dimension({ number: 2.1, unit: 'px' })).number).toBe(3);
+    expect(lessCeil(new Dimension({ number: 2.1, unit: 'px' })).unit).toBe('px');
+    expect(lessRound(new Dimension({ number: 2.49, unit: 'px' })).number).toBe(2);
+    expect(lessRound(new Dimension({ number: 2.49, unit: 'px' })).unit).toBe('px');
 
     const color = new Color({
       rgb: [12, 34, 56],
       format: 'rgb',
       alpha: 0.5
     });
-    expect(lessRed(color).data.number).toBe(12);
-    expect(lessGreen(color).data.number).toBe(34);
-    expect(lessBlue(color).data.number).toBe(56);
-    expect(lessAlpha(color).data.number).toBe(0.5);
+    expect(lessRed(color).number).toBe(12);
+    expect(lessGreen(color).number).toBe(34);
+    expect(lessBlue(color).number).toBe(56);
+    expect(lessAlpha(color).number).toBe(0.5);
   });
 });

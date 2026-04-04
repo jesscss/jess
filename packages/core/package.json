@@ -6,23 +6,21 @@
   },
   "version": "2.0.0-alpha.5",
   "description": "The Jess Core Library",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "engines": {
     "node": ">=16"
@@ -36,6 +34,7 @@
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",
     "enhanced-resolve": "~5.18.3",
+    "chevrotain": "^12.0.0",
     "lodash-es": "^4.17.21"
   },
   "scripts": {
@@ -43,11 +42,13 @@
     "prepublishOnly": "pnpm build && pnpm test -- --run",
     "build": "pnpm compile",
     "visualize": "vite build",
-    "compile": "tsc -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json && node ../../tools/tsdown/fix-core-treecontext-export.mjs lib/index.d.ts lib/index.d.cts",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "cross-env TEST=true vitest",
+    "test:debug": "cross-env TEST=true vitest --run --maxWorkers=1 --fileParallelism=false",
     "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",
     "test:coverage": "cross-env TEST=true vitest --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
@@ -59,7 +60,6 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@types/lodash-es": "^4.17.8",
-    "chevrotain": "^12.0.0",
     "rollup-plugin-circular-dependencies": "~1.1.2",
     "rollup-plugin-visualizer": "~6.0.3",
     "vite-plugin-circular-dependency": "~0.5.0",

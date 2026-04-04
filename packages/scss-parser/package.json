@@ -3,18 +3,20 @@
   "private": true,
   "description": "",
   "version": "2.0.0-alpha.1",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "import": "./lib/index.js",
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts"
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
     },
     "./*": {
       "types": "./lib/*.d.ts",
+      "source": "./src/*.ts",
       "import": "./lib/*.js",
-      "source": "./src/*.ts"
+      "require": "./lib/*.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -26,8 +28,8 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json",
-    "dev": "pnpm -w exec tsc -p packages/scss-parser/tsconfig.build.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
     "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts test/sass-spec.smoke.test.ts",
@@ -48,5 +50,7 @@
   "bugs": {
     "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/jesscss/jess#readme"
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "type": "module",
+  "module": "lib/index.js"
 }

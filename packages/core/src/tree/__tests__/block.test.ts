@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { any, block, expr } from '../index.js';
 import { Context } from '../../context.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('Block', () => {
   it('serializes children with the configured wrapper shape', () => {
@@ -18,5 +20,21 @@ describe('Block', () => {
     const evald = await node.eval(ctx);
 
     expect(evald.toTrimmedString({ context: ctx })).toBe('{red}');
+  });
+
+  it('keeps the canonical child direct while render keys can select alternates', () => {
+    const canonical = any('red');
+    const alternate = any('blue');
+    const node = block(canonical);
+    const key = {} as RenderKey;
+    const cursor = { node, renderKey: key };
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
   });
 });

@@ -5,7 +5,6 @@ import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -38,9 +37,9 @@ export interface AttributeSelector {
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, NodeOptions, AttributeSelectorChildData> {
   static override childKeys = ['name', 'value'] as const;
 
-  /** @internal */ name!: string | Node;
+  name!: string | Node;
   private op: string | undefined;
-  /** @internal */ value: Node | undefined;
+  value: Node | undefined;
   private mod: string | undefined;
 
   override clone(deep?: boolean): this {
@@ -73,6 +72,20 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
     }
   }
 
+  private _setName(name: string | Node, context?: Context): void {
+    if (name instanceof Node) {
+      this.adopt(name, context);
+    }
+    this.name = name;
+  }
+
+  private _setValue(value: Node | undefined, context?: Context): void {
+    if (value instanceof Node) {
+      this.adopt(value, context);
+    }
+    this.value = value;
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     const currentName = this.get('name', context);
     const currentValue = this.get('value', context);
@@ -81,13 +94,13 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
       : currentName.eval(context);
     const maybeValue = currentValue?.eval(context);
     const finish = (name: string | Node, value: Node | undefined): this => {
-      const node = this.maybeClone(context);
+      const node = this.clone();
 
       if (name !== currentName) {
-        setField(node, 'name', name, context);
+        node._setName(name, context);
       }
       if (value !== currentValue) {
-        setField(node, 'value', value, context);
+        node._setValue(value, context);
       }
 
       return node;

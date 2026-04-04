@@ -1,5 +1,4 @@
-import type { Class } from 'type-fest';
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeOptions, type OptionalLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -10,7 +9,6 @@ import { Call } from './call.js';
 import { list } from './list.js';
 import {
   mergeDependencies,
-  setField,
   setDependency,
   setEvaluated
 } from './util/field-helpers.js';
@@ -37,9 +35,9 @@ export interface Operation {
 export class Operation extends Node<OperationValue, NodeOptions, OperationChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  /** @internal */ left!: Node;
+  left!: Node;
   private operator!: Operator;
-  /** @internal */ right!: Node;
+  right!: Node;
 
   override clone(deep?: boolean): this {
     const options = this._meta?.options;
@@ -48,12 +46,12 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
       this.operator,
       deep ? this.right.clone(deep) : this.right
     ];
-    const newNode = new (this.constructor as Class<this>)(
+    const newNode: this = Reflect.construct(this.constructor, [
       value,
       options ? { ...options } : undefined,
       this.location,
       this.treeContext
-    );
+    ]);
     newNode.inherit(this);
     return newNode;
   }
@@ -110,9 +108,11 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          const outOperation = n.clone(false) as Operation;
-          setField(outOperation, 'left', l, context);
-          setField(outOperation, 'right', r, context);
+          const outOperation = n.clone(false);
+          outOperation.adopt(l, context);
+          outOperation.adopt(r, context);
+          Reflect.set(outOperation, 'left', l);
+          Reflect.set(outOperation, 'right', r);
           return applyMergedDependency(outOperation, l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -129,9 +129,11 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Preserve canonical operation state by materializing an isolated wrapper when needed.
-              const calcOperation = n.clone(false) as Operation;
-              setField(calcOperation, 'left', l, context);
-              setField(calcOperation, 'right', r, context);
+              const calcOperation = n.clone(false);
+              calcOperation.adopt(l, context);
+              calcOperation.adopt(r, context);
+              Reflect.set(calcOperation, 'left', l);
+              Reflect.set(calcOperation, 'right', r);
               setEvaluated(calcOperation, true, context);
               setEvaluated(l, true, context);
               setEvaluated(r, true, context);
@@ -155,9 +157,15 @@ export class Operation extends Node<OperationValue, NodeOptions, OperationChildD
         out.post = right.post;
         return applyMergedDependency(out, l, r);
       }
-      setField(n, 'left', l, context);
-      setField(n, 'right', r, context);
-      return applyMergedDependency(n, l, r);
+      if (l === n.left && r === n.right) {
+        return applyMergedDependency(n, l, r);
+      }
+      const outOperation = n.clone(false);
+      outOperation.adopt(l, context);
+      outOperation.adopt(r, context);
+      Reflect.set(outOperation, 'left', l);
+      Reflect.set(outOperation, 'right', r);
+      return applyMergedDependency(outOperation, l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
       const maybeRight = right.eval(context);

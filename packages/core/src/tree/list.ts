@@ -1,11 +1,14 @@
 import { type Context } from '../context.js';
-import { defineType, F_MAY_ASYNC, Node } from './node.js';
+import { CANONICAL, defineType, F_MAY_ASYNC, Node, type NodeEdge, type RenderKey } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
+import { addEdgeAt, addParentEdge, removeParentEdge } from './util/cursor.js';
 import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
+import { canReuseEvalState } from './node-base.js';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 
 export type ListOptions = {
   /**
@@ -25,6 +28,14 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
   eval(context: Context): Promise<this>;
 }
 
+export function getListItem<T extends Node | NodeEdge<Node>>(list: T[], index: number, renderKey?: RenderKey) {
+  if (renderKey === undefined) {
+    return list[index];
+  }
+  return list instanceof Map
+    ? list.get(renderKey)?.[index] ?? list[index]
+    : list[index];
+}
 /**
  * A list of expressions
  *
@@ -35,7 +46,45 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions, List
 export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: T[];
+  value: T[];
+  valueEdges?: Array<NodeEdge<T> | undefined>;
+
+  getValue(renderKey?: RenderKey) {
+    if (renderKey === undefined || !this.valueEdges) {
+      return this.value;
+    }
+    let resolved: T[] | undefined;
+    for (let i = 0; i < this.value.length; i++) {
+      const alternate = this.valueEdges[i]?.get(renderKey);
+      if (alternate !== undefined) {
+        (resolved ??= [...this.value])[i] = alternate;
+      }
+    }
+    return resolved ?? this.value;
+  }
+
+  getValueAt(index: number, renderKey?: RenderKey) {
+    return renderKey !== undefined
+      ? this.valueEdges?.[index]?.get(renderKey) ?? this.value[index]
+      : this.value[index];
+  }
+
+  at(index: number, context?: Context) {
+    const renderKey = context?.renderKey ?? this.renderKey;
+    return this.getValueAt(index, renderKey);
+  }
+
+  private _replaceValueAt(index: number, node: T, renderKey: RenderKey): void {
+    const previous = this.getValueAt(index, renderKey);
+    if (previous === node) {
+      return;
+    }
+    if (previous && previous !== node) {
+      removeParentEdge(previous, renderKey);
+    }
+    addEdgeAt(this, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, this);
+  }
 
   constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -70,29 +119,41 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
 
-  override toTrimmedString(options?: PrintOptions) {
+  override toTrimmedString(options?: PrintOptions, renderKey?: RenderKey) {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this.get('value', options.context);
+    const activeRenderKey = renderKey ?? options.context?.renderKey ?? this.renderKey;
+    let value = this.getValue(activeRenderKey);
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
       return '';
     }
     // Print first item as-is
-    let item = value[0]!;
+    let item = getListItem(value, 0, renderKey);
     let out = w.capture(() => item.toString(options));
     w.add(out.replace(LIST_ITEM_TRIM, ''), item);
     // Subsequent items: emit sep; capture next item to decide spacing precisely
     for (let i = 1; i < length; i++) {
       item = value[i]!;
+      const rawOut = w.capture(() => item.toString(options));
+      const startsOnNextLine = /^[ \t\r\f]*\n/.test(rawOut);
+      const preserveSimpleMultilineCommaList = (
+        sep === ','
+        && startsOnNextLine
+        && value.every(entry => isNode(entry, N.Any | N.Quoted | N.Sequence))
+      );
       if (sep === '/') {
         w.add(' / ');
+        out = rawOut.replace(LIST_ITEM_TRIM, '');
+      } else if (preserveSimpleMultilineCommaList) {
+        w.add(sep);
+        out = rawOut.replace(/\s+$/g, '');
       } else {
         w.add(`${sep} `);
+        out = rawOut.replace(LIST_ITEM_TRIM, '');
       }
-      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
       w.add(out);
     }
     return w.getSince(mark);
@@ -118,24 +179,26 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const ownItems = this.get('value', context);
-    const nextItems = b instanceof List ? b.get('value', context) : [b as T];
-    let newList = this.maybeClone(context);
-    setField(newList, 'value', [...ownItems, ...nextItems], context);
+    const ownItems = this.getValue(context.renderKey);
+    const nextItems = b instanceof List ? b.getValue(context.renderKey) : [b as T];
+    let newList = this.clone();
+    const nextValue = [...ownItems, ...nextItems];
+    newList.value = nextValue;
+
     return newList;
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (this._isPreEvaluated(context)) {
+    const reusableState = canReuseEvalState(this, context);
+    if (this.preEvaluated && reusableState) {
       return this;
     }
-
-    const node = this.maybeClone(context);
-    node._setPreEvaluated(true, context);
-    const value = node.get('value', context);
+    const renderKey = context.renderKey ?? this.renderKey;
+    const isNonCanonical = renderKey !== undefined && renderKey !== CANONICAL;
+    const value = this.getValue(renderKey);
     const nextValue = value.slice();
 
-    if (!node.hasFlag(F_MAY_ASYNC)) {
+    if (!this.hasFlag(F_MAY_ASYNC)) {
       let changed = false;
       for (let i = 0; i < nextValue.length; i++) {
         const child = nextValue[i]!;
@@ -146,9 +209,31 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         }
       }
       if (changed) {
-        setField(node, 'value', nextValue, context);
+        if (isNonCanonical) {
+          for (let i = 0; i < nextValue.length; i++) {
+            const child = nextValue[i]!;
+            if (child !== value[i]) {
+              this._replaceValueAt(i, child, renderKey);
+            }
+          }
+          if (reusableState) {
+            this.preEvaluated = true;
+          }
+          return this;
+        } else {
+          const node = this.clone();
+          node.preEvaluated = true;
+          node.value = nextValue;
+          for (const child of nextValue) {
+            node.adopt(child);
+          }
+          return node;
+        }
       }
-      return node;
+      if (reusableState) {
+        this.preEvaluated = true;
+      }
+      return this;
     }
 
     let changed = false;
@@ -170,19 +255,65 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          setField(node, 'value', nextValue, context);
+          if (isNonCanonical) {
+            for (let i = 0; i < nextValue.length; i++) {
+              const child = nextValue[i]!;
+              if (child !== value[i]) {
+                this._replaceValueAt(i, child, renderKey);
+              }
+            }
+            if (reusableState) {
+              this.preEvaluated = true;
+            }
+            return this;
+          } else {
+            const node = this.clone();
+            node.preEvaluated = true;
+            node.value = nextValue;
+            for (const child of nextValue) {
+              node.adopt(child);
+            }
+            return node;
+          }
         }
-        return node;
+        if (reusableState) {
+          this.preEvaluated = true;
+        }
+        return this;
       });
     }
     if (changed) {
-      setField(node, 'value', nextValue, context);
+      if (isNonCanonical) {
+        for (let i = 0; i < nextValue.length; i++) {
+          const child = nextValue[i]!;
+          if (child !== value[i]) {
+            this._replaceValueAt(i, child, renderKey);
+          }
+        }
+        if (reusableState) {
+          this.preEvaluated = true;
+        }
+        return this;
+      } else {
+        const node = this.clone();
+        node.preEvaluated = true;
+        node.value = nextValue;
+        for (const child of nextValue) {
+          node.adopt(child);
+        }
+        return node;
+      }
     }
-    return node;
+    if (reusableState) {
+      this.preEvaluated = true;
+    }
+    return this;
   }
 
   protected override evalNode(context: Context): MaybePromise<Node> {
-    const value = this.get('value', context);
+    const renderKey = context.renderKey ?? this.renderKey;
+    const isNonCanonical = renderKey !== undefined && renderKey !== CANONICAL;
+    const value = this.getValue(renderKey);
     const nextValue = value.slice();
 
     if (!this.hasFlag(F_MAY_ASYNC)) {
@@ -196,7 +327,21 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
         }
       }
       if (changed) {
-        setField(this, 'value', nextValue, context);
+        if (isNonCanonical) {
+          for (let i = 0; i < nextValue.length; i++) {
+            const child = nextValue[i]!;
+            if (child !== value[i]) {
+              this._replaceValueAt(i, child, renderKey);
+            }
+          }
+          return this;
+        }
+        const node = this.clone();
+        node.value = nextValue;
+        for (const child of nextValue) {
+          node.adopt(child);
+        }
+        return node;
       }
       return this;
     }
@@ -220,13 +365,41 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChil
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         if (changed) {
-          setField(this, 'value', nextValue, context);
+          if (isNonCanonical) {
+            for (let i = 0; i < nextValue.length; i++) {
+              const child = nextValue[i]!;
+              if (child !== value[i]) {
+                this._replaceValueAt(i, child, renderKey);
+              }
+            }
+            return this;
+          }
+          const node = this.clone();
+          node.value = nextValue;
+          for (const child of nextValue) {
+            node.adopt(child);
+          }
+          return node;
         }
         return this;
       });
     }
     if (changed) {
-      setField(this, 'value', nextValue, context);
+      if (isNonCanonical) {
+        for (let i = 0; i < nextValue.length; i++) {
+          const child = nextValue[i]!;
+          if (child !== value[i]) {
+            this._replaceValueAt(i, child, renderKey);
+          }
+        }
+        return this;
+      }
+      const node = this.clone();
+      node.value = nextValue;
+      for (const child of nextValue) {
+        node.adopt(child);
+      }
+      return node;
     }
     return this;
   }

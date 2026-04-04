@@ -234,6 +234,29 @@ describe('AtRule', () => {
     });
   });
 
+  describe('top-level @import preludes', () => {
+    it('evaluates hoisted @import preludes against root vars before serialization', async () => {
+      const node = rules([
+        vardecl({ name: 'var', value: dimension([100, 'px']) }),
+        atrule({
+          name: any('@import', { role: 'atkeyword' }),
+          prelude: seq([
+            any('url("//ha.com/file.css")'),
+            paren(decl({
+              name: 'min-width',
+              value: ref('var', { type: 'variable' })
+            }))
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.render(context);
+
+      expect(css.trim()).toBe('@import url("//ha.com/file.css") (min-width: 100px);');
+    });
+  });
+
   describe('root-only at-rules', () => {
     it('hoists nested @property rules to the stylesheet root', async () => {
       context = new Context({ bubbleRootAtRules: true });

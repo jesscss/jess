@@ -2,7 +2,6 @@
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   type TreeContext,
@@ -19,6 +18,7 @@ import {
   Quoted,
   Interpolated,
   Reference,
+  Url,
   Dimension,
   Num,
   Negative,
@@ -113,7 +113,7 @@ export function expressionSum(this: P, T: TokenMap) {
         const opToken = $.CONSUME(T.Minus);
         op = opToken.image;
         right = $.SUBRULE4($.expressionProduct, { ARGS: [ctx] });
-      } else if ($.noSep() && tokenMatcher($.LA(1), T.Signed)) {
+      } else if ($.noSep() && $.matchToken($.LA(1), T.Signed)) {
         const tok = $.CONSUME(T.Signed);
         let startValue: Node | undefined;
         const str = tok.image;
@@ -456,6 +456,47 @@ export function knownFunctions(this: P, T: TokenMap) {
     ];
 
     return cssKnownFunctions.call($, T, functions)(ctx);
+  };
+}
+
+export function urlFunction(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    $.CONSUME(T.UrlStart);
+    let node: Any | IToken | Node = $.OR([
+      { ALT: () => $.SUBRULE($.string, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.varReference, { ARGS: [ctx] }) },
+      { ALT: () => $.CONSUME(T.NonQuotedUrl) }
+    ]);
+    $.CONSUME(T.UrlEnd);
+
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const location = $.endRule();
+    if (!(node instanceof Node)) {
+      const rawValue = node.image;
+      const tokenLocation = $.getLocationInfo(node);
+      if (rawValue.startsWith('@') || rawValue.startsWith('$')) {
+        const resolved = getInterpolatedOrString(rawValue, tokenLocation, $.context);
+        if (resolved instanceof Interpolated) {
+          node = resolved;
+        } else {
+          node = new Reference(
+            resolved,
+            { type: rawValue.startsWith('$') ? 'property' : 'variable' },
+            tokenLocation,
+            $.context
+          );
+        }
+      } else {
+        node = new Any(rawValue, { role: 'urlvalue' }, tokenLocation, $.context);
+      }
+    }
+    return new Url(node, undefined, location, $.context);
   };
 }
 

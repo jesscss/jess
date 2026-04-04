@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { any, expr, interpolated, interpolatedSelector } from '../index.js';
 import { Context } from '../../context.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 describe('InterpolatedSelector', () => {
   it('serializes the wrapped interpolated selector', () => {
@@ -22,5 +24,27 @@ describe('InterpolatedSelector', () => {
     const evald = await node.eval(ctx);
 
     expect(evald.toTrimmedString()).toBe('.button');
+  });
+
+  it('keeps canonical child access direct while a render key selects an alternate child', () => {
+    const canonical = interpolated({
+      source: '.%%',
+      replacements: [any('button')]
+    });
+    const alternate = interpolated({
+      source: '.%%',
+      replacements: [any('link')]
+    });
+    const node = interpolatedSelector(canonical);
+    const key = Symbol('selector-interpolated') as RenderKey;
+    const cursor = { node, renderKey: key };
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(node, 'value', key, alternate);
+
+    expect(node.value).toBe(canonical);
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
   });
 });

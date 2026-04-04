@@ -2,7 +2,7 @@
 // Converted from lines 1-1145 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { tokenMatcher, type IOrAlt } from 'chevrotain';
+import { type IOrAlt } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 
 import {
@@ -217,9 +217,9 @@ function isEscapedString($: P, T: TokenMap): boolean {
   return (
     next.image.startsWith('~')
     && (
-      tokenMatcher(next, T.QuoteStart)
-      || tokenMatcher(next, T.DoubleQuoteStart)
-      || tokenMatcher(next, T.SingleQuoteStart)
+      $.matchToken(next, T.QuoteStart)
+      || $.matchToken(next, T.DoubleQuoteStart)
+      || $.matchToken(next, T.SingleQuoteStart)
     )
   );
 }
@@ -294,6 +294,24 @@ function isVariableLike($: P, T: TokenMap): boolean {
   if (!isColon && !isParen) {
     return false;
   }
+
+  // Known at-rule tokens (@media, @supports, etc.) followed by ( without space:
+  // Only treat as a variable call if the parens are empty — @media();
+  // Otherwise it's an at-rule — @media(min-width: 0) { }
+  if (isParen && $.matchToken($.LA(1), T.AtName) && $.LA(1).tokenType !== T.AtKeyword) {
+    if (postToken.tokenType === T.RParen) {
+      // @media() — empty parens, allow as deprecated variable call
+      $.warnDeprecation(
+        'Using known at-rule names as variables is deprecated',
+        $.LA(1),
+        'at-rule-variable'
+      );
+      return true;
+    }
+    // @media(min-width: ...) — at-rule, not a variable
+    return false;
+  }
+
   let isVariable = !$.preSkippedTokenMap.has(token.startOffset)
     || (isColon && $.preSkippedTokenMap.has(postToken.startOffset));
   return isVariable;
@@ -418,13 +436,13 @@ export function main(this: P, T: TokenMap) {
       const isSelectorLikeContinuation = (offset: number) => {
         const tok = $.LA(offset);
         return (
-          tokenMatcher(tok, T.LCurly)
-          || tokenMatcher(tok, T.Comma)
-          || tokenMatcher(tok, T.Combinator)
-          || tokenMatcher(tok, T.LSquare)
-          || tokenMatcher(tok, T.Colon)
-          || tokenMatcher(tok, T.NthPseudoClass)
-          || tokenMatcher(tok, T.SelectorPseudoClass)
+          $.matchToken(tok, T.LCurly)
+          || $.matchToken(tok, T.Comma)
+          || $.matchToken(tok, T.Combinator)
+          || $.matchToken(tok, T.LSquare)
+          || $.matchToken(tok, T.Colon)
+          || $.matchToken(tok, T.NthPseudoClass)
+          || $.matchToken(tok, T.SelectorPseudoClass)
         );
       };
       if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
@@ -444,11 +462,11 @@ export function main(this: P, T: TokenMap) {
         tt3 === T.Colon
         || tt3 === T.NthPseudoClass
         || tt3 === T.SelectorPseudoClass
-        || tokenMatcher($.LA(3), T.FunctionStart)
+        || $.matchToken($.LA(3), T.FunctionStart)
       ) {
         return true;
       }
-      if (!tokenMatcher($.LA(3), T.Ident)) {
+      if (!$.matchToken($.LA(3), T.Ident)) {
         return false;
       }
       return isSelectorLikeContinuation(4);
@@ -459,7 +477,7 @@ export function main(this: P, T: TokenMap) {
     };
     const isCustomPropertyStart = () =>
       $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
-    const isAtRuleStart = () => tokenMatcher($.LA(1), T.AtName);
+    const isAtRuleStart = () => $.matchToken($.LA(1), T.AtName);
     const shouldTryQualifiedRule = () =>
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
@@ -587,13 +605,13 @@ export function declarationList(this: P, T: TokenMap) {
       const isSelectorLikeContinuation = (offset: number) => {
         const tok = $.LA(offset);
         return (
-          tokenMatcher(tok, T.LCurly)
-          || tokenMatcher(tok, T.Comma)
-          || tokenMatcher(tok, T.Combinator)
-          || tokenMatcher(tok, T.LSquare)
-          || tokenMatcher(tok, T.Colon)
-          || tokenMatcher(tok, T.NthPseudoClass)
-          || tokenMatcher(tok, T.SelectorPseudoClass)
+          $.matchToken(tok, T.LCurly)
+          || $.matchToken(tok, T.Comma)
+          || $.matchToken(tok, T.Combinator)
+          || $.matchToken(tok, T.LSquare)
+          || $.matchToken(tok, T.Colon)
+          || $.matchToken(tok, T.NthPseudoClass)
+          || $.matchToken(tok, T.SelectorPseudoClass)
         );
       };
       if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
@@ -613,11 +631,11 @@ export function declarationList(this: P, T: TokenMap) {
         tt3 === T.Colon
         || tt3 === T.NthPseudoClass
         || tt3 === T.SelectorPseudoClass
-        || tokenMatcher($.LA(3), T.FunctionStart)
+        || $.matchToken($.LA(3), T.FunctionStart)
       ) {
         return true;
       }
-      if (!tokenMatcher($.LA(3), T.Ident)) {
+      if (!$.matchToken($.LA(3), T.Ident)) {
         return false;
       }
       return isSelectorLikeContinuation(4);
@@ -628,7 +646,7 @@ export function declarationList(this: P, T: TokenMap) {
     };
     const isCustomPropertyStart = () =>
       $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
-    const isAtRuleStart = () => tokenMatcher($.LA(1), T.AtName);
+    const isAtRuleStart = () => $.matchToken($.LA(1), T.AtName);
     const shouldTryQualifiedRule = () =>
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
@@ -956,220 +974,6 @@ export function mediaConditionWithoutOr(this: P, T: TokenMap) {
       }
     }
   ]);
-}
-
-export function supportsAtRule(this: P, T: TokenMap) {
-  const $ = this;
-  return (ctx: RuleContext = {}) => {
-    $.startRule();
-
-    const name = $.CONSUME(T.AtSupports);
-    const prelude = $.SUBRULE($.lessSupportsCondition, { ARGS: [ctx] });
-    $.CONSUME(T.LCurly);
-    const rules = $.SUBRULE($.atRuleBody, { ARGS: [ctx] });
-    $.CONSUME(T.RCurly);
-
-    if ($.RECORDING_PHASE) {
-      return;
-    }
-    const location = $.endRule();
-    return new AtRule({
-      name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
-      prelude: $.wrap(prelude, 'both'),
-      rules
-    }, { nestable: true }, location, $.context);
-  };
-}
-
-export function lessSupportsCondition(this: P, T: TokenMap) {
-  const $ = this;
-  return (ctx: RuleContext = {}) => $.OR([
-    {
-      GATE: () => $.isType(T.Not),
-      ALT: () => {
-        $.startRule();
-        const keyword = $.CONSUME(T.Not);
-        const value = $.SUBRULE($.lessSupportsInParens, { ARGS: [ctx] });
-
-        if ($.RECORDING_PHASE) {
-          return;
-        }
-        const location = $.endRule();
-        return new QueryCondition([
-          $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
-          value
-        ], undefined, location, $.context);
-      }
-    },
-    {
-      ALT: () => {
-        const RECORDING_PHASE = $.RECORDING_PHASE;
-        $.startRule();
-        let left = $.SUBRULE2($.lessSupportsInParens, { ARGS: [ctx] });
-
-        $.MANY({
-          GATE: () => $.isType(T.And),
-          DEF: () => {
-            const keyword = $.CONSUME(T.And);
-            const right = $.SUBRULE3($.lessSupportsInParens, { ARGS: [ctx] });
-            if (!RECORDING_PHASE) {
-              const [startOffset, startLine, startColumn] = left.location;
-              const [,,, endOffset, endLine, endColumn] = right.location;
-              left = new QueryCondition([
-                left,
-                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
-                right
-              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
-            }
-          }
-        });
-        $.MANY2({
-          GATE: () => $.isType(T.Or),
-          DEF: () => {
-            const keyword = $.CONSUME(T.Or);
-            const right = $.SUBRULE4($.lessSupportsInParens, { ARGS: [ctx] });
-            if (!RECORDING_PHASE) {
-              const [startOffset, startLine, startColumn] = left.location;
-              const [,,, endOffset, endLine, endColumn] = right.location;
-              left = new QueryCondition([
-                left,
-                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), $.context)),
-                right
-              ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], $.context);
-            }
-          }
-        });
-
-        if ($.RECORDING_PHASE) {
-          return;
-        }
-        $.endRule();
-        return left;
-      }
-    }
-  ]);
-}
-
-export function lessSupportsInParens(this: P, T: TokenMap) {
-  const $ = this;
-  return (ctx: RuleContext = {}) => $.OR([
-    {
-      GATE: () => $.isType(T.Ident) && $.isTypeAt(2, T.LParen),
-      ALT: () => {
-        $.startRule();
-        const name = $.CONSUME(T.Ident);
-        $.CONSUME(T.LParen);
-        const args = $.SUBRULE($.valueList, { ARGS: [ctx] });
-        $.CONSUME2(T.RParen);
-
-        if ($.RECORDING_PHASE) {
-          return;
-        }
-        const location = $.endRule();
-        return new Call({ name: name.image, args }, undefined, location, $.context);
-      }
-    },
-    {
-      GATE: () => $.isType(T.LParen),
-      ALT: () => {
-        $.startRule();
-        $.CONSUME3(T.LParen);
-        let value: Node | undefined;
-        $.OPTION({
-          GATE: () => (
-            $.isType(T.Not)
-            || $.isType(T.LParen)
-            || ($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
-          ),
-          DEF: () => {
-            value = $.SUBRULE($.lessSupportsCondition, { ARGS: [ctx] });
-          }
-        });
-        $.OPTION2({
-          GATE: () => (
-            !$.isType(T.Not)
-            && !$.isType(T.LParen)
-            && !($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
-          ),
-          DEF: () => {
-            value = $.SUBRULE($.declaration, { ARGS: [ctx] });
-          }
-        });
-        $.CONSUME4(T.RParen);
-
-        if ($.RECORDING_PHASE) {
-          return;
-        }
-        const location = $.endRule();
-        return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, $.context));
-      }
-    }
-  ]);
-}
-
-export function supportsInParens(this: P, T: TokenMap) {
-  const $ = this;
-  return (ctx: RuleContext = {}) => $.OR([
-    {
-      GATE: () => $.isType(T.Ident) && $.isTypeAt(2, T.LParen),
-      ALT: () => {
-        $.startRule();
-        const name = $.CONSUME(T.Ident);
-        $.CONSUME(T.LParen);
-        const args = $.SUBRULE($.valueList, { ARGS: [ctx] });
-        $.CONSUME2(T.RParen);
-
-        if ($.RECORDING_PHASE) {
-          return;
-        }
-        const location = $.endRule();
-        return new Call({ name: name.image, args }, undefined, location, $.context);
-      }
-    },
-    {
-      GATE: () => $.isType(T.LParen),
-      ALT: () => {
-        $.startRule();
-        $.CONSUME3(T.LParen);
-        let value: Node | undefined;
-        $.OPTION({
-          GATE: () => (
-            $.isType(T.Not)
-            || $.isType(T.LParen)
-            || ($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
-          ),
-          DEF: () => {
-            value = $.SUBRULE($.supportsCondition, { ARGS: [ctx] });
-          }
-        });
-        $.OPTION2({
-          GATE: () => (
-            !$.isType(T.Not)
-            && !$.isType(T.LParen)
-            && !($.isType(T.Ident) && $.isTypeAt(2, T.LParen))
-          ),
-          DEF: () => {
-            value = $.SUBRULE($.declaration, { ARGS: [ctx] });
-          }
-        });
-        $.CONSUME4(T.RParen);
-
-        if ($.RECORDING_PHASE) {
-          return;
-        }
-        const location = $.endRule();
-        return $.wrap(new Paren($.wrap(value, 'both'), undefined, location, $.context));
-      }
-    }
-  ]);
-}
-
-export function containerInParens(this: P, T: TokenMap) {
-  const $ = this;
-  return (ctx: RuleContext = {}) => {
-    // Reuse mediaInParens which already handles variables
-    return $.SUBRULE($.mediaInParens, { ARGS: [ctx] });
-  };
 }
 
 export function mediaFeature(this: P, T: TokenMap) {

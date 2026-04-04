@@ -26,6 +26,7 @@ function resolvePreludeRule($: C, preludeRule: PreludeRule): Rule | undefined {
 }
 
 export type AltContext = (ctx?: RuleContext) => Array<import('@chevrotain/types').IOrAlt<any>>;
+type ProductionRule = (ctx?: RuleContext) => Node | Node[] | undefined;
 
 export function atRule(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
@@ -126,7 +127,7 @@ export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRuleLocal
   };
 }
 
-export function mediaQueryList(this: C, T: TokenMap) {
+export function mediaQueryList(this: C, T: TokenMap): ProductionRule {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -853,7 +854,7 @@ export function keyframesAtRule(this: C, T: TokenMap) {
  * Keyframes name prelude
  * CSS: Ident | String
  */
-export function keyframesName(this: C, T: TokenMap) {
+export function keyframesName(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -977,7 +978,7 @@ export function containerName(this: C, T: TokenMap) {
  * Container query list: comma-separated list of container queries
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@container#container-query
  */
-export function containerQueryList(this: C, T: TokenMap) {
+export function containerQueryList(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
@@ -1233,7 +1234,7 @@ export function containerCondition(this: C, T: TokenMap, alt?: AltContext) {
 /**
  * Container and: similar to mediaAnd but can handle `and not` and function calls
  */
-export function containerAnd(this: C, T: TokenMap) {
+export function containerAnd(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let token = $.CONSUME(T.And);
@@ -1340,7 +1341,7 @@ export function containerAnd(this: C, T: TokenMap) {
 /**
  * Container or: similar to mediaOr but can handle `or not` and function calls
  */
-export function containerOr(this: C, T: TokenMap) {
+export function containerOr(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let token = $.CONSUME(T.Or);

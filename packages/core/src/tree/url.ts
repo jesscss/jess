@@ -5,8 +5,8 @@ import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Context } from '../context.js';
-import { setField } from './util/field-helpers.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { Reference } from './reference.js';
 
 export type UrlChildData = { value: Quoted | Any };
 
@@ -22,7 +22,7 @@ export interface Url {
 export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: Quoted | Any;
+  value!: Quoted | Any;
 
   constructor(value: Quoted | Any, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -44,7 +44,7 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   }
 
   pathValue(context?: Context): string {
-    let value: string | Quoted | Any = this.get('value', context);
+    let value: string | Quoted | Any = this.value;
 
     if (isNode(value, N.Quoted)) {
       value = value.get('value') as string | Quoted | Any;
@@ -57,14 +57,23 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
   }
 
   override evalNode(context: Context): MaybePromise<Url> {
-    const value = this.get('value', context);
+    const value = this.value;
+    let effectiveValue: Quoted | Any = value;
+    if (isNode(value, N.Any)) {
+      const rawValue = String(value.valueOf());
+      if (/^@[\w-]+$/.test(rawValue)) {
+        effectiveValue = new Reference(rawValue.slice(1), { type: 'variable' });
+      } else if (/^\$[\w-]+$/.test(rawValue)) {
+        effectiveValue = new Reference(rawValue.slice(1), { type: 'property' });
+      }
+    }
     const finish = (nextValue: Quoted | Any): Url => {
       if (nextValue !== value) {
-        setField(this, 'value', nextValue, context);
+        this.value = nextValue;
       }
       return this;
     };
-    const maybeEvald = value.eval(context) as MaybePromise<Quoted | Any>;
+    const maybeEvald = effectiveValue.eval(context) as MaybePromise<Quoted | Any>;
     if (isThenable(maybeEvald)) {
       return (maybeEvald as Promise<Quoted | Any>).then(finish);
     }
@@ -75,7 +84,7 @@ export class Url extends Node<Quoted | Any, NodeOptions, UrlChildData> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const value = this.get('value', options.context);
+    const value = this.value;
     w.add('url(');
     value.toString(options);
     w.add(')');

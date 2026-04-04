@@ -3,7 +3,6 @@ import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { setField } from './util/field-helpers.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -38,8 +37,8 @@ export interface JsImport {
 export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChildData> {
   static override childKeys = ['path', 'imports'] as const;
 
-  /** @internal */ path!: Quoted;
-  /** @internal */ imports: JsImportSpecifier[] | undefined;
+  path!: Quoted;
+  imports: JsImportSpecifier[] | undefined;
 
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -54,13 +53,9 @@ export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChild
   override evalNode(context: Context): MaybePromise<JsImport> {
     const path = this.get('path', context);
     const finish = (nextPath: Quoted): JsImport => {
-      const out = this.maybeClone(context) as JsImport;
+      const out = this.clone() as JsImport;
       if (nextPath !== path) {
-        if (out === this) {
-          setField(this, 'path', nextPath, context);
-        } else {
-          out.setData('path', nextPath);
-        }
+        out.path = nextPath;
       }
       return out;
     };

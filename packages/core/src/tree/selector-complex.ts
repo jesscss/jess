@@ -1,9 +1,8 @@
 import { type Combinator } from './combinator.js';
-import { type Ampersand, Ampersand as AmpersandClass } from './ampersand.js';
+import { type Ampersand } from './ampersand.js';
 import {
   defineType,
-  F_VISIBLE,
-  F_IMPLICIT_AMPERSAND
+  type OptionalLocation
 } from './node.js';
 import type { Context } from '../context.js';
 import { type Nil } from './nil.js';
@@ -14,7 +13,6 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { getField, setField } from './util/field-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -39,7 +37,7 @@ export interface ComplexSelector {
 export class ComplexSelector extends Selector<ComplexSelectorValue, any, ComplexSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: ComplexSelectorValue;
+  value!: ComplexSelectorValue;
 
   constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -53,6 +51,28 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
 
   get length() {
     return this.value.length;
+  }
+
+  override clone(deep?: boolean): this {
+    if (deep) {
+      return super.clone(true) as this;
+    }
+    return this._withValue(this.value) as this;
+  }
+
+  private _withValue(value: ComplexSelectorValue): ComplexSelector {
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as OptionalLocation
+      : undefined;
+    const node = new (this.constructor as typeof ComplexSelector)(
+      [],
+      this.options ? { ...this.options } : undefined,
+      location,
+      this.treeContext
+    );
+    node.inherit(this);
+    node.value = value;
+    return node;
   }
 
   override valueOf() {
@@ -122,13 +142,23 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              setField(selector, 'value', value, context);
+              return selector === this
+                ? this._withValue(value)
+                : (() => {
+                    selector.value = value;
+                    return selector;
+                  })();
             }
             return selector;
           });
         }
         if (changed) {
-          setField(selector, 'value', value, context);
+          return selector === this
+            ? this._withValue(value)
+            : (() => {
+                selector.value = value;
+                return selector;
+              })();
         }
         return selector;
       },
@@ -136,10 +166,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue, any, Complex
         const value = selector.get('value', context);
         if (value.length === 1) {
           const originalOnly = value[0]!;
-          const only = originalOnly.clone(false, undefined, context);
+          const only = originalOnly.clone();
           only.inherit(selector);
-          if (getField<boolean | undefined>(selector, 'hoistToRoot', context) || only.hoistToRoot) {
-            setField(only, 'hoistToRoot', true, context);
+          if (selector.hoistToRoot || this.hoistToRoot || only.hoistToRoot) {
+            only.hoistToRoot = true;
           }
           return only;
         }

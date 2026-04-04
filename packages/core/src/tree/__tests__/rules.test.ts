@@ -30,8 +30,10 @@ import { vi } from 'vitest';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { getChildren, getIndex, getParent, getSourceParent, markChangedVar, markScopeDirty, setField, replaceNode, setChildren, setDependency, setParent, setSourceParent } from '../util/field-helpers.js';
+import { getChildren, getParent, getSourceParent, markScopeDirty, setChildren, setParent, setSourceParent } from '../util/field-helpers.js';
 import { N } from '../node-type.js';
+import { EVAL } from '../node.js';
+import { addEdgeAt, getParentEdge } from '../util/cursor.js';
 
 let context: Context;
 
@@ -225,25 +227,7 @@ describe('Rules', () => {
         expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
       });
 
-      it('finds parent functions through the state parent chain', () => {
-        const feature = fn({
-          name: any('feature'),
-          body: rules([
-            decl({ name: 'return', value: any('ok') })
-          ])
-        });
-        const inherited = rules([]);
-        const node = rules([feature]);
-        const ctx = new Context();
-        setParent(inherited, node, ctx);
-
-        expect(inherited.findStatePatchedFunction('feature', {
-          context: ctx,
-          searchParents: true
-        })).toBe(feature);
-      });
-
-      it('characterizes shallow Rules clones as still canonically reparenting shared top-level children while nested ruleset bodies stay shared', () => {
+      it('characterizes shallow Rules clones as keeping canonical parentage while exposing shared top-level children through render-key parent edges', () => {
         const ctx = new Context();
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
@@ -256,60 +240,16 @@ describe('Rules', () => {
 
         const cloned = node.clone(false, undefined, ctx);
         const clonedRuleset = cloned.at(0, context) as typeof nested;
+        const activeCtx = new Context();
+        activeCtx.renderKey = cloned.renderKey;
 
         expect(clonedRuleset).toBe(nested);
-        expect(getParent(clonedRuleset, ctx)).toBe(cloned);
-        expect(clonedRuleset.parent).toBe(cloned);
+        expect(getParent(clonedRuleset, ctx)).toBe(node);
+        expect(getParent(clonedRuleset, activeCtx)).toBe(cloned);
+        expect(clonedRuleset.parent).toBe(node);
         expect(clonedRuleset.get('rules')).toBe(nestedBody);
         expect(clonedRuleset.get('rules').parent).toBe(clonedRuleset);
         expect(clonedRuleset.get('rules').at(0, context)).toBe(nestedBody.at(0, context));
-      });
-
-      it('cloneDetachedShallowWrapper carries wrapper metadata without reparenting shared top-level children', () => {
-        const ctx = new Context();
-        const nestedBody = rules([
-          decl({ name: 'color', value: any('red') })
-        ]);
-        const nested = ruleset({
-          selector: sel([el('.item')]),
-          rules: nestedBody
-        });
-        const node = rules([nested]);
-
-        const wrapper = node.cloneDetachedShallowWrapper(ctx);
-        wrapper.options.local = true;
-        const wrappedRuleset = wrapper.at(0, context) as typeof nested;
-
-        expect(wrapper).not.toBe(node);
-        expect(wrappedRuleset).toBe(nested);
-        expect(wrapper.options.local).toBe(true);
-        expect(node.options.local).toBeUndefined();
-        expect(wrappedRuleset.parent).toBe(node);
-        expect(getParent(wrappedRuleset, ctx)).toBe(node);
-        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
-        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
-      });
-
-      it('cloneLookupSafeShallowWrapper keeps canonical parentage while giving shared top-level children an eval state wrapper parent', () => {
-        const ctx = new Context();
-        const nestedBody = rules([
-          decl({ name: 'color', value: any('red') })
-        ]);
-        const nested = ruleset({
-          selector: sel([el('.item')]),
-          rules: nestedBody
-        });
-        const node = rules([nested]);
-
-        const wrapper = node.cloneLookupSafeShallowWrapper(ctx);
-        const wrappedRuleset = wrapper.at(0, context) as typeof nested;
-
-        expect(wrapper).not.toBe(node);
-        expect(wrappedRuleset).toBe(nested);
-        expect(wrappedRuleset.parent).toBe(node);
-        expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
-        expect(wrappedRuleset.get('rules')).toBe(nestedBody);
-        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
       it('cloneDetachedUnlockWrapper keeps canonical parentage while giving shared top-level children an unlock-wrapper state parent', () => {
@@ -329,7 +269,7 @@ describe('Rules', () => {
         expect(wrapper).not.toBe(node);
         expect(wrappedRuleset).toBe(nested);
         expect(wrappedRuleset.parent).toBe(node);
-        expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(getParentEdge({ node: wrappedRuleset, renderKey: wrapper.renderKey })?.node).toBe(wrapper);
         expect(wrappedRuleset.get('rules')).toBe(nestedBody);
         expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
@@ -356,121 +296,12 @@ describe('Rules', () => {
         expect(wrapper.options.rulesVisibility.VarDeclaration).toBe('private');
         expect(node.options.rulesVisibility.VarDeclaration).toBe('optional');
         expect(wrappedRuleset.parent).toBe(node);
-        expect(getParent(wrappedRuleset, ctx)).toBe(wrapper);
+        expect(getParentEdge({ node: wrappedRuleset, renderKey: wrapper.renderKey })?.node).toBe(wrapper);
         expect(wrappedRuleset.get('rules')).toBe(nestedBody);
         expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
       });
 
-      it('characterizes evaluateCandidateOutput non-Rules child shaping as exposing source-ruleset clone semantics plus wrapper parent assignment', () => {
-        const ctx = new Context();
-        const sourceBody = rules([
-          decl({ name: 'color', value: any('red') })
-        ]);
-        const sourceRuleset = ruleset({
-          selector: sel([el('.item')]),
-          rules: sourceBody
-        });
-        const evalScope = rules([]);
-        const directClone = sourceRuleset.clone(false, undefined, ctx);
-
-        const scopedChild = sourceRuleset.clone(false, undefined, ctx);
-        evalScope.push(ctx, scopedChild);
-
-        expect(directClone.get('selector')).not.toBe(sourceRuleset.get('selector'));
-        expect(directClone.get('rules')).toBe(sourceRuleset.get('rules'));
-        expect(directClone.get('selector').parent).toBe(directClone);
-        expect(scopedChild).not.toBe(sourceRuleset);
-        expect(scopedChild.parent).toBeUndefined();
-        expect(getParent(scopedChild, ctx)).toBe(evalScope);
-        expect(sourceRuleset.get('selector').parent).toBe(sourceRuleset);
-        expect(sourceRuleset.get('rules').parent).toBe(sourceRuleset);
-        expect(scopedChild.get('selector')).not.toBe(sourceRuleset.get('selector'));
-        expect(scopedChild.get('rules')).toBe(sourceRuleset.get('rules'));
-        expect(scopedChild.get('selector').valueOf()).toBe(sourceRuleset.get('selector').valueOf());
-        expect(scopedChild.get('rules').toTrimmedString()).toBe(sourceRuleset.get('rules').toTrimmedString());
-      });
-
-      it('characterizes evaluateCandidateOutput non-Rules child shaping as downstream of the source-ruleset clone contract, not another rules.ts cleanup', () => {
-        const ctx = new Context();
-        const sourceRuleset = ruleset({
-          selector: sel([el('.item')]),
-          rules: rules([
-            decl({ name: 'color', value: any('red') })
-          ])
-        });
-        const derivedRuleset = sourceRuleset.clone(true);
-        const sourceScopedChild = sourceRuleset.clone(false, undefined, ctx);
-        const derivedScopedChild = derivedRuleset.clone(false, undefined, ctx);
-
-        expect(sourceScopedChild.get('selector')).not.toBe(sourceRuleset.get('selector'));
-        expect(sourceScopedChild.get('rules')).toBe(sourceRuleset.get('rules'));
-        expect(sourceRuleset.get('selector').parent).toBe(sourceRuleset);
-        expect(sourceRuleset.get('rules').parent).toBe(sourceRuleset);
-        expect(sourceScopedChild.get('selector').parent).toBe(sourceScopedChild);
-        expect(getParent(sourceScopedChild.get('rules'), ctx)).toBe(sourceScopedChild);
-
-        expect(derivedScopedChild.get('selector')).not.toBe(derivedRuleset.get('selector'));
-        expect(derivedScopedChild.get('rules')).not.toBe(derivedRuleset.get('rules'));
-        expect(derivedScopedChild.get('selector').parent).toBe(derivedScopedChild);
-        expect(derivedScopedChild.get('rules').parent).toBe(derivedScopedChild);
-      });
-
-      it('cloneDetachedMaterializedWrapper preserves wrapper-local metadata while materializing immediate children from the active eval state view', () => {
-        const ctx = new Context();
-        const nested = ruleset({
-          selector: sel([el('.item')]),
-          rules: rules([
-            decl({ name: 'color', value: any('red') })
-          ])
-        });
-        const sibling = ruleset({
-          selector: sel([el('.sibling')]),
-          rules: rules([
-            decl({ name: 'background', value: any('white') })
-          ])
-        });
-        const node = rules([nested, sibling]);
-        const patchedSelector = sel([el('.patched')]);
-
-        setField(nested, 'selector', patchedSelector, ctx);
-
-        const wrapper = node.cloneDetachedMaterializedWrapper(ctx);
-        wrapper.options.local = true;
-        const wrappedRuleset = wrapper.at(0, context) as typeof nested;
-        const wrappedSibling = wrapper.at(1, context) as typeof sibling;
-
-        expect(wrapper).not.toBe(node);
-        expect(wrapper.options.local).toBe(true);
-        expect(node.options.local).toBeUndefined();
-
-        expect(wrappedRuleset).not.toBe(nested);
-        expect(wrappedRuleset.get('selector').valueOf()).toBe('.patched');
-        expect(wrappedRuleset.parent).toBe(wrapper);
-        expect(wrappedRuleset.get('rules').parent).toBe(wrappedRuleset);
-
-        expect(wrappedSibling).not.toBe(sibling);
-        expect(wrappedSibling.get('selector').valueOf()).toBe('.sibling');
-        expect(wrappedSibling.parent).toBe(wrapper);
-
-        expect(nested.get('selector').valueOf()).toBe('.item');
-        expect(nested.parent).toBe(node);
-        expect(sibling.parent).toBe(node);
-      });
-
-      it('materializeEvaluatedCopy preserves source-root provenance instead of an intermediate derived clone', () => {
-        const sourceBody = rules([
-          decl({ name: 'color', value: any('red') })
-        ]);
-        const derivedBody = sourceBody.clone(true);
-
-        const materialized = derivedBody.materializeEvaluatedCopy();
-
-        expect(derivedBody.sourceNode).toBe(sourceBody);
-        expect(materialized.sourceNode).toBe(sourceBody);
-        expect(materialized.sourceNode).not.toBe(derivedBody);
-      });
-
-      it('materializeEvaluatedCopy can materialize the active eval state view without mutating canonical children', () => {
+      it('createShallowBodyWrapper reuses the same top-level child array', () => {
         const ctx = new Context();
         const nestedBody = rules([
           decl({ name: 'color', value: any('red') })
@@ -479,7 +310,28 @@ describe('Rules', () => {
           selector: sel([el('.item')]),
           rules: nestedBody
         });
-        const root = rules([nested]);
+        const node = rules([nested]);
+
+        const wrapper = node.createShallowBodyWrapper(ctx);
+
+        expect(wrapper).not.toBe(node);
+        expect(wrapper.value).toBe(node.value);
+        expect(wrapper.renderKey).toBe(EVAL);
+        expect(wrapper.at(0, context)).toBe(nested);
+        expect(getParentEdge({ node: nested, renderKey: wrapper.renderKey })?.node).toBe(wrapper);
+        expect(nested.parent).toBe(node);
+      });
+
+      it('render-key child replacement on a shallow wrapper updates parentEdges without corrupting canonical parentage', () => {
+        const ctx = new Context();
+        const nested = ruleset({
+          selector: sel([el('.item')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        });
+        const node = rules([nested]);
+        const wrapper = node.createShallowBodyWrapper(ctx);
         const replacement = ruleset({
           selector: sel([el('.other')]),
           rules: rules([
@@ -487,18 +339,13 @@ describe('Rules', () => {
           ])
         });
 
-        setChildren(root, [replacement], ctx, { markDirty: false });
+        ctx.renderKey = wrapper.renderKey;
+        setChildren(wrapper, [replacement], ctx, { markDirty: false });
 
-        const materialized = root.materializeEvaluatedCopy(ctx);
-        const materializedRuleset = materialized.at(0, context) as typeof replacement;
-
-        expect(materializedRuleset).not.toBe(replacement);
-        expect(materializedRuleset.get('selector').valueOf()).toBe('.other');
-        expect(materializedRuleset.get('rules').toTrimmedString()).toBe('color: blue;');
-        expect(materializedRuleset.parent).toBe(materialized);
-        expect(root.at(0, context)).toBe(nested);
-        expect((root.at(0, context) as typeof nested).get('selector').valueOf()).toBe('.item');
-        expect((root.at(0, context) as typeof nested).get('rules').toTrimmedString()).toBe('color: red;');
+        expect(wrapper.value[0]).toBe(replacement);
+        expect(getParent(replacement, ctx)).toBe(wrapper);
+        expect(getParent(nested, ctx)).toBe(node);
+        expect(node.value[0]).toBe(nested);
       });
 
       it('characterizes returned param-mixin nested bodies as correctly parented and already source-rooted in provenance', async () => {
@@ -1326,52 +1173,6 @@ describe('Rules', () => {
       expect(getParent(replacement, ctx)).toBe(target);
     });
 
-    it('falls through to canonical declarations when a eval state does not depend on changed vars', () => {
-      const changed = vardecl({ name: 'theme', value: any('red') });
-      const derived = vardecl({ name: 'derived', value: any('pink') });
-      const plain = vardecl({ name: 'plain', value: any('blue') });
-      const root = rules([changed, derived, plain]);
-      const ctx = new Context();
-
-      root.getRegistry('declaration');
-      markChangedVar(ctx, changed as VarDeclaration);
-
-      const derivedOverlay = vardecl({ name: 'derived', value: any('crimson') });
-      const plainOverlay = vardecl({ name: 'plain', value: any('cyan') });
-
-      setDependency(derivedOverlay.get('value'), {
-        dependsOn: new Set([changed as VarDeclaration]),
-        sourceExpr: derivedOverlay.get('value')
-      }, ctx);
-
-      root.register('declaration', derivedOverlay, ctx);
-      root.register('declaration', plainOverlay, ctx);
-
-      expect(root.find('declaration', 'derived', 'VarDeclaration', {
-        context: ctx,
-        searchParents: false
-      })).toBe(derivedOverlay);
-      expect(root.find('declaration', 'plain', 'VarDeclaration', {
-        context: ctx,
-        searchParents: false
-      })).toBe(plain);
-    });
-
-    it('preEval reads declaration replacements from the state child overlay without mutating canonical children', async () => {
-      const original = vardecl({ name: 'foo', value: any('bar') });
-      const replacement = vardecl({ name: 'bar', value: any('baz') });
-      const root = rules([original]);
-      const ctx = new Context();
-      replaceNode(original, replacement, ctx);
-      const preEvald = await root.preEval(ctx);
-
-      expect(preEvald.at(0, ctx)).toBe(replacement);
-      expect(preEvald.at(0, context)).toBe(original);
-      expect(getIndex(replacement, ctx)).toBe(0);
-      expect(replacement.index).toBeUndefined();
-      expect(root.value[0]).toBe(original);
-    });
-
     it('preEval keeps charset replacement parented only in the eval state', async () => {
       const charset = any('@charset "utf-8"', { role: 'charset' });
       const root = rules([charset]);
@@ -1386,30 +1187,6 @@ describe('Rules', () => {
       expect(root.value[0]).toBe(charset);
       expect(ctx.currentCharset).toBe(charset);
     });
-
-    it('setDefined inserts into the state parent scope without needing a canonical parent', async () => {
-      const placeholder = vardecl({ name: 'one', value: any('stale') });
-      const existing = vardecl({ name: 'one', value: any('one') });
-      const setter = vardecl({ name: 'one', value: any('three') }, { setDefined: true });
-      const root = rules([placeholder, setter]);
-      const ctx = new Context();
-      replaceNode(placeholder, existing, ctx);
-      await root.eval(ctx);
-
-      const stateChildren = getChildren(root, ctx);
-      const inserted = stateChildren.find(child => `${child}` === '$one: three');
-      expect(isNode(inserted, N.VarDeclaration)).toBe(true);
-      expect(getParent(inserted as VarDeclaration, ctx)).toBe(root);
-      expect(stateChildren.map(child => `${child}`)).toEqual(expect.arrayContaining([
-        '$one: one',
-        '$one: three',
-        '$one := three'
-      ]));
-      expect(stateChildren).toContain(existing);
-      expect(root.at(0, context)).toBe(placeholder);
-      expect(root.value).toHaveLength(2);
-    });
-
     it('coalesces merged declarations using state-parent scope boundaries', async () => {
       const base = decl({ name: 'color', value: any('red') });
       const merged = decl(
@@ -1466,31 +1243,6 @@ describe('Rules', () => {
       expect(preEvald).toBe(wrapper);
       expect(getParent(wrapper, ctx)).toBe(media);
       expect(wrapper.parent).toBeUndefined();
-    });
-
-    it('eval queue reads state-local child replacements without mutating canonical children', async () => {
-      const mixinDef = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
-          decl({ name: 'color', value: any('red') })
-        ])
-      });
-      const original = decl({ name: 'background', value: any('blue') });
-      const replacement = call({
-        name: ref({ key: '.my-mixin' }, { type: 'mixin' })
-      });
-      const targetRules = rules([original]);
-      const root = rules([mixinDef, targetRules]);
-      const ctx = new Context();
-      ctx.root = root;
-
-      replaceNode(original, replacement, ctx);
-      const evald = await targetRules.eval(ctx);
-
-      expect(evald.toTrimmedString({ context: ctx })).toBe('color: red;');
-      expect(evald.toTrimmedString()).toBe('background: blue;');
-      expect(targetRules.at(0, ctx)).not.toBe(original);
-      expect(targetRules.at(0, context)).toBe(original);
     });
 
     it('reorders call-produced declaration-only Rules using the state sourceParent without mutating canonical children', () => {

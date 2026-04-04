@@ -1,7 +1,6 @@
 import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../../index.js';
 import { Context } from '../../../context.js';
 import { selectorMatch } from '../selector-match-core.js';
-import { setField } from '../field-helpers.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;
@@ -123,13 +122,14 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.get('selector').keySetLibrary = context.selectorBits;
+    const clonedParent = parent.clone(true);
+    clonedParent.get('selector').keySetLibrary = context.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
 
     const find = sel([
-      amp({ selectorContainer: parent as any }),
+      amp({ selectorContainer: clonedParent as any }),
       co('>'),
       el('.tail')
     ]);
@@ -151,7 +151,8 @@ describe('Fast-reject in selectorMatch', () => {
     const findList = sellist([find]);
     findList.keySetLibrary = context.selectorBits;
 
-    setField(parent, 'selector', patched, context);
+    clonedParent.adopt(patched, context);
+    (clonedParent as unknown as { selector: ReturnType<typeof el> }).selector = patched;
 
     expect(selectorMatch(find, target).fullMatch).toBe(false);
     expect(selectorMatch(find, target, undefined, context).fullMatch).toBe(true);
@@ -168,13 +169,14 @@ describe('Fast-reject in selectorMatch', () => {
       selector: el('.alpha'),
       rules: rules([])
     });
-    parent.get('selector').keySetLibrary = contextA.selectorBits;
+    const clonedParent = parent.clone(true);
+    clonedParent.get('selector').keySetLibrary = contextA.selectorBits;
 
     const patched = el('.beta');
     patched.keySetLibrary = contextA.selectorBits;
 
     const find = sel([
-      amp({ selectorContainer: parent as any }),
+      amp({ selectorContainer: clonedParent as any }),
       co('>'),
       el('.tail')
     ]);
@@ -193,7 +195,8 @@ describe('Fast-reject in selectorMatch', () => {
       }
     }
 
-    setField(parent, 'selector', patched, contextA);
+    clonedParent.adopt(patched, contextA);
+    (clonedParent as unknown as { selector: ReturnType<typeof el> }).selector = patched;
 
     expect(() => selectorMatch(find, target, undefined, contextA)).not.toThrow();
     expect(selectorMatch(find, target, undefined, contextA).fullMatch).toBe(true);

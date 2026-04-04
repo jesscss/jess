@@ -4,7 +4,6 @@ import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type 
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-import { getField } from './util/field-helpers.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -37,9 +36,9 @@ export interface Condition extends Node<ConditionValue, ConditionOptions, Condit
 export class Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
   static override childKeys = ['left', 'right'] as const;
 
-  /** @internal */ readonly left!: Node;
+  readonly left!: Node;
   private readonly operator: ConditionOperator | undefined;
-  /** @internal */ readonly right: Node | undefined;
+  readonly right: Node | undefined;
   private readonly negate: boolean;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
@@ -174,7 +173,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
           if (node.type !== 'Call') {
             return node;
           }
-          const rawCallName = getField<string | Node | undefined>(node, 'name', context);
+          const rawCallName = (node as import('./call.js').Call).name;
           const callName = String(typeof rawCallName === 'string'
             ? rawCallName
             : rawCallName?.valueOf?.() ?? '');

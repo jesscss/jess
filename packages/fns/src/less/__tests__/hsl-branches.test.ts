@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Context, Dimension } from '@jesscss/core';
+import { Color, ColorFormat, Context, Dimension, List } from '@jesscss/core';
 import hsl from '../hsl.js';
 
 type HslInternal = {
@@ -26,7 +26,7 @@ describe('hsl() branch coverage', () => {
       {
         caller: { options: { modernSyntax: true } },
         context: new Context(),
-        rawArgs: [new Dimension({ number: 90, unit: 'deg' })],
+        rawArgs: new List([new Dimension({ number: 90, unit: 'deg' })]),
         args: async () => []
       },
       90,
@@ -42,7 +42,7 @@ describe('hsl() branch coverage', () => {
       hslInternal.call(
         {
           context: new Context(),
-          rawArgs: [],
+          rawArgs: new List([]),
           args: async () => []
         }
       )

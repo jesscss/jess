@@ -1,5 +1,6 @@
 import {
-  defineType
+  defineType,
+  type OptionalLocation
 } from './node.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -9,7 +10,6 @@ import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { N } from './node-type.js';
-import { setField } from './util/field-helpers.js';
 
 export type CompoundSelectorChildData = { value: SimpleSelector[] };
 
@@ -28,7 +28,7 @@ export interface CompoundSelector {
 export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSelectorChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value!: SimpleSelector[];
+  value!: SimpleSelector[];
 
   constructor(value: SimpleSelector[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
@@ -44,10 +44,42 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
     return this.value.length;
   }
 
+  override clone(deep?: boolean): this {
+    if (deep) {
+      return super.clone(true) as this;
+    }
+    return this._withValue(this.value) as this;
+  }
+
+  private _withValue(value: SimpleSelector[]): CompoundSelector {
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as OptionalLocation
+      : undefined;
+    const node = new (this.constructor as typeof CompoundSelector)(
+      [],
+      this.options ? { ...this.options } : undefined,
+      location,
+      this.treeContext
+    );
+    node.inherit(this);
+    node.value = value;
+    return node;
+  }
+
   override valueOf() {
     let value = this._valueOf;
     if (!value) {
       const components = this.value;
+      const preserveGeneratedPseudoOrder = components.some(component =>
+        (isNode(component, N.PseudoSelector) && component.generated)
+        || isNode(component, N.Ampersand)
+      );
+
+      if (preserveGeneratedPseudoOrder) {
+        value = components.map(component => component.valueOf()).join('');
+        this._valueOf = value;
+        return value;
+      }
 
       const elementSelectors: string[] = [];
       const nonElementSelectors: string[] = [];
@@ -116,34 +148,55 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
             if (changed) {
-              setField(sel, 'value', value, context);
+              return sel === this
+                ? this._withValue(value)
+                : (() => {
+                    sel.value = value;
+                    return sel;
+                  })();
             }
             return sel;
           });
         }
         if (changed) {
-          setField(sel, 'value', value, context);
+          return sel === this
+            ? this._withValue(value)
+            : (() => {
+                sel.value = value;
+                return sel;
+              })();
         }
         return sel;
       },
       (sel) => {
         let data: SimpleSelector[] = sel.get('value', context).filter(n => n && !(n instanceof Nil));
-        data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
-          let aIsElement = !nonElementRegex.test(a.valueOf());
-          let bIsElement = !nonElementRegex.test(b.valueOf());
-          if (aIsElement && bIsElement) {
-            return a.valueOf() < b.valueOf() ? -1 : 1;
-          }
-          return aIsElement ? -1 : bIsElement ? 1 : 0;
-        });
+        const preserveGeneratedPseudoOrder = data.some(component =>
+          (isNode(component, N.PseudoSelector) && component.generated)
+          || isNode(component, N.Ampersand)
+        );
+        if (!preserveGeneratedPseudoOrder) {
+          data = data.sort((a: SimpleSelector, b: SimpleSelector) => {
+            let aIsElement = !nonElementRegex.test(a.valueOf());
+            let bIsElement = !nonElementRegex.test(b.valueOf());
+            if (aIsElement && bIsElement) {
+              return a.valueOf() < b.valueOf() ? -1 : 1;
+            }
+            return aIsElement ? -1 : bIsElement ? 1 : 0;
+          });
+        }
         if (data.length === 0) {
           return (new Nil()).inherit(this);
         }
         if (data.length === 1) {
           return data[0]!.inherit(this) as Selector;
         }
-        setField(sel, 'value', [...data], context);
-        return sel;
+        const nextValue = [...data];
+        return sel === this
+          ? this._withValue(nextValue)
+          : (() => {
+              sel.value = nextValue;
+              return sel;
+            })();
       }
     );
   }

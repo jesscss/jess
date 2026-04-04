@@ -11,6 +11,7 @@ import {
 import type { AltContext } from './atRules.js';
 
 type C = CssRecursiveParser;
+type ProductionRule = (ctx?: RuleContext) => Node | Node[] | undefined;
 
 /**
  * `@layer` at rule
@@ -226,7 +227,7 @@ export function supportsCondition(this: C, T: TokenMap) {
   ]);
 }
 
-export function supportsInParens(this: C, T: TokenMap) {
+export function supportsInParens(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => $.OR<Node | undefined>([
     {
@@ -401,7 +402,7 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
  * are separators AND only 1 argument is required, then
  * that will have to be specially handled.
  */
-export function functionCallArgs(this: C, T: TokenMap) {
+export function functionCallArgs(this: C, T: TokenMap): ProductionRule {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
@@ -513,7 +514,7 @@ export function importPrelude(this: C, T: TokenMap) {
 }
 
 /** import postlude: optional layer(), supports(), media. Returns Node[] */
-export function importPostlude(this: C, T: TokenMap) {
+export function importPostlude(this: C, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let RECORDING_PHASE = $.RECORDING_PHASE;

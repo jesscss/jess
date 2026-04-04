@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment } from '../index.js';
+import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment, list, condition, expr, num, op } from '../index.js';
 import { Context } from '../../context.js';
 import { JessError } from '../../jess-error.js';
 
@@ -432,6 +432,73 @@ describe('Mixin Recursion Detection', () => {
   });
 
   describe('non-recursive mixin calls that should succeed', () => {
+    it('should allow recursive mixin calls when the argument signature changes', async () => {
+      const recursiveMixin = mixin({
+        name: any('.mixin-recursive'),
+        params: list([
+          any('n', { role: 'property' })
+        ]),
+        guard: condition([
+          expr(ref({ key: 'n' }, { type: 'variable' })),
+          '>',
+          num(0)
+        ]),
+        rules: rules([
+          decl({ name: 'level', value: ref({ key: 'n' }, { type: 'variable' }) }),
+          call({
+            name: ref({ key: '.mixin-recursive' }, { type: 'mixin' }),
+            args: list([
+              op([
+                expr(ref({ key: 'n' }, { type: 'variable' })),
+                '-',
+                expr(num(1))
+              ])
+            ])
+          })
+        ])
+      });
+
+      const recursiveDone = mixin({
+        name: any('.mixin-recursive'),
+        params: list([
+          any('n', { role: 'property' })
+        ]),
+        guard: condition([
+          expr(ref({ key: 'n' }, { type: 'variable' })),
+          '<=',
+          num(0)
+        ]),
+        rules: rules([
+          decl({ name: 'done', value: any('true') })
+        ])
+      });
+
+      const testRuleset = ruleset({
+        selector: el('.test-recursive'),
+        rules: rules([
+          call({
+            name: ref({ key: '.mixin-recursive' }, { type: 'mixin' }),
+            args: list([num(3)])
+          })
+        ])
+      });
+
+      const root = rules([recursiveMixin, recursiveDone, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        .test-recursive {
+          level: 3;
+          level: 2;
+          level: 1;
+          done: true;
+        }
+      `);
+    });
+
     it('should succeed when calling .foo.foo() from within .foo .bar if .foo .foo exists (no recursion)', async () => {
       // .foo {
       //   .bar {

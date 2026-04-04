@@ -1,10 +1,11 @@
 import type { Class } from 'type-fest';
 import {
+  CANONICAL,
   Node,
   F_STATIC,
   defineType,
   type OptionalLocation,
-  type NodeOptions,
+  type RenderKey,
   type TreeContext
 } from './node.js';
 import { isNode } from './util/is-node.js';
@@ -23,9 +24,8 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   getDependency,
-  getField,
+  getParent,
   mergeDependencies,
-  setField,
   setDependency
 } from './util/field-helpers.js';
 
@@ -103,9 +103,49 @@ export interface Declaration {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts, DeclarationChildData> {
   static override childKeys = ['name', 'value', 'important'] as const;
 
-  /** @internal */ name!: NameValue;
-  /** @internal */ value!: Node;
-  /** @internal */ important: Any<'flag'> | undefined;
+  name!: NameValue;
+  value!: Node;
+  important: Any<'flag'> | undefined;
+
+  private _getAssignmentRenderKey(context?: Context): RenderKey | undefined {
+    return context?.renderKey
+      ?? context?.rulesContext?.renderKey
+      ?? (this.renderKey !== CANONICAL ? this.renderKey : undefined);
+  }
+
+  private _setFieldOverride<K extends keyof DeclarationChildData & ('name' | 'value' | 'important')>(
+    key: K,
+    value: DeclarationChildData[K],
+    context?: Context
+  ): void {
+    const renderKey = this._getAssignmentRenderKey(context);
+    const effectiveContext = renderKey !== undefined && context?.renderKey !== renderKey
+      ? { ...context, renderKey }
+      : context;
+
+    if (value instanceof Node) {
+      this.adopt(value, effectiveContext);
+    }
+
+    if (renderKey !== undefined && renderKey !== CANONICAL && this.renderKey !== renderKey) {
+      const edgeKey = `${key}Edge` as const;
+      const edge = ((this as unknown as Record<string, unknown>)[edgeKey] as Map<RenderKey, DeclarationChildData[K]> | undefined)
+        ?? new Map<RenderKey, DeclarationChildData[K]>();
+      edge.set(renderKey, value);
+      (this as unknown as Record<string, unknown>)[edgeKey] = edge;
+      return;
+    }
+
+    if (renderKey !== undefined && renderKey !== CANONICAL) {
+      const edgeKey = `${key}Edge` as const;
+      const edge = ((this as unknown as Record<string, unknown>)[edgeKey] as Map<RenderKey, DeclarationChildData[K]> | undefined);
+      if (edge?.delete(renderKey) && edge.size === 0) {
+        delete (this as unknown as Record<string, unknown>)[edgeKey];
+      }
+    }
+
+    (this as unknown as Record<string, unknown>)[key] = value;
+  }
 
   constructor(value: DeclarationValue, options?: Opts, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
@@ -138,10 +178,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.get('name', context).valueOf().startsWith('--');
   }
 
-  private _getOptions(context?: Context): Opts | undefined {
-    return context
-      ? getField<Opts | undefined>(this, 'options', context)
-      : this.options;
+  getCurrentValue(context?: Context): Node {
+    return this.get('value', context);
+  }
+
+  setCurrentValue(value: Node, context?: Context): void {
+    this._setFieldOverride('value', value, context);
+  }
+
+  getCurrentName(context?: Context): NameValue {
+    return this.get('name', context);
+  }
+
+  setCurrentName(name: NameValue, context?: Context): void {
+    this._setFieldOverride('name', name, context);
+  }
+
+  getCurrentImportant(context?: Context): Any<'flag'> | undefined {
+    return this.get('important', context);
+  }
+
+  setCurrentImportant(important: Any<'flag'> | undefined, context?: Context): void {
+    this._setFieldOverride('important', important, context);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
@@ -151,7 +209,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const name = this.get('name', context);
     const value = this.get('value', context);
     const important = this.get('important', context);
-    const declarationOptions = this._getOptions(context);
+    const declarationOptions = this.options;
     const { assign = ':', setDefined } = declarationOptions ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -183,17 +241,30 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } catch (error: unknown) {
         throw error;
       }
-      // Remove leading / trailing whitespace
-      const normalizedValue = valOut.replace(/^[ \t]+|\s+$/g, '');
-      // Ensure exactly one space after ':' by adding one space
-      w.add(' ');
-      w.add(normalizedValue, value);
+      const startsOnNextLine = /^[ \t\r\f]*\n/.test(valOut);
+      const preserveLeadingMultilineValue = startsOnNextLine && /\n[\s\S]*\n/.test(valOut);
+      if (preserveLeadingMultilineValue) {
+        const normalizedValue = valOut.replace(/\s+$/g, '');
+        w.add(normalizedValue, value);
+      } else {
+        const normalizedValue = valOut.replace(/^\s+|\s+$/g, '');
+        // Ensure exactly one space after ':' by adding one space
+        w.add(' ');
+        w.add(normalizedValue, value);
+      }
       if (!isNode(value, N.Collection)) {
         if (important) {
           let imp = w.capture(() => important.toString(options));
-          imp = imp.replace(/^\s+|\s+$/g, '');
+          imp = imp.replace(/\s+$/g, '');
 
-          w.add(` ${imp}`, important);
+          if (important.pre === 0) {
+            imp = imp.replace(/^\s+/g, '');
+            w.add(imp, important);
+          } else if (important.pre !== undefined) {
+            w.add(imp, important);
+          } else {
+            w.add(` ${imp.trimStart()}`, important);
+          }
         }
       }
     }
@@ -206,9 +277,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override preEval(context: Context): MaybePromise<this> {
     /** @removal-target — node-copy-reduction: maybeClone → return this.
-     * Options changes should go through position.setField(this, 'options', ...) */
-    let node = this.maybeClone(context);
-    node._setPreEvaluated(true, context);
+     * Option changes should stay on the derived declaration instance. */
+    let node = this.clone();
+    node.preEvaluated = true;
     // Index should already be assigned by parent Rules
     return this._applyAssignmentNormalization(node, context);
   }
@@ -216,11 +287,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
     let name = node.get('name', context);
     let value = node.get('value', context);
+    const excludesSelf = (candidate: Node): boolean => {
+      const currentSource = node.sourceNode ?? node;
+      const candidateSource = candidate.sourceNode ?? candidate;
+      return candidate !== node && candidateSource !== currentSource;
+    };
+    const isPriorMergedDeclaration = (candidate: Node): candidate is Declaration => (
+      excludesSelf(candidate)
+      && isNode(candidate, N.Declaration)
+      && candidate.options?.normalizedFromAssign !== undefined
+    );
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
       const nextOptions = {
-        ...(node._getOptions(context) ?? {})
+        ...(node.options ?? {})
       } as Opts;
       let assign = nextOptions.assign;
       const rawAssign = assign as string | undefined;
@@ -229,23 +310,84 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else if (rawAssign === '+_:') {
         assign = AssignmentType.MergeSequence;
       }
-      if (assign) {
+      if (assign && assign !== AssignmentType.Default) {
         const normalizedAssign = assign;
-        value = value.maybeClone(context);
+        value = value.clone();
+        const cloneWithDependency = (source: Node): Node => {
+          const cloned = source.clone(true, undefined, context);
+          const dependency = getDependency(source, context);
+          if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+            setDependency(cloned, {
+              dependsOn: new Set(dependency.dependsOn),
+              sourceExpr: dependency.sourceExpr
+            }, context);
+          }
+          return cloned;
+        };
+        const createAssignmentReference = (options: ConstructorParameters<typeof Reference>[1]) => {
+          const ref = new Reference({ key }, options);
+          if (node.index !== undefined) {
+            ref.index = node.index;
+          }
+          return ref;
+        };
+        const findPreviousPropertyDeclaration = (): Declaration | undefined => {
+          if (node.type !== 'Declaration') {
+            return undefined;
+          }
+          let rulesScope = isNode(context.rulesContext, N.Rules) ? context.rulesContext as Rules : undefined;
+          if (!rulesScope) {
+            let cursor: Node | undefined = node;
+            while (cursor && !isNode(cursor, N.Rules)) {
+              cursor = getParent(cursor, context);
+            }
+            rulesScope = cursor as Rules | undefined;
+          }
+          if (!rulesScope) {
+            return undefined;
+          }
+          const found = rulesScope.find('declaration', `${key.valueOf()}`, 'Declaration', {
+            context,
+            local: true,
+            start: node.index,
+            filter: isPriorMergedDeclaration
+          });
+          if (found) {
+            return found;
+          }
+          const children = rulesScope.getRegistryChildren(context);
+          const start = Math.min(
+            Math.max((node.index ?? children.length) - 1, -1),
+            children.length - 1
+          );
+          for (let i = start; i >= 0; i--) {
+            const candidate = children[i];
+            if (
+              candidate
+              && String((candidate as Declaration).name?.valueOf?.() ?? '') === key.valueOf()
+              && isPriorMergedDeclaration(candidate)
+            ) {
+              return candidate;
+            }
+          }
+          return undefined;
+        };
         /** Reference type */
         let type: 'property' | 'variable' =
           node.type === 'Declaration' ? 'property' : 'variable';
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
-            const ref = new Reference({ key }, {
+            const ref = createAssignmentReference({
               type,
               fallbackValue: new Nil(),
               resolution: 'linear',
+              respectStart: true,
               // Assignment normalization clears `assign` to Default, so matching by
               // assignment flag prevents later merge iterations from seeing prior values.
-              // Exclude only the current node to avoid self-reference.
-              filter: n => n !== node
+              // Only chain merged declarations together; plain prior declarations
+              // remain independent output in Less.
+              filter: isPriorMergedDeclaration
             });
             /**
              * @note - It's up to Sequence and List to handle
@@ -256,26 +398,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            setField(node, 'value', value, context);
+            node.setCurrentValue(value, context);
             break;
           }
           case AssignmentType.Add: {
             if (node.type === 'Declaration') {
+              const previousDeclaration = findPreviousPropertyDeclaration();
+              if (!previousDeclaration) {
+                node.setCurrentValue(value, context);
+                break;
+              }
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              setField(node, 'value', new List([
-                new Reference({ key }, {
-                  type,
-                  fallbackValue: new Nil(),
-                  resolution: 'linear',
-                  // Prevent self-referential reads while normalizing this node.
-                  filter: n => n !== node
-                }),
+              node.setCurrentValue(new List([
+                cloneWithDependency(previousDeclaration.getCurrentValue(context)),
                 value
               ]), context);
             } else {
-              setField(node, 'value', new Operation([
+              node.setCurrentValue(new Operation([
                 new Reference({ key }, { type }),
                 '+',
                 value
@@ -284,7 +425,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             break;
           }
           case AssignmentType.CondAssign: {
-            setField(node, 'value', new Reference({ key }, {
+            node.setCurrentValue(new Reference({ key }, {
               type,
               fallbackValue: value
             }), context);
@@ -293,16 +434,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         nextOptions.normalizedFromAssign = normalizedAssign;
         nextOptions.assign = AssignmentType.Default;
-        setField(node, 'options', nextOptions, context);
+        node.options = nextOptions as Opts;
       }
-      const out = node.get('value', context).preEval(context);
+      const normalizedValue = node.get('value', context);
+      const shouldResolveNormalizedAssignment = (
+        assign !== undefined
+        && assign !== AssignmentType.Default
+      );
+      const out = shouldResolveNormalizedAssignment
+        ? normalizedValue.eval(context)
+        : normalizedValue.preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          setField(node, 'value', value, context);
+          node.setCurrentValue(value, context);
           return node;
         });
       }
-      setField(node, 'value', out, context);
+      node.setCurrentValue(out, context);
       return node;
     };
 
@@ -310,12 +458,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          setField(node, 'name', key, context);
+          node.setCurrentName(key, context);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      setField(node, 'name', key, context);
+      node.setCurrentName(key, context);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);
@@ -331,7 +479,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         && isNode((currentValue as Sequence).get('value')[(currentValue as Sequence).get('value').length - 1]!, N.Collection)
       );
     if (this.hasFlag(F_STATIC) && !staticNestedCollection) {
-      this._setEvaluated(true, context);
+      this.evaluated = true;
       return this;
     }
     return pipe(
@@ -462,7 +610,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             : finish();
         };
         const normalizeMergedLeadingPlaceholder = () => {
-          const normalizedAssign = node._getOptions(context)?.normalizedFromAssign;
+          const normalizedAssign = node.options?.normalizedFromAssign;
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
@@ -478,22 +626,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isEmptyPlaceholder = (
             isNode(first, N.Nil)
             || (isNode(first, N.List) && first.get('value').length === 0)
-            || String(first.valueOf?.() ?? '') === ''
           );
           if (!isEmptyPlaceholder) {
             return;
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            setField(node, 'value', new Nil(), context);
+            node.setCurrentValue(new Nil(), context);
             return;
           }
           if (rest.length === 1) {
-            setField(node, 'value', cloneWithDependency(rest[0]!), context);
+            node.setCurrentValue(cloneWithDependency(rest[0]!), context);
             return;
           }
           const clonedRest = rest.map(item => cloneWithDependency(item));
-          setField(node, 'value', new List(clonedRest), context);
+          node.setCurrentValue(new List(clonedRest), context);
           const dependency = mergeDependencies(clonedRest, context);
           if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
             setDependency(node.get('value', context), {
@@ -506,7 +653,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (node.type === 'VarDeclaration') {
           return node;
         }
-        const name = node.get('name', context);
         const value = node.get('value', context);
         if (value instanceof Node) {
           const isCustomProperty = node.isCustomProperty(context);
@@ -526,12 +672,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              setField(node, 'value', newValue, context);
+              node.setCurrentValue(newValue, context);
               normalizeMergedLeadingPlaceholder();
               copyDependency(newValue, node.get('value', context));
               // Merge !important from referenced declarations
               if (context.hasImportantSource && !node.get('important', context)) {
-                setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+                node.setCurrentImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
@@ -544,14 +690,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          setField(node, 'value', maybeNewValue as Node, context);
+          node.setCurrentValue(maybeNewValue as Node, context);
           normalizeMergedLeadingPlaceholder();
           copyDependency(maybeNewValue as Node, node.get('value', context));
           const expanded = expandNestedPropertyDeclaration(node);
           if (isThenable(expanded)) {
             return (expanded as Promise<Declaration | Rules | Nil>).then((resolvedExpanded) => {
               if (context.hasImportantSource && !node.get('important', context) && isNode(resolvedExpanded, N.Declaration)) {
-                setField(resolvedExpanded as Declaration, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+                (resolvedExpanded as Declaration).setCurrentImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
@@ -567,7 +713,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           // Merge !important from referenced declarations
           if (context.hasImportantSource && !node.get('important', context)) {
-            setField(node, 'important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
+            node.setCurrentImportant(Any.create('!important', { role: 'flag' }) as Any<'flag'>, context);
           }
           // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {

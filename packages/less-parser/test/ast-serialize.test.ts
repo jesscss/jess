@@ -654,9 +654,9 @@ test('parse known at-rule as variable call', () => {
   expect(serializeTypes(tree)).toContainString(`
       (Expression
         (Call
-          name: 
+          name:
             (Reference [role=name]
-              key: 
+              key:
                 (Any [role=ident] 'media')
             )
         )

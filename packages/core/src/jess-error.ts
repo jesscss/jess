@@ -1,7 +1,7 @@
 // errors.ts
 import path from 'node:path';
 import chalk from 'chalk';
-import { type IRecognitionException, type ILexingError, type ILexingResult } from '@chevrotain/types';
+import { type IRecognitionException, type ILexingResult } from '@chevrotain/types';
 import type { TreeContext } from './context.js';
 import type { OptionalLocation } from './tree/node.js';
 import type { Deprecation } from './deprecation.js';
@@ -92,7 +92,7 @@ export interface WarningDiagnostic {
  */
 export type JessErrorInit = {
   severity?: Severity;
-  code: keyof typeof TEMPLATES;
+  code: string;
   phase: Phase;
 
   /** Optional: auto-wire file/line/col/source from compiler context + node */
@@ -223,6 +223,10 @@ const TEMPLATES = {
 /* eslint-enable @typescript-eslint/naming-convention */
 
 export type JessErrorCode = keyof typeof TEMPLATES;
+
+export function isJessErrorCode(code: string): code is JessErrorCode {
+  return Object.hasOwn(TEMPLATES, code);
+}
 
 /**
  * Replaces `${key}` with values from `meta`. Unset keys render as `<key>`.
@@ -411,8 +415,9 @@ export class JessError extends Error {
     const column = init.node?.location?.[2] ?? init.column ?? 1;
     const source = fileObj?.source ?? init.source;
 
+    const code = isJessErrorCode(init.code) ? init.code : 'parse/syntax-error';
     const meta = init.meta ?? {};
-    const t = TEMPLATES[init.code] ?? TEMPLATES['parse/syntax-error'];
+    const t = TEMPLATES[code];
 
     const summary = init.summary ?? interpolate(t.summary, meta);
     const reason = init.reason ?? interpolate(t.reason, meta);
@@ -422,7 +427,7 @@ export class JessError extends Error {
 
     this.name = 'JessError';
     this.severity = init.severity ?? 'error';
-    this.code = init.code;
+    this.code = code;
     this.phase = init.phase;
 
     this.fileObj = fileObj;

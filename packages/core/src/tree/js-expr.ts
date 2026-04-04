@@ -18,7 +18,7 @@ export interface JsExpression extends Node<string> {
 export class JsExpression extends Node<string> {
   static override childKeys = null as null;
 
-  /** @internal */ value!: string;
+  value!: string;
 
   constructor(value: string, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);

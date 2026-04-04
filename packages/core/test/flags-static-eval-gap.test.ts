@@ -38,7 +38,7 @@ describe('Static stylesheet eval gap', () => {
     };
   }
 
-  it('first eval still walks preEval and evalNode on a fully static stylesheet', async () => {
+  it('first eval keeps the canonical static root and only does one top-level pass', async () => {
     const context = new Context();
     const { selector, declaration, body, stylesheetRuleset, tree } = createStaticStylesheet();
 
@@ -62,12 +62,12 @@ describe('Static stylesheet eval gap', () => {
     expect(evald).toBe(tree);
     expect(rootPreEvalSpy).toHaveBeenCalledTimes(1);
     expect(rootEvalNodeSpy).toHaveBeenCalledTimes(1);
-    expect(bodyPreEvalSpy).toHaveBeenCalledTimes(1);
-    expect(bodyEvalNodeSpy).toHaveBeenCalledTimes(1);
     expect(rulesetPreEvalSpy).toHaveBeenCalledTimes(1);
-    expect(rulesetEvalNodeSpy).toHaveBeenCalledTimes(1);
+    expect(rulesetEvalNodeSpy).not.toHaveBeenCalled();
+    expect(bodyPreEvalSpy).not.toHaveBeenCalled();
+    expect(bodyEvalNodeSpy).not.toHaveBeenCalled();
     expect(declPreEvalSpy).toHaveBeenCalledTimes(1);
-    expect(declEvalNodeSpy).toHaveBeenCalledTimes(1);
+    expect(declEvalNodeSpy).not.toHaveBeenCalled();
   });
 
   it('only re-eval of an already-evaluated static stylesheet is zero-cost', async () => {

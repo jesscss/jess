@@ -11,7 +11,7 @@ export interface JsFunction {
 export class JsFunction extends Node<Fn> {
   static override childKeys = null as null;
 
-  /** @internal */ value!: Fn;
+  value!: Fn;
   name?: string | undefined;
 
   constructor(

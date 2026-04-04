@@ -1,21 +1,20 @@
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
-import type { SelectorList } from '../selector-list.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
 import { Nil } from '../nil.js';
-import { Node } from '../node.js';
+import { CALLER, CANONICAL, EVAL, Node } from '../node.js';
 import { JsFunction } from '../js-function.js';
 import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
-import type { VarDeclaration } from '../declaration-var.js';
 import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet, type BitSetLibrary, isSubsetOf } from './bitset.js';
-import { getChildren, getDependency, getParent, isPreEvaluated, hasChangedVars, getChangedVars } from './field-helpers.js';
+import { getParent, setParent } from './field-helpers.js';
+import { getCurrentParentNode } from './selector-utils.js';
 
 const { isArray } = Array;
 
@@ -23,6 +22,44 @@ type SelectorKeySet = Set<string> | BitSet<string>;
 type SelectorKeySource = SelectorKeySet | string[];
 
 const NON_INDEXABLE_SELECTOR_KEYS = new Set(['', ' ', '>', '+', '~', '||']);
+
+function getNodeValueArray(node: Node): unknown[] | undefined {
+  const value = Reflect.get(node, 'value');
+  return Array.isArray(value) ? value : undefined;
+}
+
+function getSelectorKeySetLibrary(node: unknown): BitSetLibrary<string> | undefined {
+  return typeof node === 'object' && node !== null
+    ? Reflect.get(node, 'keySetLibrary')
+    : undefined;
+}
+
+function setSelectorKeySetLibrary(node: unknown, library: BitSetLibrary<string>): void {
+  if (typeof node === 'object' && node !== null) {
+    Reflect.set(node, 'keySetLibrary', library);
+  }
+}
+
+function isSelectorLikeNode(value: unknown): value is Selector {
+  return value instanceof Node
+    && typeof value === 'object'
+    && 'isSelector' in value
+    && value.isSelector === true;
+}
+
+function isSelectorLikeOrNil(value: unknown): value is Selector | Nil {
+  return isSelectorLikeNode(value) || isNode(value, N.Nil);
+}
+
+function getRulesetSelector(ruleset: Ruleset, context?: Context): Selector | Nil | undefined {
+  const selector = ruleset.get('selector', context);
+  return isSelectorLikeOrNil(selector) ? selector : undefined;
+}
+
+function getMixinOwnSelector(mixin: Ruleset): Selector | Nil | undefined {
+  const ownSelector = mixin.options.ownSelector;
+  return isSelectorLikeOrNil(ownSelector) ? ownSelector : undefined;
+}
 
 function isIndexableSelectorKey(key: string): boolean {
   return !key.startsWith(':') && !NON_INDEXABLE_SELECTOR_KEYS.has(key);
@@ -55,6 +92,28 @@ function getSelectorKeyValues(keySet: SelectorKeySource | undefined): string[] {
   return keySet._library?.valuesOf(keySet) ?? [];
 }
 
+function getFallbackSelectorIndexKeys(selector: Node | undefined): string[] {
+  if (!selector) {
+    return [];
+  }
+  const value = Reflect.get(selector, 'value');
+  if (isArray(value)) {
+    const keys: string[] = [];
+    for (const child of value) {
+      if (!(child instanceof Node)) {
+        continue;
+      }
+      if (isNode(child, N.Combinator)) {
+        continue;
+      }
+      keys.push(...getFallbackSelectorIndexKeys(child));
+    }
+    return keys;
+  }
+  const key = String(selector.valueOf?.() ?? '');
+  return key && isIndexableSelectorKey(key) ? [key] : [];
+}
+
 function hasSelectorKey(keySet: SelectorKeySet | undefined, key: string): boolean {
   if (!keySet) {
     return false;
@@ -68,6 +127,14 @@ function hasSelectorKey(keySet: SelectorKeySet | undefined, key: string): boolea
 function getIndexableSelectorKeys(keySet: SelectorKeySource | undefined): string[] {
   return getSelectorKeyValues(keySet).filter(
     key => typeof key === 'string' && !key.startsWith('*') && isIndexableSelectorKey(key)
+  );
+}
+
+function isNonImportStyleBoundary(rules: Rules | undefined): boolean {
+  return Boolean(
+    rules
+    && rules.sourceNode?.type === 'StyleImport'
+    && rules.sourceNode.options.type !== 'import'
   );
 }
 
@@ -87,6 +154,7 @@ export type FindOptions = DeclarationFindOptions & {
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
   searchedRules?: Set<Rules>;
+  candidateContexts?: WeakMap<Node, Context>;
   /**
    * Whether this lookup has an explicit target (e.g., #ns[@foo]).
    * When true, Rules with isMixinOutput=true will be searchable.
@@ -107,22 +175,26 @@ export type MixinRegistryEntry = {
 function addRulesetToIndex(
   index: Map<string, Set<Ruleset>>,
   rules: Rules,
-  ruleset: Ruleset
+  ruleset: Ruleset,
+  context?: Context
 ): void {
-  if (!isNode(ruleset.get('selector'), N.Selector)) {
+  if (!isSelectorLikeNode(ruleset.get('selector', context))) {
     return;
   }
 
-  const selector = ruleset.get('selector') as Selector;
+  const selector = ruleset.get('selector', context);
+  if (!isSelectorLikeNode(selector)) {
+    return;
+  }
   const selectorBits = (rules.treeContext as { selectorBits?: BitSetLibrary<string>; opts?: { selectorBits?: BitSetLibrary<string> } } | undefined)?.selectorBits
     ?? rules.treeContext?.opts?.selectorBits;
-  if (selectorBits && !selector.keySetLibrary) {
-    selector.keySetLibrary = selectorBits;
-    const selectorValue = (selector as unknown as { value?: unknown }).value;
-    if (isArray(selectorValue)) {
-      for (const child of selectorValue as Selector[]) {
-        if (child && !child.keySetLibrary) {
-          child.keySetLibrary = selectorBits;
+  if (selectorBits && !getSelectorKeySetLibrary(selector)) {
+    setSelectorKeySetLibrary(selector, selectorBits);
+    const selectorValue = getNodeValueArray(selector);
+    if (selectorValue) {
+      for (const child of selectorValue) {
+        if (isSelectorLikeNode(child) && !getSelectorKeySetLibrary(child)) {
+          setSelectorKeySetLibrary(child, selectorBits);
         }
       }
     }
@@ -152,27 +224,26 @@ function addMixinToIndex(
   context?: Context
 ): void {
   if (isNode(mixin, N.Ruleset)) {
-    let selector = (mixin as Ruleset).get('selector');
+    const ruleset = mixin;
+    let selector = getRulesetSelector(ruleset, context);
     if (isNode(selector, N.Nil)) {
       return;
     }
-    const ownSelector = (mixin as Ruleset).options.ownSelector;
+    const ownSelector = getMixinOwnSelector(ruleset);
     const callableSelector = ownSelector && !isNode(ownSelector, N.Nil) ? ownSelector : selector;
     if (isNode(callableSelector, N.Ampersand)) {
       return;
     }
-    const sourceSelector = selector.sourceNode as Selector | undefined;
+    const sourceSelector = selector?.sourceNode;
     const selectorVisibleKeySet = tryGetSelectorKeySet(selector);
     const sourceVisibleKeySet = tryGetSelectorKeySet(sourceSelector);
-    const selectorToIndex = (
-      getIndexableSelectorKeys(selectorVisibleKeySet).length
-        ? selector
-        : (getIndexableSelectorKeys(sourceVisibleKeySet).length ? sourceSelector : selector)
-    ) as Selector;
+    const selectorToIndex = getIndexableSelectorKeys(selectorVisibleKeySet).length
+      ? selector
+      : (getIndexableSelectorKeys(sourceVisibleKeySet).length ? sourceSelector : selector);
     let keySetToUse: SelectorKeySet | string[] | undefined;
     if (isNode(selectorToIndex, N.SelectorList)) {
-      for (const sel of (selectorToIndex as SelectorList).get('value')) {
-        const selKeySet = tryGetSelectorKeySet(sel as Selector);
+      for (const sel of selectorToIndex.get('value')) {
+        const selKeySet = tryGetSelectorKeySet(sel);
         if (selKeySet) {
           indexMixinSelectorStart(index, mixin, selKeySet);
         }
@@ -188,13 +259,17 @@ function addMixinToIndex(
       && !isNode(ownSelector, N.Nil)
     ) {
       const resolvedKeys = getIndexableSelectorKeys(keySetToUse);
-      const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
-      if (!(ownSelector as Selector).keySetLibrary && (selectorToIndex as Selector).keySetLibrary) {
-        (ownSelector as Selector).keySetLibrary = (selectorToIndex as Selector).keySetLibrary;
+      const ownSelectorText = String(ownSelector?.valueOf?.() ?? '');
+      if (ownSelector && !getSelectorKeySetLibrary(ownSelector) && getSelectorKeySetLibrary(selectorToIndex)) {
+        setSelectorKeySetLibrary(ownSelector, getSelectorKeySetLibrary(selectorToIndex)!);
       }
-      const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector as Selector));
-      const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
-        ? (mixin.parent.parent as Ruleset).get('selector')
+      const ownKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(ownSelector));
+      const parentRules = context ? getParent(mixin, context) : mixin.parent;
+      const parentRuleset = parentRules
+        ? (context ? getParent(parentRules, context) : parentRules.parent)
+        : undefined;
+      const parentSelector = isNode(parentRuleset, N.Ruleset)
+        ? parentRuleset.get('selector', context)
         : undefined;
       const parentKeys = (
         parentSelector && !isNode(parentSelector, N.Nil)
@@ -226,7 +301,7 @@ function addMixinToIndex(
       && ownSelector
       && !isNode(ownSelector, N.Nil)
     ) {
-      const ownKeySet = tryGetSelectorKeySet(ownSelector as Selector);
+      const ownKeySet = tryGetSelectorKeySet(ownSelector);
       if (ownKeySet && getIndexableSelectorKeys(ownKeySet).length) {
         const ownKeys = getIndexableSelectorKeys(ownKeySet);
         const selectorText = String(selectorToIndex.valueOf?.() ?? '');
@@ -238,11 +313,17 @@ function addMixinToIndex(
     if (keySetToUse !== undefined) {
       indexMixinSelectorStart(index, mixin, keySetToUse);
     } else {
-      // Fallback: when keySetLibrary isn't available (e.g. test-created nodes),
-      // use valueOf() as the index key so the Ruleset is still discoverable.
-      const selectorStr = String(callableSelector.valueOf?.() ?? '');
-      if (selectorStr) {
-        indexMixinSelectorStart(index, mixin, [selectorStr]);
+      // Fallback: test-created compound selectors may not have a keySet yet.
+      // Derive indexable selector segments directly from the selector tree so
+      // namespace/compound lookups can still use startKey + remainder matching.
+      const fallbackKeys = getFallbackSelectorIndexKeys(callableSelector);
+      if (fallbackKeys.length > 0) {
+        indexMixinSelectorStart(index, mixin, fallbackKeys);
+      } else {
+        const selectorStr = String(callableSelector.valueOf?.() ?? '');
+        if (selectorStr) {
+          indexMixinSelectorStart(index, mixin, [selectorStr]);
+        }
       }
     }
     return;
@@ -312,7 +393,7 @@ export abstract class Registry<
       if (set && set instanceof Set) {
         set.add(item);
       } else {
-        this.index.set(key, new Set([item]) as IndexType);
+        this.index.set(key, new Set([item]));
       }
     }
     this.pendingItems.clear();
@@ -347,6 +428,7 @@ export abstract class Registry<
     // Note: childFilterType can be undefined to mean "don't filter" (accept both Mixin and Ruleset)
     const actualChildFilterType = 'childFilterType' in options ? childFilterType : filterType;
     let firstValue = candidates.values().next().value;
+    rules.ensureCurrentRenderRulesRegistered(context);
     if (rules._rulesSet) {
       const { rulesSet } = rules;
       const length = rulesSet.length;
@@ -369,7 +451,6 @@ export abstract class Registry<
         // Inline the filter logic into the loop to avoid creating an intermediate array
         for (let i = length - 1; i >= 0; i--) {
           let r = rulesSet.at(i)!;
-
           // --- inline filter logic ---
           const entryVisibility = r.rulesVisibility?.[filterType];
           const nodeVisibility = r.node.options.rulesVisibility?.[filterType];
@@ -409,7 +490,7 @@ export abstract class Registry<
           childOpts.local = local || Boolean(r.node.options?.local);
           // Use actualChildFilterType which may be undefined for mixin-ruleset lookups
           // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
-          let result = r.node.find(findType, key, actualChildFilterType as any, childOpts);
+          let result = r.node.find(findType, key, actualChildFilterType, childOpts);
           if (result) {
             // Check if this Rules has optional visibility (from RulesEntry or the actual Rules node)
             const entryVisibility = r.rulesVisibility?.[filterType];
@@ -505,7 +586,7 @@ export abstract class Registry<
       } else if (isArray(set)) {
         newSet = new Set(set.map(({ value }) => value));
       } else {
-        return set as Type;
+        return set;
       }
       if (candidates) {
         if (candidates instanceof Set) {
@@ -553,7 +634,7 @@ export class RulesetRegistry extends Registry<Ruleset> {
    * Add a ruleset to be indexed later
    */
   override add(ruleset: Ruleset) {
-    addRulesetToIndex(this.index, this.rules, ruleset);
+    addRulesetToIndex(this.index, this.rules, ruleset, this.context);
   }
 
   /**
@@ -699,15 +780,15 @@ export class MixinRegistry extends Registry<
    * keySetLibrary so selectors can compute their keySets.
    */
   private _ensureChildrenRegistered(rules: Rules, selectorBits?: BitSetLibrary<string>) {
-    for (const child of rules.value) {
+    for (const child of rules.getRegistryChildren(this.context)) {
       if (isNode(child, N.Ruleset)) {
-        const sel = (child as Ruleset).get('selector');
-        if (sel && selectorBits && !isNode(sel, N.Nil) && !(sel as Selector).keySetLibrary) {
-          (sel as Selector).keySetLibrary = selectorBits;
-          const selValue = (sel as unknown as { value?: unknown }).value;
+        const sel = child.get('selector', this.context);
+        if (isSelectorLikeNode(sel) && selectorBits && !sel.keySetLibrary) {
+          sel.keySetLibrary = selectorBits;
+          const selValue = Reflect.get(sel, 'value');
           if (isArray(selValue)) {
-            for (const sub of selValue as Selector[]) {
-              if (!sub.keySetLibrary) {
+            for (const sub of selValue) {
+              if (isSelectorLikeNode(sub) && !sub.keySetLibrary) {
                 sub.keySetLibrary = selectorBits;
               }
             }
@@ -748,14 +829,14 @@ export class MixinRegistry extends Registry<
     // Get the selector's keySet and extract indexable keys (same as _indexSelectorStart)
     let indexableKeys: string[] = [];
     if (isNode(value, N.Ruleset)) {
-      const selector = (value as Ruleset).get('selector');
+      const selector = value.get('selector', this.context);
       if (isNode(selector, N.Nil)) {
         return false;
       }
       if (isNode(selector, N.SelectorList)) {
         // For selector lists, check if any selector matches
-        return (selector as SelectorList).get('value').some((sel) => {
-          const selKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(sel as Selector, false));
+        return selector.get('value').some((sel) => {
+          const selKeys = getIndexableSelectorKeys(tryGetSelectorKeySet(sel, false));
           if (selKeys.length === 0) {
             return false;
           }
@@ -838,10 +919,90 @@ export class MixinRegistry extends Registry<
     let {
       searchParents = true,
       local = false,
-      candidates = new Set(),
+      candidates = new Set<Node>(),
       context,
       hasTarget = false
     } = options ?? {};
+    const candidateContexts = options?.candidateContexts ?? new WeakMap<Node, Context>();
+    const getCandidateIdentity = (node: Node): Node => node.sourceNode ?? node;
+    const getContextRenderPriority = (ctx?: Context): number => {
+      const renderKey = ctx?.renderKey;
+      if (renderKey === undefined || renderKey === CANONICAL) {
+        return 0;
+      }
+      if (renderKey === EVAL) {
+        return 1;
+      }
+      return 2;
+    };
+    const getCandidateScore = (node: Node, ctx?: Context): [number, number, number] => {
+      const nonCanonicalParentEdgeKeys = node.parentEdges
+        ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL && key !== CALLER)
+        : [];
+      const ctxRenderKey = ctx?.renderKey;
+      const matchesContextKey = ctxRenderKey !== undefined && nonCanonicalParentEdgeKeys.includes(ctxRenderKey) ? 1 : 0;
+      const contextPriority = getContextRenderPriority(ctx);
+      const fewerEdgesScore = -nonCanonicalParentEdgeKeys.length;
+      return [matchesContextKey, contextPriority, fewerEdgesScore];
+    };
+    const rememberCandidateContext = (node: Node): void => {
+      if (!context || !rules) {
+        return;
+      }
+      const identity = getCandidateIdentity(node);
+      const nextContext: Context = {
+        ...context,
+        rulesContext: rules
+      };
+      const existingContext = candidateContexts.get(identity);
+      if (
+        !existingContext
+        || (
+          existingContext.renderKey === CANONICAL
+          && nextContext.renderKey !== CANONICAL
+        )
+        || (
+          existingContext.renderKey === undefined
+          && nextContext.renderKey !== undefined
+        )
+      ) {
+        candidateContexts.set(identity, nextContext);
+      }
+    };
+    const addCandidate = (node: Node): void => {
+      const sourceNode = node.sourceNode ?? node;
+      for (const existing of candidates) {
+        const existingNode = existing;
+        if ((existingNode.sourceNode ?? existingNode) !== sourceNode) {
+          continue;
+        }
+        const existingIdentity = getCandidateIdentity(existingNode);
+        const existingContext = candidateContexts.get(existingIdentity);
+        const nextContext = context && rules
+          ? {
+              ...context,
+              rulesContext: rules
+            }
+          : context;
+        const existingScore = getCandidateScore(existingNode, existingContext);
+        const nextScore = getCandidateScore(node, nextContext);
+        rememberCandidateContext(existingNode);
+        if (
+          existingScore[0] > nextScore[0]
+          || (existingScore[0] === nextScore[0] && existingScore[1] > nextScore[1])
+          || (existingScore[0] === nextScore[0] && existingScore[1] === nextScore[1] && existingScore[2] >= nextScore[2])
+        ) {
+          return;
+        }
+        candidates.delete(existingNode);
+        break;
+      }
+      if (context && rules) {
+        setParent(node, rules, context);
+        rememberCandidateContext(node);
+      }
+      (candidates ??= new Set()).add(node);
+    };
     const mixinHasNoRequiredParams = (mixinNode: Mixin): boolean => {
       const params = mixinNode.get('params');
       if (!params || params.length === 0) {
@@ -864,6 +1025,31 @@ export class MixinRegistry extends Registry<
       }
       return true;
     };
+    const getDescendContext = (node: Node, baseContext?: Context): Context | undefined => {
+      if (!baseContext) {
+        return undefined;
+      }
+      let nodeRenderKey = node.renderKey;
+      if (nodeRenderKey === undefined || nodeRenderKey === CANONICAL || nodeRenderKey === baseContext.renderKey) {
+        const nonCanonicalParentEdgeKeys = node.parentEdges
+          ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL && key !== CALLER)
+          : [];
+        if (nonCanonicalParentEdgeKeys.length === 1) {
+          nodeRenderKey = nonCanonicalParentEdgeKeys[0]!;
+        }
+      }
+      if (
+        nodeRenderKey === undefined
+        || nodeRenderKey === CANONICAL
+        || nodeRenderKey === baseContext.renderKey
+      ) {
+        return baseContext;
+      }
+      return {
+        ...baseContext,
+        renderKey: nodeRenderKey
+      };
+    };
 
     // Track which Rules nodes we've already searched to prevent infinite recursion
     // Use the searchedRules from options if it exists, otherwise create a new Set
@@ -871,11 +1057,12 @@ export class MixinRegistry extends Registry<
     const searchedRules = options?.searchedRules || new Set<Rules>();
     if (options) {
       options.searchedRules = searchedRules;
+      options.candidateContexts = candidateContexts;
     }
     while (rules) {
       // Don't add to searchedRules yet - we'll add it after we finish searching (including children)
       let [startKey, ...search] = keyList;
-      const registry = rules.getRegistry('mixin', this.context);
+      const registry = rules.getRegistry('mixin', context);
       if (registry) {
         registry.indexPendingItems();
       }
@@ -902,7 +1089,7 @@ export class MixinRegistry extends Registry<
               context,
               hasTarget,
               filter: options?.filter
-            } as FindOptions);
+            });
             if (isNode(maybeVar, N.VarDeclaration)) {
               const resolvedValue = String(maybeVar.get('value').valueOf?.() ?? maybeVar.get('value') ?? '');
               if (resolvedValue === startKey) {
@@ -925,6 +1112,8 @@ export class MixinRegistry extends Registry<
 
       if (allEntriesToCheck.length > 0) {
         const targetMatch = search.length === 0 ? [startKey!] : search;
+        const deferredExactMatches: Array<Mixin | Ruleset> = [];
+        const candidateSizeBeforeEntries = candidates.size;
         for (const { value, match } of allEntriesToCheck) {
           if (filterType && value.type !== filterType) {
             continue;
@@ -937,12 +1126,16 @@ export class MixinRegistry extends Registry<
           // but haven't fully matched the compound path. The startKey should only be added as a candidate if we're
           // doing a simple lookup (keyList.length === 1), where the startKey IS the full match.
           if (arraysEqualAsSet(match, targetMatch)) {
-            (candidates ??= new Set()).add(value);
+            if (keyList.length > 1) {
+              deferredExactMatches.push(value);
+            } else {
+              addCandidate(value);
+            }
             continue;
           }
           // Only add startKey mixin as candidate if we're doing a simple lookup (not a compound path)
           if (search.length === 0 && match.length === 0 && keyList.length === 1) {
-            (candidates ??= new Set()).add(value);
+            addCandidate(value);
             continue;
           }
           // For compound paths, we don't add startKey as a candidate, but we still need to search inside it
@@ -952,28 +1145,35 @@ export class MixinRegistry extends Registry<
           // we need to search inside it for the remaining search keys
           // NOTE: We should search inside #theme even if we're not adding it as a candidate (for compound paths)
           if (search.length > 0 && (arraysEqual(match, [startKey!]) || match.length === 0)) {
-            if (
-              (isNode(value, N.Ruleset))
-              || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
-            ) {
-              let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
+            const isRuleset = isNode(value, N.Ruleset);
+            const isMixin = isNode(value, N.Mixin);
+            const hasNoParams = isMixin && mixinHasNoRequiredParams(value);
+            if (isRuleset || hasNoParams) {
+              const subRules = isRuleset
+                ? value.enterRules(context)
+                : value.get('rules', context).withRenderOwner(
+                    value,
+                    context?.renderKey,
+                    context
+                  );
               // Mixin rules aren't preEvaluated during registration — register
               // child rulesets/mixins now so namespace lookup can descend.
               // Always ensure children are registered for namespace descent —
               // preEvaluated children still need keySetLibrary on their selectors
               // for the mixin registry to index them.
               this._ensureChildrenRegistered(subRules, context?.selectorBits);
-              const subMixinRegistry = subRules.getRegistry('mixin', this.context);
+              const subMixinRegistry = subRules.getRegistry('mixin', context);
               subMixinRegistry?.indexPendingItems();
               subMixinRegistry?.find(search, filterType, {
                 searchParents: false,
                 local,
-                candidates: candidates as Set<Node>,
+                candidates,
                 context,
+                candidateContexts,
                 filter: options?.filter,
                 hasTarget,
                 searchedRules: undefined // Not needed when searchParents is false
-              } as FindOptions);
+              });
             }
             continue;
           }
@@ -996,24 +1196,37 @@ export class MixinRegistry extends Registry<
               // Match is not a prefix of search - skip this ruleset, it doesn't match
               continue;
             }
-            if (
-              (isNode(value, N.Ruleset))
-              || (isNode(value, N.Mixin) && mixinHasNoRequiredParams(value as Mixin))
-            ) {
-              let subRules = isNode(value, N.Ruleset) ? (value as Ruleset).get('rules') : (value as Mixin).get('rules');
+            const isRuleset = isNode(value, N.Ruleset);
+            const isMixin = isNode(value, N.Mixin);
+            const hasNoParams = isMixin && mixinHasNoRequiredParams(value);
+            if (isRuleset || hasNoParams) {
+              const subRules = isRuleset
+                ? value.enterRules(context)
+                : value.get('rules', context).withRenderOwner(
+                    value,
+                    context?.renderKey,
+                    context
+                  );
               this._ensureChildrenRegistered(subRules, context?.selectorBits);
-              const subMixinRegistry = subRules.getRegistry('mixin', this.context);
+              const subMixinRegistry = subRules.getRegistry('mixin', context);
               subMixinRegistry?.indexPendingItems();
               subMixinRegistry?.find(searchKeys, filterType, {
                 searchParents: false,
                 local,
-                candidates: candidates as Set<Node>,
+                candidates,
                 context,
+                candidateContexts,
                 filter: options?.filter,
                 hasTarget,
                 searchedRules: searchedRules
-              } as FindOptions);
+              });
             }
+          }
+        }
+
+        if (keyList.length > 1 && candidates.size === candidateSizeBeforeEntries) {
+          for (const candidate of deferredExactMatches) {
+            addCandidate(candidate);
           }
         }
       }
@@ -1030,7 +1243,7 @@ export class MixinRegistry extends Registry<
         mixinChildSearchOpts = {
           searchParents: false,
           local,
-          candidates: candidates as Set<Node>,
+          candidates,
           findAll: true,
           childFilterType: filterType,
           context,
@@ -1050,7 +1263,7 @@ export class MixinRegistry extends Registry<
       if (candidates && candidates.size > candidateSizeBefore) {
         const candidatesToRemove: (Mixin | Ruleset)[] = [];
         for (const candidate of candidates) {
-          const candidateNode = candidate as Mixin | Ruleset;
+          const candidateNode = candidate;
           // Only check candidates that were added by _searchRulesChildren (not in original set)
           if (candidatesBefore && candidatesBefore.has(candidateNode)) {
             continue;
@@ -1058,16 +1271,26 @@ export class MixinRegistry extends Registry<
           {
             const isMixin = isNode(candidateNode, N.Mixin);
             const isRuleset = isNode(candidateNode, N.Ruleset);
-            const hasNoParams = isMixin && mixinHasNoRequiredParams(candidateNode as Mixin);
+            const hasNoParams = isMixin && mixinHasNoRequiredParams(candidateNode);
             // Check if this candidate matches the startKey.
             // For rulesets discovered via child-search, key-set membership is the reliable signal.
             const candidateKey = isMixin
-              ? (candidateNode as Mixin).get('name')?.valueOf?.()
-              : (isRuleset ? (candidateNode as Ruleset).get('selector').valueOf?.() : '');
+              ? candidateNode.get('name')?.valueOf?.()
+              : (isRuleset ? candidateNode.get('selector').valueOf?.() : '');
+            const candidateSelector = isRuleset
+              ? candidateNode.get('selector')
+              : undefined;
+            const candidateVisibleKeySet = candidateSelector && !isNode(candidateSelector, N.Nil)
+              ? tryGetSelectorKeySet(candidateSelector, true)
+              : undefined;
+            const candidateKeySet = candidateSelector && !isNode(candidateSelector, N.Nil)
+              ? tryGetSelectorKeySet(candidateSelector, false)
+              : undefined;
             const matchesStartKey = isRuleset
               ? (
-                  (!isNode((candidateNode as Ruleset).get('selector'), N.Nil) && hasSelectorKey(((candidateNode as Ruleset).get('selector') as Selector).visibleKeySet, startKey!))
-                  || (!isNode((candidateNode as Ruleset).get('selector'), N.Nil) && hasSelectorKey(((candidateNode as Ruleset).get('selector') as Selector).keySet, startKey!))
+                  hasSelectorKey(candidateVisibleKeySet, startKey!)
+                  || hasSelectorKey(candidateKeySet, startKey!)
+                  || candidateKey === startKey
                 )
               : candidateKey === startKey;
 
@@ -1079,18 +1302,30 @@ export class MixinRegistry extends Registry<
 
             // Search inside the candidate if it matches startKey and we have remaining search keys
             if (matchesStartKey && search.length > 0 && (isRuleset || hasNoParams)) {
-              let subRules = isRuleset ? (candidateNode as Ruleset).get('rules') : (candidateNode as Mixin).get('rules');
-              const subMixinRegistry = subRules.getRegistry('mixin', this.context);
+              const foundContext = candidateContexts.get(getCandidateIdentity(candidateNode));
+              const descendContext = getDescendContext(candidateNode, foundContext ?? context);
+              let subRules = isRuleset
+                ? candidateNode.enterRules(descendContext)
+                : candidateNode.get('rules', descendContext).withRenderOwner(
+                    candidateNode,
+                    descendContext?.renderKey,
+                    descendContext
+                  );
+              const searchContext = descendContext
+                ? { ...descendContext, rulesContext: subRules }
+                : undefined;
+              const subMixinRegistry = subRules.getRegistry('mixin', searchContext);
               subMixinRegistry?.indexPendingItems();
               subMixinRegistry?.find(search, filterType, {
                 searchParents: false,
                 local,
-                candidates: candidates as Set<Node>,
-                context,
+                candidates,
+                context: searchContext,
+                candidateContexts,
                 filter: options?.filter,
                 hasTarget,
                 searchedRules: undefined // Not needed when searchParents is false
-              } as FindOptions);
+              });
             }
           }
         }
@@ -1103,22 +1338,15 @@ export class MixinRegistry extends Registry<
       // Mark this Rules node as searched after we've finished searching it (including children)
       searchedRules.add(rules);
 
+      if (isNonImportStyleBoundary(rules)) {
+        searchParents = false;
+      }
+
       if (!searchParents) {
         break;
       }
       do {
-        rules = rules && this.context
-          ? getParent(rules, this.context) as Rules | undefined
-          : rules?.parent as Rules;
-        /**
-         * If we reach an import boundary, stop unless it's an `@import`
-         * which means these rules can reach into the parent file that imports
-         * this one.
-         */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          rules = undefined;
-          break;
-        }
+        rules = rules?.getRegistryParent(context);
       } while (rules && rules.type !== 'Rules');
     }
 
@@ -1126,7 +1354,7 @@ export class MixinRegistry extends Registry<
     // we can find all matches in one pass. The find() method handles compound keys by
     // recursively searching inside nested rulesets for the remaining keys.
 
-    return candidates.size ? [...candidates] as (Mixin | Ruleset)[] : undefined;
+    return candidates.size ? [...candidates] : undefined;
   }
 }
 
@@ -1174,6 +1402,9 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
     let { searchParents = true } = options ?? {};
     let findRoot = false;
     while (rules) {
+      if (isNonImportStyleBoundary(rules)) {
+        searchParents = false;
+      }
       let registry = rules.functionRegistry;
       if (registry) {
         registry.indexPendingItems();
@@ -1185,24 +1416,14 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       do {
-        rules = rules && this.context
-          ? getParent(rules, this.context) as Rules | undefined
-          : rules?.parent as Rules;
+        rules = rules?.getRegistryParent(this.context);
         if (
           findRoot
           && rules?.type === 'Rules'
-          && (this.context
-            ? getParent(rules, this.context) === undefined
-            : rules?.parent === undefined)
+          && rules.getRegistryParent(this.context) === undefined
         ) {
           /** We're at the root */
           break;
-        }
-        /**
-         * If we reach an import boundary, skip the scope until we get to the top level.
-         */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          findRoot = true;
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
@@ -1220,8 +1441,8 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
     func?: JsFunction | ((...args: any[]) => any)
   ): void {
     // If first argument is a JsFunction or Func, use base class behavior
-    if (nameOrItem instanceof JsFunction || (nameOrItem as any)?.type === 'Func') {
-      super.add(nameOrItem as any);
+    if (nameOrItem instanceof JsFunction || (typeof nameOrItem === 'object' && nameOrItem !== null && Reflect.get(nameOrItem, 'type') === 'Func')) {
+      super.add(nameOrItem as JsFunction | Func);
       return;
     }
 
@@ -1317,7 +1538,7 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
 
     // Store reference to parent registry for direct lookup
     // This allows the child to search the parent registry even if it's on the same Rules
-    (childRegistry as any)._parentRegistry = this;
+    Reflect.set(childRegistry, '_parentRegistry', this);
 
     // Override get() to check parent registry first
     const originalGet = childRegistry.get.bind(childRegistry);
@@ -1330,8 +1551,8 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       // Then check parent registry
-      const parentRegistry = (this as unknown as { _parentRegistry?: FunctionRegistry })._parentRegistry;
-      if (parentRegistry) {
+      const parentRegistry = Reflect.get(this, '_parentRegistry');
+      if (parentRegistry instanceof FunctionRegistry) {
         const parentFn = parentRegistry.get(name);
         if (parentFn) {
           return parentFn;
@@ -1381,69 +1602,160 @@ export class DeclarationRegistry extends Registry<Declaration> {
     filterType: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
     options?: FindOptions
   ): Declaration | undefined {
+    const candidateContexts = options?.candidateContexts ?? new WeakMap<Node, Context>();
+    const getCandidateIdentity = (node: Declaration): Node => node.sourceNode ?? node;
+    const getDeclarationCandidateScore = (node: Declaration, activeRules: Rules): [number, number, number, number] => {
+      const activeRenderKey = context?.renderKey ?? activeRules.renderKey;
+      const nonCanonicalParentEdgeKeys = node.parentEdges
+        ? [...node.parentEdges.keys()].filter(key => key !== CANONICAL && key !== CALLER)
+        : [];
+      const matchesActiveKey = activeRenderKey !== undefined && nonCanonicalParentEdgeKeys.includes(activeRenderKey) ? 1 : 0;
+      const isDerived = node !== getCandidateIdentity(node) ? 1 : 0;
+      const isPreEvaluated = node.preEvaluated ? 1 : 0;
+      const isEvaluated = node.evaluated ? 1 : 0;
+      return [matchesActiveKey, isDerived, isPreEvaluated, isEvaluated];
+    };
+    const shouldReplaceCandidate = (existing: Declaration, next: Declaration, activeRules: Rules): boolean => {
+      const existingScore = getDeclarationCandidateScore(existing, activeRules);
+      const nextScore = getDeclarationCandidateScore(next, activeRules);
+      for (let i = 0; i < existingScore.length; i++) {
+        if (nextScore[i]! > existingScore[i]!) {
+          return true;
+        }
+        if (nextScore[i]! < existingScore[i]!) {
+          return false;
+        }
+      }
+      return false;
+    };
+    const rememberCandidateContext = (node: Declaration, activeRules: Rules): void => {
+      if (!context) {
+        return;
+      }
+      setParent(node, activeRules, context);
+      candidateContexts.set(node, {
+        ...context,
+        rulesContext: activeRules,
+        renderKey: context.renderKey ?? activeRules.renderKey
+      });
+    };
+    const getCandidateContext = (node: Declaration, activeRules: Rules): Context | undefined => {
+      return candidateContexts.get(node) ?? (
+        context
+          ? {
+              ...context,
+              rulesContext: activeRules
+            }
+          : context
+      );
+    };
+    const getDeclarationOrderPath = (node: Declaration, boundaryRules: Rules): number[] | undefined => {
+      const path: number[] = [];
+      let current: Node | undefined = node;
+      const nodeContext = getCandidateContext(node, boundaryRules);
+      while (current) {
+        const parent = nodeContext ? getParent(current, nodeContext) : current.parent;
+        if (!parent) {
+          return undefined;
+        }
+        if (current.index === undefined) {
+          return undefined;
+        }
+        path.unshift(current.index);
+        if (parent === boundaryRules) {
+          return path;
+        }
+        if (!isNode(parent, N.Rules)) {
+          return undefined;
+        }
+        current = parent;
+      }
+      return undefined;
+    };
+    const compareDeclarationsForLookup = (a: Declaration, b: Declaration): number => {
+      const aPath = getDeclarationOrderPath(a, rules);
+      const bPath = getDeclarationOrderPath(b, rules);
+      if (aPath && bPath) {
+        const length = Math.min(aPath.length, bPath.length);
+        for (let i = 0; i < length; i++) {
+          const diff = aPath[i]! - bPath[i]!;
+          if (diff !== 0) {
+            return diff;
+          }
+        }
+        if (aPath.length !== bPath.length) {
+          return aPath.length - bPath.length;
+        }
+      }
+      const pos = comparePosition(a, b);
+      return pos ?? 0;
+    };
     let declCandidate = new Set<Declaration>();
-    let optionalCandidates = (options?.optionalCandidates as Set<Declaration> | undefined) ?? new Set<Declaration>();
+    let optionalCandidates = options?.optionalCandidates ?? new Set<Declaration>();
     let rules: Rules | undefined = this.rules;
     let isPublic = false;
     let {
       searchParents = true,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       local = false,
-      start
+      start,
+      context
     } = options ?? {};
-    const changedVars = this.context && hasChangedVars(this.context)
-      ? getChangedVars(this.context)
-      : undefined;
-    const dependsOnChangedVar = (declaration: Declaration): boolean => {
-      if (!changedVars || changedVars.size === 0) {
-        return true;
-      }
-      const dependency = getDependency(declaration.get('value'), this.context!);
-      if (!dependency?.dependsOn || dependency.dependsOn.size === 0) {
-        return false;
-      }
-      for (const changedVar of changedVars) {
-        if (dependency.dependsOn.has(changedVar as VarDeclaration)) {
-          return true;
-        }
-      }
-      return false;
-    };
+    if (options) {
+      options.candidateContexts = candidateContexts;
+    }
 
     let newReadonly: boolean | undefined = false;
     let searchChildrenOptions: FindOptions | undefined;
     // Track visited Rules nodes in the parent chain to detect circular parent chains
     const visitedRules = new Set<Rules>();
-    while (rules) {
-      // CRITICAL: Check for circular parent chain
-      if (visitedRules.has(rules)) {
-        throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
-      }
-      visitedRules.add(rules);
-      let currentReadonly = options?.readonly || rules.options.readonly;
-      newReadonly = currentReadonly;
-      const registry = rules.getRegistry('declaration', this.context);
-      registry?.indexPendingItems();
+      while (rules) {
+        // CRITICAL: Check for circular parent chain
+        if (visitedRules.has(rules)) {
+          throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
+        }
+        visitedRules.add(rules);
+        let currentReadonly = options?.readonly || rules.options.readonly;
+        newReadonly = currentReadonly;
+        const invocationBinding = filterType === 'VarDeclaration'
+          ? rules.getInvocationBinding(key, context)
+          : undefined;
+        if (invocationBinding && (!options?.filter || options.filter(invocationBinding))) {
+          rememberCandidateContext(invocationBinding, rules);
+          newReadonly ||= invocationBinding.options.readonly;
+          if (options && newReadonly) {
+            options.readonly = true;
+          }
+          return invocationBinding;
+        }
+        const registry = rules.getRegistry('declaration', context);
+        registry?.indexPendingItems();
       let list: Declaration[] | undefined;
       const filter = options?.filter;
       const indexSet = registry?.index.get(key);
       if (indexSet) {
+        const deduped = new Map<Node, Declaration>();
         for (const n of indexSet) {
           if (n.type === filterType && (!filter || filter(n))) {
-            (list ??= []).push(n);
+            const identity = getCandidateIdentity(n);
+            const existing = deduped.get(identity);
+            if (!existing || shouldReplaceCandidate(existing, n, rules)) {
+              deduped.set(identity, n);
+            }
           }
         }
-      }
-      // Sort using comparePosition for proper source order comparison
-      if (list && list.length > 1) {
-        list.sort((a, b) => {
-          const pos = comparePosition(a, b);
-          return pos ?? 0;
-        });
+        for (const n of deduped.values()) {
+          rememberCandidateContext(n, rules);
+          (list ??= []).push(n);
+        }
       }
       if (list) {
+        if (list.length > 1) {
+          list.sort(compareDeclarationsForLookup);
+        }
         let result = registry._findClosestByStart(list, start);
         if (result) {
+          rememberCandidateContext(result, rules);
           newReadonly ||= result.options.readonly;
           // Visibility determines how declarations are found:
           // - 'private': only visible from INSIDE (children looking up) or same scope,
@@ -1455,6 +1767,20 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // search originates from a descendant of this scope, so private does NOT block.
           // Private only blocks _searchRulesChildren (outside looking in).
           const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
+          const currentRulesOwner = getCurrentParentNode(rules, context);
+          const shouldPreferLexicalVar = (
+            filterType === 'VarDeclaration'
+            && (
+              currentRulesVisibility !== 'optional'
+              || currentRulesOwner?.type === 'Ruleset'
+            )
+          );
+          if (shouldPreferLexicalVar) {
+            if (options) {
+              options.readonly ||= newReadonly;
+            }
+            return result;
+          }
           if (currentRulesVisibility === 'optional') {
             optionalCandidates.add(result);
           } else {
@@ -1492,7 +1818,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       } else {
         searchChildrenOptions.readonly = newReadonly;
       }
-      rules.getRegistry('declaration', this.context)._searchRulesChildren(key, filterType, searchChildrenOptions);
+      rules.getRegistry('declaration', context)._searchRulesChildren(key, filterType, searchChildrenOptions);
 
       // After searching the CURRENT scope (index + children), if we found public declarations,
       // sort them, find the best one (closest to start or at bottom), and return immediately.
@@ -1504,14 +1830,23 @@ export class DeclarationRegistry extends Registry<Declaration> {
         if (candidateArray.length === 1) {
           bestResult = candidateArray[0];
         } else {
-          // Sort by comparePosition and take the last one
           candidateArray.sort((a, b) => {
-            const pos = comparePosition(a, b);
-            return pos ?? 0;
+            const order = compareDeclarationsForLookup(a, b);
+            if (order !== 0) {
+              return order;
+            }
+            const aContext = getCandidateContext(a, rules);
+            const bContext = getCandidateContext(b, rules);
+            const aDirect = (aContext ? getParent(a, aContext) : a.parent) === rules;
+            const bDirect = (bContext ? getParent(b, bContext) : b.parent) === rules;
+            if (aDirect !== bDirect) {
+              return aDirect ? 1 : -1;
+            }
+            return 0;
           });
           bestResult = candidateArray[candidateArray.length - 1];
         }
-        if (options && searchChildrenOptions.readonly) {
+        if (options && searchChildrenOptions?.readonly) {
           options.readonly = true;
         }
         return bestResult;
@@ -1519,8 +1854,11 @@ export class DeclarationRegistry extends Registry<Declaration> {
 
       // If we haven't found public candidates in the current scope, continue normal parent search
       // (optional candidates are tracked but we keep searching up the parent chain)
+      if (isNonImportStyleBoundary(rules)) {
+        searchParents = false;
+      }
       if (isPublic || !searchParents) {
-        if (options && searchChildrenOptions.readonly) {
+        if (options && searchChildrenOptions?.readonly) {
           options.readonly = true;
         }
         const result = declCandidate.values().next().value;
@@ -1528,13 +1866,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       }
 
       do {
-        rules = rules && this.context
-          ? getParent(rules, this.context) as Rules | undefined
-          : rules?.parent as Rules;
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          rules = undefined;
-          break;
-        }
+        rules = rules?.getRegistryParent(context);
       } while (rules && rules.type !== 'Rules');
       // The start constraint only applies within the originating scope.
       // When walking up to a parent scope, drop it so declarations at any
@@ -1550,11 +1882,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       if (optionalArray.length === 1) {
         return optionalArray[0];
       }
-      // Sort by comparePosition and take the last one
-      optionalArray.sort((a, b) => {
-        const pos = comparePosition(a, b);
-        return pos ?? 0;
-      });
+      optionalArray.sort(compareDeclarationsForLookup);
       const optionalResult = optionalArray[optionalArray.length - 1];
       return optionalResult;
     }
@@ -1567,14 +1895,15 @@ export function getDirectDeclarationsByKey(
   key: string | undefined,
   context?: Context
 ): Declaration[] {
-  const children = context ? getChildren(rules, context) : rules.value;
+  const children = rules.getRegistryChildren(context);
   const matches: Declaration[] = [];
   for (const child of children) {
     if (!isNode(child, N.Declaration | N.VarDeclaration)) {
       continue;
     }
-    if (key === undefined || (child as Declaration).get('name')?.toString() === key) {
-      matches.push(child as Declaration);
+    const name = child.get('name', context);
+    if (key === undefined || name?.valueOf?.() === key) {
+      matches.push(child);
     }
   }
   return matches;

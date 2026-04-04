@@ -1,6 +1,7 @@
 import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
-import { getField, getParent, setField } from '../util/field-helpers.js';
+import { addEdge, getEdge } from '../util/cursor.js';
+import type { RenderKey } from '../node.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -18,22 +19,45 @@ describe('Expression', () => {
     expect(`${rule}`).toBe('$(foo)');
   });
 
-  it('preEval preserves a state-patched value without mutating the canonical child', async () => {
-    const shared = any('bar');
-    const source = expr(shared);
+  it('a cloned expression can replace its value without mutating the canonical child', () => {
     const rule = expr(any('foo'));
-    setField(rule, 'value', shared, context);
-    const preEvald = await rule.preEval(context);
+    const replacement = any('bar');
+    const clonedRule = rule.clone();
 
-    // With EvalState, maybeClone returns this — no clone needed.
-    expect(preEvald).toBe(rule);
-    // State-patched value is visible through getField
-    expect(getField(rule, 'value', context)).toBe(shared);
-    expect(rule.toTrimmedString({ context })).toBe('$(bar)');
-    // Canonical value unchanged
-    expect(rule.get('value')).not.toBe(shared);
-    // Canonical parent unchanged
-    expect(shared.parent).toBe(source);
+    clonedRule.adopt(replacement, context);
+    (clonedRule as unknown as { value: ReturnType<typeof any> }).value = replacement;
+
+    expect(clonedRule.toTrimmedString({ context })).toBe('$(bar)');
+    expect(rule.get('value')).not.toBe(replacement);
+    expect(rule.toTrimmedString()).toBe('$(foo)');
+    expect(clonedRule.get('value')).toBe(replacement);
+  });
+
+  it('reads a singular child through the cursor model', () => {
+    const canonical = any('foo');
+    const alternate = any('bar');
+    const rule = expr(canonical);
+    const key: RenderKey = Symbol('cursor');
+    const cursor = { node: rule, renderKey: key };
+
+    expect(getEdge(cursor, 'value')?.node).toBe(canonical);
+
+    addEdge(rule, 'value', key, alternate);
+
+    expect(getEdge(cursor, 'value')?.node).toBe(alternate);
+    expect(rule.value).toBe(canonical);
+  });
+
+  it('reads a singular child through get(field, renderKey) without a context', () => {
+    const canonical = any('foo');
+    const alternate = any('bar');
+    const rule = expr(canonical);
+    const renderKey = Symbol('render');
+
+    addEdge(rule, 'value', renderKey, alternate);
+
+    expect(rule.get('value')).toBe(canonical);
+    expect(rule.get('value', renderKey)).toBe(alternate);
   });
 
   // it('should serialize to a module', () => {

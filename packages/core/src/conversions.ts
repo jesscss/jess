@@ -1,4 +1,4 @@
-import { Dimension, Num, Sequence, Operation, List } from './tree/index.js';
+import { Dimension, Num } from './tree/index.js';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
@@ -140,9 +140,10 @@ export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
 });
 
 export const clamp = (min: number, max: number): ConversionPlugin => (value: unknown) => {
-  if (typeof value !== 'number') {
-    return Math.max(min, Math.min(max, value as number));
+  if (typeof value === 'number') {
+    return Math.max(min, Math.min(max, value));
   }
+  return value;
 };
 
 /**
@@ -242,13 +243,13 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
  * ```
  */
 export const splitSequence = (): PreprocessParams => {
-  return (args: any[], context: Context): any[] => {
+  return (args: any[], _context: Context): any[] => {
     // Only process if we have exactly one argument that is a Sequence
     if (args.length !== 1 || !isNode(args[0], N.Sequence)) {
       return args;
     }
 
-    const sequence = args[0] as Sequence;
+    const sequence = args[0];
 
     // Split the sequence into individual arguments
     const splitArgs: any[] = [];
@@ -258,10 +259,8 @@ export const splitSequence = (): PreprocessParams => {
 
       // Check if this is the last item and it's an Operation (likely a slash)
       if (i === seqItems.length - 1 && item.type === 'Operation') {
-        const opNode = item as Operation;
-        const left = opNode.get('left');
-        const op = opNode.get('operator');
-        const right = opNode.get('right');
+        const left = item.get('left');
+        const right = item.get('right');
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)

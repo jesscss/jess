@@ -3,12 +3,15 @@ import {
   defineType,
   type NodeOptions,
   type LocationInfo, type OptionalLocation,
+  type RenderKey,
+  CANONICAL,
+  EVAL,
   type TreeContext,
   F_STATIC,
-  F_VISIBLE
+  F_VISIBLE,
+  isVisibleInContext
 } from './node.js';
 import { Context } from '../context.js';
-import type { EvalState } from '../eval-state.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Ruleset } from './ruleset.js';
@@ -27,14 +30,15 @@ import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import { indent, normalizeIndent } from './util/serialize-helper.js';
+import { addEdge, addEdgeAt, addParentEdge, getEdgeAt } from './util/cursor.js';
+import { getCurrentParentNode } from './util/selector-utils.js';
 import {
   getChildren,
-  getField,
   getParent,
   getSourceParent,
-  setField,
   setChildren,
   setChildAt,
+  getIndex,
   setIndex,
   setParent,
   isPreEvaluated,
@@ -51,6 +55,7 @@ import {
   type EvaluateCandidateOutputOptions
 } from './util/mixin-instance-primitives.js';
 import type { Func } from './function.js';
+import type { Call } from './call.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -61,6 +66,9 @@ export const enum Priority {
   Highest = 4
 }
 export type RulesVisibility = 'public' | 'optional' | 'private';
+export type FlatRulePosition = {
+  renderKey?: RenderKey;
+};
 
 export type RulesOptions = {
   /**
@@ -126,21 +134,28 @@ export type RulesOptions = {
   forward?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
+  /** Explicit reference imports may render extended descendants; deduped imports may not. */
+  referenceRenderOnExtend?: boolean;
 };
 
 export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  /** @internal */ readonly value: readonly Node[];
+  readonly value: readonly Node[];
   get options(): RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   };
   set options(options: RulesOptions & NodeOptions & {
     rulesVisibility: Record<string, RulesVisibility>;
   });
-  getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
-    rulesVisibility: Record<string, RulesVisibility>;
-  };
   eval(context: Context): MaybePromise<this>;
 }
+
+export type InvocationBindingFactory = (rules: Rules, context?: Context) => VarDeclaration;
+
+export type InvocationBinding = {
+  template?: VarDeclaration;
+  factory?: InvocationBindingFactory;
+  declaration?: VarDeclaration;
+};
 /**
  * The class representing a "declaration list".
  * CSS calls it this even though CSS Nesting
@@ -158,41 +173,58 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
 export interface Rules {
   type: 'Rules' | 'RawRules' | 'Collection';
   shortType: 'rules' | 'rules-raw' | 'coll';
+  renderKey: RenderKey;
 }
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ readonly value!: readonly Node[];
+  readonly value!: readonly Node[];
+  declare renderKey: RenderKey;
+  private _wrapperRegistrySeeded = false;
+  private _wrapperRegistrySeeding = false;
+  private _invocationBindings?: Map<string, InvocationBinding>;
 
   functionRegistry: Registries.FunctionRegistry | undefined;
 
-  getCurrentOptions(context?: Context): RulesOptions & NodeOptions & {
-    rulesVisibility: Record<string, RulesVisibility>;
-  } {
-    return context
-      ? getField<RulesOptions & NodeOptions & {
-        rulesVisibility: Record<string, RulesVisibility>;
-      }>(this, 'options', context)
-      : this.options;
-  }
-
-  setCurrentOptions(
-    options: RulesOptions & NodeOptions & {
-      rulesVisibility: Record<string, RulesVisibility>;
-    },
-    context?: Context
-  ): void {
-    if (context && this === this.sourceNode) {
-      setField(this, 'options', options, context);
-      return;
+  private _withOwnRenderKey<T>(
+    context: Context | undefined,
+    fn: () => T
+  ): T {
+    if (!context) {
+      return fn();
     }
-    this.options = options;
+    const targetRenderKey = this.renderKey === CANONICAL
+      ? (context.renderKey ?? this.renderKey)
+      : this.renderKey;
+    const needsRenderKey = context.renderKey !== targetRenderKey;
+    const needsRulesContext = context.rulesContext !== this;
+    if (!needsRenderKey && !needsRulesContext) {
+      return fn();
+    }
+
+    const previousRenderKey = context.renderKey;
+    const previousRulesContext = context.rulesContext;
+    if (needsRenderKey) {
+      context.renderKey = targetRenderKey;
+    }
+    if (needsRulesContext) {
+      context.rulesContext = this;
+    }
+    try {
+      return fn();
+    } finally {
+      if (needsRulesContext) {
+        context.rulesContext = previousRulesContext;
+      }
+      if (needsRenderKey) {
+        context.renderKey = previousRenderKey;
+      }
+    }
   }
 
-  private _cloneOptionsForContext(context?: Context): (RulesOptions & NodeOptions) | undefined {
-    const options = context
-      ? this.getCurrentOptions(context)
-      : this._meta?.options as (RulesOptions & NodeOptions) | undefined;
+  private _cloneOptionsForContext(_context?: Context): (RulesOptions & NodeOptions) | undefined {
+    const options = this.options
+      ?? (this as any)._meta?.options as (RulesOptions & NodeOptions) | undefined;
     if (!options) {
       return undefined;
     }
@@ -202,6 +234,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? { ...options.rulesVisibility }
         : options.rulesVisibility
     };
+  }
+
+  private _cloneInvocationBindings(): Map<string, InvocationBinding> | undefined {
+    if (!this._invocationBindings || this._invocationBindings.size === 0) {
+      return undefined;
+    }
+    const next = new Map<string, InvocationBinding>();
+    for (const [key, binding] of this._invocationBindings) {
+      next.set(key, {
+        template: binding.declaration ?? binding.template,
+        factory: binding.factory
+      });
+    }
+    return next;
   }
 
   /**
@@ -215,14 +261,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const location = Array.isArray(this.location) && this.location.length === 6
       ? this.location as LocationInfo
       : undefined;
+    const detachedRenderKey = (
+      !deep
+      && this.renderKey === CANONICAL
+      && ctx
+        ? ctx.nextRenderKey()
+        : this.renderKey
+    );
     const newRules = deep
       ? super.clone(deep, cloneFn, ctx)
-      : new (this.constructor as typeof Rules)(
-        this.value,
-        options ? { ...options } : undefined,
-        location,
-        this.treeContext
-      ) as this;
+      : (() => {
+          const wrapper = new (this.constructor as typeof Rules)(
+            [],
+            options ? { ...options } : undefined,
+            location,
+            this.treeContext
+          ) as this;
+          wrapper._setValueArray(this.value as Node[]);
+          wrapper.inherit(this);
+          wrapper.renderKey = detachedRenderKey;
+          if (wrapper.renderKey !== CANONICAL) {
+            wrapper._connectSharedChildren(wrapper.renderKey);
+          }
+          return wrapper;
+        })();
 
     if (deep && options) {
       newRules.options = options as typeof newRules.options;
@@ -232,10 +294,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       newRules.inherit(this);
     }
 
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      newRules._invocationBindings = invocationBindings;
+    }
+
     if (ctx) {
-      const parent = getParent(this, ctx);
+      const parent = getCurrentParentNode(this, ctx);
       if (parent) {
-        setParent(newRules, parent, ctx);
+        if (newRules.renderKey !== CANONICAL) {
+          setParent(newRules, parent, { ...ctx, renderKey: newRules.renderKey });
+        } else {
+          setParent(newRules, parent, ctx);
+        }
       }
     }
 
@@ -260,7 +331,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * to rely on raw clone(false) semantics.
    */
   cloneDetachedUnlockWrapper(ctx: Context): this {
-    return this.cloneLookupSafeShallowWrapper(ctx);
+    const wrapper = this.createShallowBodyWrapper(ctx) as this;
+    return wrapper;
   }
 
   /**
@@ -269,7 +341,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * resolve through the wrapper during the current session.
    */
   cloneVisibilityIsolationWrapper(ctx: Context): this {
-    return this.cloneLookupSafeShallowWrapper(ctx);
+    const wrapper = this.createShallowBodyWrapper(ctx) as this;
+    return wrapper;
   }
 
   /**
@@ -283,33 +356,99 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return Registries[`${type.charAt(0).toUpperCase()}${type.slice(1)}Registry` as 'RulesetRegistry' | 'MixinRegistry' | 'DeclarationRegistry' | 'FunctionRegistry'];
   }
 
+  private _ensureDirectRegistry(
+    type: 'ruleset' | 'declaration' | 'mixin' | 'function',
+    context?: Context
+  ) {
+    const key = Rules._registryKey(type);
+    let registry = (this as any)[key];
+    if (!registry) {
+      registry = new (Rules._registryClass(type))(this, context);
+      (this as any)[key] = registry;
+    } else if (context && !(registry as any).context) {
+      (registry as any).context = context;
+    }
+    return registry;
+  }
+
+  private _isWrapperRegistryOwner(): boolean {
+    return this.renderKey !== CANONICAL;
+  }
+
+  private _connectSharedChildren(renderKey: RenderKey): void {
+    const seen = new Set<Node>();
+    const connectDescendants = (parent: Node, child: Node): void => {
+      addParentEdge(child, renderKey, parent);
+      if (seen.has(child)) {
+        return;
+      }
+      seen.add(child);
+      const childKeys = (child.constructor as typeof Node).childKeys;
+      if (!childKeys) {
+        return;
+      }
+      for (const key of childKeys) {
+        const value = (child as unknown as Record<string, unknown>)[key];
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item instanceof Node) {
+              connectDescendants(child, item);
+            }
+          }
+          continue;
+        }
+        if (value instanceof Node) {
+          connectDescendants(child, value);
+        }
+      }
+    };
+
+    for (const child of this.value) {
+      if (child instanceof Node) {
+        connectDescendants(this, child);
+      }
+    }
+  }
+
+  private _ensureWrapperRegistrySeeded(context?: Context): void {
+    if (!this._isWrapperRegistryOwner() || this._wrapperRegistrySeeded || this._wrapperRegistrySeeding) {
+      return;
+    }
+
+    this._wrapperRegistrySeeding = true;
+    try {
+      (this as any).rulesetRegistry = undefined;
+      (this as any).mixinRegistry = undefined;
+      (this as any).declarationRegistry = undefined;
+      this._rulesSet = [];
+
+      for (const child of this.getRegistryChildren(context)) {
+        this.registerNode(child, undefined, context);
+      }
+
+      this._wrapperRegistrySeeded = true;
+    } finally {
+      this._wrapperRegistrySeeding = false;
+    }
+  }
+
   /**
    * Register a child node into the appropriate registry.
    * Creates the registry lazily on first registration.
-   * With context: writes to the state-scoped registry on NodeState.
-   * Without context: writes to the instance property (canonical).
+   * Wrapper/derived Rules own their registries directly.
+   * Canonical Rules still fall back to direct per-node registries until the
+   * remaining lookup paths are fully converged on render-path ownership.
    */
   register(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
     node: Node,
     context?: Context
   ) {
-    const key = Rules._registryKey(type);
-    if (context) {
-      const ns = context.activeState.get(this);
-      let registry = ns[key];
-      if (!registry) {
-        registry = new (Rules._registryClass(type))(this, context) as any;
-        ns[key] = registry as any;
-      }
-      return (registry as any).add(node);
-    }
-    let registry = (this as any)[key];
-    if (!registry) {
-      registry = new (Rules._registryClass(type))(this);
-      (this as any)[key] = registry;
-    }
-    return registry.add(node);
+    return this._withOwnRenderKey(context, () => {
+      this._ensureWrapperRegistrySeeded(context);
+      const registry = this._ensureDirectRegistry(type, context);
+      return registry.add(node);
+    });
   }
 
   /**
@@ -322,26 +461,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'function', context?: Context): Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function', context?: Context) {
-    const key = Rules._registryKey(type);
-    if (context) {
-      let state: EvalState | undefined = context.activeState;
-      while (state) {
-        const registry = state.peek(this)?.[key];
-        if (registry) {
-          return registry;
-        }
-        state = state.parent;
+    return this._withOwnRenderKey(context, () => {
+      this._ensureWrapperRegistrySeeded(context);
+      return this._ensureDirectRegistry(type, context);
+    });
+  }
+
+  getRegistryParent(context?: Context): Rules | undefined {
+    return this._withOwnRenderKey(context, () => {
+      let parent = getCurrentParentNode(this, context);
+      while (parent && parent.type !== 'Rules') {
+        parent = getCurrentParentNode(parent, context);
       }
-    }
-    // Fall back to instance property; create if missing.
-    // Empty registries are cheap — just a Map. The parent/child walk
-    // infrastructure needs a registry instance even when nothing is registered.
-    let registry = (this as any)[key];
-    if (!registry) {
-      registry = new (Rules._registryClass(type))(this, context);
-      (this as any)[key] = registry;
-    }
-    return registry;
+      if (parent) {
+        return parent as Rules | undefined;
+      }
+      let sourceParent = getSourceParent(this, context);
+      while (sourceParent && sourceParent.type !== 'Rules') {
+        sourceParent = getCurrentParentNode(sourceParent, context);
+      }
+      return sourceParent as Rules | undefined;
+    });
   }
 
   /**
@@ -359,8 +499,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     filterType?: string,
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
-    const registry = this.getRegistry(type, options.context);
-    return (registry.find as Function)(keys, filterType, options);
+    return this._withOwnRenderKey(options.context, () => {
+      const registry = this.getRegistry(type, options.context);
+      return (registry.find as Function)(keys, filterType, options);
+    });
   }
 
   findStatePatchedFunction(
@@ -368,42 +510,44 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.FunctionRegistry['find']> | undefined {
     const { filter, context, searchParents = true } = options;
-    let rules: Rules | undefined = this;
-    let findRoot = false;
+    return this._withOwnRenderKey(context, () => {
+      let rules: Rules | undefined = this;
+      let findRoot = false;
 
-    while (rules) {
-      for (const child of rules._getChildren(context)) {
-        if (!isNode(child, N.Func)) {
-          continue;
+      while (rules) {
+        for (const child of rules.getRegistryChildren(context)) {
+          if (!isNode(child, N.Func)) {
+            continue;
+          }
+          if (filter && !filter(child)) {
+            continue;
+          }
+          if ((child as Func).getNameKey(context) === name) {
+            return child as Func;
+          }
         }
-        if (filter && !filter(child)) {
-          continue;
-        }
-        if ((child as Func).getNameKey(context) === name) {
-          return child as Func;
-        }
-      }
 
-      if (!searchParents) {
-        break;
-      }
-
-      do {
-        rules = context ? getParent(rules, context) as Rules | undefined : rules?.parent as Rules | undefined;
-        if (findRoot && rules?.type === 'Rules' && (context ? getParent(rules, context) : rules?.parent) === undefined) {
+        if (!searchParents) {
           break;
         }
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
-          findRoot = true;
-        }
-      } while (!findRoot && rules && rules.type !== 'Rules');
-    }
 
-    return undefined;
+        do {
+          rules = rules?.getRegistryParent(context);
+          if (findRoot && rules?.type === 'Rules' && rules.getRegistryParent(context) === undefined) {
+            break;
+          }
+          if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
+            findRoot = true;
+          }
+        } while (!findRoot && rules && rules.type !== 'Rules');
+      }
+
+      return undefined;
+    });
   }
 
   override toString(options?: PrintOptions): string {
-    if (!this.visible && !this.fullRender) {
+    if (!isVisibleInContext(this, options?.context) && !this.fullRender) {
       return '';
     }
     options = getPrintOptions(options);
@@ -412,106 +556,122 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const mark = w.mark();
 
     const ctx = options.context;
-    const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
-    if (depth === 0) {
+    return this._withOwnRenderKey(ctx, () => {
+      const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
+      if (depth === 0) {
       // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
-      const prevCharsetEmitted = ctx?.charsetEmitted;
-      const prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
-      // @charset must be first
-      if (ctx?.currentCharset && !ctx.charsetEmitted) {
-        const charset = ctx.currentCharset;
-        // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
-        const charsetStr = w.capture(() => charset.toTrimmedString(options));
-        w.add(charsetStr, charset);
-        w.add('\n');
-        // Do not permanently flip `charsetEmitted` here; restore at end.
-        ctx.charsetEmitted = true;
-      }
-      // Less keeps leading comments before hoisted @import output.
-      const isCommentLike = (node: Node): boolean => {
-        const text = String(node.valueOf?.() ?? '').trimStart();
-        if (!text.startsWith('/*')) {
-          return false;
-        }
-        return isNode(node, N.Comment) || isNode(node, N.Any);
-      };
-      if (ctx?.topImports?.length) {
-        for (const node of this._getChildren(ctx)) {
-          if (!isCommentLike(node)) {
-            break;
-          }
-          const commentStr = w.capture(() => node.toTrimmedString(options));
-          w.add(normalizeIndent(commentStr, ''), node);
+        const prevCharsetEmitted = ctx?.charsetEmitted;
+        const prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
+        // @charset must be first
+        if (ctx?.currentCharset && !ctx.charsetEmitted) {
+          const charset = ctx.currentCharset;
+          // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
+          const charsetStr = w.capture(() => charset.toTrimmedString(options));
+          w.add(charsetStr, charset);
           w.add('\n');
-          const wasVisible = node.hasFlag(F_VISIBLE);
-          suppressedLeadingComments.push({ node, visible: wasVisible });
-          if (wasVisible) {
-            node.removeFlag(F_VISIBLE);
+          // Do not permanently flip `charsetEmitted` here; restore at end.
+          ctx.charsetEmitted = true;
+        }
+        // Less keeps leading comments before hoisted @import output.
+        const isCommentLike = (node: Node): boolean => {
+          const text = String(node.valueOf?.() ?? '').trimStart();
+          if (!text.startsWith('/*')) {
+            return false;
+          }
+          return isNode(node, N.Comment) || isNode(node, N.Any);
+        };
+        if (ctx?.topImports?.length) {
+          for (const node of this._getRenderChildren(ctx)) {
+            if (!isCommentLike(node)) {
+              break;
+            }
+            const commentStr = w.capture(() => node.toTrimmedString(options));
+            w.add(normalizeIndent(commentStr, ''), node);
+            w.add('\n');
+            const wasVisible = node.hasFlag(F_VISIBLE);
+            suppressedLeadingComments.push({ node, visible: wasVisible });
+            if (wasVisible) {
+              node.removeFlag(F_VISIBLE);
+            }
+          }
+        }
+        // @import must come after @charset but before other rules
+        if (ctx?.topImports?.length) {
+          for (const importRule of ctx.topImports) {
+            const importStr = w.capture(() => importRule.toString(options));
+            w.add(normalizeIndent(importStr, ''), importRule);
+            w.add('\n');
+          }
+          // Do not permanently clear; restore at end.
+        }
+        // Restore global tracking (we only needed it during this print).
+        if (ctx) {
+          ctx.charsetEmitted = prevCharsetEmitted;
+          if (prevTopImports) {
+            ctx.topImports = prevTopImports;
           }
         }
       }
-      // @import must come after @charset but before other rules
-      if (ctx?.topImports?.length) {
-        for (const importRule of ctx.topImports) {
-          const importStr = w.capture(() => importRule.toString(options));
-          w.add(normalizeIndent(importStr, ''), importRule);
-          w.add('\n');
-        }
-        // Do not permanently clear; restore at end.
-      }
-      // Restore global tracking (we only needed it during this print).
-      if (ctx) {
-        ctx.charsetEmitted = prevCharsetEmitted;
-        if (prevTopImports) {
-          ctx.topImports = prevTopImports;
-        }
-      }
-    }
 
-    this.processPrePost('pre', '', options);
-    const bodyMark = w.mark();
-    const bodyStr = this.toTrimmedString(options);
-    const bodyEmitted = w.getSince(bodyMark);
-    if (bodyEmitted.length === 0 && bodyStr) {
-      w.add(bodyStr);
-    }
-    // At root level, ensure output ends with a single newline (standard for CSS files)
-    // Don't propagate all the last child's post content (which may have extra whitespace)
-    if (depth === 0) {
-      for (const suppressed of suppressedLeadingComments) {
-        if (suppressed.visible) {
-          suppressed.node.addFlag(F_VISIBLE);
-        }
+      this.processPrePost('pre', '', options);
+      const bodyMark = w.mark();
+      const bodyStr = this.toTrimmedString(options);
+      const bodyEmitted = w.getSince(bodyMark);
+      if (bodyEmitted.length === 0 && bodyStr) {
+        w.add(bodyStr);
       }
-      const result = w.getSince(mark).trimEnd();
-      // Ensure exactly one trailing newline (only if there's content)
-      return result ? result + '\n' : '';
-    }
-    return w.getSince(mark);
+      // At root level, ensure output ends with a single newline (standard for CSS files)
+      // Don't propagate all the last child's post content (which may have extra whitespace)
+      if (depth === 0) {
+        for (const suppressed of suppressedLeadingComments) {
+          if (suppressed.visible) {
+            suppressed.node.addFlag(F_VISIBLE);
+          }
+        }
+        const result = w.getSince(mark).trimEnd();
+        // Ensure exactly one trailing newline (only if there's content)
+        return result ? result + '\n' : '';
+      }
+      return w.getSince(mark);
+    });
   }
 
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
-  private _setValueArray(value: Node[]): void {
+  _setValueArray(value: Node[]): void {
     (this as unknown as { value: Node[] }).value = value;
   }
 
+  prependWrapperChildren(...items: Node[]): void {
+    if (items.length === 0) {
+      return;
+    }
+    this._setValueArray([...items, ...(this.value as Node[])]);
+    for (const item of items) {
+      if (item instanceof Node) {
+        this.adopt(item);
+        this.registerNode(item);
+      }
+    }
+  }
+
   /**
-   * Create a shallow body wrapper for mixin eval — O(N) array copy vs O(N²) deep clone.
+   * Create a shallow body wrapper for mixin eval.
    *
-   * Creates a new Rules with a COPY of the children array but does NOT adopt children
-   * (their canonical .parent stays unchanged). Session/IR handles the per-call parent
-   * chain via overlay. Registries are left empty — they'll be populated during eval.
+   * Creates a new Rules that SHARES the current children array and does NOT adopt
+   * children canonically (their canonical `.parent` stays unchanged). Render-key
+   * parent edges carry the per-placement parent chain.
    *
    * This replaces clone(true) in the mixin body path for massive perf improvement:
-   * a mixin body with 100 declarations creates 1 array copy + 1 Rules object
+   * a mixin body with 100 declarations creates 1 Rules wrapper
    * instead of recursively cloning all 100+ nodes.
    */
-  createShallowBodyWrapper(ctx?: Context): Rules {
+  createShallowBodyWrapper(ctx?: Context, renderKey?: RenderKey): Rules {
     const options = this._cloneOptionsForContext(ctx);
     const location = Array.isArray(this.location) && this.location.length === 6
       ? this.location as LocationInfo
       : undefined;
+    const nextRenderKey = renderKey ?? EVAL;
     // Create a new Rules with empty children — bypass constructor adoption
     const wrapper = new (this.constructor as typeof Rules)(
       [],
@@ -519,19 +679,120 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       location,
       this.treeContext
     );
-    // Now set the children array directly — NOT through the constructor
+    // Reuse the same child array directly — NOT through the constructor
     // so adopt() is NOT called on canonical children.
-    wrapper._setValueArray([...this.value]);
+    wrapper._setValueArray(this.value as Node[]);
     wrapper.inherit(this);
-    // Set state parent for each child to the wrapper
-    if (ctx) {
-      for (const child of wrapper.value) {
-        if (child instanceof Node) {
-          wrapper.adopt(child, ctx);
+    wrapper.renderKey = nextRenderKey;
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      wrapper._invocationBindings = invocationBindings;
+    }
+    if (this.functionRegistry) {
+      wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
+    }
+    wrapper._connectSharedChildren(wrapper.renderKey);
+    const sourceValueEdges = (this as unknown as { valueEdges?: Array<Map<RenderKey, Node> | undefined> }).valueEdges;
+    if (sourceValueEdges) {
+      for (let index = 0; index < sourceValueEdges.length; index++) {
+        const override = sourceValueEdges[index]?.get(nextRenderKey);
+        if (!override) {
+          continue;
         }
+        addEdgeAt(wrapper, 'value', index, nextRenderKey, override);
+        addParentEdge(override, nextRenderKey, wrapper);
       }
     }
     return wrapper;
+  }
+
+  createPlacementWrapper(ctx?: Context, renderKey?: RenderKey): Rules {
+    const options = this._cloneOptionsForContext(ctx);
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as LocationInfo
+      : undefined;
+    const nextRenderKey = renderKey ?? EVAL;
+    const wrapper = new (this.constructor as typeof Rules)(
+      [],
+      options ? { ...options } : undefined,
+      location,
+      this.treeContext
+    );
+    const previousRenderKey = ctx?.renderKey;
+    if (ctx && this.renderKey !== CANONICAL) {
+      ctx.renderKey = this.renderKey;
+    }
+    try {
+      wrapper._setValueArray([...getChildren(this, ctx)] as Node[]);
+    } finally {
+      if (ctx) {
+        ctx.renderKey = previousRenderKey;
+      }
+    }
+    wrapper.inherit(this);
+    wrapper.renderKey = nextRenderKey;
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      wrapper._invocationBindings = invocationBindings;
+    }
+    if (this.functionRegistry) {
+      wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
+    }
+    wrapper._connectSharedChildren(wrapper.renderKey);
+    return wrapper;
+  }
+
+  createPlacementWrapperWithChildren(children: readonly Node[], renderKey: RenderKey = EVAL): Rules {
+    const options = this._cloneOptionsForContext(undefined);
+    const location = Array.isArray(this.location) && this.location.length === 6
+      ? this.location as LocationInfo
+      : undefined;
+    const wrapper = new (this.constructor as typeof Rules)(
+      [],
+      options ? { ...options } : undefined,
+      location,
+      this.treeContext
+    );
+    wrapper._setValueArray([...children] as Node[]);
+    wrapper.inherit(this);
+    wrapper.renderKey = renderKey;
+    const invocationBindings = this._cloneInvocationBindings();
+    if (invocationBindings) {
+      wrapper._invocationBindings = invocationBindings;
+    }
+    if (this.functionRegistry) {
+      wrapper.functionRegistry = this.functionRegistry.cloneForRules(wrapper);
+    }
+    wrapper._connectSharedChildren(wrapper.renderKey);
+    return wrapper;
+  }
+
+  withRenderOwner(
+    owner: Node,
+    renderKey?: RenderKey,
+    context?: Context
+  ): Rules {
+    let rules: Rules = this;
+    const effectiveRenderKey = renderKey ?? owner.renderKey;
+    if (effectiveRenderKey !== undefined && effectiveRenderKey !== CANONICAL && rules.renderKey === CANONICAL) {
+      const existing = ((owner as unknown as Record<string, unknown>).rulesEdge as Map<RenderKey, Rules> | undefined)
+        ?.get(effectiveRenderKey);
+      if (existing) {
+        rules = existing;
+      } else {
+        const wrapped = rules.createShallowBodyWrapper(undefined, effectiveRenderKey);
+        wrapped.parent = owner;
+        addEdge(owner, 'rules', effectiveRenderKey, wrapped);
+        if (owner.renderKey === effectiveRenderKey) {
+          (owner as unknown as { rules: Rules }).rules = wrapped;
+        }
+        rules = wrapped;
+      }
+    }
+    if (context && getCurrentParentNode(rules, context) !== owner) {
+      owner.adopt(rules, context);
+    }
+    return rules;
   }
 
   constructor(
@@ -566,6 +827,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this.allowRuleRoot = true;
   }
 
+  setInvocationBinding(name: string, binding: InvocationBinding): void {
+    (this._invocationBindings ??= new Map()).set(name, { ...binding });
+  }
+
+  getInvocationBinding(name: string, context?: Context): VarDeclaration | undefined {
+    const binding = this._invocationBindings?.get(name);
+    if (!binding) {
+      return undefined;
+    }
+    if (binding.declaration) {
+      return binding.declaration;
+    }
+    const bindingContext = context
+      ? {
+          ...context,
+          rulesContext: this,
+          renderKey: context.renderKey ?? this.renderKey
+        } as Context
+      : undefined;
+    const declaration = binding.factory
+      ? binding.factory(this, bindingContext)
+      : binding.template?.clone(false, undefined, bindingContext);
+    if (!declaration) {
+      return undefined;
+    }
+    declaration.renderKey = bindingContext?.renderKey ?? this.renderKey ?? declaration.renderKey;
+    if (bindingContext) {
+      setParent(declaration, this, bindingContext);
+    } else {
+      declaration.parent = this;
+    }
+    binding.declaration = declaration;
+    return declaration;
+  }
+
   * [Symbol.iterator]() {
     let value = this.value;
     /**
@@ -577,10 +873,50 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _getChildren(context?: Context): readonly Node[] {
-    return context
-      ? getChildren(this, context)
-      : this.value;
+  private _getRenderVisibleChildAt(index: number, _context?: Context): Node | undefined {
+    const canonical = this.value[index];
+    if (this.renderKey === CANONICAL) {
+      return canonical;
+    }
+
+    const cursor = { node: this as Node, renderKey: this.renderKey };
+    const existing = getEdgeAt(cursor, 'value', index)?.node;
+    if (existing) {
+      return existing;
+    }
+
+    return canonical;
+  }
+
+  private _getRenderChildren(context?: Context): readonly Node[] {
+    return this._withOwnRenderKey(context, () => {
+      if (this.renderKey === CANONICAL) {
+        return context ? getChildren(this, context) : this.value;
+      }
+
+      const children: Node[] = [];
+      for (let i = 0; i < this.value.length; i++) {
+        const child = this._getRenderVisibleChildAt(i, context);
+        if (child) {
+          children.push(child);
+        }
+      }
+      return children;
+    });
+  }
+
+  getRegistryChildren(context?: Context): readonly Node[] {
+    return this._getRenderChildren(context);
+  }
+
+  ensureCurrentRenderRulesRegistered(context?: Context): void {
+    const currentRenderRules = this
+      .getRegistryChildren(context)
+      .filter((child): child is Rules => isNode(child, N.Rules));
+
+    for (let i = this.rulesSet.length; i < currentRenderRules.length; i++) {
+      this.registerNode(currentRenderRules[i]!, undefined, context);
+    }
   }
 
   private _setChildren(value: readonly Node[], context?: Context, markDirty: boolean = true): void {
@@ -588,7 +924,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       setChildren(this, value, context, { markDirty });
       return;
     }
-    this.setData([...value]);
+    const nextValue = [...value];
+    this._setValueArray(nextValue);
+    for (const child of nextValue) {
+      this.adopt(child);
+    }
   }
 
   private _setChildAt(index: number, node: Node, context?: Context, markDirty: boolean = true): void {
@@ -596,7 +936,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       setChildAt(this, index, node, context, { markDirty });
       return;
     }
-    this.setData(index, node);
+    const nextValue = [...this.value];
+    nextValue[index] = node;
+    this._setValueArray(nextValue);
+    this.adopt(node);
   }
 
   /**
@@ -610,172 +953,254 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const w = opts.writer!;
     const mark = w.mark();
     let space = ''.padStart(depth * 2);
-    w.add('{');
-    // Set depth for _emitRulesBody - children should be one level deeper
-    const childOptions = { ...opts, depth: depth + 1 };
-    childOptions.writer!.add('\n');
-    this._emitRulesBody(childOptions);
-    // ensure closing brace is on its own properly indented line
-    w.add('\n');
-    if (depth !== 0) {
-      w.add(space);
-    }
-    w.add('}');
-    // At root level (depth === 0), don't add a newline after the closing brace
-    // The parent _emitRulesBody will add the newline before the next item
-    // For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
-    return w.getSince(mark);
-  }
-
-  private _emitRulesBody(options: PrintOptions) {
-    const w = options.writer!;
-    const depth = options.depth ?? 0;
-    const space = indent(depth);
-    const value = this._getChildren(options.context);
-    const referenceMode = Boolean(options.referenceMode);
-    const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
-
-    // Skip charset nodes - they are collected and prepended at root level
-    // Nil nodes are now non-visible, so they're automatically filtered by n.visible
-    const items = value.filter(n => n.visible);
-
-    if (items.length === 0) {
-      return;
-    }
-
-    // No spacing flags; writer.capture is used where needed
-
-    const isInlineSourceRules = (node: Node): boolean => {
-      if (node.type !== 'Rules') {
-        return false;
-      }
-      const rulesNode = node as Rules;
-      const rulesValue = rulesNode._getChildren(options.context);
-      if (rulesValue.length !== 1) {
-        return false;
-      }
-      const only = rulesValue[0]!;
-      return only.type === 'Any' && (only as Any).role === 'any';
-    };
-
-    let emittedCount = 0;
-    let lastEmittedType: string | undefined;
-    let lastEmittedWasInlineSourceRules = false;
-    for (let idx = 0; idx < items.length; idx++) {
-      const n = items[idx]!;
-      const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
-      if (referenceMode && !referenceRenderEnabled && !isContainer) {
-        continue;
-      }
-      if (emittedCount > 0) {
-        // Check actual buffer state - not just previous captured output
-        // Frame closing in serializeRulesContainer adds newlines that aren't in the capture
-        const currentBuffer = w.getSince(0);
-        const bufferEndsWithNewline = currentBuffer.endsWith('\n');
-        const needsInlineBoundarySpacing = (
-          (lastEmittedType === 'Any' && n.type !== 'Any')
-          || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
-        );
-        if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
-          w.add('\n');
-        }
-      }
-      const isChildRules = n.type === 'Rules';
-      const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
-      // Add indentation only for simple nodes (declarations, etc.)
-      // Ruleset and AtRule nodes indent themselves in renderOpening
-      if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
+    return this._withOwnRenderKey(opts.context, () => {
+      w.add('{');
+      // Children render one level deeper inside braces.
+      const childOptions = { ...opts, depth: depth + 1 };
+      childOptions.writer!.add('\n');
+      Rules.prototype.toTrimmedString.call(this, childOptions);
+      // ensure closing brace is on its own properly indented line
+      w.add('\n');
+      if (depth !== 0) {
         w.add(space);
       }
-
-      // Emit directly to preserve source map segments
-      // For child Rules nodes, pass the same depth (don't increment depth)
-      // Rules nodes inside Rules nodes are at the same level
-      let childOptions = isChildRules
-        ? { ...options, depth }
-        : { ...options, depth };
-      if (isChildRules) {
-        const ownReferenceMode = (n.options as any)?.referenceMode === true;
-        const childReferenceMode = referenceMode || ownReferenceMode;
-        const enteringReferenceMode = !referenceMode && ownReferenceMode;
-        const childReferenceRenderEnabled = childReferenceMode
-          ? (enteringReferenceMode ? false : referenceRenderEnabled)
-          : true;
-        childOptions = {
-          ...childOptions,
-          referenceMode: childReferenceMode,
-          referenceRenderEnabled: childReferenceRenderEnabled
-        };
-      }
-      let rule = w.capture(() => n.toTrimmedString(childOptions));
-      if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
-        continue;
-      }
-      w.add(rule, n); // Pass node as origin to preserve location info
-      const needsSemi = isNode(n, N.Declaration | N.VarDeclaration)
-        ? (n as Declaration).requiresSemi(childOptions.context)
-        : (n as Node).requiredSemi;
-      if (needsSemi && n.options.semi !== false) {
-        w.add(';', n);
-      }
-      emittedCount++;
-      lastEmittedType = n.type;
-      lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
-    }
+      w.add('}');
+      // At root level (depth === 0), don't add a newline after the closing brace
+      // The parent _emitRulesBody will add the newline before the next item
+      // For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
+      return w.getSince(mark);
+    });
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    // Push this node's subtree (if any) so child nodes resolve
-    // patched fields during serialization.
     const ctx = options.context;
-    const subtree = this._carriedState as EvalState | undefined
-      ?? ctx?.activeState.peek(this)?._subtree
-      ?? ctx?.subtreeMap.get(this);
-    if (ctx && subtree) {
-      ctx.pushState(subtree);
-    }
-    this._emitRulesBody(options);
-    if (ctx && subtree) {
-      ctx.popState();
-    }
-    return w.getSince(mark);
+    return this._withOwnRenderKey(ctx, () => {
+      const depth = options.depth ?? 0;
+      const space = indent(depth);
+      const value = this._getRenderChildren(options.context);
+      const referenceMode = Boolean(options.referenceMode);
+      const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
+      const items = value.filter(n => isVisibleInContext(n, options.context));
+
+      const isInlineSourceRules = (node: Node): boolean => {
+        if (node.type !== 'Rules') {
+          return false;
+        }
+        const rulesNode = node as Rules;
+        const rulesValue = rulesNode._getRenderChildren(options.context);
+        if (rulesValue.length !== 1) {
+          return false;
+        }
+        const only = rulesValue[0]!;
+        return only.type === 'Any' && (only as Any).role === 'any';
+      };
+
+      let emittedCount = 0;
+      let lastEmittedType: string | undefined;
+      let lastEmittedWasInlineSourceRules = false;
+      for (const n of items) {
+        const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+        if (referenceMode && !referenceRenderEnabled && !isContainer) {
+          continue;
+        }
+        if (emittedCount > 0) {
+          const currentBuffer = w.getSince(0);
+          const bufferEndsWithNewline = currentBuffer.endsWith('\n');
+          const needsInlineBoundarySpacing = (
+            (lastEmittedType === 'Any' && n.type !== 'Any')
+            || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+          );
+          if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
+            w.add('\n');
+          }
+        }
+
+        const isChildRules = n.type === 'Rules';
+        const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
+        if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
+          w.add(space);
+        }
+
+        let childOptions = { ...options, depth };
+        if (isChildRules) {
+          if (referenceMode && referenceRenderEnabled) {
+            childOptions = {
+              ...childOptions,
+              referenceMode: false,
+              referenceRenderEnabled: true
+            };
+          } else {
+            const ownReferenceMode = (n.options as any)?.referenceMode === true;
+            const childReferenceMode = referenceMode || ownReferenceMode;
+            const enteringReferenceMode = !referenceMode && ownReferenceMode;
+            const ownReferenceRenderOnExtend = (n.options as RulesOptions | undefined)?.referenceRenderOnExtend !== false;
+            const childReferenceRenderOnExtend = childReferenceMode
+              ? (enteringReferenceMode ? ownReferenceRenderOnExtend : options.referenceRenderOnExtend !== false)
+              : true;
+            const childReferenceRenderEnabled = childReferenceMode
+              ? (enteringReferenceMode ? false : referenceRenderEnabled)
+              : true;
+            childOptions = {
+              ...childOptions,
+              referenceMode: childReferenceMode,
+              referenceRenderEnabled: childReferenceRenderEnabled,
+              referenceRenderOnExtend: childReferenceRenderOnExtend
+            };
+          }
+        } else if (
+          referenceMode
+          && referenceRenderEnabled
+          && isRulesetOrAtRule
+        ) {
+          const keepReferenceFiltering = (
+            isNode(n, N.Ruleset)
+            && (() => {
+              const ownSelector = (n as Ruleset).getOwnSelector();
+              return Boolean(
+                ownSelector
+                && !(ownSelector instanceof Nil)
+                && isBareAmpersandOwnSelector(ownSelector)
+              );
+            })()
+          );
+          childOptions = {
+            ...childOptions,
+            referenceMode: keepReferenceFiltering,
+            referenceRenderEnabled: true
+          };
+        }
+
+        const rule = w.capture(() => n.toTrimmedString(childOptions));
+        if (!rule && isContainer) {
+          continue;
+        }
+        w.add(rule, n);
+        const needsSemi = isNode(n, N.Declaration | N.VarDeclaration)
+          ? (n as Declaration).requiresSemi(childOptions.context)
+          : (n as Node).requiredSemi;
+        if (needsSemi && n.options.semi !== false) {
+          w.add(';', n);
+        }
+        emittedCount++;
+        lastEmittedType = n.type;
+        lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
+      }
+      return w.getSince(mark);
+    });
   }
 
   /** All rules, with nested rules flattened */
-  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, EvalState>) {
+  flatRules(visibleOnly: boolean = false, context?: Context, positionMap?: WeakMap<Node, FlatRulePosition>) {
     const finalRules: Node[] = [];
-    const iterateRules = (rules: Rules, activeSubtree?: EvalState) => {
-      const subtree = (rules._carriedState as EvalState | undefined)
-        ?? context?.activeState.peek(rules)?._subtree
-        ?? context?.subtreeMap.get(rules)
-        ?? activeSubtree;
+    const iterateRules = (
+      rules: Rules,
+      inheritedRenderKey?: RenderKey
+    ) => {
+      type DeferredEntry =
+        | {
+          kind: 'node';
+          node: Node;
+          renderKey?: RenderKey;
+        }
+        | {
+          kind: 'flatten';
+          rules: Rules;
+          inheritedRenderKey?: RenderKey;
+        };
+      const renderKey = rules.renderKey ?? inheritedRenderKey;
+      const scopedContext = context
+        ? (
+            renderKey !== undefined
+            && context.renderKey !== renderKey
+              ? { ...context, renderKey, rulesContext: rules } as Context
+              : (context.rulesContext !== rules
+                  ? { ...context, rulesContext: rules } as Context
+                  : context)
+          )
+        : undefined;
+      const pendingDescendants: DeferredEntry[] = [];
+      let hasEmittedLocalNonContainer = false;
+      const emitNode = (node: Node, nodeRenderKey?: RenderKey): void => {
+        if (positionMap && nodeRenderKey !== CANONICAL && nodeRenderKey !== undefined) {
+          positionMap.set(node, { renderKey: nodeRenderKey });
+        }
+        if (!isNode(node, N.Ruleset | N.AtRule | N.Rules)) {
+          hasEmittedLocalNonContainer = true;
+        }
+        finalRules.push(node);
+      };
+      const flushPendingDescendants = (): void => {
+        for (const entry of pendingDescendants) {
+          if (entry.kind === 'flatten') {
+            iterateRules(entry.rules, entry.inheritedRenderKey);
+            continue;
+          }
+          emitNode(entry.node, entry.renderKey);
+        }
+        pendingDescendants.length = 0;
+      };
 
-      for (let n of rules._getChildren(context)) {
+      for (let n of rules._getRenderChildren(scopedContext)) {
         if (isNode(n, N.Rules)) {
           if ((n.options as RulesOptions)?.referenceMode === true) {
-            finalRules.push(n);
+            flushPendingDescendants();
+            emitNode(
+              n,
+              (n as Rules).renderKey ?? renderKey
+            );
           } else {
-            iterateRules(n, subtree);
+            if (pendingDescendants.length > 0 && !hasEmittedLocalNonContainer) {
+              pendingDescendants.push({
+                kind: 'flatten',
+                rules: n as Rules,
+                inheritedRenderKey: renderKey
+              });
+            } else {
+              iterateRules(n, renderKey);
+            }
           }
           continue;
         }
-        if (!visibleOnly || n.visible || n.fullRender) {
-          if (positionMap && subtree) {
-            positionMap.set(n, subtree);
+        if (
+          visibleOnly
+          && isNode(n, N.Ruleset)
+          && !isVisibleInContext(n, scopedContext)
+          && !n.fullRender
+        ) {
+          pendingDescendants.push({
+            kind: 'flatten',
+            rules: (n as Ruleset).enterRules(scopedContext),
+            inheritedRenderKey: renderKey
+          });
+          continue;
+        }
+        if (!visibleOnly || isVisibleInContext(n, scopedContext) || n.fullRender) {
+          if (isNode(n, N.Ruleset)) {
+            pendingDescendants.push({
+              kind: 'node',
+              node: n,
+              renderKey
+            });
+          } else if (isNode(n, N.AtRule)) {
+            flushPendingDescendants();
+            emitNode(n, renderKey);
+          } else {
+            emitNode(n, renderKey);
           }
-          finalRules.push(n);
         }
       }
+
+      flushPendingDescendants();
     };
     iterateRules(this);
     return finalRules;
   }
 
   visibleRules(context?: Context) {
-    return this._getChildren(context).filter(n => n.visible);
+    return this._getRenderChildren(context).filter(n => isVisibleInContext(n, context));
   }
 
   /**
@@ -787,7 +1212,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   toObject(convertToPrimitives: boolean = true, context?: Context): Record<string, string | number | boolean | Node> {
     let output = new Map<string, boolean | string | number | Node>();
     const iterateRules = (rules: Rules) => {
-      for (let n of rules._getChildren(context)) {
+      for (let n of rules._getRenderChildren(context)) {
         if (isNode(n, N.Declaration)) {
           let { name, value, important } = n as any;
           if (convertToPrimitives) {
@@ -818,7 +1243,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   registerNode(node: Node, options?: Record<string, any>, context?: Context) {
     if (isNode(node, N.Rules)) {
-      const nodeOptions = (node as Rules).getCurrentOptions(context);
+      const nodeOptions = (node as Rules).options;
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
       let optionsVisibility = options?.rulesVisibility;
@@ -853,12 +1278,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        */
       if (node.options?.setDefined && context) {
         const key = (node as any).name?.toString();
+        const sourceNode = node.sourceNode ?? node;
         let opts: Registries.FindOptions = {};
         opts.searchParents = true;
         opts.context = context;
         opts.start = undefined;
-        // Exclude the node being registered so setDefined doesn't find itself
-        opts.filter = (n: Node) => n !== node;
+        // Exclude the current declaration by source identity so a derived eval node
+        // cannot resolve its own canonical registry entry as the "existing" declaration.
+        opts.filter = (n: Node) => (n.sourceNode ?? n) !== sourceNode;
         let result = this.find('declaration', key, node.type as 'VarDeclaration' | 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
@@ -866,9 +1293,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Find the Rules node that contains the found declaration
-          let foundRules: Rules | undefined = context
-            ? getParent(result, context) as Rules | undefined
-            : result.parent as Rules | undefined;
+          let foundRules = getCurrentParentNode(result, context) as Rules | undefined;
 
           if (!foundRules) {
             throw new Error(`Could not find parent Rules for declaration '${key}'`);
@@ -930,7 +1355,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const nodes = (hasCtx ? args.slice(1) : args) as Node[];
     // Route through _getChildren/_setChildren overlay when context is active
     if (ctx) {
-      const nextValue = [...this._getChildren(ctx)];
+      const nextValue = [...this._getRenderChildren(ctx)];
       for (const node of nodes) {
         this.adopt(node, ctx);
         nextValue.push(node);
@@ -957,7 +1382,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const [start, deleteCount, ...items] = (hasCtx ? args.slice(1) : args) as [number, number, ...Node[]];
     // Route through overlay when context is active
     if (ctx) {
-      const nextValue = [...this._getChildren(ctx)];
+      const nextValue = [...this._getRenderChildren(ctx)];
       const removed = nextValue.splice(start, deleteCount, ...items);
       for (const item of items) {
         if (item instanceof Node) {
@@ -999,7 +1424,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           this.adopt(item, ctx);
         }
       }
-      this._setChildren([...items, ...this._getChildren(ctx)], ctx);
+      this._setChildren([...items, ...this._getRenderChildren(ctx)], ctx);
       for (const item of items) {
         if (item instanceof Node) {
           this.registerNode(item, undefined, ctx);
@@ -1020,28 +1445,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   at(index: number, context?: Context) {
-    return atIndex(this._getChildren(context), index);
+    return atIndex(this._getRenderChildren(context), index);
   }
 
   /**
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
-    if (!this._isPreEvaluated(context)) {
+    if (!this.preEvaluated) {
       context.depth++;
-      /** @removal-target — node-copy-reduction: maybeClone → return this.
-       * Registry population, child indexing, and prelude eval should
-       * all work against canonical nodes + position patches. */
-      let rules = this.maybeClone(context);
+      let rules = this;
       // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
       // inner rulesets register to the same object we push and register as extend root.
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
-      const activeParent = getParent(this, context);
-      const parentAtRule = activeParent?.type === 'AtRule' ? activeParent : null;
+      const activeParent = getCurrentParentNode(this, context);
+      const sourceParent = getSourceParent(this, context);
+      const parentAtRule = activeParent?.type === 'AtRule'
+        ? activeParent
+        : (sourceParent?.type === 'AtRule' ? sourceParent : null);
       const isNestableAtRuleBody =
         parentAtRule
         && nestableAtRuleNames.has(String((parentAtRule as any).name?.valueOf?.() ?? ''));
-      const children = rules._getChildren(context);
+      const children = rules._getRenderChildren(context);
       const first = children[0];
       const isWrapper =
         isNestableAtRuleBody
@@ -1051,7 +1476,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isWrapper) {
         rules = this;
       }
-      rules._setPreEvaluated(true, context);
+      rules.preEvaluated = true;
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
@@ -1070,8 +1495,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         setIndex(n, i, context);
       }
       // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
-      const parent = getParent(this, context);
-      if (parent && !getParent(rules, context)) {
+      const parent = getCurrentParentNode(this, context);
+      if (parent && !getCurrentParentNode(rules, context)) {
         parent.adopt(rules, context);
       }
 
@@ -1126,7 +1551,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const dynamicNodes: Node[] = [];
 
     // Process each node with static name, handling both sync and async preEval
-    const processResult = serialForEach(rules._getChildren(context), (node, index) => {
+    const processResult = serialForEach(rules._getRenderChildren(context), (node, index) => {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && (node as any).role === 'charset') {
         /** Special case where we register the charset node immediately */
@@ -1175,6 +1600,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (dynamicNodes.length === 0) {
         // Restore context after preEval is complete
         context.rulesContext = saved.rulesContext;
+        context.renderKey = saved.renderKey;
         context.treeRoot = saved.treeRoot;
         // Only restore context.root if saved.root is defined (not the outermost root)
         // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
@@ -1286,10 +1712,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     const applyResolvedNodes = () => {
-      const children = rules._getChildren(context);
+      const children = rules._getRenderChildren(context);
       for (let i = 0; i < children.length; i++) {
         const node = children[i]!;
-        const resolvedNode = resolvedNodes.find(n => n.index === node.index);
+        const nodeIdx = getIndex(node, context);
+        const resolvedNode = resolvedNodes.find(n => getIndex(n, context) === nodeIdx);
         if (resolvedNode && resolvedNode !== node) {
           rules._setChildAt(i, resolvedNode.inherit(node), context, false);
           rules.adopt(resolvedNode, context);
@@ -1300,6 +1727,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const finishResolution = (): this => {
       applyResolvedNodes();
       context.rulesContext = saved.rulesContext;
+      context.renderKey = saved.renderKey;
       context.treeRoot = saved.treeRoot;
       if (saved.root !== undefined) {
         context.root = saved.root;
@@ -1412,7 +1840,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Helper method to continue preEval'ing remaining children after an async preEval.
    */
   private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number, saved?: any): MaybePromise<this> {
-    const children = rules._getChildren(context);
+    const children = rules._getRenderChildren(context);
     for (let i = startIndex; i < children.length; i++) {
       const node = children[i]!;
 
@@ -1452,6 +1880,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Restore context after preEval is complete (for async case)
     if (saved) {
       context.rulesContext = saved.rulesContext;
+      context.renderKey = saved.renderKey;
       context.treeRoot = saved.treeRoot;
       // Only restore context.root if saved.root is defined (not the outermost root)
       // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
@@ -1466,6 +1895,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _snapshotContext(context: Context) {
     return {
       rulesContext: context.rulesContext,
+      renderKey: context.renderKey,
       treeContext: context.treeContext,
       treeRoot: context.treeRoot,
       root: context.root,
@@ -1488,7 +1918,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Always set root if not set - needed for extends to work with API-created Rules
     context.root ??= rules;
-    context.rulesContext = context.lookupScope ?? rules;
+    context.rulesContext = rules;
+    if (rules.renderKey !== CANONICAL) {
+      context.renderKey = rules.renderKey;
+    }
   }
 
   /** Assign depth-first document order to every Ruleset under the given Rules (single walk, source order). */
@@ -1498,7 +1931,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     counter: { value: number },
     context?: Context
   ): void {
-    const value = rules._getChildren(context);
+    const value = rules._getRenderChildren(context);
     if (!isArray(value)) {
       return;
     }
@@ -1517,7 +1950,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Build the evaluation queue partitioned by priority */
   private _buildEvalQueue(rules: Rules, context: Context): EvalQueueMap {
     let evalQueue: EvalQueueMap = new Map();
-    for (const item of rules._getChildren(context).entries()) {
+    for (const item of rules._getRenderChildren(context).entries()) {
       let [idx, rule] = item;
       if (rule.index === undefined) {
         rule.index = idx;
@@ -1541,7 +1974,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             const hasNestedMixinDefinitions =
               isNode(val, N.Mixin)
               && isNode((val as any).rules, N.Rules)
-              && (val as any).rules._getChildren(context).some((n: any) => n?.type === 'Mixin');
+              && (val as any).rules._getRenderChildren(context).some((n: any) => n?.type === 'Mixin');
             if (hasNestedMixinDefinitions) {
               priority = Priority.High;
             }
@@ -1647,13 +2080,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             scheduledPriority.delete(rule);
             // Apply the result
             if (result !== rule) {
-              // Store in eval position: patch the parent's value array.
-              {
-                const children = (context.activeState.peek(rules)?._fields?.get('value') as Node[] | undefined)
-                  ?? [...rules.value];
-                children[idx] = result;
-                context.activeState.get(rules).fields.set('value', children);
-              }
               rules._setChildAt(idx, result, context, false);
               queue[q] = [idx, result];
               // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
@@ -1718,28 +2144,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This handles both in-scope merges and merges that span call-produced Rules blocks.
    */
   private _coalesceMergedDeclarations(rules: Rules, context?: Context): void {
-    const getDeclValue = (node: Node): Node => (
-      context ? getField<Node>(node, 'value', context) : (node as any).value
-    );
-    const getDeclImportant = (node: Node): Node | undefined => (
-      context ? getField<Node | undefined>(node, 'important', context) : (node as any).important
-    );
-    const getDeclName = (node: Node): string => {
-      const name = context ? getField<Node>(node, 'name', context) : (node as any).name;
-      return String((name as any)?.valueOf?.() ?? name);
+    const getDeclValue = (node: Declaration): Node => node.getCurrentValue(context);
+    const getDeclImportant = (node: Declaration): Node | undefined => node.getCurrentImportant(context);
+    const getDeclName = (node: Declaration): string => {
+      const name = node.getCurrentName(context);
+      return String(name?.valueOf?.() ?? name);
     };
-    const getDeclAssign = (node: Node): string => {
-      const options = context
-        ? getField<Record<string, unknown> | undefined>(node, 'options', context)
-        : node.options;
+    const getDeclAssign = (node: Declaration): string => {
+      const options = node.options;
       return String(options?.normalizedFromAssign ?? '');
     };
-    const setDeclField = (node: Node, key: 'value' | 'important', value: Node | undefined): void => {
-      if (context) {
-        setField(node, key, value, context);
-        return;
-      }
-      node.setData(key, value);
+    const setDeclValue = (node: Declaration, value: Node): void => {
+      node.setCurrentValue(value, context);
+    };
+    const setDeclImportant = (node: Declaration, value: Node | undefined): void => {
+      node.setCurrentImportant(value as Declaration['important'], context);
     };
     const removeVisibleFlag = (node: Node): void => {
       if (context) {
@@ -1751,22 +2170,86 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const isMergedAssign = (assign: unknown): boolean => (
       assign === '+:' || assign === '&,:' || assign === '&_:'
     );
+    const cloneMergeValuePart = (value: Node): Node => {
+      return context
+        ? value.clone(false, undefined, context)
+        : value.clone(false);
+    };
+    const collectAddMergeParts = (value: Node): Node[] => {
+      if (isNode(value, N.Nil)) {
+        return [];
+      }
+      if (isNode(value, N.List)) {
+        return value.get('value', context).map(part => cloneMergeValuePart(part as Node));
+      }
+      return [cloneMergeValuePart(value)];
+    };
+    const rebaseLinearMergedValue = (anchor: Declaration, value: Node, assign: string): Node | undefined => {
+      if (assign === '&_:') {
+        if (!isNode(value, N.Sequence)) {
+          return undefined;
+        }
+        const parts = value.get('value', context);
+        if (
+          parts.length < 2
+          || !isNode(parts[0]!, N.Reference)
+          || parts[0]!.options?.resolution !== 'linear'
+        ) {
+          return undefined;
+        }
+        return spaced([
+          getDeclValue(anchor),
+          ...parts.slice(1).map(part => cloneMergeValuePart(part as Node))
+        ]);
+      }
+      if (!isNode(value, N.List)) {
+        return undefined;
+      }
+      const parts = value.get('value', context);
+      if (
+        parts.length < 2
+        || !isNode(parts[0]!, N.Reference)
+        || parts[0]!.options?.resolution !== 'linear'
+      ) {
+        return undefined;
+      }
+      return new List([
+        getDeclValue(anchor),
+        ...parts.slice(1).map(part => cloneMergeValuePart(part as Node))
+      ]);
+    };
+    const appendMergedValue = (anchor: Declaration, value: Node, assign: string): Node => {
+      if (assign === '&_:') {
+        return isNode(value, N.Sequence)
+          ? spaced([getDeclValue(anchor), ...value.get('value', context).map(part => cloneMergeValuePart(part as Node))])
+          : spaced([getDeclValue(anchor), cloneMergeValuePart(value)]);
+      }
+      return isNode(value, N.List)
+        ? new List([
+            ...collectAddMergeParts(getDeclValue(anchor)),
+            ...value.get('value', context).map(part => cloneMergeValuePart(part as Node))
+          ])
+        : new List([
+            ...collectAddMergeParts(getDeclValue(anchor)),
+            cloneMergeValuePart(value)
+          ]);
+    };
     const isDeclarationOnlyRules = (node: Node): node is Rules => (
       isNode(node, N.Rules)
-      && node._getChildren(context).length > 0
-      && node._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
+      && node._getRenderChildren(context).length > 0
+      && node._getRenderChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
     );
-    const composeMergedValue = (decl: Node, prior: Node, assign: string): void => {
+    const composeMergedValue = (decl: Declaration, prior: Declaration, assign: string): void => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return;
       }
       const priorValue = getDeclValue(prior);
       const nextValue = getDeclValue(decl);
-      setDeclField(decl, 'value', assign === '&_:'
+      setDeclValue(decl, assign === '&_:'
         ? spaced([priorValue, nextValue])
         : new List([priorValue, nextValue]));
       if (!getDeclImportant(decl) && getDeclImportant(prior)) {
-        setDeclField(decl, 'important', getDeclImportant(prior));
+        setDeclImportant(decl, getDeclImportant(prior));
       }
     };
     const normalizeMergedDeclarationValue = (node: Node): void => {
@@ -1778,45 +2261,38 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       const [first, ...rest] = current.get('value');
-      let firstIsEmptyString = false;
-      try {
-        firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
-      } catch {
-        firstIsEmptyString = false;
-      }
       const isEmptyPlaceholder = Boolean(
         first
         && (
           isNode(first, N.Nil)
           || (isNode(first, N.List) && first.get('value').length === 0)
-          || firstIsEmptyString
         )
       );
       if (!isEmptyPlaceholder) {
         return;
       }
       if (rest.length === 0) {
-        setDeclField(node, 'value', new Nil());
+        setDeclValue(node, new Nil());
         return;
       }
       if (rest.length === 1) {
-        setDeclField(node, 'value', rest[0]!);
+        setDeclValue(node, rest[0]!);
         return;
       }
-      setDeclField(node, 'value', new List(rest));
+      setDeclValue(node, new List(rest));
     };
 
     const lastVisibleByName = new Map<string, Node>();
     const mergedAnchorByName = new Map<string, Node>();
     const stream: Node[] = [];
 
-    for (const node of rules._getChildren(context)) {
+    for (const node of rules._getRenderChildren(context)) {
       if (isNode(node, N.Declaration)) {
         stream.push(node);
         continue;
       }
       if (isDeclarationOnlyRules(node)) {
-        for (const child of node._getChildren(context)) {
+        for (const child of node._getRenderChildren(context)) {
           if (isNode(child, N.Declaration)) {
             stream.push(child);
           }
@@ -1834,7 +2310,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       if (!merged) {
         mergedAnchorByName.delete(name);
-        if (node.visible) {
+        if (isVisibleInContext(node, context)) {
           lastVisibleByName.set(name, node);
         }
         continue;
@@ -1847,7 +2323,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         && prior !== node
         && (
           context
-            ? getParent(prior, context) !== getParent(node, context)
+            ? getCurrentParentNode(prior, context) !== getCurrentParentNode(node, context)
             : prior.parent !== node.parent
         )
       ) {
@@ -1860,19 +2336,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // pre/post comments from merged values). Need a position-aware
         // alternative: either a serialization-time comment suppression flag
         // or field patches on pre/post.
-        setDeclField(existingAnchor, 'value', getDeclValue(node));
+        const currentValue = getDeclValue(node);
+        const nextAnchorValue = assign === '+:'
+          ? new List([
+            ...collectAddMergeParts(getDeclValue(existingAnchor)),
+            ...collectAddMergeParts(currentValue)
+          ])
+          : rebaseLinearMergedValue(existingAnchor, currentValue, assign)
+            ?? appendMergedValue(existingAnchor, currentValue, assign);
+        setDeclValue(
+          existingAnchor,
+          nextAnchorValue
+        );
         if (!getDeclImportant(existingAnchor) && getDeclImportant(node)) {
-          setDeclField(existingAnchor, 'important', getDeclImportant(node));
+          setDeclImportant(existingAnchor, getDeclImportant(node));
         }
         removeVisibleFlag(node);
-        if (existingAnchor.visible) {
+        if (isVisibleInContext(existingAnchor, context)) {
           lastVisibleByName.set(name, existingAnchor);
         }
         continue;
       }
 
       mergedAnchorByName.set(name, node);
-      if (node.visible) {
+      if (isVisibleInContext(node, context)) {
         lastVisibleByName.set(name, node);
       }
     }
@@ -1886,7 +2373,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This runs after queue evaluation to avoid mutating rule indices mid-eval.
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules, context?: Context): void {
-    const children = rules._getChildren(context);
+    const children = rules._getRenderChildren(context);
     const firstNestedIdx = children.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
     if (firstNestedIdx < 0) {
       return;
@@ -1900,8 +2387,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (
         !isNode(n, N.Rules)
         || !isNode(sourceParent, N.Call)
-        || n._getChildren(context).length === 0
-        || !n._getChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
+        || n._getRenderChildren(context).length === 0
+        || !n._getRenderChildren(context).every(child => isNode(child, N.Declaration | N.Comment))
       ) {
         return false;
       }
@@ -1925,12 +2412,63 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rules._setChildren([...beforeNested, ...moved, ...remainder], context, false);
   }
 
+  private _evaluateQueuedTopImports(context: Context): MaybePromise<void> {
+    const queued = context.topImports;
+    if (!queued?.length) {
+      return;
+    }
+
+    const evaluated: Node[] = [];
+    const evaluateOne = (importRule: Node): MaybePromise<void> => {
+      if (!isNode(importRule, N.AtRule)) {
+        evaluated.push(importRule);
+        return;
+      }
+
+      const evaldImport = importRule.clone(false, undefined, context);
+      evaldImport.preEvaluated = true;
+      const out = evaldImport.eval(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node | Nil>).then((result) => {
+          if (!(result instanceof Nil)) {
+            evaluated.push(result);
+          }
+        });
+      }
+      if (!(out instanceof Nil)) {
+        evaluated.push(out as Node);
+      }
+    };
+
+    const out = serialForEach(queued, evaluateOne);
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => {
+        context.topImports = evaluated;
+      });
+    }
+    context.topImports = evaluated;
+  }
+
   /**
    * After preEval: ensure root on extend stack, build eval queue, run evaluation.
    * Used by evalNode so that when eval() is called without preEval (e.g. jess compile()),
    * we still have all rulesets registered and root set for extend lookups.
    */
   private _afterPreEvalStep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+    if (
+      rules === context.root
+      && rules.renderKey === CANONICAL
+      && !rules.hasFlag(F_STATIC)
+      && (context.renderKey === undefined || context.renderKey === CANONICAL)
+      && getCurrentParentNode(rules, context) === undefined
+    ) {
+      const evalRoot = rules.createShallowBodyWrapper(context, EVAL);
+      context.root = evalRoot;
+      context.rulesContext = evalRoot;
+      context.renderKey = evalRoot.renderKey;
+      rules = evalRoot;
+    }
+
     const isMainRoot = rules === context.root;
     if (isMainRoot && context.extendRoots.extendRootStack.length === 0) {
       if (!context.extendRoots.root) {
@@ -1950,13 +2488,32 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
     if (isThenable(maybeHoist)) {
       return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
-        this._normalizeCallDeclarationRulesOrder(rules, context);
-        this._coalesceMergedDeclarations(rules, context);
-        return {
-          rules,
-          rulesToHoist
+        const finalize = () => {
+          this._normalizeCallDeclarationRulesOrder(rules, context);
+          this._coalesceMergedDeclarations(rules, context);
+          return {
+            rules,
+            rulesToHoist
+          };
         };
+        if (rules === context.root && context.topImports?.length) {
+          const maybeEvalTopImports = this._evaluateQueuedTopImports(context);
+          if (isThenable(maybeEvalTopImports)) {
+            return (maybeEvalTopImports as Promise<void>).then(finalize);
+          }
+        }
+        return finalize();
       });
+    }
+    if (rules === context.root && context.topImports?.length) {
+      const maybeEvalTopImports = this._evaluateQueuedTopImports(context);
+      if (isThenable(maybeEvalTopImports)) {
+        return (maybeEvalTopImports as Promise<void>).then(() => {
+          this._normalizeCallDeclarationRulesOrder(rules, context);
+          this._coalesceMergedDeclarations(rules, context);
+          return { rules, rulesToHoist: maybeHoist as boolean };
+        });
+      }
     }
     this._normalizeCallDeclarationRulesOrder(rules, context);
     this._coalesceMergedDeclarations(rules, context);
@@ -1968,6 +2525,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context.rulesEvalStack.push(this.sourceNode as Rules);
     const restoreContextOnError = () => {
       context.rulesContext = saved.rulesContext;
+      context.renderKey = saved.renderKey;
       if (saved.treeRoot !== undefined) {
         context.treeRoot = saved.treeRoot;
       }
@@ -1993,7 +2551,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
           // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
           const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-            if (rules._isPreEvaluated(context)) {
+            if (rules.preEvaluated) {
               return rules;
             }
             const result = rules.preEval(context);
@@ -2034,7 +2592,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
                     if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {
                       // Only throw if the variable is a direct child of the Rules node (same level)
                       // Nested variables (e.g., inside rulesets) are allowed to shadow
-                      if (getParent(currentDecl, context) === rules) {
+                      if (getCurrentParentNode(currentDecl, context) === rules) {
                         throw new ReferenceError(`"${key}" is readonly`);
                       }
                     }
@@ -2055,6 +2613,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           /** Restore contexts */
           context.rulesContext = saved.rulesContext;
+          context.renderKey = saved.renderKey;
           // Only restore context.treeRoot if saved.treeRoot is defined and we're not at the outermost level
           // If saved.treeRoot is undefined, it means we're at the outermost level, so keep context.treeRoot as is
           // This ensures extends evaluated during selector evaluation can still access the correct treeRoot
@@ -2210,6 +2769,12 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     let sourceParent = callerSourceNode
       ? getSourceParent(callerSourceNode, thisContext)
       : undefined;
+    if (sourceParent && isNode(sourceParent, N.Reference | N.Call)) {
+      sourceParent = caller;
+    }
+    sourceParent ??= caller;
+    const invocationParent = thisContext.rulesContext
+      ?? (caller ? getParent(caller, thisContext) : undefined);
 
     const nodeArgs = await evaluateMixinArgs(args, caller, thisContext);
     const mixinCandidates = await matchMixinCandidates(mixinArr, nodeArgs, caller, sourceParent, thisContext);
@@ -2218,6 +2783,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const outputRules: Rules[] = [];
     const candidateOutputOpts: EvaluateCandidateOutputOptions = {
       sourceParent,
+      invocationParent,
       restrictMixinOutputLookup: thisContext.leakyRules !== true,
       outputRules,
       getCandidateParent: node => getCandidateParent(node, thisContext)
@@ -2228,6 +2794,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       hasDefault,
       nodeArgs,
       sourceParent,
+      invocationParent,
       caller,
       restrictMixinOutputLookup: candidateOutputOpts.restrictMixinOutputLookup,
       outputRules,
@@ -2247,7 +2814,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
  * getFunctionFromMixins → callWithContext → returnFunc indirection.
  *
  * The result is already fully evaluated (each candidate's body was
- * evaluated under its own per-call EvalState). Callers must NOT
+ * evaluated before being assembled into the return Rules). Callers must NOT
  * re-evaluate the result.
  */
 export async function evalMixinDirect(
@@ -2260,9 +2827,15 @@ export async function evalMixinDirect(
   const callerSourceNode = caller && isNode(caller, N.Call) && caller.get('name') instanceof Node
     ? caller.get('name')
     : caller;
-  const sourceParent = callerSourceNode
+  let sourceParent = callerSourceNode
     ? getSourceParent(callerSourceNode as Node, context)
     : undefined;
+  if (sourceParent && isNode(sourceParent, N.Reference | N.Call)) {
+    sourceParent = caller;
+  }
+  sourceParent ??= caller;
+  const invocationParent = context.rulesContext
+    ?? (caller ? getParent(caller as Node, context) : undefined);
 
   const nodeArgs = await evaluateMixinArgs(
     args ? [...args.get('value', context)] : [],
@@ -2277,8 +2850,29 @@ export async function evalMixinDirect(
   );
 
   const outputRules: Rules[] = [];
+  if (process.env.JESS_DEBUG_LOCK === 'throw-direct') {
+    const callerName = caller && isNode(caller, N.Call) && (caller as Call).name instanceof Node
+      ? (caller as Call).name
+      : undefined;
+    const callerKey = isNode(callerName, N.Reference)
+      ? String(callerName.key?.valueOf?.() ?? '')
+      : '';
+    if (callerKey.includes('inner-locked-mixin')) {
+      throw new Error(`[lock-direct] ${JSON.stringify({
+        callerKey,
+        mixinCount: mixinArr.length,
+        matchedCount: mixinCandidates.length,
+        evalCandidateCount: evalCandidates.length,
+        hasDefault,
+        sourceParent: sourceParent?.type,
+        invocationParent: invocationParent?.type,
+        matchNames: mixinCandidates.map(candidate => String((candidate as Mixin).get?.('name')?.valueOf?.() ?? candidate.type))
+      })}`);
+    }
+  }
   const candidateOutputOpts: EvaluateCandidateOutputOptions = {
     sourceParent,
+    invocationParent,
     restrictMixinOutputLookup: context.leakyRules !== true,
     outputRules,
     getCandidateParent: node => getCandidateParent(node, context)
@@ -2289,6 +2883,7 @@ export async function evalMixinDirect(
     hasDefault,
     nodeArgs,
     sourceParent,
+    invocationParent,
     caller,
     restrictMixinOutputLookup: candidateOutputOpts.restrictMixinOutputLookup,
     outputRules,

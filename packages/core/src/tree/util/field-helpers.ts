@@ -1,221 +1,257 @@
-import type { Node } from '../node-base.js';
+import { CANONICAL, EVAL, type Node, type RenderKey } from '../node-base.js';
 import type { Context } from '../../context.js';
 import type { Rules } from '../rules.js';
-import type { EvalState } from '../../eval-state.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
+import { addEdgeAt, addParentEdge, removeParentEdge } from './cursor.js';
 
-/**
- * EvalState-based field read/write helpers.
- *
- * Architecture: single EvalState on context, with a stack for subtrees.
- *   Read:  activeState.peek(node)?.field ?? node.field
- *   Write: activeState.get(node).field = value
- *
- * No legacy fallbacks. No session. No instanceRoot.
- */
-
-/**
- * Read a field from a node, checking EvalState overlay first.
- * Falls back to `node[key]`.
- */
-export function getField<T = unknown>(
+function getParentEdgeRenderKeys(
   node: Node,
-  key: string,
-  ctx: Context
-): T {
-  let state: EvalState | undefined = ctx.activeState;
-  while (state) {
-    const val = state.peek(node)?._fields?.get(key);
-    if (val !== undefined) {
-      return val as T;
+  ctx: Context,
+  edge?: Map<unknown, Node | undefined>
+): unknown[] {
+  const keys: unknown[] = [];
+  const push = (key: unknown): void => {
+    if (key === undefined || key === CANONICAL || keys.includes(key)) {
+      return;
     }
-    state = state.parent;
+    keys.push(key);
+  };
+  push(ctx.renderKey);
+  push(ctx.rulesContext?.renderKey);
+  push(node.renderKey);
+  if (edge?.has(EVAL)) {
+    push(EVAL);
   }
-  return (node as unknown as Record<string, unknown>)[key] as T;
+  return keys;
 }
 
-/**
- * Write a field on a node. Routes through activeState.
- */
-export function setField(
-  node: Node,
-  key: string,
-  value: unknown,
+function setRulesValueArray(rules: Rules, nodes: Node[]): void {
+  const mutableRules = rules as Rules & { _setValueArray?: (nodes: Node[]) => void };
+  if (typeof mutableRules._setValueArray !== 'function') {
+    throw new Error('Rules is missing _setValueArray');
+  }
+  mutableRules._setValueArray(nodes);
+}
+
+type ChildWriteTarget =
+  | {
+    kind: 'canonical';
+    currentChildren: readonly Node[];
+  }
+  | {
+    kind: 'wrapper';
+    renderKey: RenderKey;
+    currentChildren: readonly Node[];
+  }
+  | {
+    kind: 'overlay';
+    renderKey: RenderKey;
+    currentChildren: readonly Node[];
+  };
+
+function resolveChildWriteTarget(
+  rules: Rules,
   ctx: Context
+): ChildWriteTarget {
+  const resolvedRenderKey = ctx.renderKey ?? rules.renderKey;
+  const renderKey = resolvedRenderKey === CANONICAL ? undefined : resolvedRenderKey;
+  if (renderKey === undefined) {
+    return {
+      kind: 'canonical',
+      currentChildren: rules.value
+    };
+  }
+  if (rules.renderKey !== undefined && rules.renderKey === renderKey) {
+    return {
+      kind: 'wrapper',
+      renderKey,
+      currentChildren: rules.value
+    };
+  }
+  return {
+    kind: 'overlay',
+    renderKey,
+    currentChildren: rules.get('value', ctx)
+  };
+}
+
+function maybeMarkScopeDirty(
+  rules: Rules,
+  ctx: Context,
+  options: { markDirty?: boolean }
 ): void {
-  ctx.activeState.get(node).fields.set(key, value);
+  if (options.markDirty !== false) {
+    markScopeDirty(rules, ctx);
+  }
+}
+
+function connectRenderChildren(
+  rules: Rules,
+  nodes: readonly Node[],
+  renderKey: RenderKey
+): void {
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]!;
+    addEdgeAt(rules, 'value', index, renderKey, node);
+    addParentEdge(node, renderKey, rules);
+  }
+}
+
+function disconnectMissingRenderChildren(
+  previous: readonly Node[],
+  next: readonly Node[],
+  renderKey: RenderKey
+): void {
+  for (const child of previous) {
+    if (!next.includes(child)) {
+      removeParentEdge(child, renderKey);
+    }
+  }
 }
 
 /**
- * Get the parent of a node.
+ * Resolve the effective parent for the current render placement.
+ *
+ * Node graph invariants:
+ * - `node.parent` stores the canonical fallback parent.
+ * - `node.parentEdges` stores placement-specific parent overrides keyed by render key.
+ * - callers should treat this as the primary upward traversal surface when rebuilding
+ *   the current render path (for example, reconstructing the active Ruleset / AtRule frames).
+ * - secondary lookup lanes such as `CALLER` are intentionally not followed here; they are
+ *   opt-in traversal choices layered on top of the primary parent walk.
  */
 export function getParent(
   node: Node,
   ctx: Context
 ): Node | undefined {
-  let state: EvalState | undefined = ctx.activeState;
-  while (state) {
-    const parent = state.peek(node)?._fields?.get('parent');
+  for (const renderKey of getParentEdgeRenderKeys(node, ctx, node.parentEdges)) {
+    const parent = node.parentEdges?.get(renderKey);
     if (parent !== undefined) {
-      return parent as Node | undefined;
+      return parent;
     }
-    state = state.parent;
   }
   return node.parent;
 }
 
 /**
- * Set the parent of a node.
+ * Write the primary parent for a node.
+ *
+ * For canonical writes this mutates `node.parent`.
+ * For render-keyed writes this records a placement override in `node.parentEdges`
+ * without disturbing canonical parentage.
+ *
+ * This should be the default way eval/adoption code captures the "current frame"
+ * onto emitted nodes. If later serialization needs to guess the parent from text,
+ * the real bug is usually that `setParent(...)` was not called with the correct
+ * render placement when the node was created.
  */
 export function setParent(
   node: Node,
   parent: Node | undefined,
   ctx: Context
 ): void {
-  ctx.activeState.get(node).fields.set('parent', parent);
+  if (ctx.renderKey !== undefined && ctx.renderKey !== CANONICAL) {
+    if (parent) {
+      addParentEdge(node, ctx.renderKey, parent);
+    } else {
+      removeParentEdge(node, ctx.renderKey);
+    }
+    return;
+  }
+  node.parent = parent;
 }
 
-/**
- * Check whether a node has been evaluated.
- */
 export function isEvaluated(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): boolean {
-  return ctx.activeState.peek(node)?.evaluated ?? false;
+  return node.evaluated;
 }
 
-/**
- * Mark a node as evaluated.
- */
 export function setEvaluated(
   node: Node,
   value: boolean,
-  ctx: Context
+  _ctx: Context
 ): void {
-  ctx.activeState.get(node).evaluated = value;
+  node.evaluated = value;
 }
 
-/**
- * Check whether a node's preEval phase has completed.
- */
 export function isPreEvaluated(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): boolean {
-  return ctx.activeState.peek(node)?.preEvaluated ?? false;
+  return node.preEvaluated;
 }
 
-/**
- * Mark a node's preEval phase as completed.
- */
 export function setPreEvaluated(
   node: Node,
   value: boolean,
-  ctx: Context
+  _ctx: Context
 ): void {
-  ctx.activeState.get(node).preEvaluated = value;
+  node.preEvaluated = value;
 }
 
-/**
- * Get the eval index of a node.
- */
 export function getIndex(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): number {
-  const idx = ctx.activeState.peek(node)?._fields?.get('index');
-  if (idx !== undefined) {
-    return idx as number;
-  }
   return node.index;
 }
 
-/**
- * Set the eval index of a node.
- */
 export function setIndex(
   node: Node,
   index: number,
-  ctx: Context
+  _ctx: Context
 ): void {
-  ctx.activeState.get(node).fields.set('index', index);
+  node.index = index;
 }
 
-/**
- * Get the source parent of a node.
- */
 export function getSourceParent(
   node: Node,
-  ctx: Context
+  _ctx: Context
 ): Node | undefined {
-  const sp = ctx.activeState.peek(node)?._fields?.get('sourceParent');
-  if (sp !== undefined) {
-    return sp as Node | undefined;
-  }
   return node.sourceParent;
 }
 
-/**
- * Set the source parent of a node.
- */
 export function setSourceParent(
   node: Node,
   parent: Node | undefined,
-  ctx: Context
+  _ctx: Context
 ): void {
-  ctx.activeState.get(node).fields.set('sourceParent', parent);
+  node.sourceParent = parent;
 }
 
-/**
- * Bulk-set multiple runtime state fields on a node.
- */
-export function setRuntimeState(
-  node: Node,
-  patch: Record<string, unknown>,
-  ctx: Context
-): void {
-  const s = ctx.activeState.get(node);
-  for (const [key, value] of Object.entries(patch)) {
-    if (key === 'evaluated') {
-      s.evaluated = value as boolean;
-    } else if (key === 'preEvaluated') {
-      s.preEvaluated = value as boolean;
-    } else if (value !== undefined) {
-      s.fields.set(key, value);
-    }
-  }
-}
-
-/**
- * Read the children array of a Rules node.
- */
 export function getChildren(
   rules: Rules,
   ctx: Context
 ): readonly Node[] {
-  return getField<readonly Node[]>(rules, 'value', ctx);
+  return rules.get('value', ctx);
 }
 
-/**
- * Set the children array of a Rules node.
- */
 export function setChildren(
   rules: Rules,
   nodes: readonly Node[],
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  ctx.activeState.get(rules).fields.set('value', [...nodes]);
-  if (options.markDirty !== false) {
-    markScopeDirty(rules, ctx);
+  const target = resolveChildWriteTarget(rules, ctx);
+  if (target.kind === 'canonical') {
+    setRulesValueArray(rules, [...nodes]);
+    for (const node of nodes) {
+      rules.adopt(node, ctx);
+    }
+    maybeMarkScopeDirty(rules, ctx, options);
+    return;
   }
+  if (target.kind === 'wrapper') {
+    setRulesValueArray(rules, [...nodes]);
+  }
+  disconnectMissingRenderChildren(target.currentChildren, nodes, target.renderKey);
+  connectRenderChildren(rules, nodes, target.renderKey);
+  maybeMarkScopeDirty(rules, ctx, options);
 }
 
-/**
- * Set a child at a specific index.
- */
 export function setChildAt(
   rules: Rules,
   index: number,
@@ -223,83 +259,36 @@ export function setChildAt(
   ctx: Context,
   options: { markDirty?: boolean } = {}
 ): void {
-  const s = ctx.activeState.get(rules);
-  const currentChildren = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
+  const target = resolveChildWriteTarget(rules, ctx);
+  if (target.kind !== 'canonical') {
+    if (target.currentChildren[index] === node) {
+      return;
+    }
+    const previous = target.currentChildren[index];
+    if (target.kind === 'wrapper') {
+      const nextValue = [...target.currentChildren];
+      nextValue[index] = node;
+      setRulesValueArray(rules, nextValue);
+    }
+    if (previous && previous !== node) {
+      removeParentEdge(previous, target.renderKey);
+    }
+    addEdgeAt(rules, 'value', index, target.renderKey, node);
+    addParentEdge(node, target.renderKey, rules);
+    maybeMarkScopeDirty(rules, ctx, options);
+    return;
+  }
+  const currentChildren = [...target.currentChildren];
   const prev = currentChildren[index];
   if (prev === node) {
     return;
   }
   currentChildren[index] = node;
-  s.fields.set('value', currentChildren);
-  if (options.markDirty !== false) {
-    markScopeDirty(rules, ctx);
-  }
+  setRulesValueArray(rules, currentChildren);
+  rules.adopt(node, ctx);
+  maybeMarkScopeDirty(rules, ctx, options);
 }
 
-/**
- * Append child nodes to a Rules node.
- */
-export function appendChildren(
-  rules: Rules,
-  nodes: Node[],
-  ctx: Context
-): void {
-  const s = ctx.activeState.get(rules);
-  const current = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
-  s.fields.set('value', [...current, ...nodes]);
-  markScopeDirty(rules, ctx);
-}
-
-/**
- * Prepend child nodes to a Rules node.
- */
-export function prependChildren(
-  rules: Rules,
-  nodes: Node[],
-  ctx: Context
-): void {
-  const s = ctx.activeState.get(rules);
-  const current = s._fields?.get('value') as Node[] | undefined
-    ?? [...rules.value];
-  s.fields.set('value', [...nodes, ...current]);
-  markScopeDirty(rules, ctx);
-}
-
-/**
- * Remove a child node from a Rules node.
- */
-export function removeChild(
-  rules: Rules,
-  child: Node,
-  ctx: Context
-): void {
-  const currentChildren = getChildren(rules, ctx);
-  const idx = currentChildren.indexOf(child);
-  if (idx >= 0) {
-    const nextValue = [...currentChildren];
-    nextValue.splice(idx, 1);
-    ctx.activeState.get(rules).fields.set('value', nextValue);
-    setParent(child, undefined, ctx);
-    markScopeDirty(rules, ctx);
-  }
-}
-
-/**
- * Replace a node with a replacement. Uses node patching on the activeState.
- */
-export function replaceNode(
-  node: Node,
-  replacement: Node,
-  ctx: Context
-): void {
-  ctx.activeState.get(node).replacement = replacement;
-}
-
-/**
- * Invalidate a Rules node's scope registry so the next lookup rebuilds it.
- */
 export function markScopeDirty(
   _rules: Rules,
   _ctx: Context
@@ -307,9 +296,6 @@ export function markScopeDirty(
   // Registry delta tracking removed with EvalSession.
   // Registry rebuilds from children on next access.
 }
-
-// --- Dependency tracking ---
-// Stored as `_dependency` on NodeState (declare-only, zero cost when unused).
 
 export interface EvalDependency {
   dependsOn: Set<import('../declaration-var.js').VarDeclaration> | null;
@@ -320,7 +306,7 @@ export function getDependency(
   node: Node,
   ctx: Context
 ): EvalDependency | null {
-  return ctx.activeState.resolve(node)?._dependency ?? null;
+  return ctx.dependencyMap.get(node) ?? null;
 }
 
 export function setDependency(
@@ -328,15 +314,7 @@ export function setDependency(
   dependency: EvalDependency,
   ctx: Context
 ): void {
-  ctx.activeState.get(node)._dependency = dependency;
-}
-
-export function isStatic(
-  node: Node,
-  ctx: Context
-): boolean {
-  const dep = getDependency(node, ctx);
-  return !dep?.dependsOn || dep.dependsOn.size === 0;
+  ctx.dependencyMap.set(node, dependency);
 }
 
 export function mergeDependencies(
@@ -364,9 +342,6 @@ export function mergeDependencies(
   return merged ? { dependsOn: merged, sourceExpr } : null;
 }
 
-/**
- * Check if a node is a top-level variable declaration.
- */
 export function isTopLevelVarDeclaration(
   node: Node,
   ctx: Context
@@ -376,37 +351,4 @@ export function isTopLevelVarDeclaration(
   }
   const parent = getParent(node, ctx);
   return !!parent && isNode(parent, N.Rules) && parent === ctx.root;
-}
-
-// -- Changed variable tracking --
-// Stored per-EvalState using a module-level WeakMap, so each push of an
-// isolated state starts with an empty changed-vars set.
-
-const changedVarsMap = new WeakMap<EvalState, Set<Node>>();
-
-/**
- * Mark a VarDeclaration as changed in the current eval state.
- */
-export function markChangedVar(ctx: Context, node: Node): void {
-  const state = ctx.activeState;
-  let set = changedVarsMap.get(state);
-  if (!set) {
-    set = new Set();
-    changedVarsMap.set(state, set);
-  }
-  set.add(node);
-}
-
-/**
- * Check whether any vars have been marked as changed.
- */
-export function hasChangedVars(ctx: Context): boolean {
-  return (changedVarsMap.get(ctx.activeState)?.size ?? 0) > 0;
-}
-
-/**
- * Get the set of changed vars for the current eval state.
- */
-export function getChangedVars(ctx: Context): Set<Node> | undefined {
-  return changedVarsMap.get(ctx.activeState);
 }

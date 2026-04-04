@@ -17,7 +17,7 @@ export interface Rest {
 export class Rest extends Node<Node | string | undefined, NodeOptions, RestChildData> {
   static override childKeys = ['value'] as const;
 
-  /** @internal */ value: Node | string | undefined;
+  readonly value: Node | string | undefined;
 
   constructor(value?: Node | string, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
