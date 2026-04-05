@@ -41,6 +41,60 @@ function runCapture(command, args, cwd = process.cwd()) {
   return (result.stdout ?? '').trim();
 }
 
+function packageVersionExists(pkgName, version) {
+  const result = spawnSync('npm', ['view', `${pkgName}@${version}`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    return false;
+  }
+  const output = (result.stdout ?? '').trim();
+  if (!output) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(output);
+    if (typeof parsed === 'string') {
+      return parsed === version;
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.includes(version);
+    }
+    return false;
+  } catch {
+    return output.includes(version);
+  }
+}
+
+function getTaggedVersion(pkgName, tag) {
+  const result = spawnSync('npm', ['view', `${pkgName}@${tag}`, 'version', '--json'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const output = (result.stdout ?? '').trim();
+  if (!output) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(output);
+    if (typeof parsed === 'string') {
+      return parsed;
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.at(-1) ?? null;
+    }
+    return null;
+  } catch {
+    return output;
+  }
+}
+
 const rootDir = process.cwd();
 const allowlistPath = path.join(rootDir, 'scripts/release/alpha-allowlist.json');
 const plan = getAlphaReleasePlan({ rootDir, allowlistPath });
@@ -103,6 +157,16 @@ for (const pkgName of plan.publishOrder) {
   const publishArgs = ['publish', '--tag', 'alpha', '--no-git-checks', '--ignore-scripts'];
   const access = pkg.manifest.publishConfig?.access;
   if (access) publishArgs.push('--access', access);
+  const taggedVersion = getTaggedVersion(pkgName, 'alpha');
+  if (packageVersionExists(pkgName, TARGET_VERSION)) {
+    if (taggedVersion === TARGET_VERSION) {
+      console.log(`\nSkipping ${pkgName}@${TARGET_VERSION}: alpha already points to that version.`);
+      continue;
+    }
+    console.log(`\nRetagging ${pkgName}@${TARGET_VERSION} to alpha (was ${taggedVersion ?? '(not found)'})`);
+    run('npm', ['dist-tag', 'add', `${pkgName}@${TARGET_VERSION}`, 'alpha'], rootDir);
+    continue;
+  }
   console.log(`\nPublishing ${pkgName}@${TARGET_VERSION}`);
   run('pnpm', publishArgs, pkg.dir);
 }
