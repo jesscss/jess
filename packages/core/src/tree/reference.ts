@@ -1017,16 +1017,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions, ReferenceC
               context.deleteFromSearchScope(returnVal as Node);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
-              let out = materializeResolvedValue(evald);
-              out.pre = this.pre;
-              out.post = this.post;
-              setSourceParent(out, sourceReference, context);
               const dependency = isTopLevelVarDeclaration(returnVal as Node, context)
                 ? {
                     dependsOn: new Set<VarDeclaration>([returnVal as VarDeclaration]),
                     sourceExpr: this as Node
                   }
                 : getDependency(evald, context);
+              let out = materializeResolvedValue(evald);
+              out.pre = this.pre;
+              out.post = this.post;
+              setSourceParent(out, sourceReference, context);
               if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
                 setDependency(out, {
                   dependsOn: new Set(dependency.dependsOn),

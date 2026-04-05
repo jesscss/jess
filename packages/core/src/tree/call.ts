@@ -534,7 +534,7 @@ export class Call extends Node<CallValue, CallOptions, CallChildData> {
           if (!callOptions.silentFail || shouldRethrowForMode) {
             throw e;
           }
-          let newCall = this.clone().inherit(this);
+          let newCall = this.clone();
           /** Remove this flag for serialization */
           newCall.options.silentFail = false;
           newCall.name = isNode(name, N.Reference) && name.options.fallbackValue === true

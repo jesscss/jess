@@ -96,10 +96,10 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
   guard: Condition | undefined;
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const name = this.get('name', ctx);
-    const rules = this.get('rules', ctx);
-    const params = this.get('params', ctx);
-    const guard = this.get('guard', ctx);
+    const name = this.name;
+    const rules = this.rules;
+    const params = this.params;
+    const guard = this.guard;
     const cloneData: MixinValue = {
       name: deep && name instanceof Node ? name.clone(deep, cloneFn, ctx) : name,
       rules: deep ? rules.clone(deep, cloneFn, ctx) : rules,
@@ -185,7 +185,7 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     if (!context) {
       return this.keySet;
     }
-    const name = this.get('name', context);
+    const name = this.name;
     if (!name) {
       return new Set();
     }
@@ -196,10 +196,10 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const context = options.context;
-    const name = this.get('name', context);
-    const rules = this.get('rules', context).withRenderOwner(this, context?.renderKey, context);
-    const params = this.get('params', context);
-    const guard = this.get('guard', context);
+    const name = this.name;
+    const rules = this.rules.withRenderOwner(this, context?.renderKey, context);
+    const params = this.params;
+    const guard = this.guard;
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -238,8 +238,8 @@ export class Mixin extends Node<MixinValue, MixinOptions, MixinChildData> {
     node.sourceNode ??= this;
     node.renderKey = edgeContext.renderKey;
 
-    const name = node.get('name', context);
-    let rules = node.get('rules', context).withRenderOwner(node, context.renderKey, context);
+    const name = node.name;
+    let rules = node.rules.withRenderOwner(node, context.renderKey, context);
     if (rules.renderKey === CANONICAL) {
       const wrappedRules = rules.createShallowBodyWrapper(context);
       node.rules = wrappedRules;

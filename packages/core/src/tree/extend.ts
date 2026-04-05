@@ -278,7 +278,7 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(resolved.copy(true) as Selector);
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...((repl as ComplexSelector).get('value') as unknown as Selector[]).map(x => x.copy(true) as Selector));
+                parts.push(...((repl as ComplexSelector).value as Selector[]));
               } else {
                 parts.push(repl);
               }

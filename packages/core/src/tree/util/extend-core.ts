@@ -805,14 +805,13 @@ function materializeAmpersandsForHoist(
 ): Selector {
   if (isNode(selector, N.Ampersand)) {
     const resolved = selector.getResolvedSelector() ?? parent;
-    const resolvedCopy = resolved.copy(true);
-    return materializeAmpersandsForHoist(resolvedCopy, parent);
+    return materializeAmpersandsForHoist(resolved, parent);
   }
 
   const selectorList = getSelectorList(selector);
   if (selectorList) {
     const next = selectorList.value.map(child =>
-      materializeAmpersandsForHoist(child.copy(true), parent)
+      materializeAmpersandsForHoist(child, parent)
     );
     const rebuilt = SelectorList.create(next).inherit(selector);
     rebuilt.hoistToRoot = selector.hoistToRoot;
@@ -827,12 +826,12 @@ function materializeAmpersandsForHoist(
       const child = complex.value[i]!;
       if (isNode(child, N.Ampersand)) {
         const resolved = child.getResolvedSelector() ?? parent;
-        const replacement = materializeAmpersandsForHoist(resolved.copy(true), parent);
+        const replacement = materializeAmpersandsForHoist(resolved, parent);
         nextData.push(...getParentReplacementForAmpersand(replacement, i === 0));
         continue;
       }
 
-      nextData.push(materializeAmpersandsForHoist(child.copy(true), parent));
+      nextData.push(materializeAmpersandsForHoist(child, parent));
     }
 
     const rebuilt = ComplexSelector.create(nextData).inherit(selector);
@@ -846,7 +845,7 @@ function materializeAmpersandsForHoist(
 
     for (const selectorChild of compound.value) {
       if (isNode(selectorChild, N.Ampersand)) {
-        const resolved = materializeAmpersandsForHoist((selectorChild.getResolvedSelector() ?? parent)!.copy(true), parent);
+        const resolved = materializeAmpersandsForHoist(selectorChild.getResolvedSelector() ?? parent, parent);
         if (isNode(resolved, N.CompoundSelector)) {
           nextData.push(...resolved.value);
         } else if (isNode(resolved, N.ComplexSelector | N.SelectorList)) {
@@ -857,7 +856,7 @@ function materializeAmpersandsForHoist(
         continue;
       }
 
-      nextData.push(materializeAmpersandsForHoist(selectorChild.copy(true), parent));
+      nextData.push(materializeAmpersandsForHoist(selectorChild, parent));
     }
 
     if (nextData.length === 1) {
@@ -1002,7 +1001,7 @@ function wrapResolvedOrderedSpanWithTailRemainder(
 
   const matchedPrefix: Selector[] = [];
   for (let i = startIndex; i < endIndex; i++) {
-    matchedPrefix.push(materializeAmpersandsForHoist(targetSelector.value[i]!.copy(true), resolvedParent));
+    matchedPrefix.push(materializeAmpersandsForHoist(targetSelector.value[i]!, resolvedParent));
   }
 
   const matchedTailSelector = buildMatchedCompoundSelector(

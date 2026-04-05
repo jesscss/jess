@@ -84,9 +84,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const context = options.context;
-    const name = this.get('name', context);
-    const arg = this.get('arg', context);
+    const name = this.name;
+    const arg = this.arg;
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
@@ -129,7 +128,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this.get('arg', context);
+    const currentArg = this.arg;
     const node = super.evalNode(context) as PseudoSelector;
     if (!currentArg) {
       return node;
@@ -143,7 +142,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
         context.parenFrames.pop();
         if (node === this) {
           const out = this.clone() as PseudoSelector;
-          out.inherit(this);
           out.adopt(evaluatedArg, context);
           out.arg = evaluatedArg;
           return out;

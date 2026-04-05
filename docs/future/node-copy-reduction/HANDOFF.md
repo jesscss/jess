@@ -213,6 +213,38 @@ For hotspot confirmation on the main benchmark:
 node --cpu-prof --cpu-prof-dir=/tmp/jess-cpu-prof benchmark/benchmark-runner.cjs benchmark/benchmark.less 1 0 --math=parens-division
 ```
 
+### Current Hotspot Readout
+
+Use the latest profile before guessing:
+
+- GC is still the dominant single bucket.
+- Current code hotspots after GC are:
+  - `buildGroupRequirements`
+  - `cloneFn`
+  - `getRulesetExtendTarget`
+  - `processExtends`
+  - `buildRouteMatchPlan`
+  - `getEffectiveSelector`
+  - `composeSelectorRouteWithParent`
+  - `clone`
+  - `inherit`
+
+Recent anti-pattern evidence:
+
+- several “obvious” direct-field cleanups in selector/extend planning changed
+  real output shape and failed `extend-less-fixtures.test.ts`
+- a “faster” direct count merge in `selector-match-core.mergeRequirements(...)`
+  also changed extend behavior and is rejected
+- do not touch selector/extend planning again unless the change is backed by a
+  fixture-level explanation, not just by a profiler sample
+- a real keep landed in clone/materialization debt instead:
+  - `Node.copy()` no longer strips comments with a recursive comment-replacement
+    callback
+  - duplicate `inherit(this)` calls after `clone()` were removed in
+    `selector-pseudo.ts` and `call.ts`
+  - hostile extend/comment/reference gates stayed green
+  - `benchmark.less` improved into the `~2.66s` to `~2.69s` band
+
 ### Focused Test Gates
 
 While iterating on core runtime hotspots, use `vitest`, not ad-hoc runners.
@@ -572,3 +604,58 @@ Serialization note:
 - `subtreeMap`
 - old detached wrapper/materialize helpers
 - any new code that assumes `EvalState` is the final architecture
+
+## Current Perf Frontier
+
+Latest accepted benchmark evidence on `benchmark.less`:
+
+- `FunctionRegistry.cloneForRules(...)` conditional empty-container cloning:
+  reject, regressed to about `2770ms`
+- `Reference` materialize-only-when-needed:
+  keep, stayed in the `~2727ms` band
+- `Reference` direct `target` / `key` field reads:
+  keep, no child-edge overrides exist for those fields
+- `Extend` direct `selector` / `target` / `namespace` / `flag` field reads:
+  keep, same no-edge rationale
+- `PseudoSelector` direct `name` / `arg` field reads:
+  keep, improved the big benchmark to about `2693ms`
+- `SelectorAttr` direct `name` / `value` / `op` / `mod` field reads:
+  reject, regressed to about `2734ms`
+- `Call` direct `name` / `args` / `contentNode` field reads:
+  reject, regressed to about `2786ms`
+- `Mixin` direct `name` / `rules` / `params` / `guard` field reads:
+  keep, improved the big benchmark to about `2687ms`
+- `Operation` direct `left` / `right` field reads:
+  reject, regressed to about `2725ms`
+- `Node.copy()` comment-stripping removal:
+  keep, real hostile gates stayed green and verification rerun stayed inside the
+  accepted `~2.68s` band after a noisy first sample
+- `extend.ts` duplicate deep copy in `materializeImplicitAmpersands(...)`:
+  keep, hostile extend/ampersand/reference gates stayed green and
+  `benchmark.less` measured `2678.64ms` avg (`2673.38ms` min, `2683.89ms` max)
+- `extend-core.ts` recursive pre-copy removal in `materializeAmpersandsForHoist(...)`:
+  keep, but treat as neutral/noisy rather than a fresh win
+  - hostile extend/ampersand/reference gates stayed green
+  - real benchmark samples were `2695.99ms` avg then `2664.27ms` avg
+  - acceptable to stack with adjacent cuts, not acceptable to cite as a clear
+    standalone improvement
+- `extend-core.ts` ordered-span caller pre-copy removal before
+  `materializeAmpersandsForHoist(...)`:
+  keep, this is the adjacent cut that turned the neutral cleanup into a real
+  benchmark win
+  - hostile extend/ampersand/reference gates stayed green
+  - `benchmark.less` measured `2639.48ms` avg (`2631.95ms` min, `2647.01ms` max)
+
+Execution rule for the next passes:
+
+1. Prefer deleting generic `.get('field', context)` when repo evidence shows the
+   field has no render/eval edge overrides.
+2. If a field does have real edge-backed state, do not bypass it just for style.
+3. Benchmark every kept cut on the real Less benchmark, not only focused tests.
+4. Revert immediately when a change is architecturally cleaner but makes the
+   real benchmark slower.
+
+Immediate next target:
+
+- either `packages/core/src/tree/condition.ts`
+- or broader clone / adopt pressure in `packages/core/src/tree/node-base.ts`

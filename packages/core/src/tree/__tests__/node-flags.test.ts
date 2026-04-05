@@ -3,6 +3,7 @@ import {
   F_NON_STATIC,
   F_MAY_ASYNC,
   any,
+  amp,
   dimension,
   num,
   color,
@@ -23,6 +24,7 @@ import {
   url,
   block
 } from '../index.js';
+import { F_AMPERSAND, F_IMPLICIT_AMPERSAND } from '../node.js';
 
 describe('Node Flags', () => {
   describe('leaf node flag assignment', () => {
@@ -107,6 +109,18 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
+    });
+  });
+
+  describe('clone flag preservation', () => {
+    it('clone preserves ampersand flags without copy-specific behavior', () => {
+      const node = amp();
+      node.addFlag(F_IMPLICIT_AMPERSAND);
+
+      const cloned = node.clone();
+
+      expect(cloned.hasFlag(F_AMPERSAND)).toBe(true);
+      expect(cloned.hasFlag(F_IMPLICIT_AMPERSAND)).toBe(true);
     });
   });
 

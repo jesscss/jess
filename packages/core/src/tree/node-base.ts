@@ -1251,27 +1251,7 @@ export abstract class Node<
    * selector extending.
    */
   copy(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newNode = this.clone(
-      deep,
-      (n) => {
-        if (n.type !== 'Comment') {
-          const copy = n.copy(deep, cloneFn);
-          return copy;
-        }
-        const nilNode = this.nil?.() || this._createMinimalNil();
-        return nilNode.inherit(n);
-      }
-    );
-    if (this.hasFlag(F_AMPERSAND)) {
-      newNode.addFlag(F_AMPERSAND);
-    }
-    if (this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      newNode.addFlag(F_IMPLICIT_AMPERSAND);
-    }
-    // Strip comments from pre/post, preserving whitespace
-    newNode.stripPrePost(newNode, 'pre');
-    newNode.stripPrePost(newNode, 'post');
-    return newNode;
+    return this.clone(deep, cloneFn);
   }
 
   /**

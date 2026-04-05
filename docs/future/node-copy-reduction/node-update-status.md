@@ -218,6 +218,131 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 4. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
 5. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
 
+## Recent Perf Evidence
+
+- Current kept benchmark band on `benchmark.less` is now roughly `2.66s` to
+  `2.69s`, with the current best sample at roughly `2661ms`.
+- Fresh CPU profile still says GC is the biggest single cost. After that, the loudest self-time hotspots are:
+  - `buildGroupRequirements`
+  - `cloneFn`
+  - `getRulesetExtendTarget`
+  - `processExtends`
+  - `buildRouteMatchPlan`
+  - `getEffectiveSelector`
+  - `composeSelectorRouteWithParent`
+  - `clone`
+  - `inherit`
+- Newly rejected experiments:
+  - parentless eval-context selector-match plan caching in
+    `packages/core/src/tree/util/selector-match-core.ts`
+  - `Reference.preEval()` fast path for primitive target/key references
+  - extra direct-field cleanup inside `Reference`
+  - canonical direct-field cleanup in `mixin-instance-primitives`
+  - `adopt()` / `inherit()` bitmask shortcut using `node.state`
+  - `rules.ts` direct canonical `name` / `selector` reads in registration and mixin-direct dispatch
+  - direct selector-structure reads in `selector-match-core` plan building
+  - direct count-merge rewrite in `selector-match-core.mergeRequirements(...)`
+- Rejection rule was not just time. Several of those selector/extend-path cuts also changed real output shape in `extend-less-fixtures.test.ts` (`[data="test3"]` became `[data= "test3"]`), so they are architecturally unsafe as written.
+- Updated ranking:
+  1. clone/materialize churn in extend-match planning
+  2. selector-route composition / parent recomposition
+  3. `getRulesetExtendTarget` / `processExtends`
+  4. only after that, broader clone/inherit seams in `node-base`
+
+## New Kept Perf Evidence
+
+- `Node.copy()` no longer strips comments via a recursive comment-replacement
+  clone callback. It is now a structural clone path with the existing
+  serialization/comment gates left to enforce output behavior.
+- Two duplicate `inherit(this)` calls were removed after `clone()` in:
+  - `packages/core/src/tree/selector-pseudo.ts`
+  - `packages/core/src/tree/call.ts`
+- Exact keep gates that stayed green after that change:
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark result after rebuilding `@jesscss/core` and `jess`:
+  - `benchmark.less`: `2660.62ms` min, `2694.34ms` max, `2677.48ms` avg
+- Interpretation:
+  - comment stripping in `copy()` was paying real hot-path cost without being
+    required by the current comment/serialization contract
+  - duplicate post-clone `inherit()` calls were pure legacy overhead
+- Follow-up proof:
+  - the temporary clone-flag regression was a bad test import, not a runtime
+    bug
+  - `packages/core/src/tree/__tests__/node-flags.test.ts` now imports
+    `F_AMPERSAND` and `F_IMPLICIT_AMPERSAND` from `packages/core/src/tree/node.ts`,
+    not the `index.ts` barrel that does not export those flags
+  - exact keep gate after that fix:
+    - `packages/core/src/tree/__tests__/node-flags.test.ts`
+    - `packages/core/src/tree/__tests__/ampersand.test.ts`
+    - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+    - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+    - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+    - `packages/core/src/tree/__tests__/reference.test.ts`
+  - benchmark recheck after rebuilding `@jesscss/core` and `jess`:
+    - first run: `2725.09ms` avg
+    - verification rerun: `2684.91ms` avg
+  - keep result:
+    - neutral-to-safe inside the accepted benchmark band; no revert
+
+- New keep:
+  `packages/core/src/tree/extend.ts`
+  `materializeImplicitAmpersands(...)` no longer deep-copies the children of a
+  freshly materialized `ComplexSelector` a second time before pushing them into
+  the rebuilt selector.
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark result after rebuilding `@jesscss/core` and `jess`:
+  - `benchmark.less`: `2673.38ms` min, `2683.89ms` max, `2678.64ms` avg
+- Interpretation:
+  - the extra `map(x => x.copy(true))` was real duplicate work
+  - removing it held correctness and preserved the current best benchmark band
+
+- New keep:
+  `packages/core/src/tree/util/extend-core.ts`
+  `materializeAmpersandsForHoist(...)` no longer pre-copies recursive
+  selector/list/compound children before recursing into a function that already
+  rebuilds or copies on exit.
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark result after rebuilding `@jesscss/core` and `jess`:
+  - first run: `2695.99ms` avg
+  - verification rerun: `2664.27ms` avg
+- Interpretation:
+  - this is not a clean standalone speed win yet
+  - it stayed inside the accepted benchmark band across repeated real runs
+  - keep as neutral architectural cleanup until a later profile shows whether
+    the recursive pre-copy removal compounds with adjacent cuts
+
+- New keep:
+  `packages/core/src/tree/util/extend-core.ts`
+  `wrapResolvedOrderedSpan(...)` no longer pre-copies
+  `targetSelector.value[i]` before handing it to
+  `materializeAmpersandsForHoist(...)`.
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark result after rebuilding `@jesscss/core` and `jess`:
+  - `benchmark.less`: `2631.95ms` min, `2647.01ms` max, `2639.48ms` avg
+- Interpretation:
+  - this is a real follow-on win in the same extend-materialization family
+  - the previous neutral pre-copy cleanup appears to compound once this adjacent
+    caller stops deep-copying the same selector segment first
+  - current accepted benchmark band is now roughly `2.63s` to `2.68s`
+
 ## Current Perf Evidence
 
 - Big benchmark:
@@ -589,3 +714,70 @@ No longer active baggage in core test files:
 
 - direct `activeState` / `EvalState` test setup
 - direct `setField` / `getField` test mutation APIs
+
+## Recent Perf Evidence
+
+- Rejected:
+  `packages/core/src/tree/util/registry-utils.ts`
+  `FunctionRegistry.cloneForRules(...)` conditional empty `Map` / `Set` cloning.
+  Focused reference/import gates stayed green, but the real Less benchmark
+  regressed to about `2770ms`. Keep the simpler unconditional clone until a
+  larger registry-owner change replaces it.
+- Kept:
+  `packages/core/src/tree/reference.ts`
+  no longer shallow-clones every resolved value by default.
+  Materialization now happens only when source-parent attachment or dependency
+  isolation is actually needed. This held under focused reference/import/mixin
+  proofs and kept the big benchmark in the good band (`~2727ms` to `~2733ms`).
+- Kept:
+  `packages/core/src/tree/reference.ts`
+  direct field reads for `target` / `key`.
+  There are no render/eval edge overrides for those children anywhere in core,
+  so `this.get('target'|'key', context)` was pure abstraction tax.
+- Kept:
+  `packages/core/src/tree/extend.ts`
+  direct field reads for `selector` / `target` / `namespace` / `flag`.
+  Same rationale: no edge-backed overrides exist for these child fields.
+  The benchmark stayed in the good band (`~2727ms`).
+- Kept:
+  `packages/core/src/tree/selector-pseudo.ts`
+  direct field reads for `name` / `arg`.
+  This moved the real `benchmark.less` run down to about `2693ms`, the current
+  best band.
+- Rejected:
+  `packages/core/src/tree/selector-attr.ts`
+  direct field reads for `name` / `value` / `op` / `mod`.
+  Focused selector/import/mixin gates stayed green, but the real benchmark
+  regressed to about `2734ms`.
+- Rejected:
+  `packages/core/src/tree/call.ts`
+  direct field reads for `name` / `args` / `contentNode`.
+  Focused call/import/mixin/reference gates stayed green, but the real
+  benchmark cratered to about `2786ms`.
+- Kept:
+  `packages/core/src/tree/mixin.ts`
+  direct field reads for `name` / `rules` / `params` / `guard`.
+  This improved the big benchmark again to about `2687ms`, the current best
+  band.
+- Rejected:
+  `packages/core/src/tree/operation.ts`
+  direct field reads for `left` / `right`.
+  Expression/mixin/import/reference gates stayed green, but the real benchmark
+  regressed to about `2725ms`.
+
+## Current Culprit Order
+
+1. Generic clone / inherit / adopt pressure in `packages/core/src/tree/node-base.ts`
+2. No-edge generic field reads in hot structural nodes
+   - proven keeps: `Reference`, `Extend`, `PseudoSelector`, `Mixin`
+   - proven rejects: `SelectorAttr`, `Call`, `Operation`
+   - next candidate only if profiling justifies it: `Condition`
+3. Wrapper / registry-owner churn in `packages/core/src/tree/rules.ts`
+   and `packages/core/src/tree/util/registry-utils.ts`
+4. Ruleset selector/body materialization in `packages/core/src/tree/ruleset.ts`
+
+Ranking rule:
+
+- move a seam up when it produces a real `benchmark.less` win
+- move it down immediately when it only looks clean architecturally but regresses
+  the benchmark
