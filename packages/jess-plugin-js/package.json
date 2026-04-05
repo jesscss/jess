@@ -1,6 +1,6 @@
 {
   "name": "@jesscss/plugin-js",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "description": "Jess plugin for JavaScript/TypeScript module imports with Deno runtime checks",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",

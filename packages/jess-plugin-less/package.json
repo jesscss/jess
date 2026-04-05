@@ -5,7 +5,7 @@
     "access": "public"
   },
   "description": "A Less stylesheet engine for Jess",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {

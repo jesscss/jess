@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-jess",
-  "version": "2.0.0-alpha.5",
+  "version": "2.0.0-alpha.6",
   "description": "Rollup plugin for Jess",
   "main": "lib/index",
   "types": "lib/index",

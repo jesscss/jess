@@ -412,9 +412,6 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
@@ -585,9 +582,6 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
