@@ -1289,11 +1289,23 @@ export function qualifiedRule(this: P, T: TokenMap) {
     let selectorAlt = altContext ?? ((ctx: RuleContext) => [
       {
         GATE: () => !ctx.inner,
-        ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
+        ALT: () => {
+          const selectorCtx = { ...ctx, qualifiedRule: true };
+          const result = $.SUBRULE($.selectorList, { ARGS: [selectorCtx] });
+          ctx.extendNodes = selectorCtx.extendNodes;
+          ctx.extendTargets = selectorCtx.extendTargets;
+          return result;
+        }
       },
       {
         GATE: () => !!ctx.inner,
-        ALT: () => $.SUBRULE2($.forgivingSelectorList, { ARGS: [{ ...ctx, qualifiedRule: true, firstSelector: true }] })
+        ALT: () => {
+          const selectorCtx = { ...ctx, qualifiedRule: true, firstSelector: true };
+          const result = $.SUBRULE2($.forgivingSelectorList, { ARGS: [selectorCtx] });
+          ctx.extendNodes = selectorCtx.extendNodes;
+          ctx.extendTargets = selectorCtx.extendTargets;
+          return result;
+        }
       }
     ]);
     // qualifiedRule
@@ -1416,11 +1428,23 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     let selector: Selector = $.OR([
       {
         GATE: () => !ctx.inner,
-        ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
+        ALT: () => {
+          const selectorCtx = { ...ctx, qualifiedRule: true };
+          const result = $.SUBRULE($.selectorList, { ARGS: [selectorCtx] });
+          ctx.extendNodes = selectorCtx.extendNodes;
+          ctx.extendTargets = selectorCtx.extendTargets;
+          return result;
+        }
       },
       {
         GATE: () => !!ctx.inner,
-        ALT: () => $.SUBRULE2($.forgivingSelectorList, { ARGS: [{ ...ctx, qualifiedRule: true, firstSelector: true }] })
+        ALT: () => {
+          const selectorCtx = { ...ctx, qualifiedRule: true, firstSelector: true };
+          const result = $.SUBRULE2($.forgivingSelectorList, { ARGS: [selectorCtx] });
+          ctx.extendNodes = selectorCtx.extendNodes;
+          ctx.extendTargets = selectorCtx.extendTargets;
+          return result;
+        }
       }
     ]);
 
@@ -1566,9 +1590,10 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         /** Parse as qualified rule */
         ALT: () => {
           $.endRule();
-          let rule: Node = $.SUBRULE7($.qualifiedRuleBody, {
-            ARGS: [{ ...ctx, selector, isSelectorList }]
-          });
+          const bodyCtx = { ...ctx, selector, isSelectorList };
+          let rule: Node = $.SUBRULE7($.qualifiedRuleBody, { ARGS: [bodyCtx] });
+          ctx.extendNodes = bodyCtx.extendNodes;
+          ctx.extendTargets = bodyCtx.extendTargets;
           if (ctx.extendNodes) {
             /** Prepend a rules block */
             let qRule = rule;

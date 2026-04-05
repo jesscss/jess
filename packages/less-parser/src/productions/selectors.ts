@@ -611,7 +611,10 @@ export function complexSelector(this: P, T: TokenMap) {
     $.OPTION3({
       GATE: () => !ctx.inExtend && !!ctx.qualifiedRule && $.isType(T.Extend),
       DEF: () => {
-        $.SUBRULE($.extend, { ARGS: [{ ...ctx, selector }] });
+        const extendCtx = { ...ctx, selector };
+        $.SUBRULE($.extend, { ARGS: [extendCtx] });
+        ctx.extendNodes = extendCtx.extendNodes;
+        ctx.extendTargets = extendCtx.extendTargets;
       }
     });
 
