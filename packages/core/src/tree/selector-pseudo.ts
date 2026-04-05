@@ -55,10 +55,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue, NodeOpti
     }
     let name = this.name;
     let arg: unknown = this.arg;
-    let library = this.keySetLibrary;
-    if (!library) {
-      throw new Error('Selector keySet library not found');
-    }
+    const library = this._requireKeySetLibrary();
     if (isNode(arg, N.Selector)) {
       if (name === ':is') {
         this._keySet = arg.keySet;

@@ -135,24 +135,28 @@ function getNodeChildKeys(node: Node): readonly string[] | null | undefined {
   return childKeys;
 }
 
+function getNodeBag(node: Node): Record<string, unknown> {
+  return node as unknown as Record<string, unknown>;
+}
+
 function getNodeField<T = unknown>(node: Node, key: string): T {
-  const value: T = Reflect.get(node, key);
-  return value;
+  return getNodeBag(node)[key] as T;
 }
 
 function setNodeField(node: Node, key: string, value: unknown): void {
-  if (Reflect.get(node, key) === value) {
+  const bag = getNodeBag(node);
+  if (bag[key] === value) {
     return;
   }
-  Reflect.set(node, key, value);
+  bag[key] = value;
 }
 
 function getNodeEdge<T>(node: Node, key: string): NodeEdge<T> | undefined {
-  return Reflect.get(node, key);
+  return getNodeBag(node)[key] as NodeEdge<T> | undefined;
 }
 
 function getNodeEdgeList(node: Node, key: string): Array<NodeEdge<unknown> | undefined> | undefined {
-  return Reflect.get(node, key);
+  return getNodeBag(node)[key] as Array<NodeEdge<unknown> | undefined> | undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -179,11 +183,11 @@ function setNodeEvaluated(node: Node, context?: Context): void {
 }
 
 function getNodeKeySetLibrary(node: Node): unknown {
-  return Reflect.get(node, 'keySetLibrary');
+  return getNodeBag(node).keySetLibrary;
 }
 
 function setNodeKeySetLibrary(node: Node, library: unknown): void {
-  Reflect.set(node, 'keySetLibrary', library);
+  getNodeBag(node).keySetLibrary = library;
 }
 
 function isRulesNode(node: Node | undefined): node is Rules {
@@ -742,9 +746,12 @@ export abstract class Node<
     if (!node.frozen) {
       const renderKey = ctx?.renderKey;
       if (renderKey !== undefined && renderKey !== CANONICAL) {
-        const edge = node.parentEdges ?? new Map<RenderKey, Node>();
-        edge.set(renderKey, this);
-        node.parentEdges = edge;
+        const existing = node.parentEdges?.get(renderKey);
+        if (existing !== this) {
+          const edge = node.parentEdges ?? new Map<RenderKey, Node>();
+          edge.set(renderKey, this);
+          node.parentEdges = edge;
+        }
       } else {
         setNodeField(node, 'parent', this);
       }
@@ -1480,12 +1487,6 @@ export abstract class Node<
     this.sourceParent ??= node.sourceParent;
     if (node.hoistToRoot) {
       this.hoistToRoot = true;
-    }
-    if (getNodeKeySetLibrary(this) === undefined) {
-      const keySetLibrary = getNodeKeySetLibrary(node);
-      if (keySetLibrary !== undefined) {
-        setNodeKeySetLibrary(this, keySetLibrary);
-      }
     }
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic

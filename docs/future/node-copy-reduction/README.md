@@ -17,6 +17,8 @@ The target model is:
 - traversal is done through a cursor: `{ node, renderKey }`
 - shallow `Rules` wrappers own local declaration/mixin/ruleset registries and
   may share canonical child arrays until they structurally diverge
+- copy-on-write happens only at true mutation boundaries
+- edges are a targeted tool, not a universal runtime substrate
 
 See [eval-state-sketch.md](./eval-state-sketch.md) for the actual shape.
 
@@ -47,6 +49,36 @@ surfaces and narrow proof tests.
 - no hidden ambient state deciding which parent path a shared node uses
 - no passing full `Context` to edge/path lookups when `renderKey` or cursor is
   enough
+- no preserving legacy generic runtime helpers just because they already exist
+- no new generic `.get(...)` on hot canonical paths
+- no new clone/materialize/edge bookkeeping on a path that can be handled by
+  direct canonical fields or a thin derived node
+- no paying global runtime cost for rare cases such as repeated imports;
+  handle those lazily at the actual divergence boundary
+
+## Non-Negotiable Interpretation
+
+These constraints are not preferences.
+
+When old code conflicts with this model:
+
+- the old code is presumed wrong for future work
+- legacy runtime generality is debt, not precedent
+- a passing test does not justify keeping the wrong architecture
+- a green slice that preserves generic runtime tax is not success
+
+Good direction:
+
+- direct canonical field read on an already-resolved node
+- thin derived node when identity truly changes
+- sparse edge/state only where placement actually diverges
+
+Bad direction:
+
+- generic `.get(...)` on canonical hot paths
+- clone/copy “for safety”
+- keeping edge propagation “just in case”
+- wrapper or helper growth to preserve legacy flexibility
 
 ## Practical Rule
 

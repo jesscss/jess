@@ -88,10 +88,10 @@ export class CompoundSelector extends Selector<SimpleSelector[], any, CompoundSe
         for (const component of components) {
           if (
             isNode(component, N.PseudoSelector)
-            && component.get('name') === ':is'
-            && isNode(component.get('arg'), N.CompoundSelector)
+            && component.name === ':is'
+            && isNode(component.arg, N.CompoundSelector)
           ) {
-            processComponents((component.get('arg') as CompoundSelector).get('value'));
+            processComponents((component.arg as CompoundSelector).value);
             continue;
           }
           value = component.valueOf();

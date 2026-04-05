@@ -103,9 +103,13 @@ export function addEdge(
     }
     throw new Error(`Cannot add a second CANONICAL edge for ${node.type}.${key}`);
   }
-  const edge = getSingularEdgeStore(node, key) ?? new Map<RenderKey, Node>();
-  edge.set(renderKey, child);
-  setSingularEdgeStore(node, key, edge);
+  const edge = getSingularEdgeStore(node, key);
+  if (edge?.get(renderKey) === child) {
+    return;
+  }
+  const nextEdge = edge ?? new Map<RenderKey, Node>();
+  nextEdge.set(renderKey, child);
+  setSingularEdgeStore(node, key, nextEdge);
 }
 
 export function addEdgeAt(
@@ -124,9 +128,13 @@ export function addEdgeAt(
     throw new Error(`Cannot add a second CANONICAL edge for ${node.type}.${key}[${index}]`);
   }
   const indexedEdges = getIndexedEdgeStore(node, key) ?? [];
-  const edge = indexedEdges[index] ?? new Map<RenderKey, Node>();
-  edge.set(renderKey, child);
-  indexedEdges[index] = edge;
+  const edge = indexedEdges[index];
+  if (edge?.get(renderKey) === child) {
+    return;
+  }
+  const nextEdge = edge ?? new Map<RenderKey, Node>();
+  nextEdge.set(renderKey, child);
+  indexedEdges[index] = nextEdge;
   setIndexedEdgeStore(node, key, indexedEdges);
 }
 
@@ -151,9 +159,13 @@ export function addParentEdge(
     }
     throw new Error(`Cannot add a second CANONICAL parent edge for ${node.type}`);
   }
-  const edge = node.parentEdges ?? new Map<RenderKey, Node>();
-  edge.set(renderKey, parent);
-  node.parentEdges = edge;
+  const edge = node.parentEdges;
+  if (edge?.get(renderKey) === parent) {
+    return;
+  }
+  const nextEdge = edge ?? new Map<RenderKey, Node>();
+  nextEdge.set(renderKey, parent);
+  node.parentEdges = nextEdge;
 }
 
 export function removeParentEdge(

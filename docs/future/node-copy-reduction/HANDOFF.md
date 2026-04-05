@@ -22,6 +22,10 @@ The branch should move toward:
 - `.parent` writes must stay disciplined too: derived/output nodes should keep
   their current primary lookup path there, while secondary caller ancestry goes
   in `parentEdges` under an explicit key such as `CALLER`
+- copy-on-write only when a node or container actually diverges
+- direct canonical field reads on already-resolved canonical paths
+- edges only where they solve a concrete placement/lookup problem that direct
+  fields plus a thin derived node cannot solve cleanly
 
 The branch should move away from:
 
@@ -29,6 +33,10 @@ The branch should move away from:
 - field patches
 - render-root-owned patch tables
 - clone/materialize escape hatches for ordinary eval flow
+- preserving legacy generic runtime machinery as a default
+- “edge model everywhere”
+- “clone for safety”
+- broad helper/wrapper retention that exists only to preserve old flexibility
 
 Core tests no longer need to preserve old-model mutation APIs. Do not add new
 `activeState` / `setField` / `getField` test setup back into
@@ -55,6 +63,9 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - for typed field reads, prefer `get<Field>(renderKey?)`
 - on converted nodes, inline `fooEdge?.get(renderKey) ?? foo` instead of
   routing typed field reads back through generic `.get(...)`
+- if the active object is already the canonical object for the current path,
+  use direct fields and do not route the read through generic getters for
+  uniformity
 - reserve `enter<Field>(...)` for helpers that may wrap/adopt to establish a
   render-owned container
 - if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
@@ -95,6 +106,11 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 - the end-state is to remove generic `Node.clone()` / `Node.copy()` as ordinary
   runtime tools from `node-base`; until then, every production callsite is
   suspect and must justify itself in `node-update-status.md`
+- every time old architecture and target architecture conflict, choose the
+  target architecture unless a failing test proves a narrow exception
+- do not preserve old generic machinery because it “might still be useful”
+- treat legacy clone/inherit/adopt/get patterns as hostile to performance until
+  proven otherwise on that exact path
 - every remaining clone/materialize seam must be tracked in
   `node-update-status.md` with:
   - why it still exists
@@ -136,12 +152,27 @@ Beat historical Less v4 benchmark time by reducing runtime work, especially:
 - registry search breadth
 - selector key recomputation
 
+Architectural success is required alongside time improvement:
+
+- fewer objects
+- fewer generic runtime indirections
+- less always-on edge bookkeeping
+- more direct canonical reads on canonical paths
+- copy-on-write only at true divergence points
+
 If edge bookkeeping is hot, the first question is not "can we cache more?" It
 is:
 
 1. can we do fewer edge writes?
 2. can we create fewer edge containers?
 3. can we navigate edges with fewer lookups or less shape recovery?
+
+If clone/materialize is hot, the first question is not "can we hide the clone?"
+It is:
+
+1. can this path stay canonical?
+2. can this path use a thin derived node instead?
+3. is this divergence actually rare enough to fork lazily only at that point?
 
 ### Canonical Benchmark Surface
 
@@ -186,6 +217,13 @@ node --cpu-prof --cpu-prof-dir=/tmp/jess-cpu-prof benchmark/benchmark-runner.cjs
 
 While iterating on core runtime hotspots, use `vitest`, not ad-hoc runners.
 
+Every focused gate must also be read as an architectural gate:
+
+- passing tests is required
+- keeping the target architecture is required
+- preserving or adding legacy generic runtime tax fails the gate even if tests
+  pass
+
 Primary focused core gate set:
 
 ```bash
@@ -217,6 +255,20 @@ Keep a perf change only if all of these are true:
 1. the focused `vitest` gate set is green
 2. the main benchmark does not regress
 3. the targeted hotspot actually moves in the expected direction
+4. the change moves the code toward the canonical-tree, sparse-state,
+   copy-on-write runtime model
+5. the change does not preserve or introduce generic runtime machinery merely
+   because old code already used it
+
+Immediate revert signals:
+
+- tests are green but the change adds generic `.get(...)` back to canonical hot
+  paths
+- tests are green but the change widens clone/copy/materialize usage without a
+  proven blocker
+- tests are green but the change increases always-on edge bookkeeping on paths
+  that could stay canonical
+- tests are green but the change keeps legacy abstraction alive “for safety”
 
 For the main benchmark gate:
 
@@ -244,32 +296,119 @@ Revert signal:
 - hotspot time merely moves elsewhere with no net benchmark gain
 - code gets more complex without a measurable win
 
+### Latest Evidence
+
+- Main benchmark surface:
+  `packages/less/benchmark/benchmark.less` in the Less v5 alpha linked
+  worktree is currently sitting in the `~2.71s` to `~2.76s` band on repeated
+  `3` run / `1` warmup samples with `--math=parens-division`, with the current
+  best sample around `2714ms`.
+- Recent kept wins:
+  - `Node.get(...)` canonical fast path in
+    `packages/core/src/tree/node-base.ts`
+  - identical-write skip in `setNodeField(...)`
+  - source-extend-wrapper parent cache in
+    `packages/core/src/tree/util/selector-utils.ts`
+  - redundant parent-edge write skip in `Node.adopt(...)`
+  - redundant cursor `Map.set(...)` skip in
+    `packages/core/src/tree/util/cursor.ts`
+  - direct canonical selector field reads in:
+    - `packages/core/src/tree/util/selector-utils.ts`
+    - `packages/core/src/tree/ampersand.ts`
+    - `packages/core/src/tree/selector-list.ts`
+    - `packages/core/src/tree/ruleset.ts`
+    - `packages/core/src/tree/selector-compound.ts`
+    - `packages/core/src/tree/util/extend-core.ts`
+    - `packages/core/src/tree/util/extend-roots.ts`
+- Recent losing experiments that were reverted:
+  - count-collapsing inside
+    `packages/core/src/tree/util/selector-match-core.ts`
+    `mergeRequirements(...)`
+  - selector string caching inside
+    `packages/core/src/tree/util/extend-roots.ts`
+    `getRulesetExtendTarget(...)`
+- Current CPU profile on the big benchmark is dominated by generalized
+  node/selector lifecycle work rather than by parser cost:
+  - `setNodeField`
+  - `clone`
+  - `inherit`
+  - `cloneFn`
+  - `buildGroupRequirements`
+  - `setNodeKeySetLibrary`
+  - `adopt`
+  - `composeSelectorRouteWithParent`
+  - `getNodeEdge`
+  - `getEffectiveSelector`
+
+Interpretation:
+
+- stop guessing at extend-path micro-cuts unless a fresh profile points there
+- treat generalized clone/inherit/adopt behavior as suspect legacy debt
+- prefer cuts that delete broad copy/state propagation over cuts that merely
+  shuffle repeated `valueOf()` or small-loop work
+- key-set direction should move toward per-selector / per-selector-part bit
+  ownership, not recursive library seeding through whole selector trees
+- allocate or resolve selector-bit identity only when a selector is actually
+  encountered by matching / indexing work; do not pre-seed during parse, eval,
+  clone, inherit, or parent-composition paths
+- keep deleting generic `.get('value' | 'name' | 'arg' | ...)` reads from hot
+  canonical selector paths once the active placement has already been resolved
+
 ### Current Hotspot Order
 
 Attack the hotspots in this order unless a fresh profile proves otherwise.
 
-1. `packages/core/src/tree/rules.ts`
+1. `packages/core/src/tree/node-base.ts`
+   Goal:
+   delete or narrow generalized clone/inherit/adopt behavior that is still
+   carrying legacy AST-copy semantics into eval hot paths.
+   First suspects:
+   - `clone(...)`
+   - `inherit(...)`
+   - `copy(...)`
+   - `adopt(...)`
+   - `setNodeKeySetLibrary(...)`
+
+2. `packages/core/src/tree/util/selector-utils.ts`
+   Goal:
+   reduce selector copy/composition churn, especially broad `copy(true)` /
+   `inherit(...)` flows inside:
+   - `composeSelectorRouteWithParent(...)`
+   - `getImplicitSelector(...)`
+   - `localizeSelectorAgainstParent(...)`
+
+3. selector-side canonical getter cleanup
+   Goal:
+   remove remaining generic `.get(...)` calls from hot selector code where the
+   active node/path is already resolved, then re-measure before touching riskier
+   clone surgery in selector helpers.
+   First suspects:
+   - remaining hot selector helpers outside the already-cleaned files
+   - `packages/core/src/tree/util/registry-utils.ts`
+   - `packages/core/src/tree/rules.ts` selector-facing paths
+
+4. `packages/core/src/tree/rules.ts`
    Goal:
    remove redundant descendant rewiring and render-key owner churn,
    especially `connectDescendants`, `_withOwnRenderKey`, and
    `_ensureDirectRegistry`.
 
-2. `packages/core/src/tree/node-base.ts`
+5. `packages/core/src/tree/util/selector-match-core.ts`
    Goal:
-   reduce edge bookkeeping overhead in `setNodeField`, `getNodeEdge`, and
-   `getNodeEdgeList`; avoid redundant writes and eager edge-container creation.
+   only revisit `buildGroupRequirements(...)` after clone/inherit cuts above.
+   Do not keep local counting or merge tweaks unless the big benchmark moves.
 
-3. `packages/core/src/tree/util/registry-utils.ts`
+6. `packages/core/src/tree/util/registry-utils.ts`
    Goal:
    reduce `_searchRulesChildren` breadth and `find` recursion when direct
    registries or current-placement paths are already sufficient.
 
-4. `packages/core/src/tree/selector.ts`
+7. `packages/core/src/tree/selector.ts`
    Goal:
    stop recomputing selector key sets and related structures when the selector
    shape has not actually changed.
 
-5. `packages/core/src/tree/util/mixin-instance-primitives.ts`
+8. `packages/core/src/tree/util/mixin-instance-primitives.ts`
    Goal:
    delete remaining hot-path clone/materialize seams only after the broader
    bookkeeping and lookup costs above have been reduced.

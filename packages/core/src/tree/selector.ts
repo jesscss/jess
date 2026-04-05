@@ -27,11 +27,49 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions, CD 
 
   keySetLibrary: BitSetLibrary<string> | undefined;
 
+  protected _requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
+    const contextualLibrary = context?.selectorBits;
+    if (contextualLibrary) {
+      if (!this.keySetLibrary) {
+        this.keySetLibrary = contextualLibrary;
+      }
+      return contextualLibrary;
+    }
+
+    if (this.keySetLibrary) {
+      return this.keySetLibrary;
+    }
+
+    if (this.sourceNode !== this && (this.sourceNode as Selector).isSelector) {
+      const sourceLibrary = (this.sourceNode as Selector).keySetLibrary;
+      if (sourceLibrary) {
+        this.keySetLibrary = sourceLibrary;
+        return sourceLibrary;
+      }
+    }
+
+    const treeContext = this.treeContext as
+      | { selectorBits?: BitSetLibrary<string>; opts?: { selectorBits?: BitSetLibrary<string> } }
+      | undefined;
+    const treeLibrary = treeContext?.selectorBits ?? treeContext?.opts?.selectorBits;
+    if (treeLibrary) {
+      this.keySetLibrary = treeLibrary;
+      return treeLibrary;
+    }
+
+    throw new Error('Selector keySet library not found');
+  }
+
   private _seedKeySetLibrary(library: BitSetLibrary<string>): void {
+    if (this.keySetLibrary === library) {
+      return;
+    }
     this.keySetLibrary = library;
     for (const child of this.children(true)) {
       if ((child as Selector).isSelector) {
-        (child as Selector).keySetLibrary = library;
+        if ((child as Selector).keySetLibrary !== library) {
+          (child as Selector).keySetLibrary = library;
+        }
       }
     }
   }
@@ -70,10 +108,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions, CD 
     if (!context) {
       return this.keySet;
     }
-    let library = this.keySetLibrary;
-    if (!library) {
-      throw new Error('Selector keySet library not found');
-    }
+    const library = this._requireKeySetLibrary(context);
 
     let children = (this as any).value;
     if (isArray(children)) {
@@ -118,10 +153,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions, CD 
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
     }
-    let library = this.keySetLibrary;
-    if (!library) {
-      throw new Error('Selector keySet library not found');
-    }
+    const library = this._requireKeySetLibrary();
 
     let children = (this as any).value;
     if (isArray(children)) {

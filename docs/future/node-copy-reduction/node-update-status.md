@@ -94,6 +94,18 @@ If a node is still hybrid, failures are migration signals only.
 Do not add old-model compatibility logic here just to satisfy tests on nodes that
 are not yet converted.
 
+For performance or migration work, “green” is not enough by itself.
+
+Every gate also requires architectural compliance:
+
+- prefer direct canonical fields on already-resolved canonical paths
+- prefer sparse state or a thin derived node at true divergence points
+- keep edge wiring only where it solves a concrete placement problem
+- treat generic `.get(...)`, `clone(...)`, `copy(...)`, `inherit(...)`, and
+  `adopt(...)` on hot paths as suspect legacy machinery
+- if a change passes tests but preserves the wrong runtime shape, it has not
+  passed the gate
+
 ## Edge/ Cursor Surfaces
 
 ### 1. Render-Key Read Surface
@@ -205,6 +217,160 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 3. Keep the remaining frontier grounded in the actual failing fixture output. The current Jess Less fixture sweep is green again after the accepted fixture updates for `extend-nest.less` and `rulesets.less`.
 4. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
 5. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
+
+## Current Perf Evidence
+
+- Big benchmark:
+  `/Users/matthew/git/worktrees/less.js/alpha/packages/less/benchmark/benchmark.less`
+  with linked local `jess-dev` packages is currently in the `~2.71s` to
+  `~2.76s` band on repeated `3` run / `1` warmup samples, with the current
+  best sample at roughly `2714ms`.
+- The last two extend-path micro-optimizations were both losers and were
+  reverted:
+  - count-collapsing in
+    `packages/core/src/tree/util/selector-match-core.ts`
+  - selector string caching in
+    `packages/core/src/tree/util/extend-roots.ts`
+- Fresh CPU profiling shows the main debt is broad node/selector lifecycle
+  machinery, not parser cost and not small extend-path string work.
+
+Current ranked suspects:
+
+1. `packages/core/src/tree/node-base.ts`
+  - `clone(...)`
+  - `inherit(...)`
+  - `copy(...)`
+  - `setNodeField(...)`
+  - `setNodeKeySetLibrary(...)`
+2. `packages/core/src/tree/util/selector-utils.ts`
+  - remaining selector copy pressure after direct field-read cleanup
+3. `packages/core/src/tree/util/selector-match-core.ts`
+  - `buildGroupRequirements(...)`
+   Only revisit after clone/copy pressure is reduced.
+4. selector-side no-context generic getters in canonical paths
+  - `packages/core/src/tree/selector-list.ts`
+  - `packages/core/src/tree/ruleset.ts`
+  - `packages/core/src/tree/selector-compound.ts`
+  - `packages/core/src/tree/util/extend-core.ts`
+  - `packages/core/src/tree/util/extend-roots.ts`
+   Keep pushing direct field reads only where the selector/container for the
+   active path is already resolved and canonical.
+
+Current blocked seams:
+
+- broad removal of clone-time `options` spreading is not safe as a blind perf
+  cut.
+  Existing tests assert that cloned/imported nodes must not share the same
+  `options` object identity on some paths, so any reduction there needs a more
+  selective copy-on-write strategy rather than deleting the spread outright.
+
+Working interpretation:
+
+- treat generalized clone/inherit/adopt behavior as legacy compatibility debt
+- assume broad selector copying is suspect until proven necessary
+- prefer deleting copy/state propagation over adding local caches
+
+Recent accepted evidence:
+
+- kept: `packages/core/src/tree/node-base.ts`
+  no longer inherits `keySetLibrary` inside `inherit(...)`
+- kept: `packages/core/src/tree/selector.ts`
+  selector key-set library now falls back lazily from:
+  - current context
+  - current selector
+  - source selector
+  - tree context
+- result:
+  selector/fast-reject/extend/mixin/import focused gates stayed green, and the
+  main Less benchmark stayed near the good end of the current band at roughly
+  `3779ms`
+- kept: `packages/core/src/tree/ampersand.ts`
+  `Ampersand` now retains the stored selector's `keySetLibrary` on the node
+  itself (and on clones), which fixes the explicit ampersand no-context
+  selector-match path without widening propagation further
+- kept: `packages/core/src/tree/node-base.ts`
+  hot generic field/edge helpers now use direct property access instead of
+  `Reflect.get` / `Reflect.set`
+- result:
+  the broader selector/extend/mixin/import/ruleset gate stayed green, and the
+  main Less benchmark remained in the current stable band at roughly `3822ms`
+  on a `3` run / `1` warmup sample, so this is safe but not a breakthrough
+- kept: `packages/core/src/tree/node-base.ts`
+  `adopt(...)` now skips render-key parent-edge writes when the edge already
+  points at the right parent
+- result:
+  the broader selector/extend/mixin/import/ruleset gate stayed green, and the
+  main Less benchmark moved from the `~3.82s` band down to the `~2.84s` band
+  across repeated `3` run / `1` warmup samples (`2843ms`, `2839ms`)
+- interpretation:
+  edge bookkeeping was materially more expensive than it looked, and redundant
+  parent-edge writes are a first-class hot-path culprit, not noise
+- kept: `packages/core/src/tree/util/cursor.ts`
+  `addEdge(...)`, `addEdgeAt(...)`, and `addParentEdge(...)` now all skip
+  redundant map writes when the active render-key mapping is already correct
+- result:
+  the same broader gate stayed green, and the main Less benchmark improved a
+  bit again to roughly `2834ms`
+- kept: `packages/core/src/tree/util/selector-utils.ts`
+  removed hot no-context generic `.get('field')` selector reads from the main
+  selector composition helpers in favor of direct canonical field access
+- result:
+  the same broader gate stayed green, and the main Less benchmark improved
+  again to roughly `2790ms`
+- kept: `packages/core/src/tree/ampersand.ts`
+  removed additional no-context generic selector reads from template merge /
+  append paths in favor of direct canonical field access
+- result:
+  the same broader gate stayed green, and repeated big-benchmark samples came
+  in at `2862ms` and then `2770ms`; keep this as part of the current good band,
+  not as an isolated breakthrough
+- kept: `packages/core/src/tree/selector-list.ts`
+  flattened generated top-level `:is(...)` items using direct canonical
+  `name` / `arg` / `value` field reads after resolving the active list once
+- result:
+  selector-list + broader selector/extend/mixin/import/ruleset gates stayed
+  green, and the big benchmark held at roughly `2789ms`
+- kept: `packages/core/src/tree/ruleset.ts`
+  selector visibility / implicit-ampersand materialization / selector-list
+  filtering helpers now use direct canonical selector fields instead of generic
+  `.get(...)` calls
+- result:
+  the same gate stayed green, and the big benchmark improved again to roughly
+  `2752ms`
+- kept: `packages/core/src/tree/selector-compound.ts`
+  canonical `valueOf()` now unwraps generated `:is(...)` children through
+  direct `name` / `arg` / `value` reads
+- result:
+  the same gate stayed green, and the next benchmark sample was `2779ms` with
+  higher variance; treat this as neutral-to-slightly-positive and keep it until
+  a larger regression proves otherwise
+- kept: `packages/core/src/tree/util/extend-core.ts`
+  canonical selector helper paths no longer use generic
+  `.get('value'|'name'|'arg')` reads; generated `:is(...)` expansion,
+  selector-list normalization, compound/context stripping, ampersand
+  materialization, ordered tail selection, and exact-alternative append paths
+  all now use direct field reads on already-resolved selector objects
+- result:
+  the broad selector/extend/mixin/import/ruleset gate stayed green across each
+  incremental pass, and the big benchmark moved through `2718ms`, `2757ms`,
+  and then `2714ms`
+- kept: `packages/core/src/tree/util/extend-roots.ts`
+  generated `:is(...)` normalization and top-level selector-list scans now use
+  direct canonical selector fields instead of generic getters
+- result:
+  the same gate stayed green, and the big benchmark held at roughly `2714ms`
+
+Recent rejected evidence:
+
+- rejected: deleting descendant `keySetLibrary` restamping in
+  `packages/core/src/tree/ampersand.ts::cloneStoredSelector(...)`
+- reason:
+  explicit ampersand selector matching still depends on descendant selector
+  clones having a usable library in no-context paths
+- implication:
+  do not keep deleting selector-library propagation blindly; first provide a
+  demand-driven descendant fallback model that survives stored-selector clone
+  matching
 
 ## Transitional Baggage To Remove
 

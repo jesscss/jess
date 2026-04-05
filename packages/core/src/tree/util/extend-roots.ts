@@ -144,20 +144,20 @@ function syncRulesetDerivedSelector(ruleset: Ruleset, context?: Context): void {
 function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false): Selector {
   if (isNode(selector, N.SelectorList)) {
     return SelectorList.create(
-      (selector as SelectorList).get('value').map(item => normalizeGeneratedIsOrder(item as Selector, insideGeneratedIs))
+      (selector as SelectorList).value.map(item => normalizeGeneratedIsOrder(item as Selector, insideGeneratedIs))
     ).inherit(selector) as Selector;
   }
 
   if (isNode(selector, N.ComplexSelector)) {
     return ComplexSelector.create(
-      (selector as ComplexSelector).get('value').map(part =>
+      (selector as ComplexSelector).value.map(part =>
         normalizeGeneratedIsOrder(part as Selector, insideGeneratedIs) as ComplexSelectorComponent
       )
     ).inherit(selector) as Selector;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    const normalizedMembers = (selector as CompoundSelector).get('value').map(child =>
+    const normalizedMembers = (selector as CompoundSelector).value.map(child =>
       normalizeGeneratedIsOrder(child as Selector, insideGeneratedIs)
     );
     if (!insideGeneratedIs) {
@@ -166,7 +166,7 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
     const generatedIs = normalizedMembers.filter(member =>
       isNode(member, N.PseudoSelector)
       && member.generated
-      && member.get('name') === ':is'
+      && member.name === ':is'
     );
     if (generatedIs.length !== 1 || generatedIs[0] === normalizedMembers[0]) {
       return CompoundSelector.create(normalizedMembers).inherit(selector) as Selector;
@@ -180,12 +180,12 @@ function normalizeGeneratedIsOrder(selector: Selector, insideGeneratedIs = false
   }
 
   if (isNode(selector, N.PseudoSelector)) {
-    const arg = selector.get('arg');
+    const arg = selector.arg;
     if (arg && isNode(arg, N.Selector)) {
       const copy = selector.copy(true) as PseudoSelector;
       const nextArg = normalizeGeneratedIsOrder(
         arg as Selector,
-        insideGeneratedIs || (selector.generated && selector.get('name') === ':is')
+        insideGeneratedIs || (selector.generated && selector.name === ':is')
       );
       copy.adopt(nextArg);
       copy.arg = nextArg;
@@ -677,7 +677,7 @@ function markExtendedSelector(selector: Selector, context?: Context): void {
     selector.addFlag(F_VISIBLE);
   }
   if (isNode(selector, N.SelectorList)) {
-    for (const item of (selector as SelectorList).get('value')) {
+    for (const item of (selector as SelectorList).value) {
       if (context) {
         (item as Selector)._addFlag(F_EXTENDED, context);
         (item as Selector)._addFlag(F_VISIBLE, context);
@@ -706,7 +706,7 @@ function selectorHasTopLevelValue(selector: Selector | Nil | undefined, value: s
     return false;
   }
   if (isNode(selector, N.SelectorList)) {
-    return ((selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === value);
+    return ((selector as SelectorList).value as readonly Selector[]).some(item => item.valueOf() === value);
   }
   return selector.valueOf() === value;
 }
@@ -855,7 +855,7 @@ function applyInstructionToRuleset(
 
   const extendWithVal = instruction.extendWith.valueOf();
   const extendWithAlreadyTopLevel = isNode(targetInfo.selector, N.SelectorList)
-    ? ((targetInfo.selector as SelectorList).get('value') as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
+    ? ((targetInfo.selector as SelectorList).value as readonly Selector[]).some(item => item.valueOf() === extendWithVal)
     : targetInfo.selector.valueOf() === extendWithVal;
   if (extendWithAlreadyTopLevel) {
     activateExtendedRuleset(ruleset, targetInfo.selector, context);

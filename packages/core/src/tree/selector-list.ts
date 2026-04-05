@@ -71,29 +71,29 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
     const sourceValue = this.get('value', options.context);
     const value: Selector[] = [];
     for (const item of sourceValue) {
-      if (isNode(item, N.PseudoSelector) && item.get('name') === ':is') {
-        const arg = item.get('arg');
+      if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+        const arg = item.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.get('value'));
+          value.push(...arg.value);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.get('value').length === 1) {
-        const only = item.get('value')[0]!;
-        if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-          const arg = only.get('arg');
+      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+          const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.get('value'));
+            value.push(...arg.value);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.get('value').length === 1) {
-        const only = item.get('value')[0]!;
-        if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-          const arg = only.get('arg');
+      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+        const only = item.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+          const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.get('value'));
+            value.push(...arg.value);
             continue;
           }
         }
@@ -197,29 +197,29 @@ export class SelectorList extends Selector<Selector[], any, SelectorListChildDat
         const value = list.get('value', context);
         const flattened: Selector[] = [];
         for (const item of value) {
-          if (isNode(item, N.PseudoSelector) && item.get('name') === ':is') {
-            const arg = item.get('arg');
+          if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+            const arg = item.arg;
             if (arg && isNode(arg, N.SelectorList)) {
-              flattened.push(...arg.get('value'));
+              flattened.push(...arg.value);
               continue;
             }
           }
-          if (isNode(item, N.CompoundSelector) && item.get('value').length === 1) {
-            const only = item.get('value')[0]!;
-            if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-              const arg = only.get('arg');
+          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+              const arg = only.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.get('value'));
+                flattened.push(...arg.value);
                 continue;
               }
             }
           }
-          if (isNode(item, N.ComplexSelector) && item.get('value').length === 1) {
-            const only = item.get('value')[0]!;
-            if (isNode(only, N.PseudoSelector) && only.get('name') === ':is') {
-              const arg = only.get('arg');
+          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+              const arg = only.arg;
               if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.get('value'));
+                flattened.push(...arg.value);
                 continue;
               }
             }

@@ -51,6 +51,8 @@ When working in the evaluation engine, optimize for:
 - lazy per-placement runtime state
 - sparse shadow or patch state
 - reduced object creation during eval
+- copy-on-write only at real mutation boundaries
+- edges only where they solve a concrete placement problem
 
 Avoid treating these as acceptable end states:
 
@@ -58,8 +60,24 @@ Avoid treating these as acceptable end states:
 - materialization as a normal internal eval strategy
 - helper or wrapper growth that does not map to the target runtime model
 - local green slices presented as architectural completion
+- preserving legacy generic runtime helpers just because they already exist
+- adding new generic `.get(...)`, `clone(...)`, `copy(...)`, `inherit(...)`, or
+  `adopt(...)` usage on hot canonical paths without proving the need
+- paying edge bookkeeping cost on paths that could use direct canonical fields
+  or a thin derived node instead
 
 If two approaches both pass tests, prefer the one that better reduces object creation and moves the runtime toward the canonical-tree model.
+
+Treat the architecture as a hard constraint, not a style preference:
+
+- do not preserve legacy runtime patterns by default
+- assume old generic node lifecycle machinery is debt unless a failing test
+  proves a narrow exception is still required
+- prefer deleting abstraction over accommodating it
+- if a path is already on a resolved canonical object, use direct fields
+- if a path truly diverges, use sparse state or a thin derived node
+- only introduce or keep edge wiring when direct canonical reads plus
+  copy-on-write are insufficient for that exact placement problem
 
 ## Node Copy Reduction Surfaces
 
@@ -78,6 +96,11 @@ Use those docs to understand the direction. Do not restate their volatile status
 - Before claiming completion, run the appropriate baseline or verification command for the affected area.
 - If package B depends on package A, build A first when the workspace layout requires built outputs.
 - When debugging, record what was tried, what happened, and the next step in the repo’s transient state files instead of expanding permanent guidance.
+- For runtime-performance work, a green test is necessary but not sufficient:
+  keep the change only if it also moves the runtime toward the canonical-tree,
+  sparse-state, copy-on-write architecture. If a change passes tests but adds
+  generic runtime overhead or preserves legacy machinery, it is not a valid
+  completion.
 
 ## Tool-Specific Rules
 

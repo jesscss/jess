@@ -176,6 +176,9 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
         this._selectorContainer = selectorContainer;
         const storedSelector = getSelectorFromContainer(selectorContainer);
         this._storedSelector = cloneStoredSelector(storedSelector, true);
+        if (isSelectorNode(storedSelector) && storedSelector.keySetLibrary) {
+          this.keySetLibrary = storedSelector.keySetLibrary;
+        }
       }
     }
     this.template = finalTemplate;
@@ -389,16 +392,16 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             const baseSelectors: Selector[] = [];
             if (
               isNode(baseSelector, N.PseudoSelector)
-              && baseSelector.get('name') === ':is'
-              && isSelectorListNode(baseSelector.get('arg'))
+              && baseSelector.name === ':is'
+              && isSelectorListNode(baseSelector.arg)
             ) {
-              for (const item of baseSelector.get('arg').get('value')) {
+              for (const item of baseSelector.arg.value) {
                 if (isSelectorNode(item)) {
                   baseSelectors.push(item);
                 }
               }
             } else if (isSelectorListNode(baseSelector)) {
-              for (const item of baseSelector.get('value')) {
+              for (const item of baseSelector.value) {
                 if (isSelectorNode(item)) {
                   baseSelectors.push(item);
                 }
@@ -428,13 +431,13 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
           };
           if (isSelectorListNode(selector)) {
             const mergedItems: Selector[] = [];
-            for (const item of selector.get('value')) {
+            for (const item of selector.value) {
               if (!isSelectorNode(item)) {
                 continue;
               }
               const merged = mergeTemplate(item);
               if (isSelectorListNode(merged)) {
-                for (const nestedItem of merged.get('value')) {
+                for (const nestedItem of merged.value) {
                   if (isSelectorNode(nestedItem)) {
                     mergedItems.push(nestedItem);
                   }
@@ -467,7 +470,7 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
           };
 
           if (isSelectorListNode(selector)) {
-            selector.get('value').forEach(doAppendValue);
+            selector.value.forEach(doAppendValue);
           } else {
             doAppendValue(selector);
           }
@@ -526,6 +529,9 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
     // still bind the current frame when the clone has no selector container.
     newNode._selectorContainer = this._selectorContainer;
     newNode._storedSelector = cloneStoredSelector(this._storedSelector, deep);
+    if (!newNode.keySetLibrary && this.keySetLibrary) {
+      newNode.keySetLibrary = this.keySetLibrary;
+    }
     return newNode;
   }
 
