@@ -201,9 +201,10 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 ## Immediate Next Work
 
 1. Stay on narrow production surfaces only: pick one component, convert one owner/path seam, and verify it with a focused proof test.
-2. Keep the remaining frontier grounded in the actual failing fixture output. The current Jess Less fixture sweep is green again after the accepted fixture updates for `extend-nest.less` and `rulesets.less`.
-3. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
-4. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
+2. For runtime-performance work, follow the benchmark / focused-vitest / keep-or-revert protocol in [HANDOFF.md](./HANDOFF.md#performance-execution-protocol). Do not restate or improvise that plan in chat.
+3. Keep the remaining frontier grounded in the actual failing fixture output. The current Jess Less fixture sweep is green again after the accepted fixture updates for `extend-nest.less` and `rulesets.less`.
+4. Continue deleting remaining clone/materialize seams only where they directly block edge/cursor conversion.
+5. When a live bug turns out to be “wrong field was read directly,” fix the read surface first before adding more wrapper/source-parent repair logic.
 
 ## Transitional Baggage To Remove
 

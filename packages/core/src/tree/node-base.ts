@@ -141,17 +141,18 @@ function getNodeField<T = unknown>(node: Node, key: string): T {
 }
 
 function setNodeField(node: Node, key: string, value: unknown): void {
+  if (Reflect.get(node, key) === value) {
+    return;
+  }
   Reflect.set(node, key, value);
 }
 
 function getNodeEdge<T>(node: Node, key: string): NodeEdge<T> | undefined {
-  const edge = Reflect.get(node, key);
-  return edge instanceof Map ? edge : undefined;
+  return Reflect.get(node, key);
 }
 
 function getNodeEdgeList(node: Node, key: string): Array<NodeEdge<unknown> | undefined> | undefined {
-  const edges = Reflect.get(node, key);
-  return Array.isArray(edges) ? edges : undefined;
+  return Reflect.get(node, key);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -807,6 +808,14 @@ export abstract class Node<
     const explicitRenderKey = !isContextArg(ctxOrRenderKey)
       ? ctxOrRenderKey
       : undefined;
+    const canonicalValue = getNodeField<ChildData[K]>(this, key);
+    if (
+      !ctx
+      && (explicitRenderKey === undefined || explicitRenderKey === CANONICAL)
+      && this.renderKey === CANONICAL
+    ) {
+      return canonicalValue;
+    }
     const renderKeys: RenderKey[] = [];
     const pushRenderKey = (renderKey: RenderKey | undefined) => {
       if (renderKey === undefined || renderKey === CANONICAL || renderKeys.includes(renderKey)) {
@@ -819,11 +828,15 @@ export abstract class Node<
     pushRenderKey(ctx?.rulesContext?.renderKey);
     pushRenderKey(this.renderKey !== CANONICAL ? this.renderKey : undefined);
     const singularEdge = getNodeEdge<ChildData[K]>(this, `${key}Edge`);
-    const canonicalValue = getNodeField(this, key);
+    const indexedEdges = isArray(canonicalValue)
+      ? getNodeEdgeList(this, `${key}Edges`)
+      : undefined;
     if (
       ctx
-      && (singularEdge?.has(EVAL) || getNodeEdgeList(this, `${key}Edges`)?.some(edge => edge?.has(EVAL))
-    )) {
+      && (singularEdge?.has(EVAL)
+        || indexedEdges?.some(edge => edge?.has(EVAL))
+      )
+    ) {
       pushRenderKey(EVAL);
     }
 
@@ -832,28 +845,25 @@ export abstract class Node<
       if (overridden !== undefined) {
         return overridden;
       }
-      if (isArray(canonicalValue)) {
-        const indexedEdges = getNodeEdgeList(this, `${key}Edges`);
-        if (indexedEdges) {
-          let resolved: ChildData[K] | undefined;
-          for (let i = 0; i < canonicalValue.length; i++) {
-            const item = indexedEdges[i]?.get(renderKey);
-            if (item !== undefined) {
-              if (!resolved) {
-                const nextResolved: ChildData[K] = [...canonicalValue];
-                resolved = nextResolved;
-              }
-              resolved[i] = item;
+      if (indexedEdges) {
+        let resolved: ChildData[K] | undefined;
+        for (let i = 0; i < canonicalValue.length; i++) {
+          const item = indexedEdges[i]?.get(renderKey);
+          if (item !== undefined) {
+            if (!resolved) {
+              const nextResolved: ChildData[K] = [...canonicalValue];
+              resolved = nextResolved;
             }
+            resolved[i] = item;
           }
-          if (resolved) {
-            return resolved;
-          }
+        }
+        if (resolved) {
+          return resolved;
         }
       }
     }
 
-    return getNodeField<ChildData[K]>(this, key);
+    return canonicalValue;
   }
 
   /**

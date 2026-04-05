@@ -120,6 +120,209 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 5. Update docs only if the model or migration status actually changed.
 6. Commit and push.
 
+## Performance Execution Protocol
+
+When the active task is runtime-performance work, do not improvise the loop in
+chat. Use this section as the execution contract.
+
+### Goal
+
+Beat historical Less v4 benchmark time by reducing runtime work, especially:
+
+- object creation
+- clone/materialize churn
+- edge writes and edge-container creation
+- descendant rewiring
+- registry search breadth
+- selector key recomputation
+
+If edge bookkeeping is hot, the first question is not "can we cache more?" It
+is:
+
+1. can we do fewer edge writes?
+2. can we create fewer edge containers?
+3. can we navigate edges with fewer lookups or less shape recovery?
+
+### Canonical Benchmark Surface
+
+Use the Less v5 alpha worktree with local `jess-dev` links as the main perf
+surface:
+
+- Less worktree root:
+  `/Users/matthew/git/worktrees/less.js/alpha`
+- main benchmark:
+  `/Users/matthew/git/worktrees/less.js/alpha/packages/less/benchmark/benchmark.less`
+- secondary benchmarks:
+  - `benchmark-v3.less`
+  - `benchmark-v37.less`
+
+### Baseline Commands
+
+Run these serially. Do not overlap builds and tests.
+
+From `/Users/matthew/git/worktrees/jess-dev`:
+
+```bash
+pnpm --filter @jesscss/core build
+pnpm --filter @jesscss/plugin-less-compat build
+pnpm --filter jess build
+```
+
+From `/Users/matthew/git/worktrees/less.js/alpha/packages/less`:
+
+```bash
+pnpm benchmark benchmark/benchmark.less --runs 3 --warmup 1 --math=parens-division
+pnpm benchmark benchmark/benchmark-v3.less --runs 3 --warmup 1 --math=parens-division
+pnpm benchmark benchmark/benchmark-v37.less --runs 3 --warmup 1 --math=parens-division
+```
+
+For hotspot confirmation on the main benchmark:
+
+```bash
+node --cpu-prof --cpu-prof-dir=/tmp/jess-cpu-prof benchmark/benchmark-runner.cjs benchmark/benchmark.less 1 0 --math=parens-division
+```
+
+### Focused Test Gates
+
+While iterating on core runtime hotspots, use `vitest`, not ad-hoc runners.
+
+Primary focused core gate set:
+
+```bash
+pnpm exec vitest packages/core/src/tree/__tests__/mixin.test.ts --run --no-color
+pnpm exec vitest packages/core/src/tree/__tests__/import-style.test.ts --run --no-color
+pnpm exec vitest packages/core/src/tree/__tests__/ruleset.test.ts --run --no-color
+pnpm exec vitest packages/core/src/tree/__tests__/extend-less-fixtures.test.ts --run --no-color
+```
+
+Add the nearest narrower proof for the file being changed when applicable:
+
+- `rules.ts`
+  - `packages/core/src/tree/__tests__/rules.test.ts`
+- `registry-utils.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- `selector.ts`
+  - `packages/core/src/tree/__tests__/selector-list.test.ts`
+  - `packages/core/src/tree/__tests__/selector-pseudo.test.ts`
+- mixin/runtime call surfaces
+  - `packages/core/src/tree/__tests__/mixin-recursion.test.ts`
+
+Do not run `packages/jess/test/less/all-less.test.ts` on every perf edit.
+Use it only at checkpoint boundaries after a kept improvement.
+
+### Keep / Revert Gates
+
+Keep a perf change only if all of these are true:
+
+1. the focused `vitest` gate set is green
+2. the main benchmark does not regress
+3. the targeted hotspot actually moves in the expected direction
+
+For the main benchmark gate:
+
+- run `benchmark.less` after each candidate change
+- if the result is worse, revert immediately
+- if the result is within obvious noise, rerun once
+- only keep a near-flat result when:
+  - code is materially simpler, and
+  - the targeted hotspot self-time or GC load clearly improves
+
+Strong keep signal:
+
+- `benchmark.less` average improves by roughly `>= 3%` on repeat runs
+
+Weak keep signal:
+
+- `benchmark.less` is flat within noise, but:
+  - clone count / edge writes / descendant rewiring is measurably reduced, or
+  - CPU profile shows clear self-time reduction in the exact target function
+
+Revert signal:
+
+- focused tests fail
+- `benchmark.less` regresses
+- hotspot time merely moves elsewhere with no net benchmark gain
+- code gets more complex without a measurable win
+
+### Current Hotspot Order
+
+Attack the hotspots in this order unless a fresh profile proves otherwise.
+
+1. `packages/core/src/tree/rules.ts`
+   Goal:
+   remove redundant descendant rewiring and render-key owner churn,
+   especially `connectDescendants`, `_withOwnRenderKey`, and
+   `_ensureDirectRegistry`.
+
+2. `packages/core/src/tree/node-base.ts`
+   Goal:
+   reduce edge bookkeeping overhead in `setNodeField`, `getNodeEdge`, and
+   `getNodeEdgeList`; avoid redundant writes and eager edge-container creation.
+
+3. `packages/core/src/tree/util/registry-utils.ts`
+   Goal:
+   reduce `_searchRulesChildren` breadth and `find` recursion when direct
+   registries or current-placement paths are already sufficient.
+
+4. `packages/core/src/tree/selector.ts`
+   Goal:
+   stop recomputing selector key sets and related structures when the selector
+   shape has not actually changed.
+
+5. `packages/core/src/tree/util/mixin-instance-primitives.ts`
+   Goal:
+   delete remaining hot-path clone/materialize seams only after the broader
+   bookkeeping and lookup costs above have been reduced.
+
+### Per-Step Success Conditions
+
+#### Step 1: `rules.ts`
+
+Success means:
+
+- focused gate set green
+- `connectDescendants` and related owner/setup helpers drop in the CPU profile
+- `benchmark.less` improves or stays flat with clearly lower rewiring work
+
+#### Step 2: `node-base.ts`
+
+Success means:
+
+- focused gate set green
+- fewer redundant edge writes
+- less self-time in `setNodeField` / `getNodeEdge` / `getNodeEdgeList`
+- lower GC pressure on repeat profile runs
+
+#### Step 3: `registry-utils.ts`
+
+Success means:
+
+- focused gate set green
+- `find` / `_searchRulesChildren` shrink in profile
+- lookup-heavy Less fixtures remain behaviorally stable
+
+#### Step 4: `selector.ts`
+
+Success means:
+
+- focused selector/extend proofs green
+- `computeKeySets` materially shrinks in the profile
+- no selector-shape parity regressions in the core extend/ruleset surfaces
+
+#### Step 5: `mixin-instance-primitives.ts`
+
+Success means:
+
+- mixin-focused proofs green
+- clone/materialize hot spots shrink without reviving old guard/default/import
+  regressions
+- the big benchmark still improves, not just narrow guarded-mixin micro-cases
+
+### Documentation Rule
+
+When a hotspot order, benchmark command, or success gate changes, update this
+file in the same branch before reporting the new plan in chat.
+
 ## Current Narrow Frontier
 
 - `tests-unit/import/import-reference.less` is fixed again after the parser-backed

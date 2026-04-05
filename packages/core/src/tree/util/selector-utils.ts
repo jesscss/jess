@@ -19,6 +19,7 @@ import { getParentEdge } from './cursor.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
+const sourceExtendWrapperParentCache = new WeakMap<readonly Node[], boolean>();
 
 function getSelectorListArgNode(target: Selector): SelectorList | undefined {
   const arg = Reflect.get(target, 'arg');
@@ -148,20 +149,27 @@ export function hasSourceExtendWrapperParent(node: Node): boolean {
     ? parent.sourceNode as Rules
     : parent;
   const sourceChildren = sourceRules.value;
+  const cached = sourceExtendWrapperParentCache.get(sourceChildren);
+  if (cached !== undefined) {
+    return cached;
+  }
 
   let sawExtend = false;
   let sawRuleset = false;
   for (const child of sourceChildren) {
     if (isNode(child, N.Extend)) {
       sawExtend = true;
-      continue;
-    }
-    if (isNode(child, N.Ruleset)) {
+    } else if (isNode(child, N.Ruleset)) {
       sawRuleset = true;
+    }
+    if (sawExtend && sawRuleset) {
+      sourceExtendWrapperParentCache.set(sourceChildren, true);
+      return true;
     }
   }
 
-  return sawExtend && sawRuleset;
+  sourceExtendWrapperParentCache.set(sourceChildren, false);
+  return false;
 }
 
 function flattenSelectorListAlternatives(list: SelectorList): SelectorList {
