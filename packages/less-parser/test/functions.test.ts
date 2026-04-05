@@ -82,6 +82,21 @@ describe('ifFunction', () => {
     const { errors } = parse('color: if(true; red; blue)', 'declaration');
     expect(errors.length).toBe(0);
   });
+
+  it('should parse if() with a comparison condition', () => {
+    const { errors } = parse('color: if(@i > 5, red, blue)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse if() with a parenthesized comparison condition', () => {
+    const { errors } = parse('color: if((@i > 5), red, blue)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should parse if() with a parenthesized equality comparison condition', () => {
+    const { errors } = parse('font-weight: if((mod(@i, 2) = 0), bold, normal)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
 });
 
 describe('booleanFunction', () => {

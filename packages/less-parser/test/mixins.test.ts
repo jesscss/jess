@@ -70,6 +70,14 @@ describe('mixinOrQualifiedRule', () => {
     expect(errors.length).toBe(0);
   });
 
+  it('should parse comma-based if() calls inside guarded mixin bodies', () => {
+    const { errors } = parse(
+      '.gen(@n,@i:1) when (@i =< @n) { .variant-@{i} { color: if((@i > 5), #ff0000, #0000ff); } }',
+      'mixinOrQualifiedRule'
+    );
+    expect(errors.length).toBe(0);
+  });
+
   it('should parse mixin call variants', () => {
     let { errors } = parse('.mixin-with-guard-inside(0px)', 'mixinOrQualifiedRule');
     expect(errors.length).toBe(0);

@@ -611,15 +611,7 @@ export function complexSelector(this: P, T: TokenMap) {
     $.OPTION3({
       GATE: () => !ctx.inExtend && !!ctx.qualifiedRule && $.isType(T.Extend),
       DEF: () => {
-        const initialSelector = ctx.selector;
-        if (!RECORDING_PHASE) {
-          ctx.selector = selector;
-        }
-        try {
-          $.SUBRULE($.extend, { ARGS: [ctx] });
-        } finally {
-          ctx.selector = initialSelector;
-        }
+        $.SUBRULE($.extend, { ARGS: [{ ...ctx, selector }] });
       }
     });
 
@@ -792,17 +784,12 @@ export function simpleSelector(this: P, T: TokenMap) {
       { ALT: () => $.SUBRULE($.classSelector, { ARGS: [ctx] }) },
       { ALT: () => $.SUBRULE($.idSelector, { ARGS: [ctx] }) },
       { ALT: () => $.CONSUME(T.Star) },
-      { ALT: () => {
-        let initialIsQualifiedRule = ctx.qualifiedRule;
-        ctx.qualifiedRule = false;
-        /** Make sure we prevent things like :extend() inside pseudo-selectors */
-        try {
-          let pseudo = $.SUBRULE($.pseudoSelector, { ARGS: [ctx] });
-          return pseudo;
-        } finally {
-          ctx.qualifiedRule = initialIsQualifiedRule;
+      {
+        ALT: () => {
+          /** Make sure we prevent things like :extend() inside pseudo-selectors */
+          return $.SUBRULE($.pseudoSelector, { ARGS: [{ ...ctx, qualifiedRule: false }] });
         }
-      } },
+      },
       /** @todo - replicate this fix we made with the Jess parser
        *
        * { ALT: () => $.attributeSelector(ctx, () => [

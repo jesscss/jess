@@ -692,6 +692,7 @@ export function declarationList(this: P, T: TokenMap) {
           }
         },
         {
+          GATE: () => !shouldTryQualifiedRule(),
           ALT: () => {
             return $.SUBRULE7($.declaration, { ARGS: [ctx] });
           }
@@ -1288,30 +1289,11 @@ export function qualifiedRule(this: P, T: TokenMap) {
     let selectorAlt = altContext ?? ((ctx: RuleContext) => [
       {
         GATE: () => !ctx.inner,
-        ALT: () => {
-          let initialQualifiedRule = ctx.qualifiedRule;
-          ctx.qualifiedRule = true;
-          try {
-            return $.SUBRULE($.selectorList, { ARGS: [ctx] });
-          } finally {
-            ctx.qualifiedRule = initialQualifiedRule;
-          }
-        }
+        ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
       },
       {
         GATE: () => !!ctx.inner,
-        ALT: () => {
-          let initialQualifiedRule = ctx.qualifiedRule;
-          let initialFirstSelector = ctx.firstSelector;
-          ctx.firstSelector = true;
-          ctx.qualifiedRule = true;
-          try {
-            return $.SUBRULE2($.forgivingSelectorList, { ARGS: [ctx] });
-          } finally {
-            ctx.qualifiedRule = initialQualifiedRule;
-            ctx.firstSelector = initialFirstSelector;
-          }
-        }
+        ALT: () => $.SUBRULE2($.forgivingSelectorList, { ARGS: [{ ...ctx, qualifiedRule: true, firstSelector: true }] })
       }
     ]);
     // qualifiedRule
@@ -1434,30 +1416,11 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     let selector: Selector = $.OR([
       {
         GATE: () => !ctx.inner,
-        ALT: () => {
-          let initialQualifiedRule = ctx.qualifiedRule;
-          ctx.qualifiedRule = true;
-          try {
-            return $.SUBRULE($.selectorList, { ARGS: [ctx] });
-          } finally {
-            ctx.qualifiedRule = initialQualifiedRule;
-          }
-        }
+        ALT: () => $.SUBRULE($.selectorList, { ARGS: [{ ...ctx, qualifiedRule: true }] })
       },
       {
         GATE: () => !!ctx.inner,
-        ALT: () => {
-          let initialQualifiedRule = ctx.qualifiedRule;
-          let initialFirstSelector = ctx.firstSelector;
-          ctx.firstSelector = true;
-          ctx.qualifiedRule = true;
-          try {
-            return $.SUBRULE2($.forgivingSelectorList, { ARGS: [ctx] });
-          } finally {
-            ctx.qualifiedRule = initialQualifiedRule;
-            ctx.firstSelector = initialFirstSelector;
-          }
-        }
+        ALT: () => $.SUBRULE2($.forgivingSelectorList, { ARGS: [{ ...ctx, qualifiedRule: true, firstSelector: true }] })
       }
     ]);
 
@@ -1603,17 +1566,9 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         /** Parse as qualified rule */
         ALT: () => {
           $.endRule();
-          let initialSelector = ctx.selector;
-          let initialIsSelectorList = ctx.isSelectorList;
-          ctx.selector = selector;
-          ctx.isSelectorList = isSelectorList;
-          let rule: Node;
-          try {
-            rule = $.SUBRULE7($.qualifiedRuleBody, { ARGS: [ctx] });
-          } finally {
-            ctx.selector = initialSelector;
-            ctx.isSelectorList = initialIsSelectorList;
-          }
+          let rule: Node = $.SUBRULE7($.qualifiedRuleBody, {
+            ARGS: [{ ...ctx, selector, isSelectorList }]
+          });
           if (ctx.extendNodes) {
             /** Prepend a rules block */
             let qRule = rule;

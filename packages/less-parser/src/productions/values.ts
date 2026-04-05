@@ -840,11 +840,10 @@ export function functionCallArgs(this: P, T: TokenMap) {
     $.startRule();
 
     // Inside function arguments, allow inner tokens like ':'
-    const prevInner = ctx.inner;
-    ctx.inner = true;
     // Calls intentionally push a `false` paren frame (matches `Call.evalNode`)
     const argCtx: RuleContext = {
       ...ctx,
+      inner: true,
       allowComma: false,
       parenFrames: [...getParenFrames(ctx), false],
       detachedRulesetUsage: 'function-arg',
@@ -853,48 +852,44 @@ export function functionCallArgs(this: P, T: TokenMap) {
     let commaNodes: Node[];
     let semiNodes: Node[] = [];
     let isSemiList = false;
-    try {
-      let node = $.SUBRULE($.callArgument, { ARGS: [argCtx] });
+    let node = $.SUBRULE($.callArgument, { ARGS: [argCtx] });
 
-      commaNodes = [$.wrap(node, true)];
+    commaNodes = [$.wrap(node, true)];
 
-      // First, consume any comma-separated arguments
-      $.MANY({
-        GATE: () => $.isType(T.Comma),
+    // First, consume any comma-separated arguments
+    $.MANY({
+      GATE: () => $.isType(T.Comma),
+      DEF: () => {
+        $.CONSUME(T.Comma);
+        node = $.SUBRULE2($.callArgument, { ARGS: [argCtx] });
+        commaNodes!.push($.wrap(node, true));
+      }
+    });
+
+    // Then, optionally switch to semicolon-separated list and continue with semicolons
+    $.OPTION(() => {
+      $.CONSUME(T.Semi);
+      isSemiList = true;
+
+      // Aggregate the previous set of comma-nodes as the first semi item
+      if (commaNodes.length > 1) {
+        semiNodes.push(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context));
+      } else {
+        semiNodes.push(commaNodes[0]!);
+      }
+
+      node = $.SUBRULE3($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
+      semiNodes.push($.wrap(node, true));
+
+      $.MANY2({
+        GATE: () => $.isType(T.Semi),
         DEF: () => {
-          $.CONSUME(T.Comma);
-          node = $.SUBRULE2($.callArgument, { ARGS: [argCtx] });
-          commaNodes!.push($.wrap(node, true));
+          $.CONSUME2(T.Semi);
+          node = $.SUBRULE4($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
+          semiNodes.push($.wrap(node, true));
         }
       });
-
-      // Then, optionally switch to semicolon-separated list and continue with semicolons
-      $.OPTION(() => {
-        $.CONSUME(T.Semi);
-        isSemiList = true;
-
-        // Aggregate the previous set of comma-nodes as the first semi item
-        if (commaNodes.length > 1) {
-          semiNodes.push(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context));
-        } else {
-          semiNodes.push(commaNodes[0]!);
-        }
-
-        node = $.SUBRULE3($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
-        semiNodes.push($.wrap(node, true));
-
-        $.MANY2({
-          GATE: () => $.isType(T.Semi),
-          DEF: () => {
-            $.CONSUME2(T.Semi);
-            node = $.SUBRULE4($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
-            semiNodes.push($.wrap(node, true));
-          }
-        });
-      });
-    } finally {
-      ctx.inner = prevInner;
-    }
+    });
     $.endRule();
     const nodes = isSemiList ? semiNodes! : commaNodes!;
     return new List(nodes, isSemiList ? { sep: ';' } : undefined);

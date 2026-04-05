@@ -337,9 +337,13 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       Tilde,
       Column,
       Pipe,
+      DotName,
+      HashName,
       LSquare,
       NthPseudoClass,
-      SelectorPseudoClass
+      SelectorPseudoClass,
+      Star,
+      ColorIdentStart
     } = this.T;
     const isSelectorLikeContinuation = (offset: number): boolean => {
       const tok = this.LA(offset);
@@ -347,11 +351,34 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
         this.matchToken(tok, LCurly)
         || this.matchToken(tok, Comma)
         || this.matchToken(tok, this.T.Combinator)
+        || this.matchToken(tok, DotName)
+        || this.matchToken(tok, HashName)
         || this.matchToken(tok, LSquare)
         || this.matchToken(tok, Colon)
         || this.matchToken(tok, NthPseudoClass)
         || this.matchToken(tok, SelectorPseudoClass)
+        || this.matchToken(tok, Star)
+        || this.matchToken(tok, ColorIdentStart)
       );
+    };
+    const isDescendantSelectorContinuation = (offset: number): boolean => {
+      const tok = this.LA(offset);
+      if (
+        !this.hasWS(offset - 1)
+        || !(
+          this.matchToken(tok, Ident)
+          || this.matchToken(tok, DotName)
+          || this.matchToken(tok, HashName)
+          || this.matchToken(tok, Star)
+          || this.matchToken(tok, ColorIdentStart)
+        )
+      ) {
+        return false;
+      }
+      if (isSelectorLikeContinuation(offset + 1)) {
+        return true;
+      }
+      return this.hasWS(offset) && isDescendantSelectorContinuation(offset + 1);
     };
     if (!this.isTypeAt(1, Ident)) {
       return true;
@@ -373,7 +400,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     if (!this.matchToken(this.LA(3), Ident)) {
       return false;
     }
-    return isSelectorLikeContinuation(4);
+    return isSelectorLikeContinuation(4) || isDescendantSelectorContinuation(4);
   }
 
   /**

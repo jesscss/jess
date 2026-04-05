@@ -129,9 +129,7 @@ export function guard(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          ctx.allowComma = true;
-          const node = $.SUBRULE($.guardOr, { ARGS: [ctx] });
-          return node;
+          return $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] });
         }
       }
     ]);
@@ -208,44 +206,39 @@ export function guardAnd(this: P, T: TokenMap) {
       DEF: () => {
         let not: IToken | undefined;
         $.OPTION(() => not = $.CONSUME(T.Not));
-        let allowComma = ctx.allowComma;
-        ctx.allowComma = false;
+        const guardCtx = { ...ctx, allowComma: false };
         let right: Node;
-        try {
-          right = $.OR([
-            { ALT: () => $.SUBRULE($.guardInParens, { ARGS: [ctx] }) },
-            {
-              GATE: () => {
-                const tokenType = $.LA(1).tokenType;
-                return tokenType !== T.Not
-                  && tokenType !== T.DefaultGuardFunc
-                  && tokenType !== T.DefaultGuardIdent;
-              },
-              ALT: () => $.SUBRULE($.expressionSum, { ARGS: [ctx] })
+        right = $.OR([
+          { ALT: () => $.SUBRULE($.guardInParens, { ARGS: [guardCtx] }) },
+          {
+            GATE: () => {
+              const tokenType = $.LA(1).tokenType;
+              return tokenType !== T.Not
+                && tokenType !== T.DefaultGuardFunc
+                && tokenType !== T.DefaultGuardIdent;
+            },
+            ALT: () => $.SUBRULE($.expressionSum, { ARGS: [guardCtx] })
+          }
+        ]);
+        $.OPTION2({
+          GATE: () => isGuardComparisonToken($.LA(1).tokenType, T),
+          DEF: () => {
+            const op = $.CONSUME(T.CompareOperator);
+            const compareRight = $.SUBRULE2($.expressionSum, { ARGS: [guardCtx] });
+            if (!$.RECORDING_PHASE) {
+              right = new Condition(
+                [
+                  $.wrap(right, true),
+                  normalizeComparisonOperator(op.image),
+                  $.wrap(compareRight)
+                ],
+                undefined,
+                $.getLocationFromNodes([right, compareRight]),
+                $.context
+              );
             }
-          ]);
-          $.OPTION2({
-            GATE: () => isGuardComparisonToken($.LA(1).tokenType, T),
-            DEF: () => {
-              const op = $.CONSUME(T.CompareOperator);
-              const compareRight = $.SUBRULE2($.expressionSum, { ARGS: [ctx] });
-              if (!$.RECORDING_PHASE) {
-                right = new Condition(
-                  [
-                    $.wrap(right, true),
-                    normalizeComparisonOperator(op.image),
-                    $.wrap(compareRight)
-                  ],
-                  undefined,
-                  $.getLocationFromNodes([right, compareRight]),
-                  $.context
-                );
-              }
-            }
-          });
-        } finally {
-          ctx.allowComma = allowComma;
-        }
+          }
+        });
         if (!$.RECORDING_PHASE) {
           if (isDefaultGuardCall(right!)) {
             ctx.hasDefault = true;

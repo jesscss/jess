@@ -19,6 +19,18 @@ describe('nested pseudo-selector parsing', () => {
     expect(errors.length).toBe(0);
   });
 
+  test('pseudo-selector followed by descendant selector should parse', () => {
+    const { errors } = parser.parse('.parent { tr:last-child td { padding-bottom: 0; } }');
+    expect(errors.length).toBe(0);
+  });
+
+  test('pseudo-selector followed by descendant compound selectors should parse', () => {
+    const { errors } = parser.parse(
+      '.parent { li:hover div.content div.comment blockquote span.view_comment { color: red; } }'
+    );
+    expect(errors.length).toBe(0);
+  });
+
   test('multiple nested pseudo-selectors should parse', () => {
     const { errors } = parser.parse(`
       .nav {

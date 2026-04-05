@@ -219,9 +219,13 @@ export class LessRecursiveParser extends CssRecursiveParser {
       LCurly,
       Comma,
       LSquare,
+      DotName,
+      HashName,
       NthPseudoClass,
       SelectorPseudoClass,
-      FunctionStart
+      FunctionStart,
+      Star,
+      ColorIdentStart
     } = this.T;
 
     const isSelectorLikeContinuation = (offset: number): boolean => {
@@ -230,11 +234,34 @@ export class LessRecursiveParser extends CssRecursiveParser {
         tokenMatcher(tok, LCurly)
         || tokenMatcher(tok, Comma)
         || tokenMatcher(tok, this.T.Combinator)
+        || tokenMatcher(tok, DotName)
+        || tokenMatcher(tok, HashName)
         || tokenMatcher(tok, LSquare)
         || tokenMatcher(tok, Colon)
         || tokenMatcher(tok, NthPseudoClass)
         || tokenMatcher(tok, SelectorPseudoClass)
+        || tokenMatcher(tok, Star)
+        || tokenMatcher(tok, ColorIdentStart)
       );
+    };
+    const isDescendantSelectorContinuation = (offset: number): boolean => {
+      const tok = this.LA(offset);
+      if (
+        !this.hasWS(offset - 1)
+        || !(
+          tokenMatcher(tok, Ident)
+          || tokenMatcher(tok, DotName)
+          || tokenMatcher(tok, HashName)
+          || tokenMatcher(tok, Star)
+          || tokenMatcher(tok, ColorIdentStart)
+        )
+      ) {
+        return false;
+      }
+      if (isSelectorLikeContinuation(offset + 1)) {
+        return true;
+      }
+      return this.hasWS(offset) && isDescendantSelectorContinuation(offset + 1);
     };
 
     if (!this.isTypeAt(1, Ident)) {
@@ -259,7 +286,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
     if (!tokenMatcher(this.LA(3), Ident)) {
       return false;
     }
-    return isSelectorLikeContinuation(4);
+    return isSelectorLikeContinuation(4) || isDescendantSelectorContinuation(4);
   }
 
   warnDeprecation(message: string, token?: IToken, deprecationId?: string): void {
