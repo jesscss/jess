@@ -84,7 +84,8 @@ Treat the architecture as a hard constraint, not a style preference:
 When working on the active evaluation-model refactor, use these docs as the canonical source:
 
 - `docs/future/node-copy-reduction/README.md` for the target model
-- `docs/future/node-copy-reduction/session-instance-architecture.md` for the runtime shape
+- `docs/future/node-copy-reduction/eval-state-sketch.md` for the runtime shape
+- `docs/future/node-copy-reduction/extends-performance-contract.md` for extend / selector performance guardrails
 - `docs/future/node-copy-reduction/HANDOFF.md` for execution constraints
 - `docs/future/node-copy-reduction/STAGES.md` or `docs/future/node-copy-reduction/dependency-graph.md` for current sequencing
 
@@ -101,6 +102,9 @@ Use those docs to understand the direction. Do not restate their volatile status
   sparse-state, copy-on-write architecture. If a change passes tests but adds
   generic runtime overhead or preserves legacy machinery, it is not a valid
   completion.
+- For extend / selector performance work, follow
+  `docs/future/node-copy-reduction/extends-performance-contract.md` and keep
+  semantic tests, work-counter tests, and the real benchmark green together.
 
 ## Tool-Specific Rules
 

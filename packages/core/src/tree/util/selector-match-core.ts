@@ -8,6 +8,7 @@ import { isDisjoint, type BitSet } from './bitset.js';
 import { type PseudoSelector } from '../selector-pseudo.js';
 import { type CompoundSelector } from '../selector-compound.js';
 import { type ComplexSelector } from '../selector-complex.js';
+import { activeExtendWorkCounters } from './extend-work-counters.js';
 
 /**
  * A single located selector match.
@@ -133,7 +134,7 @@ const selectorMatchPlanCache = new WeakMap<Selector, {
 }>();
 
 function selectorValueOf(node: Node | Selector, context?: EvalContext): string {
-  return String((node as unknown as { valueOf(context?: EvalContext): string }).valueOf(context));
+  return String(node.valueOf(context));
 }
 
 function bitSetValues(bitSet: BitSet<string> | undefined): string[] | undefined {
@@ -231,7 +232,7 @@ function mergeRequirements(
 
 function markComplexBranchRequirements(
   requirements: MatchGroupRequirement[],
-  branch: Selector & { value?: readonly Node[] },
+  branch: Selector,
   parent?: Selector,
   context?: EvalContext
 ): MatchGroupRequirement[] {
@@ -269,6 +270,9 @@ function buildGroupRequirements(
   context?: EvalContext,
   activePath: Set<Node> = new Set()
 ): MatchGroupRequirement[] {
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.groupRequirementsBuilt++;
+  }
   if (activePath.has(node)) {
     return [createRequirement()];
   }
@@ -303,7 +307,7 @@ function buildGroupRequirements(
       if (!isNode(component, N.Combinator)) {
         return markComplexBranchRequirements(
           buildGroupRequirements(component, parent, context, activePath),
-          node as unknown as Selector & { value?: readonly Node[] },
+          node,
           parent,
           context
         );
@@ -367,6 +371,9 @@ function buildMatchGroup(node: Node, parent?: Selector, context?: EvalContext): 
 }
 
 function buildRouteMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): RouteMatchPlan {
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.routePlansBuilt++;
+  }
   if (isNode(selector, N.ComplexSelector)) {
     const units: MatchPlanUnit[] = [];
     let hasAmbiguousBranchTail = false;
@@ -673,7 +680,7 @@ function matchTargetGroup(
 }
 
 function matchCompoundWindow(
-  targetCompound: Selector & { value: readonly Node[] },
+  targetCompound: CompoundSelector,
   start: number,
   end: number,
   requirement: MatchGroupRequirement,
@@ -722,7 +729,7 @@ function matchCompoundWindow(
 }
 
 function collectMatchedIndicesForWindow(
-  targetCompound: Selector & { value: readonly Node[] },
+  targetCompound: CompoundSelector,
   start: number,
   end: number,
   requirement: MatchGroupRequirement,
@@ -801,8 +808,8 @@ function collectGroupMatchLocations(
 
   const matches: SelectorMatchLocation[] = [];
   const seen = new Set<number>();
-  const targetCompound = targetGroup as unknown as Selector & { value: readonly Node[] };
-  const targetLength = (targetGroup as CompoundSelector).get('value').length;
+  const targetCompound = targetGroup;
+  const targetLength = targetGroup.get('value').length;
 
   for (let i = 0; i < findGroup.alternatives.length; i++) {
     const requirement = findGroup.alternatives[i]!;
@@ -962,9 +969,9 @@ function getCachedGroupMatch(
 
     for (let i = 0; i < findGroup.alternatives.length; i++) {
       const windowMatch = matchCompoundWindow(
-        targetGroup as unknown as Selector & { value: readonly Node[] },
+        targetGroup,
         0,
-        (targetGroup as CompoundSelector).get('value').length - 1,
+        targetGroup.get('value').length - 1,
         findGroup.alternatives[i]!,
         parent,
         evalContext
@@ -997,11 +1004,12 @@ function getBranchAlternatives(node: Node): readonly Selector[] | undefined {
   }
 
   if (isNode(node, N.PseudoSelector) && node.get('name') === ':is' && isNode(node.get('arg'), N.Selector)) {
-    if (isNode(node.get('arg'), N.SelectorList)) {
-      return (node.get('arg') as SelectorList).get('value');
+    const arg = node.get('arg');
+    if (isNode(arg, N.SelectorList)) {
+      return arg.get('value');
     }
 
-    return [node.get('arg') as Selector];
+    return [arg];
   }
 
   return undefined;
@@ -1041,11 +1049,14 @@ function matchGroupNodes(
   }
 
   if (targetBranches) {
+    if (!isNode(findNode, N.Selector)) {
+      return { matched: false, exact: false };
+    }
     let matched = false;
     let exact = false;
 
     for (let i = 0; i < targetBranches.length; i++) {
-      const nested = selectorMatchInternal(findNode as Selector, targetBranches[i]!, parent, context);
+      const nested = selectorMatchInternal(findNode, targetBranches[i]!, parent, context);
       matched ||= nested.partialMatch;
       exact ||= nested.fullMatch;
 
@@ -1352,7 +1363,12 @@ function pushNestedPseudoMatches(
         return;
       }
 
-      const nested = selectorMatchInternal(find.get('arg') as Selector, targetNode.get('arg') as Selector, undefined, context);
+      const findArg = find.get('arg');
+      const targetArg = targetNode.get('arg');
+      if (!isNode(findArg, N.Selector) || !isNode(targetArg, N.Selector)) {
+        return;
+      }
+      const nested = selectorMatchInternal(findArg, targetArg, undefined, context);
       for (let i = 0; i < nested.matches.length; i++) {
         const match = nested.matches[i]!;
         matches.push({
@@ -1367,7 +1383,11 @@ function pushNestedPseudoMatches(
       return;
     }
 
-    const nested = selectorMatchInternal(find, targetNode.get('arg') as Selector, undefined, context);
+    const targetArg = targetNode.get('arg');
+    if (!isNode(targetArg, N.Selector)) {
+      return;
+    }
+    const nested = selectorMatchInternal(find, targetArg, undefined, context);
     for (let i = 0; i < nested.matches.length; i++) {
       const match = nested.matches[i]!;
       matches.push({
@@ -1448,10 +1468,19 @@ function selectorMatchUncached(
         return emptySelectorMatchState();
       }
 
-      return selectorMatchInternal(find.get('arg') as Selector, target.get('arg') as Selector, parent, context);
+      const findArg = find.get('arg');
+      const targetArg = target.get('arg');
+      if (!isNode(findArg, N.Selector) || !isNode(targetArg, N.Selector)) {
+        return emptySelectorMatchState();
+      }
+      return selectorMatchInternal(findArg, targetArg, parent, context);
     }
 
-    const nested = selectorMatchInternal(find.get('arg') as Selector, target, parent, context);
+    const findArg = find.get('arg');
+    if (!isNode(findArg, N.Selector)) {
+      return emptySelectorMatchState();
+    }
+    const nested = selectorMatchInternal(findArg, target, parent, context);
     if (!nested.partialMatch) {
       return nested;
     }
@@ -1462,7 +1491,7 @@ function selectorMatchUncached(
       matches[i] = {
         startIndex: match.startIndex,
         endIndex: match.endIndex,
-        containingNode: find.get('arg') as Node,
+        containingNode: findArg,
         exact: false,
         consumedTarget: false,
         ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
@@ -1549,8 +1578,14 @@ function selectorMatchUncached(
     && find.keySetLibrary
     && target.keySetLibrary
   ) {
+    if (activeExtendWorkCounters) {
+      activeExtendWorkCounters.fastRejectChecks++;
+    }
     if (evalContext) {
       if (safeIsDisjoint(find.getKeySet(evalContext), target.getKeySet(evalContext))) {
+        if (activeExtendWorkCounters) {
+          activeExtendWorkCounters.fastRejectRejects++;
+        }
         return emptySelectorMatchState();
       }
     } else {
@@ -1559,14 +1594,23 @@ function selectorMatchUncached(
         && target.hasFlag(F_AMPERSAND)
         && safeIsDisjoint(find.visibleKeySet, target.visibleKeySet)
       ) {
+        if (activeExtendWorkCounters) {
+          activeExtendWorkCounters.fastRejectRejects++;
+        }
         return emptySelectorMatchState();
       }
       if (
         !safeIsDisjoint(find.requiredKeySet, find.keySet)
         && safeIsDisjoint(find.requiredKeySet, target.keySet)
       ) {
+        if (activeExtendWorkCounters) {
+          activeExtendWorkCounters.fastRejectRejects++;
+        }
         return emptySelectorMatchState();
       }
+    }
+    if (activeExtendWorkCounters) {
+      activeExtendWorkCounters.fastRejectPasses++;
     }
   }
 
@@ -1666,7 +1710,8 @@ function selectorMatchUncached(
       const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
       const lastParentUnit = parentUnits[parentUnits.length - 1]!;
       const leadingAmpersand = hasLeadingAmpersandBoundary(routePlan.selector)
-        ? (routePlan.selector as ComplexSelector).value[0]
+        && isNode(routePlan.selector, N.ComplexSelector)
+        ? routePlan.selector.value[0]
         : undefined;
       const ampersandCrossings: SelectorMatchAmpersandCrossing[] = [{
         ampersandNode: leadingAmpersand,

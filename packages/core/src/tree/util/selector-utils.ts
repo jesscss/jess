@@ -16,13 +16,14 @@ import { F_IMPLICIT_AMPERSAND, F_EXTENDED } from '../node.js';
 import type { Context } from '../../context.js';
 import { getParent } from './field-helpers.js';
 import { getParentEdge } from './cursor.js';
+import { activeExtendWorkCounters } from './extend-work-counters.js';
 
 const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
 const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
 const sourceExtendWrapperParentCache = new WeakMap<readonly Node[], boolean>();
 
 function getSelectorListArgNode(target: Selector): SelectorList | undefined {
-  const arg = Reflect.get(target, 'arg');
+  const arg = (target as Selector & { arg?: unknown }).arg;
   return isNode(arg, N.SelectorList) ? arg : undefined;
 }
 
@@ -590,6 +591,9 @@ function composeSelectorRouteWithParent(
   selector: Selector,
   parentSelector: Selector
 ): Selector {
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.selectorCompositionCalls++;
+  }
   const childCopy = selector.copy(true);
   if (selectorHasAuthoredAmpersand(childCopy)) {
     return resolveAuthoredAmpersands(childCopy, parentSelector);

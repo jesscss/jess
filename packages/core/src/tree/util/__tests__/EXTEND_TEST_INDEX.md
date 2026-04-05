@@ -8,7 +8,7 @@ Historical deep-dive audits and refactoring notes were archived/removed from thi
 
 ## “Where are the extend tests?”
 
-There are two main clusters:
+There are three main clusters:
 
 ### 1) Extend **integration** tests (eval → toString)
 - `src/tree/__tests__/extend-eval-integration.test.ts`
@@ -35,8 +35,34 @@ Located in `src/tree/util/__tests__/`:
 - `process-extends.test.ts`
   - Tests orchestration / application ordering for registered extends.
 
+- `extend-work-contract.test.ts`
+  - Work-characterization suite for reject-path work, pass counts, rewrite
+    counts, and planner/composition ceilings.
+
+- `selector-composition-work.test.ts`
+  - Work-characterization suite specifically for parent-aware selector
+    composition and disjoint nested extend fixtures.
+
+- `extend-pipeline-budget.test.ts`
+  - Tier-1 gate suite for invariant work budgets on small fixtures.
+
 - `extend-pipeline-bench.test.ts`
-  - Bench coverage, not a primary behavior suite.
+  - Informational bench coverage and scenario shape reference.
+
+### 3) Extend **work / budget** tests
+
+- `extend-work-contract.test.ts`
+  - Use when a regression is "too much work" rather than wrong output.
+
+- `selector-composition-work.test.ts`
+  - Use when a change touches `getEffectiveSelector(...)`,
+    `composeSelectorRouteWithParent(...)`, or nested-parent selector reuse.
+
+- `extend-pipeline-budget.test.ts`
+  - Use for tier-1 invariant budgets and bounded-pass proofs.
+- `extend-pipeline-bench.test.ts`
+  - Use to characterize larger scenario shapes before tightening numeric
+    budgets.
 
 ## Extend evaluation / ruleset plumbing (non-util tests)
 
@@ -57,3 +83,5 @@ If you are fixing a fixture like `tests-unit/extend-exact/extend-exact.less`, th
 - `src/tree/util/__tests__/selector-match-unit.test.ts` (if it’s primarily a matcher problem)
 - `src/tree/util/__tests__/extend-core-unit.test.ts` (if it’s primarily a rewrite problem)
 - `src/tree/util/__tests__/extend-ampersand-boundary.test.ts` (if it’s specifically about implicit `&` / parent prefix crossings)
+- `src/tree/util/__tests__/extend-work-contract.test.ts` (if output stayed green but the change added planner, rewrite, pass-count, or reject-path work)
+- `src/tree/util/__tests__/selector-composition-work.test.ts` (if output stayed green but the change increased parent composition work)

@@ -17,6 +17,7 @@ import { F_EXTENDED, F_VISIBLE } from '../node.js';
 import { selectorMatch } from './selector-match-core.js';
 import { tryExtendSelector } from './extend-core.js';
 import { getCurrentParentNode, getImplicitSelector, localizeSelectorAgainstParent, getParentRuleset, hasSourceExtendWrapperParent, isBareAmpersandOwnSelector, selectorHasAuthoredAmpersand } from './selector-utils.js';
+import { activeExtendWorkCounters } from './extend-work-counters.js';
 
 /**
  * Extend-root orchestration is intentionally record-driven:
@@ -509,6 +510,9 @@ function getCachedTargetInfo(
     if (perRuleset?.has(instruction)) {
       return perRuleset.get(instruction);
     }
+    if (activeExtendWorkCounters) {
+      activeExtendWorkCounters.targetInfoBuilds++;
+    }
     const result = getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
     if (!perRuleset) {
       perRuleset = new Map();
@@ -516,6 +520,9 @@ function getCachedTargetInfo(
     }
     perRuleset.set(instruction, result);
     return result;
+  }
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.targetInfoBuilds++;
   }
   return getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
 }
@@ -832,6 +839,10 @@ function applyInstructionToRuleset(
     }
   }
 
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.positiveMatches++;
+  }
+
   const currentSelector = ruleset.get('selector', context);
   const selectorBeforeExtend = targetInfo.usingOwnSelector
     ? targetInfo.selector
@@ -886,6 +897,11 @@ function applyInstructionToRuleset(
     return { matched: true, changed: false };
   }
 
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.rewritesApplied++;
+  }
+
+  const ownSelectorForHoist = ruleset.getOwnSelector();
   let shouldHoist = (
     normalizedResult.hoistToRoot
     || (
@@ -896,8 +912,10 @@ function applyInstructionToRuleset(
     )
     || (
       !targetInfo.usingOwnSelector
-      && Boolean(ruleset.getOwnSelector() && !isNode(ruleset.getOwnSelector()!, N.Nil))
-      && selectorHasAuthoredAmpersand(ruleset.getOwnSelector() as Selector)
+      && Boolean(ownSelectorForHoist && !isNode(ownSelectorForHoist, N.Nil))
+      && ownSelectorForHoist !== undefined
+      && !isNode(ownSelectorForHoist, N.Nil)
+      && selectorHasAuthoredAmpersand(ownSelectorForHoist)
     )
   );
 
@@ -941,6 +959,9 @@ function instructionCouldAffectRuleset(
 
 export function processExtends(context: Context): void {
   try {
+    if (activeExtendWorkCounters) {
+      activeExtendWorkCounters.processExtendsCalls++;
+    }
     const instructions: RecordedExtendInstruction[] = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope, namespace]) => ({
       target,
       extendWith: selectorWithExtend,
@@ -971,9 +992,15 @@ export function processExtends(context: Context): void {
     let targetInfoCache: TargetInfoCache = new WeakMap();
     let changed = true;
     while (changed) {
+      if (activeExtendWorkCounters) {
+        activeExtendWorkCounters.processExtendsPasses++;
+      }
       changed = false;
 
       for (const rootRules of context.extendRoots.getAllRoots()) {
+        if (activeExtendWorkCounters) {
+          activeExtendWorkCounters.extendRootsVisited++;
+        }
         const rulesetSet = context.extendRoots.getRulesets(rootRules);
         if (!rulesetSet?.size) {
           continue;
@@ -985,6 +1012,9 @@ export function processExtends(context: Context): void {
         context.rulesContext = rootRules;
 
         try {
+          if (activeExtendWorkCounters) {
+            activeExtendWorkCounters.visibleInstructionListsBuilt++;
+          }
           const visibleInstructions = instructions.filter(instruction =>
             isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
           );
@@ -993,8 +1023,14 @@ export function processExtends(context: Context): void {
           }
 
           for (const ruleset of rulesetSet) {
+            if (activeExtendWorkCounters) {
+              activeExtendWorkCounters.rulesetsVisited++;
+            }
             let rulesetMatched = false;
             for (const instruction of visibleInstructions) {
+              if (activeExtendWorkCounters) {
+                activeExtendWorkCounters.instructionsConsidered++;
+              }
               const appliedInstructions = appliedRulesetInstructions.get(ruleset);
               if (appliedInstructions?.has(instruction)) {
                 instructionMatched.add(instruction);
@@ -1037,6 +1073,10 @@ export function processExtends(context: Context): void {
                   appliedRulesetInstructions.set(ruleset, nextAppliedInstructions);
                 }
                 nextAppliedInstructions.add(instruction);
+                if (activeExtendWorkCounters) {
+                  activeExtendWorkCounters.rulesetsChanged++;
+                  activeExtendWorkCounters.chainedFollowupEnqueues++;
+                }
                 changed = true;
               }
             }

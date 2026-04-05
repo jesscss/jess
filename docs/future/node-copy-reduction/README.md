@@ -35,9 +35,10 @@ surfaces and narrow proof tests.
 ## Read Order
 
 1. [eval-state-sketch.md](./eval-state-sketch.md) — target cursor/edge model
-2. [node-update-status.md](./node-update-status.md) — current migration targets
-3. [HANDOFF.md](./HANDOFF.md) — short working rules for the next agent
-4. [STAGES.md](./STAGES.md) — optional branch sequencing notes
+2. [extends-performance-contract.md](./extends-performance-contract.md) — extend / selector system work contract
+3. [node-update-status.md](./node-update-status.md) — current migration targets
+4. [HANDOFF.md](./HANDOFF.md) — short working rules for the next agent
+5. [STAGES.md](./STAGES.md) — optional branch sequencing notes
 
 ## Hard Rules
 

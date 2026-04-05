@@ -220,6 +220,25 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
 
 ## Recent Perf Evidence
 
+- Extend / selector performance work now has an explicit contract in
+  `docs/future/node-copy-reduction/extends-performance-contract.md`.
+- Test-facing work counters now exist for:
+  - extend orchestration
+  - selector planning
+  - selector composition
+  - node create/clone/copy/inherit/valueOf churn
+- New gate suites now pin “non-work” behavior in:
+  - `packages/core/src/tree/util/__tests__/extend-work-contract.test.ts`
+  - `packages/core/src/tree/util/__tests__/selector-composition-work.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-pipeline-budget.test.ts`
+- Current contract tests prove:
+  - no-extend stays at zero planner/rewrite work
+  - disjoint extend fixtures still avoid rewrites, but they do **not** yet avoid
+    route-plan work; that ceiling is now pinned explicitly instead of being
+    hand-waved away
+  - chained micro fixtures have bounded passes
+  - parent-aware composition is now counter-gated on nested disjoint fixtures
+
 - Current kept benchmark band on `benchmark.less` is now roughly `2.66s` to
   `2.69s`, with the current best sample at roughly `2661ms`.
 - Fresh CPU profile still says GC is the biggest single cost. After that, the loudest self-time hotspots are:
@@ -343,19 +362,187 @@ Only the `converted` rows are valid hard-gate targets for focused edge/cursor te
     caller stops deep-copying the same selector segment first
   - current accepted benchmark band is now roughly `2.63s` to `2.68s`
 
+- New keep:
+  `packages/core/src/tree/util/extend-core.ts`
+  derived-selector helper writes now use direct property assignment instead of
+  `Reflect.set(...)` in:
+  - `finalizeDerivedSelector(...)` for restoring reused child parents
+  - `setSelectorContainerValue(...)` for assigning the rebuilt selector array
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark results after rebuilding `@jesscss/core` and `jess`:
+  - run 1: `2649.31ms` avg
+  - run 2: `2669.99ms` avg
+  - run 3: `2651.16ms` avg
+- Interpretation:
+  - this is not a huge standalone speedup, but it consistently lands back in
+    the lower accepted band after rebuild-backed runs
+  - direct property writes are the correct runtime shape here anyway; the
+    generic `Reflect.set(...)` path was pure helper overhead
+  - current accepted benchmark band remains roughly `2.64s` to `2.67s`
+
+- New weak keep:
+  `packages/core/src/tree/util/selector-utils.ts`
+  `getSelectorListArgNode(...)` now reads `target.arg` directly instead of
+  `Reflect.get(target, 'arg')`.
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark results after rebuilding `@jesscss/core` and `jess`:
+  - run 1: `2660.50ms` avg
+  - run 2: `2664.92ms` avg
+- Interpretation:
+  - this is a small helper-overhead cleanup, not a major standalone win
+  - the rebuilt benchmark stayed in the lower accepted band
+  - direct field access is the correct canonical shape here, so this stays
+    unless a later stacked result proves it harmful
+
+- New keep:
+  `packages/core/src/tree/util/extend-core.ts`
+  `finalizeDerivedSelector(...)` no longer uses `flatMap(...)` to collect
+  reused child parents before restoring parent edges.
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark results after rebuilding `@jesscss/core` and `jess`:
+  - run 1: `2625.36ms` avg
+  - run 2: `2611.58ms` avg
+- Interpretation:
+  - this is a real helper-allocation win in a hot derived-selector path
+  - the change is architecture-correct as well: less array churn for the same
+    parent-edge restoration behavior
+  - current accepted benchmark band is now roughly `2.61s` to `2.66s`
+
+- New strong keep:
+  `packages/core/src/tree/util/extend-core.ts`
+  `normalize(...)` now uses direct loops instead of `map(...).filter(...)` in
+  the compound-selector and selector-list branches.
+- Exact keep gates for that cut:
+  - `packages/core/src/tree/__tests__/ampersand.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+  - `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+  - `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts`
+  - `packages/core/src/tree/__tests__/reference.test.ts`
+- Benchmark results after rebuilding `@jesscss/core` and `jess`:
+  - run 1: `2560.20ms` avg
+  - run 2: `2614.91ms` avg
+- Interpretation:
+  - this is the strongest helper-overhead win in the current pass
+  - the hot path was paying for avoidable intermediate arrays during selector
+    normalization
+  - current accepted benchmark band is now roughly `2.56s` to `2.62s`
+
 ## Current Perf Evidence
 
 - Big benchmark:
   `/Users/matthew/git/worktrees/less.js/alpha/packages/less/benchmark/benchmark.less`
-  with linked local `jess-dev` packages is currently in the `~2.71s` to
-  `~2.76s` band on repeated `3` run / `1` warmup samples, with the current
-  best sample at roughly `2714ms`.
+  with linked local `jess-dev` packages is currently in the `~2.56s` to
+  `~2.62s` band on repeated rebuild-backed `3` run / `1` warmup samples, with
+  the current best accepted sample at roughly `2560ms`.
 - The last two extend-path micro-optimizations were both losers and were
   reverted:
   - count-collapsing in
     `packages/core/src/tree/util/selector-match-core.ts`
   - selector string caching in
     `packages/core/src/tree/util/extend-roots.ts`
+- New rejected experiments:
+  - `packages/core/src/tree/ruleset.ts`
+    cached `parentRenderKey` / `parentDirectSelector` /
+    `parentSelectorBeforeExtend` inside `getEffectiveSelector(...)`
+    - hostile gate stayed green
+    - pre-build local run looked better (`2639.64ms`)
+    - protocol-correct rebuild + reruns regressed to `2678.99ms` and
+      `2702.79ms`
+    - rejected as noise-then-loss
+  - `packages/core/src/tree/extend.ts`
+    removed the resolved-selector pre-copy inside
+    `materializeImplicitAmpersands(...)`
+    - hostile gate stayed green
+    - protocol-correct rebuild benchmark regressed to `2720.04ms`
+    - rejected
+  - `packages/core/src/tree/util/extend-core.ts`
+    removed pseudo pre-copies before `setPseudoArg(...)`
+    in `normalize(...)` and `materializeAmpersandsForHoist(...)`
+    - hostile gate stayed green
+    - protocol-correct rebuild benchmark regressed to `2709.49ms`
+    - rejected
+  - `packages/core/src/tree/util/extend-core.ts`
+    selector-list branch in `materializeAmpersandsForHoist(...)`
+    switched from `.map(...)` to a manual loop
+    - hostile gate stayed green
+    - protocol-correct rebuild benchmark regressed to `2665.53ms`
+    - rejected
+  - `packages/core/src/tree/util/extend-core.ts`
+    `replaceDirectSelectorChild(...)` collapsed two `findIndex(...)` scans
+    into one loop
+    - hostile gate stayed green
+    - protocol-correct rebuild benchmark regressed to `2661.53ms`
+    - rejected
+  - `packages/core/src/tree/util/extend-core.ts`
+    `buildMatchedCompoundSelector(...)` replaced its index-array plus `map(...)`
+    path with a manual loop
+    - hostile gate stayed green
+    - protocol-correct rebuild benchmark regressed to `2731.28ms`
+    - rejected
+  - `packages/core/src/tree/util/extend-roots.ts`
+    `processExtends(...)` cached `visibleInstructions` per root across the
+    fixed-point loop
+    - widened extend gate stayed green, including
+      `packages/core/src/tree/util/__tests__/process-extends.test.ts`
+    - protocol-correct rebuild benchmark landed at `2645.26ms` and
+      `2656.76ms`
+    - rejected
+  - `packages/core/src/tree/util/extend-roots.ts`
+    `getRulesetExtendTarget(...)` short-circuited same-identity selector and
+    parent comparisons before calling `valueOf()`
+    - widened extend gate stayed green, including
+      `packages/core/src/tree/util/__tests__/process-extends.test.ts`
+    - protocol-correct rebuild benchmark landed at `2642.69ms`
+    - rejected
+  - `packages/core/src/tree/util/selector-match-core.ts`
+    `buildGroupRequirements(...)` / `buildRouteMatchPlan(...)` replaced
+    generic `.get('value'|'name')` calls with direct field access on the
+    planner hot path
+    - widened selector/extend gate stayed green, including
+      `packages/core/src/tree/util/__tests__/selector-match-unit.test.ts`,
+      `packages/core/src/tree/util/__tests__/fast-reject.test.ts`, and
+      `packages/core/src/tree/util/__tests__/process-extends.test.ts`
+    - protocol-correct rebuild benchmark regressed to `2795.85ms`
+    - rejected
+  - `packages/core/src/tree/util/selector-match-core.ts`
+    `collectGroupMatchLocations(...)` memoized `matchCompoundWindow(...)`
+    results per requirement/span to avoid the repeated minimality rescans
+    - widened selector/extend gate stayed green, including
+      `packages/core/src/tree/util/__tests__/selector-match-unit.test.ts`,
+      `packages/core/src/tree/util/__tests__/fast-reject.test.ts`, and
+      `packages/core/src/tree/util/__tests__/process-extends.test.ts`
+    - protocol-correct rebuild benchmark regressed to `2681.55ms`
+    - rejected
+  - `packages/core/src/tree/util/selector-match-core.ts`
+    `mergeRequirements(...)` returned left/right directly when the other side
+    was an empty requirement
+    - widened selector/extend gate stayed green, including
+      `packages/core/src/tree/util/__tests__/selector-match-unit.test.ts`,
+      `packages/core/src/tree/util/__tests__/fast-reject.test.ts`, and
+      `packages/core/src/tree/util/__tests__/process-extends.test.ts`
+    - protocol-correct rebuild benchmark regressed to `2827.92ms`
+    - rejected
+  - `packages/core/src/tree/node-base.ts`
+    `Node.create(...)` replaced `Reflect.construct(...)` with direct
+    constructor dispatch
+    - widened selector/extend gate stayed green
+    - protocol-correct rebuild benchmark regressed to `2811.17ms`
+    - rejected
 - Fresh CPU profiling shows the main debt is broad node/selector lifecycle
   machinery, not parser cost and not small extend-path string work.
 
@@ -781,3 +968,179 @@ Ranking rule:
 - move a seam up when it produces a real `benchmark.less` win
 - move it down immediately when it only looks clean architecturally but regresses
   the benchmark
+
+## Ranked Allocation Sources
+
+Fresh `benchmark.less` profile (`node --cpu-prof`) says the current runtime is
+not dominated by one leak-like sink. It is dominated by allocation rate.
+`(garbage collector)` was the single largest bucket, and the hottest JS frames
+under it were all object/string creation sites.
+
+### 1. Selector requirement planning
+
+Primary frames:
+
+- `packages/core/src/tree/util/selector-match-core.ts`
+  `buildGroupRequirements(...)`
+- `packages/core/src/tree/util/selector-match-core.ts`
+  `buildRouteMatchPlan(...)`
+
+Likely allocations:
+
+- `MatchGroupRequirement` objects
+- `Map<string, number>` for `basicSelectorIndex`
+- `number[]` for `basicSelectorCounts`
+- merged requirement clones from `cloneRequirement(...)` / `mergeRequirements(...)`
+- transient route/group arrays
+
+Why it matters:
+
+- this is the top non-GC self-time frame in the fresh profile
+- it runs repeatedly under extend matching
+- current evidence says planner shape/allocation cost is more important than
+  accessor trivia inside it
+
+### 2. Generic node cloning and inheritance
+
+Primary frames:
+
+- `packages/core/src/tree/node-base.ts`
+  `cloneFn`
+- `packages/core/src/tree/node-base.ts`
+  `clone(...)`
+- `packages/core/src/tree/node-base.ts`
+  `inherit(...)`
+
+Likely allocations:
+
+- reconstructed node instances via constructor/`Reflect.construct(...)`
+- copied arrays and copied record bags during clone
+- temporary parent-edge bookkeeping arrays like `priorChildParents`
+- copied options/meta/location carrier objects
+
+Why it matters:
+
+- these frames are consistently near the top in every fresh profile
+- they line up with the runtime model drifting toward materialize/rebuild work
+  instead of sparse patching
+
+### 3. Generated node construction during selector rewrites
+
+Primary frames:
+
+- `packages/core/src/tree/node-base.ts`
+  `Node.create(...)`
+- selector constructors reached through extend/ampersand helpers
+
+Likely allocations:
+
+- `ComplexSelector`, `CompoundSelector`, `SelectorList`, `PseudoSelector`
+  instances
+- fresh child arrays passed into those constructors
+- follow-on adoption/parent bookkeeping work
+
+Why it matters:
+
+- extend rewrites currently rebuild selector structure aggressively
+- profile shows constructor time adjacent to clone/inherit time, which implies
+  rewrite-created nodes are a real share of churn
+
+### 4. Global extend orchestration work
+
+Primary frames:
+
+- `packages/core/src/tree/util/extend-roots.ts`
+  `processExtends(...)`
+- `packages/core/src/tree/util/extend-roots.ts`
+  `getRulesetExtendTarget(...)`
+
+Likely allocations:
+
+- visible-instruction arrays
+- target-info cache entries
+- selector signatures / normalized comparison strings
+- transient per-ruleset/per-instruction bookkeeping
+
+Why it matters:
+
+- `benchmark.less` has real extend load, not fake incidental noise
+- extend processing is a whole-program fixed-point pass, so even modest per-step
+  churn amplifies across many rulesets/instructions
+
+### 5. Selector composition and route rebuilding
+
+Primary frames:
+
+- `packages/core/src/tree/util/selector-utils.ts`
+  `composeSelectorRouteWithParent(...)`
+- `packages/core/src/tree/ruleset.ts`
+  `getEffectiveSelector(...)`
+
+Likely allocations:
+
+- recomposed selector route arrays
+- wrapper selectors / combinator sequences
+- derived selector snapshots used to preserve ownership semantics
+
+Why it matters:
+
+- these functions sit on the hot path between canonical selector state and the
+  effective selector that extend matching actually sees
+- any rebuild here compounds the cloning/rewrite churn above
+
+### 6. Normalized string churn
+
+Primary frames:
+
+- `packages/core/src/tree/node-base.ts`
+  `valueOf(...)`
+
+Likely allocations:
+
+- temporary normalized selector strings
+- temporary array-of-parts strings in container `valueOf(...)`
+- signature strings used by extend-root bookkeeping
+
+Why it matters:
+
+- `valueOf(...)` showing up hot means matching/orchestration is still leaning
+  too much on serialized structure instead of compact structural facts
+
+## Allocation Interpretation
+
+The current GC cost is best explained by this pipeline:
+
+1. `processExtends(...)` drives repeated matching across many rulesets
+2. selector matching builds requirement/planning objects
+3. successful matches trigger selector composition/rewrite work
+4. rewrites create new selector nodes and copy metadata through clone/inherit
+5. matching/orchestration repeatedly normalizes selectors through `valueOf()`
+
+So the GC problem is not “mystery GC.”
+It is:
+
+- planner object churn
+- clone/materialization churn
+- generated selector-node churn
+- normalized string churn
+
+## Current Rethink Direction
+
+This profile changes the next-step strategy:
+
+- stop assuming micro “obvious” fast paths will pay off
+- prioritize changes that reduce search-space or object lifetime, not just line
+  count inside a hot function
+- treat the extend pipeline itself as suspect architecture:
+  - whole-program fixed-point scans
+  - repeated selector planning
+  - repeated selector composition
+  - repeated clone/materialize work
+
+Near-term priority order from this evidence:
+
+1. reduce planner object creation in `selector-match-core.ts` without changing
+   result semantics
+2. reduce clone/materialize work in `node-base.ts` and direct callers
+3. reduce selector recomposition in `ruleset.ts` / `selector-utils.ts`
+4. only after that, revisit orchestration-level caching in `extend-roots.ts`

@@ -141,6 +141,46 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 When the active task is runtime-performance work, do not improvise the loop in
 chat. Use this section as the execution contract.
 
+### Extend / Selector Guardrails
+
+For any change touching:
+
+- `processExtends(...)`
+- selector matching
+- selector composition
+- extend rewrite/materialization
+
+read [extends-performance-contract.md](./extends-performance-contract.md)
+first and treat it as binding.
+
+Required proof shape:
+
+- semantic tests green
+- work-counter tests green
+- real benchmark non-regression
+
+Counter-backed proof is required before keeping a change on these paths. Record
+which class of work went down:
+
+- reject-path planner work
+- selector composition
+- rewrite/materialization
+- clone/create/inherit churn
+- GC-heavy allocation pressure
+
+If a change stays green but adds a new class of work before candidate survival,
+reject it.
+
+Every extend / selector PR or keep decision must answer:
+
+1. what gets rejected before planning?
+2. what gets planned once vs repeatedly?
+3. what gets composed only after survival?
+4. what gets rewritten only on positive match?
+5. which counters went down?
+6. which semantic tests proved correctness?
+7. which work-characterization test proved less work?
+
 ### Goal
 
 Beat historical Less v4 benchmark time by reducing runtime work, especially:
@@ -244,6 +284,31 @@ Recent anti-pattern evidence:
     `selector-pseudo.ts` and `call.ts`
   - hostile extend/comment/reference gates stayed green
   - `benchmark.less` improved into the `~2.66s` to `~2.69s` band
+- a newer keep landed in extend-core helper overhead:
+  - `finalizeDerivedSelector(...)` now restores reused child parents with
+    direct property assignment instead of `Reflect.set(...)`
+  - `setSelectorContainerValue(...)` now assigns `target.value` directly
+  - hostile extend/comment/reference gates stayed green
+  - rebuild-backed `benchmark.less` runs landed at `2649.31ms`,
+    `2669.99ms`, and `2651.16ms`
+- a small helper-overhead keep landed in selector utils:
+  - `getSelectorListArgNode(...)` now reads `target.arg` directly instead of
+    `Reflect.get(target, 'arg')`
+  - hostile extend/comment/reference gates stayed green
+  - rebuild-backed `benchmark.less` runs landed at `2660.50ms` and
+    `2664.92ms`
+- a stronger helper-allocation keep landed in extend-core:
+  - `finalizeDerivedSelector(...)` now uses a simple loop instead of
+    `flatMap(...)` to collect reused child parents
+  - hostile extend/comment/reference gates stayed green
+  - rebuild-backed `benchmark.less` runs landed at `2625.36ms` and
+    `2611.58ms`
+- a stronger keep landed immediately after in the same file:
+  - `normalize(...)` now uses direct loops instead of `map(...).filter(...)`
+    in the compound and selector-list branches
+  - hostile extend/comment/reference gates stayed green
+  - rebuild-backed `benchmark.less` runs landed at `2560.20ms` and
+    `2614.91ms`
 
 ### Focused Test Gates
 
@@ -332,9 +397,10 @@ Revert signal:
 
 - Main benchmark surface:
   `packages/less/benchmark/benchmark.less` in the Less v5 alpha linked
-  worktree is currently sitting in the `~2.71s` to `~2.76s` band on repeated
-  `3` run / `1` warmup samples with `--math=parens-division`, with the current
-  best sample around `2714ms`.
+  worktree is currently sitting in the `~2.56s` to `~2.62s` band on repeated
+  rebuild-backed `3` run / `1` warmup samples with
+  `--math=parens-division`, with the current best accepted sample around
+  `2560ms`.
 - Recent kept wins:
   - `Node.get(...)` canonical fast path in
     `packages/core/src/tree/node-base.ts`
@@ -359,6 +425,80 @@ Revert signal:
   - selector string caching inside
     `packages/core/src/tree/util/extend-roots.ts`
     `getRulesetExtendTarget(...)`
+  - parent-selector cache locals inside
+    `packages/core/src/tree/ruleset.ts`
+    `getEffectiveSelector(...)`
+    - focused gate stayed green
+    - protocol rebuild + reruns landed at `2678.99ms` and `2702.79ms`
+  - resolved-selector pre-copy removal inside
+    `packages/core/src/tree/extend.ts`
+    `materializeImplicitAmpersands(...)`
+    - focused gate stayed green
+    - protocol rebuild benchmark regressed to `2720.04ms`
+  - pseudo copy-on-write cleanup inside
+    `packages/core/src/tree/util/extend-core.ts`
+    `normalize(...)` / `materializeAmpersandsForHoist(...)`
+    - focused gate stayed green
+    - protocol rebuild benchmark regressed to `2709.49ms`
+  - selector-list loop rewrite inside
+    `packages/core/src/tree/util/extend-core.ts`
+    `materializeAmpersandsForHoist(...)`
+    - focused gate stayed green
+    - protocol rebuild benchmark regressed to `2665.53ms`
+  - single-pass child replacement scan inside
+    `packages/core/src/tree/util/extend-core.ts`
+    `replaceDirectSelectorChild(...)`
+    - focused gate stayed green
+    - protocol rebuild benchmark regressed to `2661.53ms`
+  - matched-compound loop rewrite inside
+    `packages/core/src/tree/util/extend-core.ts`
+    `buildMatchedCompoundSelector(...)`
+    - focused gate stayed green
+    - protocol rebuild benchmark regressed to `2731.28ms`
+  - root visible-instruction cache inside
+    `packages/core/src/tree/util/extend-roots.ts`
+    `processExtends(...)`
+    - widened extend gate stayed green, including
+      `process-extends.test.ts`
+    - protocol rebuild benchmark landed at `2645.26ms` and `2656.76ms`
+    - rejected
+  - identity short-circuit inside
+    `packages/core/src/tree/util/extend-roots.ts`
+    `getRulesetExtendTarget(...)`
+    - widened extend gate stayed green, including
+      `process-extends.test.ts`
+    - protocol rebuild benchmark landed at `2642.69ms`
+    - rejected
+  - selector-match planner direct-field rewrite inside
+    `packages/core/src/tree/util/selector-match-core.ts`
+    `buildGroupRequirements(...)` / `buildRouteMatchPlan(...)`
+    - widened selector/extend gate stayed green, including
+      `selector-match-unit.test.ts`, `fast-reject.test.ts`, and
+      `process-extends.test.ts`
+    - protocol rebuild benchmark regressed to `2795.85ms`
+    - rejected
+  - span-match memoization inside
+    `packages/core/src/tree/util/selector-match-core.ts`
+    `collectGroupMatchLocations(...)`
+    - widened selector/extend gate stayed green, including
+      `selector-match-unit.test.ts`, `fast-reject.test.ts`, and
+      `process-extends.test.ts`
+    - protocol rebuild benchmark regressed to `2681.55ms`
+    - rejected
+  - empty-requirement fast path inside
+    `packages/core/src/tree/util/selector-match-core.ts`
+    `mergeRequirements(...)`
+    - widened selector/extend gate stayed green, including
+      `selector-match-unit.test.ts`, `fast-reject.test.ts`, and
+      `process-extends.test.ts`
+    - protocol rebuild benchmark regressed to `2827.92ms`
+    - rejected
+  - direct constructor dispatch inside
+    `packages/core/src/tree/node-base.ts`
+    `Node.create(...)`
+    - widened selector/extend gate stayed green
+    - protocol rebuild benchmark regressed to `2811.17ms`
+    - rejected
 - Current CPU profile on the big benchmark is dominated by generalized
   node/selector lifecycle work rather than by parser cost:
   - `setNodeField`
@@ -378,6 +518,9 @@ Interpretation:
 - treat generalized clone/inherit/adopt behavior as suspect legacy debt
 - prefer cuts that delete broad copy/state propagation over cuts that merely
   shuffle repeated `valueOf()` or small-loop work
+- recent selector-materialization “obvious” copy-removal cuts are not paying
+  rent; do not keep them unless the rebuild-backed benchmark moves, not just
+  the source-linked pre-build loop
 - key-set direction should move toward per-selector / per-selector-part bit
   ownership, not recursive library seeding through whole selector trees
 - allocate or resolve selector-bit identity only when a selector is actually
