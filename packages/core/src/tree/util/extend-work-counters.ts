@@ -2,6 +2,32 @@ import { Node } from '../node.js';
 import { Ruleset } from '../ruleset.js';
 
 export type ExtendWorkCounters = {
+  recordedExtendInstructions: number;
+  recordedExtendTargetsMissingKeySetLibrary: number;
+  recordedExtendTargetsWithAmpersand: number;
+  recordedExtendTargetsNonStatic: number;
+  recordedExtendTargetsStaticNoAmpersand: number;
+  recordedExtendWithMissingKeySetLibrary: number;
+  recordedExtendWithAmpersand: number;
+  recordedExtendWithNonStatic: number;
+  selectorMatchCalls: number;
+  selectorMatchCallsWithParent: number;
+  selectorMatchCallsWithoutParent: number;
+  selectorPlanCacheHits: number;
+  selectorPlanCacheMisses: number;
+  selectorPlanCacheBypassParent: number;
+  selectorPlanCacheBypassAmpersand: number;
+  selectorPlanCacheBypassNonStatic: number;
+  selectorPlanRequestsFind: number;
+  selectorPlanRequestsTarget: number;
+  selectorPlanRequestsParent: number;
+  selectorPlanRequestsResolved: number;
+  selectorMatchFastRejectEligibleCalls: number;
+  selectorMatchCallsMissingFindKeySetLibrary: number;
+  selectorMatchCallsMissingFindKeySetLibraryAmpersand: number;
+  selectorMatchCallsMissingFindKeySetLibraryNonStatic: number;
+  selectorMatchCallsMissingFindKeySetLibraryStaticNoAmpersand: number;
+  selectorMatchCallsMissingTargetKeySetLibrary: number;
   processExtendsCalls: number;
   processExtendsPasses: number;
   extendRootsVisited: number;
@@ -28,6 +54,32 @@ export type ExtendWorkCounters = {
 };
 
 const ZERO_COUNTERS = (): ExtendWorkCounters => ({
+  recordedExtendInstructions: 0,
+  recordedExtendTargetsMissingKeySetLibrary: 0,
+  recordedExtendTargetsWithAmpersand: 0,
+  recordedExtendTargetsNonStatic: 0,
+  recordedExtendTargetsStaticNoAmpersand: 0,
+  recordedExtendWithMissingKeySetLibrary: 0,
+  recordedExtendWithAmpersand: 0,
+  recordedExtendWithNonStatic: 0,
+  selectorMatchCalls: 0,
+  selectorMatchCallsWithParent: 0,
+  selectorMatchCallsWithoutParent: 0,
+  selectorPlanCacheHits: 0,
+  selectorPlanCacheMisses: 0,
+  selectorPlanCacheBypassParent: 0,
+  selectorPlanCacheBypassAmpersand: 0,
+  selectorPlanCacheBypassNonStatic: 0,
+  selectorPlanRequestsFind: 0,
+  selectorPlanRequestsTarget: 0,
+  selectorPlanRequestsParent: 0,
+  selectorPlanRequestsResolved: 0,
+  selectorMatchFastRejectEligibleCalls: 0,
+  selectorMatchCallsMissingFindKeySetLibrary: 0,
+  selectorMatchCallsMissingFindKeySetLibraryAmpersand: 0,
+  selectorMatchCallsMissingFindKeySetLibraryNonStatic: 0,
+  selectorMatchCallsMissingFindKeySetLibraryStaticNoAmpersand: 0,
+  selectorMatchCallsMissingTargetKeySetLibrary: 0,
   processExtendsCalls: 0,
   processExtendsPasses: 0,
   extendRootsVisited: 0,
@@ -54,6 +106,32 @@ const ZERO_COUNTERS = (): ExtendWorkCounters => ({
 });
 
 const EXTEND_WORK_COUNTER_KEYS: Array<keyof ExtendWorkCounters> = [
+  'recordedExtendInstructions',
+  'recordedExtendTargetsMissingKeySetLibrary',
+  'recordedExtendTargetsWithAmpersand',
+  'recordedExtendTargetsNonStatic',
+  'recordedExtendTargetsStaticNoAmpersand',
+  'recordedExtendWithMissingKeySetLibrary',
+  'recordedExtendWithAmpersand',
+  'recordedExtendWithNonStatic',
+  'selectorMatchCalls',
+  'selectorMatchCallsWithParent',
+  'selectorMatchCallsWithoutParent',
+  'selectorPlanCacheHits',
+  'selectorPlanCacheMisses',
+  'selectorPlanCacheBypassParent',
+  'selectorPlanCacheBypassAmpersand',
+  'selectorPlanCacheBypassNonStatic',
+  'selectorPlanRequestsFind',
+  'selectorPlanRequestsTarget',
+  'selectorPlanRequestsParent',
+  'selectorPlanRequestsResolved',
+  'selectorMatchFastRejectEligibleCalls',
+  'selectorMatchCallsMissingFindKeySetLibrary',
+  'selectorMatchCallsMissingFindKeySetLibraryAmpersand',
+  'selectorMatchCallsMissingFindKeySetLibraryNonStatic',
+  'selectorMatchCallsMissingFindKeySetLibraryStaticNoAmpersand',
+  'selectorMatchCallsMissingTargetKeySetLibrary',
   'processExtendsCalls',
   'processExtendsPasses',
   'extendRootsVisited',

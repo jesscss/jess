@@ -4,7 +4,8 @@
 
 1. [eval-state-sketch.md](./eval-state-sketch.md)
 2. [node-update-status.md](./node-update-status.md)
-3. [README.md](./README.md)
+3. [extend-selector-performance-status.md](./extend-selector-performance-status.md)
+4. [README.md](./README.md)
 
 ## Current Direction
 
@@ -135,6 +136,38 @@ Core tests no longer need to preserve old-model mutation APIs. Do not add new
 4. Run only the focused proof and the nearest behavioral file while iterating.
 5. Update docs only if the model or migration status actually changed.
 6. Commit and push.
+
+## Phase Transition Rule
+
+Do not churn on micro-cuts forever.
+
+Use narrow cuts only while they are still producing real information or real
+kept wins.
+
+A seam is locally exhausted when one or more of these are true:
+
+- the last several micro-cuts on that seam are benchmark-neutral or negative
+- nearby cuts keep passing tests but do not produce a durable benchmark win
+- “obvious” local cleanups repeatedly break semantics on hostile fixture gates
+- the remaining profile cost is clearly architectural: rescans, planning,
+  composition, cloning, or GC-heavy churn
+
+When a seam is locally exhausted:
+
+1. stop taking adjacent micro-cuts on that seam
+2. record the exhaustion in [node-update-status.md](./node-update-status.md)
+3. choose one bounded structural rewrite for that seam
+4. run that larger phase behind the same semantic + work-counter + benchmark
+   gates
+
+Examples of bounded structural rewrites:
+
+- replace one planner stage
+- replace one rewrite/materialization stage
+- replace one whole-world scan with a queue/indexed candidate set
+
+Do not jump straight from micro-cuts to a whole-subsystem rewrite. Pick one
+boundary and hold the rest stable.
 
 ## Performance Execution Protocol
 
@@ -752,6 +785,87 @@ Serialization note:
 
 Latest accepted benchmark evidence on `benchmark.less`:
 
+- `selector-match-core.ts` static parentless match-plan caching under eval:
+  keep
+  - `getSelectorMatchPlan(...)` now reuses the existing selector-plan cache for
+    parentless selectors even when `evalContext` is present, but only when the
+    selector is static (`!F_AMPERSAND && !F_NON_STATIC`)
+  - hostile selector-match / process-extends / work-contract gates stayed green
+  - fresh real benchmark runs improved to `2700.96ms` avg and then
+    `2679.73ms` avg (`2674.82ms` min, `2684.64ms` max)
+  - note: the current counter snapshot did not show a drop in
+    `routePlansBuilt`, so the next measurement pass should add explicit plan
+    cache hit/miss counters before drawing deeper conclusions about where the
+    time moved
+- `selector-match-core.ts` static plan caching when a parent object is present:
+  reject
+  - widening the same cache rule to selectors without ampersands/non-static
+    flags even when `parent` was passed stayed green on hostile source gates
+  - but real `benchmark.less` regressed hard to `3009.56ms` avg
+    (`2920.88ms` min, `3098.24ms` max)
+  - so parent presence still matters enough to plan shape or branch cost that
+    this broader reuse is not safe as a perf keep
+- `selector-match-core.ts` parent-keyed pair cache for static selector plans:
+  reject
+  - caching by exact `(selector,parent)` identity/value pair stayed green on
+    the same hostile source gates
+  - but real `benchmark.less` still regressed to `2782.93ms` avg
+    (`2778.18ms` min, `2787.67ms` max)
+  - so the remaining planner cost is not solved by simple parent-keyed reuse;
+    the next cut needs a different seam than “cache more parent plans”
+- `Ruleset.getRenderableSelector(...)` late `hasSourceExtendWrapperParent(...)` check:
+  keep
+  - only pay the extend-wrapper-parent check after the ruleset is otherwise
+    eligible to return `ownSelector`
+  - benchmark improved to `2627.61ms` avg (`2619.53ms` min, `2635.70ms` max)
+- `Ruleset.getEffectiveSelector(...)` unchanged-selector early return:
+  keep
+  - return immediately when the own selector and active selector are the same
+    node and the ruleset is not hoisted
+  - benchmark improved to `2656.06ms` avg (`2655.30ms` min, `2656.81ms` max)
+- `Ruleset.getEffectiveSelector(...)` lazy `getParentRuleset(...)` lookup:
+  keep
+  - defer the parent-ruleset walk until selector recomposition actually needs
+    parent context
+  - benchmark improved to `2682.14ms` avg (`2679.48ms` min, `2684.80ms` max)
+- `Ruleset.getEffectiveSelector(...)` identity-only parent-composition deferral:
+  keep
+  - when `ownSelector` and the active selector are the same node, skip the
+    parent effective-selector composition path entirely
+  - hostile selector/extend/ruleset gates stayed green after rebuild
+  - `benchmark.less` measured `2781.05ms` avg (`2772.53ms` min, `2789.56ms`
+    max)
+- `Ruleset.normalizeParentSelector(...)` deferred parent-ruleset lookup:
+  reject, regressed to `2662.57ms`
+- `Ruleset.getHeaderString(...)` context render-key reuse:
+  reject, semantic gate stayed green but `benchmark.less` regressed to
+  `2676.85ms` avg (`2673.03ms` min, `2680.68ms` max)
+- `Ruleset.getEffectiveSelector(...)` no-`ownSelector` early return:
+  reject, semantic gate stayed green but `benchmark.less` regressed to
+  `2661.52ms` avg (`2656.31ms` min, `2666.73ms` max)
+- `Ruleset.getRenderableSelector(...)` hoist/collapse early dispatch:
+  reject, semantic gate stayed green but `benchmark.less` regressed to
+  `2708.17ms` avg (`2697.65ms` min, `2718.68ms` max)
+- `selector-match-core.ts` lazy `activePath`-Set initialization in
+  `buildGroupRequirements(...)` / `consumeGroupBasics(...)`:
+  reject immediately, broke real extend fixtures before benchmarking
+- `selector-match-core.ts` compound-window min-span cutoff in
+  `collectGroupMatchLocations(...)`:
+  reject immediately, broke real extend fixtures before benchmarking even when
+  narrowed away from direct ampersand compounds
+- `selector-match-core.ts` plain-compound linear span collector in
+  `collectGroupMatchLocations(...)`:
+  reject immediately, preserved selector-match unit tests but broke real extend
+  fixtures (`&:after`, nested parent context, `&&`) before benchmarking
+- `extend-roots.ts` target-info tree-only invalidation in `processExtends(...)`:
+  reject immediately, broke real extend fixtures before benchmarking; current
+  target-info dependencies extend beyond the changed ruleset subtree
+- `extend-roots.ts` precomputed visible-instruction lists in `processExtends(...)`:
+  reject immediately, broke real extend fixtures before benchmarking; current
+  instruction visibility is not safely static under the existing pass model
+- `getParentRuleset(...)` fast-path acyclic walk:
+  reject on rebuilt verification; could not reproduce the earlier apparent
+  `2622ms` win on the current stack, so do not cite it as an accepted keep
 - `FunctionRegistry.cloneForRules(...)` conditional empty-container cloning:
   reject, regressed to about `2770ms`
 - `Reference` materialize-only-when-needed:
@@ -800,5 +914,271 @@ Execution rule for the next passes:
 
 Immediate next target:
 
-- either `packages/core/src/tree/condition.ts`
-- or broader clone / adopt pressure in `packages/core/src/tree/node-base.ts`
+- current accepted structural keep is in
+  `packages/core/src/tree/util/selector-match-core.ts`
+- next pass should measure selector-plan cache hit/miss behavior explicitly,
+  because the benchmark improved but the current aggregate counters did not yet
+  show which planner metric moved
+- after that, stay on selector-match planner/search-space cost before falling
+  back to broader clone / adopt pressure in `packages/core/src/tree/node-base.ts`
+
+## New Kept Structural Win
+
+Kept in `packages/core/src/tree/util/extend-roots.ts`:
+
+- cache per-ruleset `RulesetTargetBaseInfo` within each extend-root pass and
+  thread it through:
+  - `getCachedTargetInfo(...)`
+  - `getRulesetInstructionSignature(...)`
+  - `applyInstructionToRuleset(...)`
+  - `instructionCouldAffectRuleset(...)`
+- cached base info contains:
+  - current effective selector
+  - own selector
+  - wrapper-parent status
+  - parent selector before extend
+  - active parent selector
+- when an extend rewrite changes a ruleset, invalidate cached base info for
+  that changed ruleset subtree before the next orchestration step
+
+Important semantic correction:
+
+- `packages/core/src/tree/ruleset.ts`
+  - restore `getRenderableSelector(...)` and `getEffectiveSelector(...)` to the
+    `HEAD` parent-composition logic
+  - the broad collapse/render regressions were caused by the local `ruleset.ts`
+    perf edits, not by the new `extend-roots.ts` cache
+  - do not reintroduce those `ruleset.ts` edits without rerunning the broad
+    render suites
+
+Verified green on the kept stack:
+
+- `packages/core/src/tree/__tests__/ruleset.test.ts`
+- `packages/core/src/tree/__tests__/extend-eval-integration.test.ts`
+- `packages/core/src/tree/util/__tests__/extend-work-contract.test.ts`
+- `packages/core/src/tree/util/__tests__/selector-composition-work.test.ts`
+- `packages/core/src/tree/util/__tests__/process-extends.test.ts`
+- `packages/core/src/tree/util/__tests__/selector-match-unit.test.ts`
+- `packages/core/src/tree/util/__tests__/extend-comment-handling.test.ts`
+- `packages/core/src/tree/util/__tests__/extend-core-unit.test.ts`
+
+Current kept measurements:
+
+- direct built-package eval harness on real `benchmark.less`:
+  - elapsed after base-info cache keep: `1520.80ms`
+  - elapsed after fallback-base-info reuse keep: `968.81ms`
+  - elapsed after visibility-check simplification keep: `1089.45ms`
+  - elapsed after reusing the pre-signature `targetInfo` lookup: `814.95ms`
+  - `targetInfoBuilds`: `78971`
+  - `effectiveSelectorReads`: `22278`
+  - `selectorCompositionCalls`: `13008`
+  - `routePlansBuilt`: `83404`
+  - `groupRequirementsBuilt`: `192111`
+  - `selectorPlanCacheHits`: `265870`
+  - `selectorPlanCacheMisses`: `23037`
+  - `selectorPlanCacheBypassParent`: `79921`
+- external Less benchmark:
+  - after base-info cache keep:
+    - `avg: 1183.86ms`
+    - `min: 1159.86ms`
+    - `max: 1207.85ms`
+  - after fallback-base-info reuse keep:
+    - `avg: 865.99ms`
+    - `min: 861.06ms`
+    - `max: 870.93ms`
+  - after visibility-check simplification keep:
+    - `avg: 863.47ms`
+    - `min: 843.55ms`
+    - `max: 883.39ms`
+  - after reusing the pre-signature `targetInfo` lookup:
+    - `avg: 807.01ms`
+    - `min: 793.74ms`
+    - `max: 820.28ms`
+
+Additional kept changes on top of the base-info cache:
+
+- `packages/core/src/tree/util/extend-roots.ts`
+  - `getExactOwnSelectorFallbackTarget(...)` now reuses cached
+    `RulesetTargetBaseInfo`
+  - added `parentOwnSelector` to the cached base-info shape so the fallback
+    path does not recompute parent selector ownership and parent selectors
+  - this was the next large drop after the original base-info cache keep
+- `packages/core/src/tree/util/extend-roots.ts`
+  - `isInstructionVisibleForRoot(...)` now uses the cached visible-root set
+    directly instead of paying a recursive `isSameOrDescendantRoot(...)`
+  fast-path before the set lookup
+  - this was a small but real external benchmark improvement on top of the
+    fallback-base-info reuse keep
+- `packages/core/src/tree/util/extend-roots.ts`
+  - `processExtends(...)` now computes `targetInfoBefore` once per
+    ruleset/instruction attempt, uses it for the before-signature, and threads
+    it into `applyInstructionToRuleset(...)` instead of paying a second
+    `getCachedTargetInfo(...)` lookup on the hot path
+  - `applyInstructionToRuleset(...)` still falls back to the existing lookup
+    when no initial target info was provided, so the semantic surface stays the
+    same
+  - this is the current best kept external benchmark result
+
+Interpretation:
+
+- this is the first kept larger-phase win that survived broad render semantics,
+  hostile source gates, and the real external benchmark
+- the win is not from fewer `targetInfoBuilds`; it is from reusing ruleset
+  selector/parent context instead of recomputing it on every
+  ruleset-instruction interaction
+- the saved work is concentrated in:
+  - `effectiveSelectorReads`
+  - selector composition
+  - route-plan construction
+  - group-requirement construction
+- the latest keep confirms that the remaining adjacent seam is still the
+  per-instruction target/signature work inside `processExtends(...)`, not more
+  selector recomposition churn
+
+Rejected adjacent follow-ups on top of this keep:
+
+- `packages/core/src/tree/util/extend-roots.ts`
+  - skipping the post-match signature recompute/store when
+    `applyInstructionToRuleset(...)` matched but did not change the ruleset
+  - semantically green, but direct harness regressed to `919.99ms` and the
+    external benchmark regressed to `859.98ms`
+- `packages/core/src/tree/util/extend-roots.ts`
+  - precomputing `target.valueOf()` / `extendWith.valueOf()` on each recorded
+    extend instruction
+  - semantically green, but direct harness regressed to `928.39ms` and the
+    external benchmark regressed to `912.55ms`
+- `packages/core/src/tree/util/extend-roots.ts`
+  - storing a cached `signature` string on each `TargetInfo`
+  - semantically green, but direct harness regressed to `832.43ms` and the
+  external benchmark regressed to `819.93ms`
+- `packages/core/src/tree/util/extend-roots.ts`
+  - replacing the per-root `instructions.filter(...)` visibility build with a
+    local push loop
+  - semantically green, but direct harness regressed to `862.72ms` and the
+    external benchmark regressed to `825.87ms`
+- `packages/core/src/tree/util/extend-roots.ts`
+  - moving visible-instruction filtering ahead of the
+    `context.renderKey` / `context.rulesContext` swap so roots with no visible
+    instructions skip the context save/restore path
+  - semantically green, but direct harness regressed to `840.33ms` and the
+    external benchmark regressed to `814.47ms`
+
+## Real Benchmark Counter Snapshot
+
+New measurement harness:
+
+- `packages/jess/test/less/benchmark-extend-counters.test.ts`
+  - env-gated manual harness for wrapping a real Less file eval in
+    `withExtendWorkCounters(...)`
+  - run with:
+    `JESS_EXTEND_COUNTERS_FILE=/Users/matthew/git/worktrees/less.js/alpha/packages/less/benchmark/benchmark.less pnpm exec vitest packages/jess/test/less/benchmark-extend-counters.test.ts --run --no-color`
+
+Current real-file snapshot on `benchmark.less`:
+
+- elapsed eval time under the harness: `3130.10ms`
+- `processExtendsCalls`: `1`
+- `processExtendsPasses`: `2`
+- `extendRootsVisited`: `3382`
+- `rulesetsVisited`: `3364`
+- `instructionsConsidered`: `87464`
+- `recordedExtendInstructions`: `26`
+- `recordedExtendTargetsMissingKeySetLibrary`: `26`
+- `recordedExtendTargetsWithAmpersand`: `0`
+- `recordedExtendTargetsNonStatic`: `0`
+- `recordedExtendTargetsStaticNoAmpersand`: `26`
+- `recordedExtendWithMissingKeySetLibrary`: `26`
+- `recordedExtendWithAmpersand`: `0`
+- `recordedExtendWithNonStatic`: `0`
+- `targetInfoBuilds`: `78971`
+- `selectorMatchCalls`: `137071`
+- `selectorMatchCallsWithParent`: `76916`
+- `selectorMatchCallsWithoutParent`: `60155`
+- `selectorMatchFastRejectEligibleCalls`: `0`
+- `selectorMatchCallsMissingFindKeySetLibrary`: `137071`
+- `selectorMatchCallsMissingFindKeySetLibraryAmpersand`: `0`
+- `selectorMatchCallsMissingFindKeySetLibraryNonStatic`: `0`
+- `selectorMatchCallsMissingFindKeySetLibraryStaticNoAmpersand`: `137071`
+- `selectorMatchCallsMissingTargetKeySetLibrary`: `2030`
+- `effectiveSelectorReads`: `435770`
+- `selectorCompositionCalls`: `280220`
+- `routePlansBuilt`: `372417`
+- `groupRequirementsBuilt`: `920230`
+- `fastRejectChecks`: `0`
+- `fastRejectRejects`: `0`
+- `positiveMatches`: `106`
+- `rewritesApplied`: `51`
+- `nodeCreates`: `520270`
+- `nodeClones`: `2579202`
+- `nodeCopies`: `566962`
+- `nodeInherits`: `2919406`
+- `nodeValueOfCalls`: `453215`
+
+Interpretation:
+
+- `benchmark.less` absolutely does exercise extend
+- the current fast-reject path is not merely underperforming, it is not even
+  eligible on the real benchmark
+- every recorded extend target on the real benchmark is a static,
+  non-ampersand selector, but every one is still missing `keySetLibrary`
+- every `selectorMatch(...)` call that misses `find.keySetLibrary` is also
+  seeing a static, non-ampersand `find` selector
+- so the immediate blocker is not dynamic extend shape; it is the lack of a
+  detached recorded-target fact representation for static extend targets
+- more than half of the selector matches are also parent-aware
+- next structural work should focus on explicit recorded extend target facts /
+  instruction facts, not more random planner micro-cuts and not naïve
+  `keySetLibrary` mutation on selector nodes
+
+Rejected follow-up from this measurement:
+
+- `packages/core/src/tree/extend.ts`
+  - naïvely seeding `keySetLibrary` onto the recorded extend target and
+    resolved extend-with selector before pushing into `context.extends`
+  - broke real extend semantics immediately (`&:after`, `&&`, nested parent
+    context) and made the real benchmark worse (`2962.37ms` avg)
+  - reverted immediately
+- `packages/core/src/tree/util/extend-roots.ts`
+  - precomputing `targetKeySet` once per recorded instruction and doing an
+    orchestration-level disjoint reject before `selectorMatch(...)`
+  - broke the partial `:is(...)` extend work gate and regressed the real
+    benchmark to `2896.81ms` avg
+  - so even apparently static recorded-target facts are not safely detached
+    from current partial-extend semantics in the existing instruction model
+  - reverted immediately
+- `packages/core/src/tree/util/extend-roots.ts`
+  - precomputing detached `requiredKeySet` facts for static recorded targets
+    and doing a subset-style reject before `selectorMatch(...)`
+  - still broke the partial `:is(...)` gate and `process-extends` chained
+    partial-extend coverage, and still regressed the real benchmark to
+    `2889.51ms` avg
+  - so even `requiredKeySet`-style recorded facts are not safely separable
+    from the current instruction model without a deeper representation change
+  - reverted immediately
+
+Measurement harness note:
+
+- the Vitest wrapper in
+  `packages/jess/test/less/benchmark-extend-counters.test.ts` still hits a
+  Vite package-resolution failure on built `jess`
+- direct Node execution against the built `lib/index.js` files currently works
+  and was used for the latest snapshot above
+
+## Gate Caveat
+
+Do not cite `packages/core/src/tree/__tests__/extend-less-fixtures.test.ts` as
+green on the current branch unless you rerun it and record a green result on
+the exact commit under discussion.
+
+Fresh rerun on the current branch baseline is red in at least:
+
+- `1b. extend-clearfix without nesting`
+- `2. extend-exact.less`
+- `3. extend-nest.less`
+- `3b. parser-backed nested wrapped extend keeps parent context for &:hover`
+
+So for now:
+
+- treat `extend-work-contract.test.ts` and
+  `selector-composition-work.test.ts` as the reliable green work gates
+- treat `extend-less-fixtures.test.ts` as a known red baseline until it is
+  explicitly repaired and recorded

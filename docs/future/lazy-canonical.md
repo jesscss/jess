@@ -33,6 +33,8 @@ class Node {
   }
 }
 
+// @{foo} {}
+
 class Ruleset extends Node {
 
   get selector() {

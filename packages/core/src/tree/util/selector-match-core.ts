@@ -1,6 +1,6 @@
 import { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { F_AMPERSAND, type Node } from '../node.js';
+import { F_AMPERSAND, F_NON_STATIC, type Node } from '../node.js';
 import type { Context as EvalContext } from '../../context.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -457,17 +457,46 @@ function buildMatchPlan(selector: Selector, parent?: Selector, context?: EvalCon
   return buildRouteMatchPlan(selector, parent, context);
 }
 
+function canUseStaticPlanCache(
+  selector: Selector,
+  parent?: Selector,
+  _context?: EvalContext
+): boolean {
+  if (selector.hasFlag(F_AMPERSAND) || selector.hasFlag(F_NON_STATIC)) {
+    return false;
+  }
+
+  return !parent;
+}
+
 function getSelectorMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): MatchPlan {
-  if (parent || context) {
+  if (!canUseStaticPlanCache(selector, parent, context)) {
+    if (activeExtendWorkCounters) {
+      if (parent) {
+        activeExtendWorkCounters.selectorPlanCacheBypassParent++;
+      }
+      if (selector.hasFlag(F_AMPERSAND)) {
+        activeExtendWorkCounters.selectorPlanCacheBypassAmpersand++;
+      }
+      if (selector.hasFlag(F_NON_STATIC)) {
+        activeExtendWorkCounters.selectorPlanCacheBypassNonStatic++;
+      }
+    }
     return buildMatchPlan(selector, parent, context);
   }
 
   const value = selectorValueOf(selector);
   const cached = selectorMatchPlanCache.get(selector);
   if (cached && cached.value === value) {
+    if (activeExtendWorkCounters) {
+      activeExtendWorkCounters.selectorPlanCacheHits++;
+    }
     return cached.plan;
   }
 
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.selectorPlanCacheMisses++;
+  }
   const plan = buildMatchPlan(selector);
   selectorMatchPlanCache.set(selector, { value, plan });
   return plan;
@@ -1614,6 +1643,9 @@ function selectorMatchUncached(
     }
   }
 
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.selectorPlanRequestsFind++;
+  }
   const findPlan = getSelectorMatchPlan(find, undefined, evalContext);
   if (findPlan.kind !== 'route' || findPlan.units.length === 0) {
     return emptySelectorMatchState();
@@ -1842,6 +1874,9 @@ function selectorMatchUncached(
         continue;
       }
 
+      if (activeExtendWorkCounters) {
+        activeExtendWorkCounters.selectorPlanRequestsResolved++;
+      }
       const resolvedPlan = getSelectorMatchPlan(resolved as Selector, undefined, evalContext);
       const maxTailLength = Math.min(
         routeUnits.length - (ampStart + 1),
@@ -1980,7 +2015,16 @@ function selectorMatchUncached(
     return finalizeMatchState(result, context.evalContext);
   };
 
-  const parentPlan = parent ? getSelectorMatchPlan(parent, undefined, evalContext) : undefined;
+  let parentPlan: MatchPlan | undefined;
+  if (parent) {
+    if (activeExtendWorkCounters) {
+      activeExtendWorkCounters.selectorPlanRequestsParent++;
+    }
+    parentPlan = getSelectorMatchPlan(parent, undefined, evalContext);
+  }
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.selectorPlanRequestsTarget++;
+  }
   const result = matchTargetPlan(getSelectorMatchPlan(target, parent, evalContext), parentPlan);
   pushNestedPseudoMatches(find, target, result.matches, context);
   if (!result.partialMatch && result.matches.length === 0) {
@@ -2043,6 +2087,33 @@ export function selectorMatch(
   parent?: Selector,
   evalContext?: EvalContext
 ): SelectorMatchState {
+  if (activeExtendWorkCounters) {
+    activeExtendWorkCounters.selectorMatchCalls++;
+    if (parent) {
+      activeExtendWorkCounters.selectorMatchCallsWithParent++;
+    } else {
+      activeExtendWorkCounters.selectorMatchCallsWithoutParent++;
+      if (find.keySetLibrary && target.keySetLibrary) {
+        activeExtendWorkCounters.selectorMatchFastRejectEligibleCalls++;
+      }
+    }
+    if (!find.keySetLibrary) {
+      activeExtendWorkCounters.selectorMatchCallsMissingFindKeySetLibrary++;
+      if (find.hasFlag(F_AMPERSAND)) {
+        activeExtendWorkCounters.selectorMatchCallsMissingFindKeySetLibraryAmpersand++;
+      }
+      if (find.hasFlag(F_NON_STATIC)) {
+        activeExtendWorkCounters.selectorMatchCallsMissingFindKeySetLibraryNonStatic++;
+      }
+      if (!find.hasFlag(F_AMPERSAND) && !find.hasFlag(F_NON_STATIC)) {
+        activeExtendWorkCounters.selectorMatchCallsMissingFindKeySetLibraryStaticNoAmpersand++;
+      }
+    }
+    if (!target.keySetLibrary) {
+      activeExtendWorkCounters.selectorMatchCallsMissingTargetKeySetLibrary++;
+    }
+  }
+
   return selectorMatchInternal(find, target, parent, {
     pairCache: new WeakMap(),
     evalContext

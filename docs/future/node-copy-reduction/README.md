@@ -36,9 +36,10 @@ surfaces and narrow proof tests.
 
 1. [eval-state-sketch.md](./eval-state-sketch.md) — target cursor/edge model
 2. [extends-performance-contract.md](./extends-performance-contract.md) — extend / selector system work contract
-3. [node-update-status.md](./node-update-status.md) — current migration targets
-4. [HANDOFF.md](./HANDOFF.md) — short working rules for the next agent
-5. [STAGES.md](./STAGES.md) — optional branch sequencing notes
+3. [node-update-status.md](./node-update-status.md) — current edge/cursor migration targets
+4. [extend-selector-performance-status.md](./extend-selector-performance-status.md) — current extend / selector performance snapshot
+5. [HANDOFF.md](./HANDOFF.md) — short working rules and chronological experiment log
+6. [STAGES.md](./STAGES.md) — optional branch sequencing notes
 
 ## Hard Rules
 
@@ -101,3 +102,20 @@ If a read only needs path selection, then:
 - returned output has clear ownership during serialization
 - parent/child traversal is explainable in terms of canonical edges + alternate edges + cursor
 - old EvalState-only assumptions stop spreading into new code
+
+## Execution Rule
+
+Performance work here is not “micro-cuts forever.”
+
+Use small benchmark-gated cuts as a reconnaissance phase only. Once a seam
+stops producing durable wins and starts producing mostly neutral, negative, or
+semantically fragile results, stop local churn and move to one bounded
+structural rewrite for that seam.
+
+The structural phase must still stay bounded:
+
+- one planner stage
+- one rewrite/materialization stage
+- or one scan/orchestration stage
+
+Do not treat “keep trying adjacent tiny edits” as the default forever.

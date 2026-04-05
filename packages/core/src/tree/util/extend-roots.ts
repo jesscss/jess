@@ -464,9 +464,6 @@ function isInstructionVisibleForRoot(
   if (instruction.extendRoot === rootRules) {
     return true;
   }
-  if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
-    return true;
-  }
   const visibleRoots = getCachedVisibleRoots
     ? getCachedVisibleRoots(instruction.extendRoot)
     : context.extendRoots.getVisibleRoots(instruction.extendRoot);
@@ -498,13 +495,40 @@ type RecordedExtendInstruction = {
 
 type TargetInfo = ReturnType<typeof getRulesetExtendTarget>;
 type TargetInfoCache = WeakMap<Ruleset, Map<RecordedExtendInstruction, TargetInfo>>;
+type RulesetTargetBaseInfo = {
+  selector: Selector;
+  ownSelector: Selector | Nil | undefined;
+  parentOwnSelector: Selector | Nil | undefined;
+  hasWrapperParent: boolean;
+  parentSelectorBeforeExtend: Selector | Nil | undefined;
+  activeParentSelector: Selector | Nil | undefined;
+};
+type RulesetTargetBaseInfoCache = WeakMap<Ruleset, RulesetTargetBaseInfo | undefined>;
+
+function getCachedRulesetTargetBaseInfo(
+  cache: RulesetTargetBaseInfoCache | undefined,
+  ruleset: Ruleset,
+  context?: Context
+): RulesetTargetBaseInfo | undefined {
+  if (!cache) {
+    return getRulesetTargetBaseInfo(ruleset, context);
+  }
+  if (cache.has(ruleset)) {
+    return cache.get(ruleset);
+  }
+  const result = getRulesetTargetBaseInfo(ruleset, context);
+  cache.set(ruleset, result);
+  return result;
+}
 
 function getCachedTargetInfo(
   cache: TargetInfoCache | undefined,
+  baseInfoCache: RulesetTargetBaseInfoCache | undefined,
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
   context?: Context
 ): TargetInfo {
+  const baseInfo = getCachedRulesetTargetBaseInfo(baseInfoCache, ruleset, context);
   if (cache) {
     let perRuleset = cache.get(ruleset);
     if (perRuleset?.has(instruction)) {
@@ -513,7 +537,7 @@ function getCachedTargetInfo(
     if (activeExtendWorkCounters) {
       activeExtendWorkCounters.targetInfoBuilds++;
     }
-    const result = getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
+    const result = getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context, baseInfo);
     if (!perRuleset) {
       perRuleset = new Map();
       cache.set(ruleset, perRuleset);
@@ -524,7 +548,7 @@ function getCachedTargetInfo(
   if (activeExtendWorkCounters) {
     activeExtendWorkCounters.targetInfoBuilds++;
   }
-  return getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context);
+  return getRulesetExtendTarget(ruleset, instruction.target, instruction.partial, context, baseInfo);
 }
 
 function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset): void {
@@ -540,13 +564,33 @@ function invalidateTargetInfoCacheTree(cache: TargetInfoCache, ruleset: Ruleset)
   }
 }
 
+function invalidateRulesetTargetBaseInfoCacheTree(cache: RulesetTargetBaseInfoCache, ruleset: Ruleset): void {
+  cache.delete(ruleset);
+  const rules = ruleset.get('rules');
+  if (!rules || !isNode(rules, N.Rules)) {
+    return;
+  }
+  for (const child of (rules as Rules).value) {
+    if (isNode(child, N.Ruleset)) {
+      invalidateRulesetTargetBaseInfoCacheTree(cache, child as Ruleset);
+    }
+  }
+}
+
 function getRulesetInstructionSignature(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
   cache?: TargetInfoCache,
+  baseInfoCache?: RulesetTargetBaseInfoCache,
   context?: Context
 ): string | undefined {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  const targetInfo = getCachedTargetInfo(cache, baseInfoCache, ruleset, instruction, context);
+  return getTargetInfoSignature(targetInfo);
+}
+
+function getTargetInfoSignature(
+  targetInfo: TargetInfo
+): string | undefined {
   if (!targetInfo) {
     return undefined;
   }
@@ -573,15 +617,17 @@ function getRulesetExtendTarget(
   ruleset: Ruleset,
   find: Selector,
   partial: boolean,
-  context?: Context
+  context?: Context,
+  baseInfo?: RulesetTargetBaseInfo
 ): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
-  const selector = ruleset.getEffectiveSelector(false, context);
+  const resolvedBaseInfo = baseInfo ?? getRulesetTargetBaseInfo(ruleset, context);
+  const selector = resolvedBaseInfo?.selector;
   if (!selector || isNode(selector, N.Nil)) {
     return undefined;
   }
 
-  const ownSelector = ruleset.getOwnSelector(context);
-  if (hasSourceExtendWrapperParent(ruleset)) {
+  const ownSelector = resolvedBaseInfo?.ownSelector;
+  if (resolvedBaseInfo?.hasWrapperParent) {
     return {
       selector,
       usingOwnSelector: false
@@ -593,11 +639,8 @@ function getRulesetExtendTarget(
   if (ownSelector && !isNode(ownSelector, N.Nil) && isBareAmpersandOwnSelector(ownSelector)) {
     return undefined;
   }
-  const parentRs = getParentRuleset(ruleset, context);
-  const parentSelectorBeforeExtend = parentRs
-    ? (context ? parentRs.get('selectorBeforeExtend', context) : parentRs.getSelectorBeforeExtend())
-    : undefined;
-  const activeParentSelector = parentRs?.getEffectiveSelector(false, context);
+  const parentSelectorBeforeExtend = resolvedBaseInfo?.parentSelectorBeforeExtend;
+  const activeParentSelector = resolvedBaseInfo?.activeParentSelector;
   const parentSelector = (
     !partial
     && parentSelectorBeforeExtend
@@ -675,6 +718,31 @@ function getRulesetExtendTarget(
   };
 }
 
+function getRulesetTargetBaseInfo(
+  ruleset: Ruleset,
+  context?: Context
+): RulesetTargetBaseInfo | undefined {
+  const selector = ruleset.getEffectiveSelector(false, context);
+  if (!selector || isNode(selector, N.Nil)) {
+    return undefined;
+  }
+
+  const ownSelector = ruleset.getOwnSelector(context);
+  const hasWrapperParent = hasSourceExtendWrapperParent(ruleset);
+  const parentRs = hasWrapperParent ? undefined : getParentRuleset(ruleset, context);
+
+  return {
+    selector,
+    ownSelector,
+    parentOwnSelector: parentRs?.getOwnSelector(context),
+    hasWrapperParent,
+    parentSelectorBeforeExtend: parentRs
+      ? (context ? parentRs.get('selectorBeforeExtend', context) : parentRs.getSelectorBeforeExtend())
+      : undefined,
+    activeParentSelector: parentRs?.getEffectiveSelector(false, context)
+  };
+}
+
 function markExtendedSelector(selector: Selector, context?: Context): void {
   if (context) {
     selector._addFlag(F_EXTENDED, context);
@@ -722,19 +790,20 @@ function getExactOwnSelectorFallbackTarget(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
   currentTargetInfo: { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined,
+  baseInfo?: RulesetTargetBaseInfo,
   context?: Context
 ): { selector: Selector; parent?: Selector; usingOwnSelector: boolean } | undefined {
   if (instruction.partial || currentTargetInfo?.usingOwnSelector) {
     return undefined;
   }
 
-  const ownSelector = ruleset.getOwnSelector(context);
+  const resolvedBaseInfo = baseInfo ?? getRulesetTargetBaseInfo(ruleset, context);
+  const ownSelector = resolvedBaseInfo?.ownSelector;
   if (!ownSelector || isNode(ownSelector, N.Nil)) {
     return undefined;
   }
 
-  const parentRuleset = getParentRuleset(ruleset, context);
-  const parentOwnSelector = parentRuleset?.getOwnSelector(context);
+  const parentOwnSelector = resolvedBaseInfo?.parentOwnSelector;
   if (
     parentOwnSelector
     && !isNode(parentOwnSelector, N.Nil)
@@ -742,10 +811,8 @@ function getExactOwnSelectorFallbackTarget(
   ) {
     return undefined;
   }
-  const parentSelectorBeforeExtend = parentRuleset
-    ? (context ? parentRuleset.get('selectorBeforeExtend', context) : parentRuleset.getSelectorBeforeExtend())
-    : undefined;
-  const activeParentSelector = parentRuleset?.getEffectiveSelector(false, context);
+  const parentSelectorBeforeExtend = resolvedBaseInfo?.parentSelectorBeforeExtend;
+  const activeParentSelector = resolvedBaseInfo?.activeParentSelector;
   const parentSelector = (
     parentSelectorBeforeExtend
     && !isNode(parentSelectorBeforeExtend, N.Nil)
@@ -805,11 +872,14 @@ function applyInstructionToRuleset(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
   cache?: TargetInfoCache,
+  baseInfoCache?: RulesetTargetBaseInfoCache,
+  initialTargetInfo?: TargetInfo,
   context?: Context
 ): { matched: boolean; changed: boolean } {
-  let targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  const baseInfo = getCachedRulesetTargetBaseInfo(baseInfoCache, ruleset, context);
+  let targetInfo = initialTargetInfo ?? getCachedTargetInfo(cache, baseInfoCache, ruleset, instruction, context);
   if (!targetInfo) {
-    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, undefined, context);
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, undefined, baseInfo, context);
     if (!fallbackTargetInfo) {
       return { matched: false, changed: false };
     }
@@ -823,7 +893,7 @@ function applyInstructionToRuleset(
     context
   );
   if (!targetMatch.partialMatch) {
-    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, targetInfo, context);
+    const fallbackTargetInfo = getExactOwnSelectorFallbackTarget(ruleset, instruction, targetInfo, baseInfo, context);
     if (!fallbackTargetInfo) {
       return { matched: false, changed: false };
     }
@@ -947,9 +1017,10 @@ function instructionCouldAffectRuleset(
   ruleset: Ruleset,
   instruction: RecordedExtendInstruction,
   cache?: TargetInfoCache,
+  baseInfoCache?: RulesetTargetBaseInfoCache,
   context?: Context
 ): boolean {
-  const targetInfo = getCachedTargetInfo(cache, ruleset, instruction, context);
+  const targetInfo = getCachedTargetInfo(cache, baseInfoCache, ruleset, instruction, context);
   if (!targetInfo) {
     return false;
   }
@@ -988,7 +1059,6 @@ export function processExtends(context: Context): void {
       }
       return cached;
     };
-
     let targetInfoCache: TargetInfoCache = new WeakMap();
     let changed = true;
     while (changed) {
@@ -1012,6 +1082,7 @@ export function processExtends(context: Context): void {
         context.rulesContext = rootRules;
 
         try {
+          let rootTargetBaseInfoCache: RulesetTargetBaseInfoCache = new WeakMap();
           if (activeExtendWorkCounters) {
             activeExtendWorkCounters.visibleInstructionListsBuilt++;
           }
@@ -1021,7 +1092,6 @@ export function processExtends(context: Context): void {
           if (!visibleInstructions.length) {
             continue;
           }
-
           for (const ruleset of rulesetSet) {
             if (activeExtendWorkCounters) {
               activeExtendWorkCounters.rulesetsVisited++;
@@ -1038,7 +1108,14 @@ export function processExtends(context: Context): void {
                 continue;
               }
 
-              const signatureBefore = getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context);
+              const targetInfoBefore = getCachedTargetInfo(
+                targetInfoCache,
+                rootTargetBaseInfoCache,
+                ruleset,
+                instruction,
+                context
+              );
+              const signatureBefore = getTargetInfoSignature(targetInfoBefore);
               const perInstructionStates = seenRulesetInstructionStates.get(ruleset);
               if (
                 signatureBefore !== undefined
@@ -1049,7 +1126,14 @@ export function processExtends(context: Context): void {
                 continue;
               }
 
-              const outcome = applyInstructionToRuleset(ruleset, instruction, targetInfoCache, context);
+              const outcome = applyInstructionToRuleset(
+                ruleset,
+                instruction,
+                targetInfoCache,
+                rootTargetBaseInfoCache,
+                targetInfoBefore,
+                context
+              );
               if (outcome.matched) {
                 instructionMatched.add(instruction);
                 rulesetMatched = true;
@@ -1061,11 +1145,18 @@ export function processExtends(context: Context): void {
                 }
                 nextStates.set(
                   instruction,
-                  getRulesetInstructionSignature(ruleset, instruction, targetInfoCache, context) ?? signatureBefore ?? ''
+                  getRulesetInstructionSignature(
+                    ruleset,
+                    instruction,
+                    targetInfoCache,
+                    rootTargetBaseInfoCache,
+                    context
+                  ) ?? signatureBefore ?? ''
                 );
               }
               if (outcome.changed) {
                 invalidateTargetInfoCacheTree(targetInfoCache, ruleset);
+                invalidateRulesetTargetBaseInfoCacheTree(rootTargetBaseInfoCache, ruleset);
                 targetInfoCache = new WeakMap();
                 let nextAppliedInstructions = appliedInstructions;
                 if (!nextAppliedInstructions) {
@@ -1118,7 +1209,7 @@ export function processExtends(context: Context): void {
         }
 
         for (const ruleset of rulesets) {
-          if (instructionCouldAffectRuleset(ruleset, instruction, targetInfoCache, context)) {
+          if (instructionCouldAffectRuleset(ruleset, instruction, targetInfoCache, undefined, context)) {
             return true;
           }
         }

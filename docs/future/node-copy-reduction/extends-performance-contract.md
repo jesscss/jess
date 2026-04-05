@@ -104,6 +104,58 @@ A keep requires all three:
 
 Any two of the three are not enough.
 
+## Execution Phases
+
+Extend and selector-performance work has two phases. Do not blur them.
+
+### Phase 1: Reconnaissance
+
+Use narrow, benchmark-gated cuts to map the runtime:
+
+- confirm which hot seams produce real wins
+- confirm which seams only produce semantic breakage or benchmark regressions
+- harvest obviously redundant work that can be removed safely
+
+Phase 1 is temporary. It is not the long-term execution mode.
+
+### Phase 2: Bounded Structural Rewrite
+
+When a seam stops paying, stop taking adjacent micro-cuts and move to one
+bounded architectural rewrite for that seam.
+
+Examples:
+
+- replace one planner stage
+- replace one rewrite/materialization stage
+- replace one whole-world scan with a queue/indexed candidate set
+
+Do not attempt a whole-subsystem rewrite in one jump. Pick one subsystem
+boundary and hold the rest stable.
+
+## Phase Transition Rule
+
+Micro-cuts must stop and a bounded structural phase must begin when any seam
+shows one or more of these conditions:
+
+- the last several micro-cuts on that seam are neutral or negative on the real
+  benchmark
+- adjacent micro-cuts keep staying green while adding no durable benchmark win
+- “allocation-only” or “obvious” local changes repeatedly break semantics
+- the profile still accuses the system shape rather than one local helper
+- the remaining cost is dominated by repeated planning, composition, cloning,
+  or rescanning rather than one isolated hot function
+
+When those conditions are true, further micro-churn is a process failure.
+
+The next step is:
+
+1. declare the seam locally exhausted in transient docs
+2. name the bounded structural target
+3. implement that larger phase behind semantic, work-counter, and benchmark
+   gates
+
+Do not keep mining the same seam for small cuts once it has crossed this line.
+
 ## Required Work Counters
 
 Extend-path changes must use and report these counters:
