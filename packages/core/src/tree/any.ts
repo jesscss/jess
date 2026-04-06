@@ -45,9 +45,6 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  type = 'Any';
-  shortType = 'any';
-
   constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
     super(...args);
     this.addFlag(F_STATIC);

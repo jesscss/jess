@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions, type RenderKey } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -76,6 +76,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * If this ruleset shares its value object with a descendant ruleset, give those
    * descendants their own value so mutating this ruleset's value.selector does not
    * overwrite the descendant's selector (e.g. .rep_ace nested ruleset case).
+   *
+   * @todo - this is LLM garbage, remove later
    */
   static ensureDescendantRulesetsHaveOwnValue(
     ruleset: Ruleset,

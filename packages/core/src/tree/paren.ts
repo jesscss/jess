@@ -2,7 +2,7 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC } from './node.js';
+import { Node, defineType, F_NON_STATIC, type Mutable } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -85,18 +85,16 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (isOp && !isOpOrExpression(value)) {
           return value;
         }
-        let node = this.maybeClone(context);
-        node.value = value;
-        return node;
+        this.set(null, value, context.renderKey);
+        return this;
       };
       if (isThenable(maybeEvald)) {
         return (maybeEvald as Promise<Node>).then(after);
       }
       return after(maybeEvald as Node);
     }
-    let node = this;
-    node.value = value;
-    return node;
+    this.set(null, value, context.renderKey);
+    return this;
   }
 
   // toCSS(context: Context, out: OutputCollector) {

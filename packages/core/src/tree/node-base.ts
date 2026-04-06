@@ -1,11 +1,10 @@
-import isPlainObject from 'lodash-es/isPlainObject.js';
 import {
   type TreeContext,
   type Context
 } from '../context.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
-import type { Class, AbstractClass, Tagged } from 'type-fest';
+import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
 import { getEntriesFromNode, getValues } from './util/collections.js';
 import type { Comment } from './comment.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -13,6 +12,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
+import { isPlainObject } from './util/collections.js';
 export type { TreeContext };
 
 const { isArray } = Array;
@@ -102,8 +102,6 @@ export const defineType = <
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
   return (...args: Args) => {
     const node = new (Clazz as any)(...args) as T extends Class<infer C> ? InstanceType<Class<C, Args>> : never;
-    (node as any).type = type;
-    (node as any).shortType = shortType;
     return node;
   };
 };
@@ -142,6 +140,15 @@ export const F_DEFAULT = F_VISIBLE;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
 
+/** Base render keys */
+export const EVAL: unique symbol = Symbol('EVAL');
+export const CANONICAL: unique symbol = Symbol('CANONICAL');
+
+export type RenderKey = number | typeof EVAL | typeof CANONICAL;
+
+export type Mutable<T extends { value: unknown }> =
+  Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
+
 /**
  * The underlying type for all Jess nodes
  */
@@ -170,8 +177,8 @@ export abstract class Node<
   /**
    * Assigned on the prototype, make sure we don't initialize
    */
-  abstract type: string;
-  abstract shortType: string;
+  declare type: string;
+  declare shortType: string;
 
   /**
    * Bitmask of this node's type and all ancestor types.
@@ -209,6 +216,11 @@ export abstract class Node<
 
   declare fullRender: boolean;
 
+  /**
+   * @todo - Move some to _meta?
+   * Should do if some fields are not on the hot path
+   * (not read very often)
+   */
   allowRoot = false;
   allowRuleRoot = false;
   hoistToRoot: boolean | undefined = undefined;
@@ -224,14 +236,7 @@ export abstract class Node<
    * the next node when in a declaration list or main
    * rules list.
    */
-  _requiredSemi = false;
-  get requiredSemi() {
-    return this._requiredSemi;
-  }
-
-  set requiredSemi(value: boolean) {
-    this._requiredSemi = value;
-  }
+  declare _requiredSemi: boolean | undefined;
 
   /**
    * Track the original source when cloned / copied,
@@ -265,6 +270,9 @@ export abstract class Node<
    */
   frozen = false;
 
+  /** The render keys of this node */
+  declare _renderKey?: RenderKey;
+
   /**
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
@@ -273,25 +281,33 @@ export abstract class Node<
   declare readonly parent: Node | undefined;
   declare sourceParent: Node | undefined;
 
+  /** Returns cached parent if no render key specified */
+  getParent(renderKey?: RenderKey) {
+    if (!renderKey) {
+      return this.parent;
+    }
+    return this._parentForks?.get(renderKey ?? CANONICAL);
+  }
+
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
-  protected _value: Data;
+  readonly value: Data;
 
-  /**
-   * This is the internal `data` of the node.
-   */
-  get value(): Data {
-    return this._value;
-  }
+  // /**
+  //  * This is the internal `data` of the node.
+  //  */
+  // get value(): Data {
+  //   return this._value;
+  // }
 
-  set value(val: Data) {
-    this._value = this._tryProxyWrap(val);
-    // Invalidate memoized valueOf() on selector-like nodes after mutation.
-    if ('_valueOf' in this) {
-      (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
-    }
-  }
+  // set value(val: Data) {
+  //   this._value = this._tryProxyWrap(val);
+  //   // Invalidate memoized valueOf() on selector-like nodes after mutation.
+  //   if ('_valueOf' in this) {
+  //     (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
+  //   }
+  // }
 
   /**
    * This wraps the value in a proxy if it's an object or array.
@@ -310,7 +326,7 @@ export abstract class Node<
           }
           const returnVal = Reflect.get(target, prop);
           if (isPlainObject(returnVal) || isArray(returnVal)) {
-            if (returnVal[IS_PROXY]) {
+            if (Reflect.get(returnVal as object, IS_PROXY)) {
               /** Already a proxy so don't re-wrap it */
               return returnVal;
             }
@@ -373,8 +389,22 @@ export abstract class Node<
   }
 
   adopt(node: Node) {
+    let thisRenderKey = this._renderKey;
+    let childRenderKey = node._renderKey;
+
     /** The only place we should do this */
     if (!node.frozen) {
+      if (thisRenderKey !== childRenderKey) {
+        const forks: Map<RenderKey, NodeValue> = node._parentForks ??= new Map();
+        let currentParent = node.parent;
+        if (!forks.has(CANONICAL) && currentParent) {
+          /** Store the canonical parent */
+          forks.set(CANONICAL, currentParent);
+        }
+        if (thisRenderKey && thisRenderKey !== CANONICAL) {
+          forks.set(thisRenderKey, this);
+        }
+      }
       (node as any).parent = this;
     }
     if (node.hasFlag(F_NON_STATIC)) {
@@ -396,11 +426,22 @@ export abstract class Node<
    * @note - This will not process the children nodes of children nodes.
    */
   private _processNodes<T>(value: T): T {
-    for (let val of getValues(value)) {
-      if (val instanceof Node) {
-        this.adopt(val);
+    if (isArray(value)) {
+      for (let val of value) {
+        if (val instanceof Node) {
+          this.adopt(val);
+        }
+      }
+    } else if (isPlainObject(value)) {
+      for (let k in value) {
+        this._processNodes(value[k]);
+      }
+    } else {
+      if (value instanceof Node) {
+        this.adopt(value);
       }
     }
+
     return value;
   }
 
@@ -431,11 +472,98 @@ export abstract class Node<
         configurable: false
       }
     });
-    this._value = this._tryProxyWrap(value);
+    this.value = this._processNodes(value); // this._tryProxyWrap(value);
     this._treeContext = treeContext;
     this._location = location;
     this._options = options;
   }
+
+  getValue(renderKey?: RenderKey) {
+    const thisKey = this._renderKey;
+    const forks = this._childForks;
+    if (
+      !thisKey
+      || thisKey === renderKey
+      || !forks
+      || !renderKey
+      || !forks.has(renderKey)
+    ) {
+      return this.value;
+    }
+    this._renderKey = renderKey;
+    return ((this as Mutable<Node>).value = forks.get(renderKey)! as Data);
+  }
+
+  /** @todo - Fix types */
+  set(key: null | string, value: Data, renderKey: RenderKey = EVAL) {
+    const existingValue = this.value;
+    /** Don't create EVAL nodes if the value is the same */
+    if (existingValue === value
+      || existingValue?.valueOf?.() === value?.valueOf?.()
+    ) {
+      return;
+    }
+    key = key === 'value' ? null : key;
+    let thisRenderKey = this._renderKey;
+    thisRenderKey ??= CANONICAL;
+    const forks: Map<RenderKey, NodeValue> = this._childForks ??= new Map();
+    if (!forks.has(renderKey)) {
+      const existingValue = this.value;
+      /** Lazy cache existing value */
+      if (!forks.has(thisRenderKey)) {
+        forks.set(
+          thisRenderKey,
+          key
+            ? this.cloneValue(existingValue as NodeValue)
+            : existingValue as NodeValue
+        );
+      }
+      this._renderKey = renderKey;
+      value = this._processNodes(value);
+      if (key) {
+        const value = this.cloneValue(existingValue as NodeValue);
+        (this as Mutable<Node>).value = value;
+        value[key] = value as NodeValue;
+        forks.set(renderKey, value);
+      } else {
+        forks.set(renderKey, value as NodeValue);
+        (this as Mutable<Node>).value = value;
+      }
+    } else {
+      /**
+       * If the renderkey matches the existing render key,
+       * we can just set the value directly.
+       */
+      if (thisRenderKey === renderKey) {
+        if (!key) {
+          (this as Mutable<Node>).value = this._processNodes(value);
+        } else {
+          (this as Mutable<Node>).value[key] = this._processNodes(value);
+        }
+      } else {
+        this._renderKey = renderKey;
+        value = this._processNodes(value);
+        if (key) {
+          const value = this.getValue(renderKey);
+          value[key] = value;
+        } else {
+          (this as Mutable<Node>).value = value;
+          forks.set(renderKey, value);
+        }
+      }
+    }
+  }
+
+  // _checkFork() {
+  //   if (!this.forked) {
+  //     this.forked = true;
+  //     const forks = this._forks ??= new Map();
+  //     forks.set(CANONICAL, this.cloneValue(this.value));
+  //   }
+  // }
+
+  declare _childForks?: Map<RenderKey, NodeValue>;
+  declare _parentForks?: Map<RenderKey, NodeValue>;
 
   /**
    * Static factory method to create a generated node.
@@ -665,6 +793,21 @@ export abstract class Node<
     return out;
   }
 
+  cloneValue(value: NodeValue): NodeValue {
+    if (isArray(value)) {
+      return [...value] as NodeValue;
+    } else if (isPlainObject(value)) {
+      const clonedValue: Record<string, unknown> = {};
+      for (const k in value) {
+        if (Object.hasOwn(value, k)) {
+          clonedValue[k] = this.cloneValue(value[k] as NodeValue);
+        }
+      }
+      return clonedValue as NodeValue;
+    }
+    return value;
+  }
+
   /**
    * Creates a copy of the current node.
    *
@@ -680,21 +823,8 @@ export abstract class Node<
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>;
     let originalValue = this.value;
-    let newValue = { value: originalValue };
-    /**
-     * Create new array objects and plain objects
-     */
-    if (isArray(originalValue)) {
-      newValue.value = [...originalValue] as Data;
-    } else if (isPlainObject(originalValue)) {
-      let map = new Map(Object.entries(originalValue as Record<string, unknown>));
-      for (let [key, value] of map.entries()) {
-        if (isArray(value)) {
-          map.set(key, [...value]);
-        }
-      }
-      newValue.value = Object.fromEntries(map) as Data;
-    }
+    /** @todo - remove this wrapper later by providing direct cloning in nodes */
+    let newValue = { value: this.cloneValue(originalValue) };
 
     cloneFn ??= n => n.clone(deep);
 

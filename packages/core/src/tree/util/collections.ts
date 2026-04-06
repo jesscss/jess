@@ -19,7 +19,6 @@
  * arrays / objects / simple values and return the values or entries, in any order.
  */
 import type { ConditionalExcept } from 'type-fest';
-import isPlainObject from 'lodash-es/isPlainObject.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
@@ -28,6 +27,10 @@ import type { Ruleset } from '../ruleset.js';
 import type { Node } from '../node.js';
 
 const { isArray } = Array;
+
+/** Fast replacement for lodash isPlainObject — checks constructor === Object */
+export const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && value.constructor === Object;
 
 export function atIndex<T>(array: readonly T[], index: number = -1): T | undefined {
   if (index >= 0) {

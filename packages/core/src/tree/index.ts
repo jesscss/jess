@@ -11,11 +11,20 @@
  * Import from node.ts which applies all the prototype patches
  * (nil, operate, treeContext) and re-exports from node-base.ts
  */
-import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC } from './node.js';
+import {
+  Node,
+  type LocationInfo,
+  F_VISIBLE,
+  F_MAY_ASYNC,
+  F_STATIC,
+  F_NON_STATIC,
+  EVAL,
+  CANONICAL
+} from './node.js';
 import { TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
 
-export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
+export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC, EVAL, CANONICAL };
 export { N } from './node-type.js';
 
 import { Selector } from './selector.js';

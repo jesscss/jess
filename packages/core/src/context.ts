@@ -22,6 +22,7 @@ import type { Call } from './tree/call.js';
 import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
+import { type RenderKey } from './tree/node-base.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -291,6 +292,18 @@ export class Context {
   private _classMap: Map<string, string> | undefined;
   get classMap() {
     return (this._classMap ??= new Map());
+  }
+
+  private _renderKeyStack: RenderKey[] | undefined;
+  get renderKeyStack() {
+    return (this._renderKeyStack ??= []);
+  }
+
+  get renderKey() {
+    if (!this._renderKeyStack) {
+      return undefined;
+    }
+    return this.renderKeyStack[this.renderKeyStack.length - 1];
   }
 
   /** Frames for nested rulesets, used for selector evaluation */
