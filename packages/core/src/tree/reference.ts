@@ -323,7 +323,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (!targetRules) {
             return undefined;
           }
-          const opts: FindOptions = { filter, context, hasTarget };
+          const opts: FindOptions = { filter, context, hasTarget, renderKey: context.renderKey };
           if (!target && targetRules.options?.isMixinOutput === true) {
             opts.local = true;
           }
