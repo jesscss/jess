@@ -1076,15 +1076,31 @@ export abstract class Node<
       return node;
     }
 
+    /**
+     * Canonical nodes (no _renderKey) are always eligible for re-evaluation —
+     * they're the template, not a result. Only forked nodes (with a _renderKey)
+     * should be gated by evaluated/preEvaluated flags.
+     *
+     * Also re-evaluate when the context renderKey differs from the node's —
+     * the node was evaluated in a different fork.
+     */
+    const renderKey = context.renderKey;
+    const needsReeval = renderKey !== undefined
+      && node.evaluated
+      && (
+        !node._renderKey
+        || node._renderKey !== renderKey
+      );
+
     if (!node.hasFlag(F_MAY_ASYNC)) {
-      return Node._evalStaticSync(node, context);
+      return Node._evalStaticSync(node, context, needsReeval);
     }
 
     let preEvaluatedNode: Node;
 
     return pipe(
       () => {
-        if (!node.preEvaluated) {
+        if (!node.preEvaluated || needsReeval) {
           return node.preEval(context);
         }
         return node;
@@ -1095,7 +1111,7 @@ export abstract class Node<
         if (preEvald !== node) {
           preEvaluatedNode.inherit(node);
         }
-        if (!preEvaluatedNode.evaluated) {
+        if (!preEvaluatedNode.evaluated || needsReeval) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
@@ -1110,10 +1126,10 @@ export abstract class Node<
     );
   }
 
-  private static _evalStaticSync(node: Node, context: Context): Node {
+  private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
     let preEvaluatedNode: Node;
 
-    if (!node.preEvaluated) {
+    if (!node.preEvaluated || needsReeval) {
       preEvaluatedNode = node.preEval(context) as Node;
     } else {
       preEvaluatedNode = node;
@@ -1124,7 +1140,7 @@ export abstract class Node<
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated) {
+    if (!preEvaluatedNode.evaluated || needsReeval) {
       evald = preEvaluatedNode.evalNode(context) as Node;
     } else {
       evald = preEvaluatedNode;
