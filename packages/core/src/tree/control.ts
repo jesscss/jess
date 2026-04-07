@@ -4,7 +4,7 @@ import { Rules } from './rules.js';
 import { Sequence } from './sequence.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
-import { AssignmentType } from './declaration.js';
+
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -304,21 +304,13 @@ export class For extends Node<StructuredLoopValue> {
       throw new Error('Invalid $for header: missing binding variable');
     }
     const run = async (): Promise<Node> => {
-      const accumulatedNodes: Node[] = [];
+      const outputRules: Node[] = [];
       let counter = 1;
+      const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const loopRules = this.value.rules.clone(true);
-        // Preserve definition-scope parent chain so nested calls/lookups
-        // inside loop bodies resolve the same way as the original rules.
-        loopRules.inherit(this.value.rules);
-        if (accumulatedNodes.length > 0) {
-          // Make prior iteration output visible to current iteration lookups
-          // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
-          const priorScope = new Rules(accumulatedNodes.map(n => n.copy(true)));
-          priorScope.inherit(this.value.rules);
-          priorScope.adopt(loopRules);
-        }
+        const renderKey = context.ruleCounter++;
+
         const resolvedValue = await value.eval(context);
         let resolvedKey: Node;
         if (typeof key === 'number') {
@@ -330,105 +322,40 @@ export class For extends Node<StructuredLoopValue> {
         } else {
           resolvedKey = new Any(String(key), { role: 'property' });
         }
+
+        const iterationRules = Rules.create([], {
+          rulesVisibility: {
+            ...originalRules.options.rulesVisibility,
+            ...PUBLIC_RULE_VISIBILITY
+          }
+        });
+        iterationRules.inherit(originalRules);
+
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
         for (let i = Math.min(bindingNames.length, bindings.length) - 1; i >= 0; i--) {
-          loopRules.value.unshift(new VarDeclaration({
+          iterationRules.push(new VarDeclaration({
             name: new Any(bindingNames[i]!, { role: 'property' }),
             value: bindings[i]!
           }));
         }
+        for (const child of originalRules.value) {
+          iterationRules.push(child);
+        }
+
         counter++;
-        const result = await loopRules.eval(context);
+        context.renderKeyStack.push(renderKey);
+        const result = await iterationRules.eval(context);
+        context.renderKeyStack.pop();
+
         if (isNode(result, N.Rules)) {
           for (const outNode of result.value) {
-            if (isNode(outNode, N.Declaration)) {
-              const normalizedFromAssign = outNode.options.normalizedFromAssign;
-              const outName = String(outNode.value.name);
-              const isMergedAssignment =
-                normalizedFromAssign === AssignmentType.Add
-                || normalizedFromAssign === AssignmentType.MergeList
-                || normalizedFromAssign === AssignmentType.MergeSequence;
-              // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
-              // `index` declarations in plain loop bodies should remain per-iteration.
-              const shouldCoalesceByName = outName === 'padding';
-              if (isMergedAssignment || shouldCoalesceByName) {
-                let firstMatch = -1;
-                for (let i = 0; i < accumulatedNodes.length; i++) {
-                  const prev = accumulatedNodes[i]!;
-                  if (isNode(prev, N.Declaration) && String(prev.value.name) === outName) {
-                    firstMatch = i;
-                    break;
-                  }
-                }
-                if (firstMatch >= 0) {
-                  const prev = accumulatedNodes[firstMatch]!;
-                  if (isNode(prev, N.Declaration)) {
-                    const prevValue = prev.value.value;
-                    const nextValue = outNode.value.value;
-                    if (
-                      normalizedFromAssign === AssignmentType.Add
-                      || normalizedFromAssign === AssignmentType.MergeList
-                    ) {
-                      const prevItems = isNode(prevValue, N.List)
-                        ? prevValue.value
-                        : [prevValue];
-                      const nextItems = isNode(nextValue, N.List)
-                        ? nextValue.value
-                        : [nextValue];
-                      const nextAlreadyIncludesPrev =
-                        nextItems.length >= prevItems.length
-                        && prevItems.every((item, idx) => String(item.valueOf()) === String(nextItems[idx]?.valueOf()));
-                      const mergedItems = nextAlreadyIncludesPrev
-                        ? [...nextItems]
-                        : [...prevItems, ...nextItems];
-                      outNode.value.value = new List(mergedItems).inherit(outNode.value.value);
-                    } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
-                      const prevItems = isNode(prevValue, N.Sequence)
-                        ? prevValue.value
-                        : [prevValue];
-                      const nextItems = isNode(nextValue, N.Sequence)
-                        ? nextValue.value
-                        : [nextValue];
-                      const nextAlreadyIncludesPrev =
-                        nextItems.length >= prevItems.length
-                        && prevItems.every((item, idx) => String(item.valueOf()) === String(nextItems[idx]?.valueOf()));
-                      const mergedItems = nextAlreadyIncludesPrev
-                        ? [...nextItems]
-                        : [...prevItems, ...nextItems];
-                      outNode.value.value = new Sequence(mergedItems).inherit(outNode.value.value);
-                    }
-                  }
-                  accumulatedNodes[firstMatch] = outNode;
-                  for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
-                    const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, N.Declaration) && String(prev.value.name) === outName) {
-                      accumulatedNodes.splice(i, 1);
-                    }
-                  }
-                  continue;
-                }
-                // Keep merged declarations before nested rulesets to avoid split-output
-                // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
-                let firstNestedRuleset = -1;
-                for (let i = 0; i < accumulatedNodes.length; i++) {
-                  if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
-                    firstNestedRuleset = i;
-                    break;
-                  }
-                }
-                if (firstNestedRuleset >= 0) {
-                  accumulatedNodes.splice(firstNestedRuleset, 0, outNode);
-                  continue;
-                }
-              }
-            }
-            accumulatedNodes.push(outNode);
+            outputRules.push(outNode.copy());
           }
         } else {
-          accumulatedNodes.push(result);
+          outputRules.push(result);
         }
       }
-      return new Rules(accumulatedNodes);
+      return new Rules(outputRules);
     };
     return run();
   }
