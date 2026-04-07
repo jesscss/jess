@@ -1806,38 +1806,25 @@ interface RulesEntry {
 export type MixinEntry = Mixin | Ruleset;
 
 /**
- * Returns a plain JS function for calling a set of mixins
+ * A collection of resolved mixin candidates that can be called.
  *
- * This is in the same file as Rules to avoid circular dependencies.
+ * This replaces the old `getFunctionFromMixins` closure pattern.
+ * Instead of wrapping mixins in a JS function → JsFunction node → callWithContext,
+ * Call.evalNode invokes `evalCall` directly.
  *
- * @note this will be called as a result after a mixin find is executed.
+ * Lives in rules.ts to avoid circular dependencies.
  */
-export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
-  let mixinArr = isArray(mixins) ? mixins : [mixins];
-  /**
-   * This will be called by a mixin call or by JavaScript
-   *
-   * @note - Mixins resolve to async functions because they
-   * can contain dynamic imports.
-   */
-  async function returnFunc(this: unknown, ...args: any[]): Promise<Rules | Record<string, string>>;
-  async function returnFunc(this: Context, ...args: any[]): Promise<Rules>;
-  async function returnFunc(this: Context | unknown, ...args: any[]) {
+export class MixinCollection extends Node<MixinEntry[]> {
+  override adopt() {
+    return this;
+  }
+
+  async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
+    const mixinArr = this.value;
     const mixinLength = mixinArr.length;
     let mixinCandidates: MixinEntry[] = [];
     let evalCandidates: MixinEntry[];
-    // When called via callWithContext, 'this' is functionThis, not Context
-    // We need to extract the context from functionThis or use a fallback
-    let thisContext: Context;
-
-    if (this instanceof Context) {
-      thisContext = this;
-    } else if (this && typeof this === 'object' && 'context' in this) {
-      // This is functionThis from callWithContext
-      thisContext = (this as any).context;
-    } else {
-      thisContext = new Context();
-    }
+    const thisContext = context;
     let caller = thisContext.caller;
     let sourceParent = caller?.value.name instanceof Node
       ? caller.value.name.sourceParent
@@ -1847,7 +1834,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
     thisContext.rulesContext = argEvalRulesContext;
     try {
-      for (let arg of args) {
+      for (let arg of (args?.value ?? [])) {
         /**
          * I think they should always be nodes?
          * But leaving this for future expansion.
@@ -1913,7 +1900,7 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
       let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
-        if (args.length) {
+        if (nodeArgs.length) {
           continue;
         }
         mixinCandidates.push(mixin);
@@ -2662,37 +2649,11 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
      * true can skip evaluation and leak unevaluated nodes (like `Call`) into serialization.
      */
     /** Now push all rules into the rules value */
-    if (this instanceof Context) {
-      output.index ??= this.ruleCounter++;
-      // If the output Rules is empty, return Nil instead
-      if (output.value.length === 0) {
-        return new Nil();
-      }
-      return output;
-    } else {
-      const obj = output.toObject();
-      return obj;
+    output.index ??= thisContext.ruleCounter++;
+    if (output.value.length === 0) {
+      return Rules.create([]);
     }
-  }
-
-  return returnFunc;
-}
-
-/**
- * A collection of resolved mixin candidates that can be called.
- *
- * Wraps mixin entries and delegates to getFunctionFromMixins internally.
- * Call.evalNode invokes `evalCall` directly instead of going through
- * JsFunction + callWithContext indirection.
- */
-export class MixinCollection extends Node<MixinEntry[]> {
-  async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
-    const fn = getFunctionFromMixins(this.value);
-    const result = await fn.call(context, ...(args?.value ?? []));
-    if (result instanceof Rules) {
-      return result;
-    }
-    return Rules.create([]);
+    return output;
   }
 }
 

@@ -12,7 +12,7 @@ import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins } from './rules.js';
+import { MixinCollection } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
@@ -234,7 +234,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * (We have to do this for Less.)
          */
         if (resolvedTarget instanceof Node) {
-          if (!isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
+          if (!(resolvedTarget instanceof MixinCollection) && !isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
             let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color).value.node) : (resolvedTarget as Node).valueOf();
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
@@ -253,6 +253,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * If we're looking something up on a function, we presume
          * it needs to be called first, and that it has no arguments.
          */
+        if (resolvedTarget instanceof MixinCollection) {
+          return resolvedTarget.evalCall(context).then((r: any) => {
+            return [r, valueKey] as [any, string | string[]];
+          });
+        }
         if (isNode(resolvedTarget, N.JsFunction)) {
           const jsResult = resolvedTarget.value.call(context);
           if (isThenable(jsResult)) {
@@ -568,8 +573,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return cast(undefined);
             }
           }
-          const func = getFunctionFromMixins(returnVal as MixinEntry[]);
-          return cast(func);
+          return new MixinCollection(returnVal as MixinEntry[]);
         }
         const result = cast(returnVal);
         // Pop reference and clear remainders if we're at the outermost level

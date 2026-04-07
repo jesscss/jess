@@ -7,7 +7,7 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { MixinCollection, getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
+import { MixinCollection, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
@@ -184,9 +184,10 @@ export class Call extends Node<CallValue, CallOptions> {
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
-    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n) || n instanceof MixinCollection) {
-      const entries = n instanceof MixinCollection ? n.value : (Array.isArray(n) ? n : [n]);
-      n = cast(getFunctionFromMixins(entries as MixinEntry[]));
+    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
+      n = new MixinCollection(Array.isArray(n) ? n : [n]);
+    } else if (n instanceof MixinCollection) {
+      // already a MixinCollection from Reference, use as-is
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);
@@ -220,6 +221,51 @@ export class Call extends Node<CallValue, CallOptions> {
         this.makeImportant(n);
       }
       return rules;
+    }
+
+    if (n instanceof MixinCollection) {
+      const originalCaller = context.caller;
+      context.caller = this;
+      try {
+        const result = await n.evalCall(context, args);
+        context.caller = originalCaller;
+        context.callStack.pop();
+        context.parenFrames.pop();
+        if (isNode(result)) {
+          let evald = result.eval(context);
+          if (isThenable(evald)) {
+            evald = await evald;
+          }
+          if (markImportant && isNode(evald, N.Rules)) {
+            this.makeImportant(evald);
+          }
+          return adoptCallWhitespace(evald);
+        }
+        return adoptCallWhitespace(cast(result));
+      } catch (e) {
+        context.caller = originalCaller;
+        context.callStack.pop();
+        context.parenFrames.pop();
+        if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+          if (this.parent?.type === 'SelectorCapture') {
+            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+          }
+          if (isNode(name, N.Reference)) {
+            throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+          }
+          throw e;
+        }
+        if (!this.options?.silentFail) {
+          throw e;
+        }
+        let newCall = this.clone().inherit(this);
+        newCall.options.silentFail = false;
+        newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
+          ? String(name.value.key)
+          : String(n.valueOf());
+        newCall.value.args = await evalArgNodes(args);
+        return adoptCallWhitespace(newCall);
+      }
     }
 
     let fn = isNode(n, N.JsFunction) ? n.value : n;
