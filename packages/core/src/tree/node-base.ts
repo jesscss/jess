@@ -5,7 +5,6 @@ import {
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
-import { getEntriesFromNode, getValues } from './util/collections.js';
 import type { Comment } from './comment.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -52,6 +51,14 @@ type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
+
+export type NodeSetKey<Data> =
+  null | (Data extends readonly any[] ? number : Data extends object ? string & keyof Data : never);
+
+export type NodeSetValue<Data, K> =
+  K extends null ? Data
+    : Data extends readonly any[] ? K extends number ? Data[number] : never
+      : K extends keyof Data ? Data[K] : never;
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -503,8 +510,8 @@ export abstract class Node<
     return ((this as Mutable<Node>).value = forks.get(renderKey)! as Data);
   }
 
-  /** @todo - Fix types */
-  set(key: null | string, value: Data, renderKey: RenderKey = EVAL) {
+  set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>, renderKey?: RenderKey): void;
+  set(key: null | string | number, value: any, renderKey: RenderKey = EVAL) {
     const existingValue = this.value;
     /** Don't create EVAL nodes if the value is the same */
     if (existingValue === value
@@ -522,18 +529,18 @@ export abstract class Node<
       if (!forks.has(thisRenderKey)) {
         forks.set(
           thisRenderKey,
-          key
+          key != null
             ? this.cloneValue(existingValue as NodeValue)
             : existingValue as NodeValue
         );
       }
       this._renderKey = renderKey;
       value = this._processNodes(value);
-      if (key) {
-        const value = this.cloneValue(existingValue as NodeValue);
-        (this as Mutable<Node>).value = value;
-        value[key] = value as NodeValue;
-        forks.set(renderKey, value);
+      if (key != null) {
+        const cloned = this.cloneValue(existingValue as NodeValue) as Record<string | number, any>;
+        (this as Mutable<Node>).value = cloned;
+        cloned[key] = value;
+        forks.set(renderKey, cloned as NodeValue);
       } else {
         forks.set(renderKey, value as NodeValue);
         (this as Mutable<Node>).value = value;
@@ -544,20 +551,20 @@ export abstract class Node<
        * we can just set the value directly.
        */
       if (thisRenderKey === renderKey) {
-        if (!key) {
+        if (key == null) {
           (this as Mutable<Node>).value = this._processNodes(value);
         } else {
-          (this as Mutable<Node>).value[key] = this._processNodes(value);
+          (this.value as Record<string | number, any>)[key] = this._processNodes(value);
         }
       } else {
         this._renderKey = renderKey;
         value = this._processNodes(value);
-        if (key) {
-          const value = this.getValue(renderKey);
-          value[key] = value;
+        if (key != null) {
+          const existing = this.getValue(renderKey) as Record<string | number, any>;
+          existing[key] = value;
         } else {
           (this as Mutable<Node>).value = value;
-          forks.set(renderKey, value);
+          forks.set(renderKey, value as NodeValue);
         }
       }
     }
@@ -627,13 +634,16 @@ export abstract class Node<
    */
   forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
+      this._visitEntries((node, key, coll, idx) => {
+        coll[key] = func(node, idx) as Node;
+      });
+      return;
     }
-    const entries = [...getEntriesFromNode(this as { value: unknown[] })];
-    return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
-      if (!(value instanceof Node)) {
-        return;
-      }
+    const entries: [Node, string | number, any][] = [];
+    this._visitEntries((node, key, coll) => {
+      entries.push([node, key, coll]);
+    });
+    return serialForEach(entries, ([value, key, collection]: [Node, string | number, any], idx: number) => {
       const out = func(value, idx);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
@@ -644,13 +654,85 @@ export abstract class Node<
     });
   }
 
-  private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
-    let idx = 0;
-    for (const [value, key, collection] of getEntriesFromNode(this as { value: unknown[] })) {
-      if (!(value instanceof Node)) {
-        continue;
+  /**
+   * Iterate leaf values of this.value, calling `cb` for each.
+   * Arrays → iterate elements; plain objects → iterate property values
+   * (recursing into array property values); otherwise → the value itself.
+   */
+  private _visitValues(
+    cb: (value: unknown) => void,
+    reverse?: boolean
+  ) {
+    const data = this.value;
+    if (isArray(data)) {
+      if (reverse) {
+        for (let i = data.length - 1; i >= 0; i--) {
+          cb(data[i]);
+        }
+      } else {
+        for (let i = 0; i < data.length; i++) {
+          cb(data[i]);
+        }
       }
-      collection[key] = func(value, idx++);
+    } else if (isPlainObject(data)) {
+      const values = Object.values(data as Record<string, unknown>);
+      for (let i = 0; i < values.length; i++) {
+        const v = values[i];
+        if (isArray(v)) {
+          if (reverse) {
+            for (let j = v.length - 1; j >= 0; j--) {
+              cb(v[j]);
+            }
+          } else {
+            for (let j = 0; j < v.length; j++) {
+              cb(v[j]);
+            }
+          }
+        } else {
+          cb(v);
+        }
+      }
+    } else {
+      cb(data);
+    }
+  }
+
+  /**
+   * Visit each Node entry in this.value, calling `cb` for each.
+   * Matches the iteration pattern of the old getEntriesFromNode:
+   * arrays → iterate elements; plain objects → iterate properties
+   * (recursing into array property values); otherwise → the value itself.
+   */
+  private _visitEntries(
+    cb: (node: Node, key: string | number, collection: any, idx: number) => void
+  ) {
+    let idx = 0;
+    const value = this.value;
+    if (isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        if (value[i] instanceof Node) {
+          cb(value[i] as Node, i, value, idx++);
+        }
+      }
+    } else if (isPlainObject(value)) {
+      const obj = value as Record<string, unknown>;
+      for (const k in obj) {
+        if (!Object.hasOwn(obj, k)) {
+          continue;
+        }
+        const v = obj[k];
+        if (isArray(v)) {
+          for (let i = 0; i < v.length; i++) {
+            if (v[i] instanceof Node) {
+              cb(v[i] as Node, i, v, idx++);
+            }
+          }
+        } else if (v instanceof Node) {
+          cb(v, k, obj, idx++);
+        }
+      }
+    } else if (value instanceof Node) {
+      cb(value, 'value', this, idx);
     }
   }
 
@@ -689,16 +771,20 @@ export abstract class Node<
    * @todo - Replace `walkNodes` with this?
    */
   * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    for (let nodeVal of getValues(this.value, reverse)) {
-      if (nodeVal instanceof Node) {
-        if (includePrePost) {
-          yield* Node.nodeAndPrePost(nodeVal);
-        } else {
-          yield nodeVal;
-        }
-        if (deep) {
-          yield* nodeVal.children(deep, reverse, includePrePost);
-        }
+    const nodes: Node[] = [];
+    this._visitValues((v) => {
+      if (v instanceof Node) {
+        nodes.push(v);
+      }
+    }, reverse);
+    for (const nodeVal of nodes) {
+      if (includePrePost) {
+        yield* Node.nodeAndPrePost(nodeVal);
+      } else {
+        yield nodeVal;
+      }
+      if (deep) {
+        yield* nodeVal.children(deep, reverse, includePrePost);
       }
     }
   }
@@ -802,9 +888,9 @@ export abstract class Node<
     return out;
   }
 
-  cloneValue(value: NodeValue): NodeValue {
+  cloneValue<V extends NodeValue | Data>(value: V): V {
     if (isArray(value)) {
-      return [...value] as NodeValue;
+      return [...value] as V;
     } else if (isPlainObject(value)) {
       const clonedValue: Record<string, unknown> = {};
       for (const k in value) {
@@ -812,7 +898,7 @@ export abstract class Node<
           clonedValue[k] = this.cloneValue(value[k] as NodeValue);
         }
       }
-      return clonedValue as NodeValue;
+      return clonedValue as V;
     }
     return value;
   }
@@ -831,25 +917,47 @@ export abstract class Node<
    */
   clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     let Class = this.constructor as Class<this>;
-    let originalValue = this.value;
-    /** @todo - remove this wrapper later by providing direct cloning in nodes */
-    let newValue = { value: this.cloneValue(originalValue) };
-
-    cloneFn ??= n => n.clone(deep);
+    let cloned = this.cloneValue(this.value);
 
     if (deep) {
-      /** I think GetEntriesOf is not typed correctly, thus neither is getEntriesFromNode */
-      for (let [value, key, collection] of getEntriesFromNode(newValue as { value: unknown[] })) {
-        if (value instanceof Node) {
-          collection[key] = cloneFn(value);
-        }
+      cloneFn ??= n => n.clone(deep);
+      if (cloned instanceof Node) {
+        cloned = cloneFn(cloned) as Data;
+      } else {
+        this._deepCloneChildren(cloned, cloneFn);
       }
     }
 
-    let newNode = new Class(newValue.value, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
+    let newNode = new Class(cloned, this._options ? { ...this._options } : undefined, this.location, this.treeContext);
     newNode.inherit(this);
 
     return newNode;
+  }
+
+  private _deepCloneChildren(value: unknown, cloneFn: (n: Node) => Node) {
+    if (isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const item = value[i];
+        if (item instanceof Node) {
+          value[i] = cloneFn(item);
+        } else if (isArray(item)) {
+          this._deepCloneChildren(item, cloneFn);
+        }
+      }
+    } else if (isPlainObject(value)) {
+      const obj = value as Record<string, unknown>;
+      for (const k in obj) {
+        if (!Object.hasOwn(obj, k)) {
+          continue;
+        }
+        const v = obj[k];
+        if (v instanceof Node) {
+          obj[k] = cloneFn(v);
+        } else if (isArray(v)) {
+          this._deepCloneChildren(v, cloneFn);
+        }
+      }
+    }
   }
 
   /** Remove comments from pre/post */
@@ -1100,11 +1208,20 @@ export abstract class Node<
     if (primitives.includes(type)) {
       return value as Primitive;
     }
-    let values = [...getValues(value)];
-    if (values.length === 1) {
-      return `${values[0]}`;
+    let result = '';
+    let count = 0;
+    let first: unknown;
+    this._visitValues((v) => {
+      if (count === 0) {
+        first = v;
+      }
+      count++;
+      result += `${v}`;
+    });
+    if (count === 1) {
+      return `${first}`;
     }
-    return values.join('');
+    return result;
   }
 
   processPrePost(key: 'pre' | 'post', defaultVal: string = '', options: PrintOptions) {
@@ -1193,16 +1310,16 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (let value of getValues(this.value)) {
-      if (value instanceof Node) {
-        value.toString(options);
+    this._visitValues((v) => {
+      if (v instanceof Node) {
+        v.toString(options);
       } else {
-        const s = value === undefined ? '' : String(value);
+        const s = v === undefined ? '' : String(v);
         if (s) {
           w.add(s, this);
         }
       }
-    }
+    });
     return w.getSince(mark);
   }
 

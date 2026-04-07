@@ -5,7 +5,7 @@ import type { Context } from '../context.js';
 import { Nil } from './nil.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
-import { getEntries } from './util/collections.js';
+
 import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
@@ -81,7 +81,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       () => {
         const sel = this;
         let { value } = sel;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
+        const maybe = serialForEach(value, (item, i) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<SimpleSelector>).then((res) => {

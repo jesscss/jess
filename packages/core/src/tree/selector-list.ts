@@ -5,7 +5,7 @@ import {
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
-import { getEntries } from './util/collections.js';
+
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
@@ -127,7 +127,7 @@ export class SelectorList extends Selector<Selector[]> {
       () => {
         const list = this;
         const { value } = list;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
+        const maybe = serialForEach(value, (item, i) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
