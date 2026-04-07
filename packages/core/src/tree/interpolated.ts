@@ -80,9 +80,6 @@ export interface Interpolated<
 export class Interpolated<
   Role extends AnyRole = AnyRole
 > extends Node<InterpolatedValue, AnyOptions<Role>> {
-  type = 'Interpolated' as const;
-  shortType = 'interpolated' as const;
-
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Interpolated nodes are always non-static and may be async

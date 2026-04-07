@@ -70,7 +70,7 @@ export abstract class Registry<
 
   _searchRulesChildren(
     key: string,
-    filterType: 'VarDeclaration' | 'Declaration' | 'Mixin',
+    filterType: 'VarDeclaration' | 'Declaration' | 'Mixin' | undefined,
     options: FindOptions = {}
   ) {
     let rules = this.rules;
@@ -1217,7 +1217,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
    */
   override find(
     key: string,
-    filterType: 'VarDeclaration' | 'Declaration' = 'VarDeclaration',
+    filterType?: 'VarDeclaration' | 'Declaration',
     options?: FindOptions
   ): Declaration | undefined {
     let declCandidate = new Set<Declaration>();
@@ -1247,14 +1247,16 @@ export class DeclarationRegistry extends Registry<Declaration> {
       let set = registry.index.get(key);
       let list = set ? [...set] : undefined;
       if (list) {
-        list = list.filter(
-          n =>
-            n.type === filterType
-            && (
-              !options?.filter
-              || options.filter(n)
-            )
-        );
+        if (filterType || options?.filter) {
+          list = list.filter(
+            n =>
+              (!filterType || n.type === filterType)
+              && (
+                !options?.filter
+                || options.filter(n)
+              )
+          );
+        }
         // Sort using comparePosition for proper source order comparison
         if (list.length > 1) {
           list.sort((a, b) => {

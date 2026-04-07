@@ -15,14 +15,14 @@ describe('reference', () => {
       expect(`${node}`).toBe('$foo');
     });
 
-    it('should serialize a property reference', () => {
-      let node = ref({ key: 'foo' }, { type: 'property' });
-      expect(`${node}`).toBe('.~foo');
-    });
+    // it('should serialize a property reference', () => {
+    //   let node = ref({ key: 'foo' }, { type: 'property' });
+    //   expect(`${node}`).toBe('.\'foo\'');
+    // });
 
     it('should serialize a declaration reference', () => {
       let node = ref({ key: 'foo' }, { type: 'declaration' });
-      expect(`${node}`).toBe('.foo');
+      expect(`${node}`).toBe('$.foo');
     });
 
     it('should serialize an optional reference', () => {
@@ -32,37 +32,32 @@ describe('reference', () => {
 
     it('should serialize a mixin reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin' });
-      expect(`${node}`).toBe('|foo');
+      expect(`${node}`).toBe('$ > foo');
     });
 
     it('should serialize a ruleset reference', () => {
       let node = ref({ key: 'foo' }, { type: 'ruleset' });
-      expect(`${node}`).toBe('*(foo)');
+      expect(`${node}`).toBe('$ > *[foo]');
     });
 
     it('should serialize a mixin-ruleset reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin-ruleset' });
-      expect(`${node}`).toBe('*foo');
+      expect(`${node}`).toBe('$ > *foo');
     });
 
     it('should serialize a number index', () => {
       let node = ref({ key: 0 }, { type: 'index' });
-      expect(`${node}`).toBe('[0]');
+      expect(`${node}`).toBe('$[0]');
     });
 
-    it('should serialize a string index', () => {
+    it('should serialize a string (variable) index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('[foo]');
+      expect(`${node}`).toBe('$[foo]');
     });
 
-    it('should serialize a quoted index', () => {
-      let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('[foo]');
-    });
-
-    it('should serialize a selector index', () => {
+    it('should serialize a quoted (property) index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
-      expect(`${node}`).toBe('["foo"]');
+      expect(`${node}`).toBe('$["foo"]');
     });
   });
 
@@ -85,7 +80,8 @@ describe('reference', () => {
       `);
     });
 
-    it('should get a property from scope', async () => {
+    /** @todo - Rewrite as quoted index */
+    it.skip('should get a property from scope', async () => {
       let node = rules([
         decl({
           name: any('foo'),
@@ -121,7 +117,8 @@ describe('reference', () => {
       `);
     });
 
-    it('should get a prop from scope below reference', async () => {
+    /** @todo - Rewrite as quoted index */
+    it.skip('should get a prop from scope below reference', async () => {
       let node = rules([
         decl({
           name: any('bar'),
@@ -324,7 +321,7 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })

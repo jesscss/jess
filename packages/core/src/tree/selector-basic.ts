@@ -12,9 +12,6 @@ export interface BasicSelector extends SimpleSelector<string> {
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  type = 'BasicSelector' as const;
-  shortType = 'el' as const;
-
   constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
     super(...args);
     this.addFlag(F_STATIC);

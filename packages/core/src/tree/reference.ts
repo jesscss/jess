@@ -56,7 +56,7 @@ export type ReferenceOptions = {
   /**
    * What kind of lookup are we doing?
    */
-  type?: 'index' | 'declaration' | 'variable' | 'property' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
+  type?: 'index' | 'declaration' | 'variable' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   /**
    * Resolution strategy:
    * - 'scope': Search in scope (Less-style, default)
@@ -92,9 +92,6 @@ function isInsideSelectorCapture(node: Node | undefined): boolean {
  * which can itself contain a reference (a variable variable).
  */
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
-  type = 'Reference';
-  shortType = 'ref';
-
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };
@@ -109,8 +106,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   }
 
   /**
-   * @note - A reference doesn't render `$` (unless it has a target);
-   *         that's managed by the parent expression.
+   * @note - A reference renders a $ only if it has no target.
    */
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
@@ -131,18 +127,20 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     };
     if (target) {
       target.toString(options);
+    } else {
+      w.add('$');
     }
     if (resolution === 'linear') {
       w.add('^');
     } else if (resolution === 'call-time') {
       w.add('~');
     }
-    if (role === 'ident' && (type === 'variable' || type === 'property') && !target) {
-      w.add('$[');
-      emitKey(key);
-      w.add(']');
-      return w.getSince(mark);
-    }
+    // if (role === 'ident' && (type === 'variable' || type === 'property') && !target) {
+    //   w.add('$[');
+    //   emitKey(key);
+    //   w.add(']');
+    //   return w.getSince(mark);
+    // }
     switch (type) {
       case 'index':
         w.add('[');
@@ -152,8 +150,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       case 'variable':
         if (target) {
           w.add('.$');
-        } else {
-          w.add('$');
         }
         emitKey(key);
         break;
@@ -161,23 +157,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add('.');
         emitKey(key);
         break;
-      case 'property':
-        w.add('.~');
-        emitKey(key);
-        break;
+      // case 'property':
+      //   w.add('.\'');
+      //   emitKey(key);
+      //   w.add('\'');
+      //   break;
       case 'mixin':
-        // If this mixin reference has a target (e.g. `ns.foo`), render it as a scoped lookup:
-        // `ns > foo`. Without target, keep the legacy mixin marker form (`|foo`).
-        w.add(target ? ' > ' : '|');
+        w.add(' > ');
         emitKey(key);
         break;
       case 'ruleset':
-        w.add('*(');
+        w.add(' > *[');
         emitKey(key);
-        w.add(')');
+        w.add(']');
         break;
       case 'mixin-ruleset':
-        w.add('*');
+        w.add(' > *');
         emitKey(key);
         break;
     }
@@ -425,6 +420,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 return undefined;
               }
               break;
+            case 'declaration':
+              if (isNode(targetRules, N.Rules)) {
+                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                const found = targetRules.find('declaration', `${keyStr}`, undefined, opts);
+                if (found !== undefined) {
+                  return found;
+                }
+                return undefined;
+              }
+              break;
             case 'function':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
@@ -445,19 +450,20 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 );
               }
               break;
-            case 'property':
-              if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
-                if (declaration !== undefined) {
-                  return declaration;
-                }
-                return undefined;
-              } else if (isNode(targetRules, N.JsObject)) {
-                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                return (targetRules as any).value[keyStr];
-              }
-              break;
+            // MOVED TO indexed form
+            // case 'property':
+            //   if (isNode(targetRules, N.Rules)) {
+            //     const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+            //     const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+            //     if (declaration !== undefined) {
+            //       return declaration;
+            //     }
+            //     return undefined;
+            //   } else if (isNode(targetRules, N.JsObject)) {
+            //     const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+            //     return (targetRules as any).value[keyStr];
+            //   }
+            //   break;
             case 'mixin':
               if (isNode(targetRules, N.Rules)) {
                 // valueKey can be string or string[] - find() accepts both
@@ -474,6 +480,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 return undefined;
               }
               break;
+            /** @todo - Remove? */
             case 'ruleset':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;

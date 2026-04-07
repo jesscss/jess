@@ -83,20 +83,29 @@ export const defineType = <
   shortType?: string
 ) => {
   shortType ??= type.toLowerCase();
-  (Clazz as any).type = type;
-  (Clazz as any).shortType = shortType;
+  Clazz.prototype.type = type;
+  Clazz.prototype.shortType = shortType;
 
   /** Build nodeType bitmask by OR-ing bits for each type in the prototype chain */
   let nodeType = 0;
-  let proto: any = Clazz;
-  while (proto?.type) {
-    const bit = nodeTypeBits[proto.type];
+  let ctor = Clazz;
+  do {
+    const proto = ctor?.prototype;
+    const type = proto && Object.hasOwn(proto, 'type')
+      ? proto.type
+      : undefined;
+
+    if (!type) {
+      break;
+    }
+
+    const bit = nodeTypeBits[type];
     if (bit !== undefined) {
       nodeType |= bit;
     }
-    proto = Object.getPrototypeOf(proto);
-  }
-  /** Set on the prototype so ALL instances (including `new Foo()`) inherit it */
+
+    ctor = Object.getPrototypeOf(ctor);
+  } while (ctor);
   Clazz.prototype.nodeType = nodeType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];

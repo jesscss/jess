@@ -27,8 +27,6 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
-  type = 'Nil';
-  shortType = 'nil';
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(
@@ -42,6 +40,8 @@ export class Nil extends Node<''> {
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
     this.fullRender = false;
   }
+
+  foo() {}
 
   override toTrimmedString() {
     return '';

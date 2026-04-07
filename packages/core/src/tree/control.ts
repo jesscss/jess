@@ -219,8 +219,6 @@ export type IfValue = {
  * This is language-agnostic: it’s the canonical Jess control node.
  */
 export class If extends Node<IfValue> {
-  type = 'If' as const;
-  shortType = 'if' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -271,8 +269,6 @@ export type LoopValue = StructuredLoopValue | LegacyLoopValue;
  * `$for <header> { ... }`
  */
 export class For extends Node<StructuredLoopValue> {
-  type = 'For' as const;
-  shortType = 'for' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -456,28 +452,26 @@ export class For extends Node<StructuredLoopValue> {
 /**
  * `$each <header> { ... }`
  */
-export class Each extends Node<LegacyLoopValue> {
-  type = 'Each' as const;
-  shortType = 'each' as const;
-  override allowRoot = true;
-  override allowRuleRoot = true;
+// export class Each extends Node<LegacyLoopValue> {
+//   override allowRoot = true;
+//   override allowRuleRoot = true;
 
-  constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
-    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-  }
+//   constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+//     super(value, options, location, treeContext);
+//     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+//   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    w.add('$each ', this);
-    this.value.header.toString(options);
-    w.add(' ');
-    this.value.rules.toBraced(options);
-    return w.getSince(mark);
-  }
-}
+//   override toTrimmedString(options?: PrintOptions): string {
+//     options = getPrintOptions(options);
+//     const w = options.writer!;
+//     const mark = w.mark();
+//     w.add('$each ', this);
+//     this.value.header.toString(options);
+//     w.add(' ');
+//     this.value.rules.toBraced(options);
+//     return w.getSince(mark);
+//   }
+// }
 
 export type WhileValue = {
   condition: Node;
@@ -488,8 +482,6 @@ export type WhileValue = {
  * `$while (<condition>) { ... }`
  */
 export class While extends Node<WhileValue> {
-  type = 'While' as const;
-  shortType = 'while' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -512,5 +504,4 @@ export class While extends Node<WhileValue> {
 
 export const ifNode = defineType(If, 'If', 'if');
 export const forNode = defineType(For, 'For', 'for');
-export const eachNode = defineType(Each, 'Each', 'each');
 export const whileNode = defineType(While, 'While', 'while');
