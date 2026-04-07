@@ -5,7 +5,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
 import { Nil } from '../nil.js';
-import { Node } from '../node.js';
+import { Node, type RenderKey } from '../node.js';
 import { JsFunction } from '../js-function.js';
 import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
@@ -37,6 +37,8 @@ export type FindOptions = DeclarationFindOptions & {
    * When false or undefined, mixin output Rules will be excluded.
    */
   hasTarget?: boolean;
+  /** RenderKey for fork-aware parent chain traversal */
+  renderKey?: RenderKey;
 };
 
 export abstract class Registry<
@@ -957,7 +959,7 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        rules = rules?.parent as Rules;
+        rules = (options?.renderKey ? rules?.getParent(options.renderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -1030,8 +1032,10 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       do {
-        rules = rules?.parent as Rules;
-        if (findRoot && rules.type === 'Rules' && rules?.parent === undefined) {
+        const rk = options?.renderKey;
+        rules = (rk ? rules?.getParent(rk) : rules?.parent) as Rules;
+        const rulesParent = rk ? rules?.getParent(rk) : rules?.parent;
+        if (findRoot && rules.type === 'Rules' && rulesParent === undefined) {
           /** We're at the root */
           break;
         }
@@ -1343,8 +1347,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
       }
 
       do {
-        rules = rules?.parent as Rules;
-        /** If we're searching linearly, update the start position to the parent node index */
+        rules = (options?.renderKey ? rules?.getParent(options.renderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
