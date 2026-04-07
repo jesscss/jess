@@ -498,10 +498,10 @@ export abstract class Node<
     const thisKey = this._renderKey;
     const forks = this._childForks;
     if (
-      !thisKey
+      thisKey === undefined
       || thisKey === renderKey
       || !forks
-      || !renderKey
+      || renderKey === undefined
       || !forks.has(renderKey)
     ) {
       return this.value;
@@ -631,10 +631,15 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
+  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, renderKey?: RenderKey) {
     if (!this.hasFlag(F_MAY_ASYNC)) {
       this._visitEntries((node, key, coll, idx) => {
-        coll[key] = func(node, idx) as Node;
+        const result = func(node, idx) as Node;
+        if (result !== node && renderKey !== undefined) {
+          (this as Node).set(key as any, result, renderKey);
+        } else {
+          coll[key] = result;
+        }
       });
       return;
     }
@@ -646,10 +651,19 @@ export abstract class Node<
       const out = func(value, idx);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          collection[key] = result;
+          if (result !== value && renderKey !== undefined) {
+            (this as Node).set(key as any, result, renderKey);
+          } else {
+            collection[key] = result;
+          }
         });
       }
-      collection[key] = out as Node;
+      const result = out as Node;
+      if (result !== value && renderKey !== undefined) {
+        (this as Node).set(key as any, result, renderKey);
+      } else {
+        collection[key] = result;
+      }
     });
   }
 
@@ -1035,7 +1049,7 @@ export abstract class Node<
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNode(n => n.preEval(context));
+        out = node.forEachNode(n => n.preEval(context), context.renderKey);
       } catch (error: unknown) {
         throw error;
       }
@@ -1061,7 +1075,7 @@ export abstract class Node<
     }
     let out = this.forEachNode((n: Node) => {
       return n.eval(context);
-    });
+    }, context.renderKey);
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         return this;
@@ -1090,6 +1104,10 @@ export abstract class Node<
         !node._renderKey
         || node._renderKey !== renderKey
       );
+
+    if (needsReeval) {
+      node.getValue(CANONICAL);
+    }
 
     if (!node.hasFlag(F_MAY_ASYNC)) {
       return Node._evalStaticSync(node, context, needsReeval);

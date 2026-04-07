@@ -284,7 +284,7 @@ export class Context {
    * @todo - Make the id a hash of the (project-relative) path + contents
    */
   id = generateId();
-  ruleCounter = 0;
+  ruleCounter = 1;
 
   /** Rules depth, used to figure out source order */
   depth = -1;
