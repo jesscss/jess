@@ -265,6 +265,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
+        const rk = context.renderKey;
+        const setVal = (newValue: Node) => {
+          node.set('value', newValue, rk);
+        };
         const normalizeMergedLeadingPlaceholder = () => {
           const normalizedAssign = node.options.normalizedFromAssign;
           const isListMergedAssign =
@@ -288,14 +292,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const rest = listValue.slice(1);
           if (rest.length === 0) {
-            node.value.value = new Nil();
+            setVal(new Nil());
             return;
           }
           if (rest.length === 1) {
-            node.value.value = rest[0]!.copy(true);
+            setVal(rest[0]!.copy(true));
             return;
           }
-          node.value.value = new List(rest.map(item => item.copy(true)));
+          setVal(new List(rest.map(item => item.copy(true))));
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {
@@ -320,13 +324,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
               }
-              node.value.value = newValue;
+              setVal(newValue);
               normalizeMergedLeadingPlaceholder();
-              // Merge !important from referenced declarations
               if (context.hasImportantSource && !node.value.important) {
-                node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+                node.set('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, rk);
               }
-              // Pop important source after merging (if it was set)
               if (context.hasImportantSource) {
                 context.popImportantSource();
               }
@@ -337,13 +339,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return (value as Nil).inherit(node);
           }
-          node.value.value = maybeNewValue as Node;
+          setVal(maybeNewValue as Node);
           normalizeMergedLeadingPlaceholder();
-          // Merge !important from referenced declarations
           if (context.hasImportantSource && !node.value.important) {
-            node.value.important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+            node.set('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, rk);
           }
-          // Pop important source after merging (if it was set)
           if (context.hasImportantSource) {
             context.popImportantSource();
           }

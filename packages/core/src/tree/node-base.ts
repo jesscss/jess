@@ -519,7 +519,6 @@ export abstract class Node<
     ) {
       return;
     }
-    key = key === 'value' ? null : key;
     let thisRenderKey = this._renderKey;
     thisRenderKey ??= CANONICAL;
     const forks: Map<RenderKey, NodeValue> = this._childForks ??= new Map();
