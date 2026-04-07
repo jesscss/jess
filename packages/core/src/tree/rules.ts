@@ -2677,3 +2677,23 @@ export function getFunctionFromMixins(mixins: MixinEntry | MixinEntry[]) {
 
   return returnFunc;
 }
+
+/**
+ * A collection of resolved mixin candidates that can be called.
+ *
+ * Wraps mixin entries and delegates to getFunctionFromMixins internally.
+ * Call.evalNode invokes `evalCall` directly instead of going through
+ * JsFunction + callWithContext indirection.
+ */
+export class MixinCollection extends Node<MixinEntry[]> {
+  async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
+    const fn = getFunctionFromMixins(this.value);
+    const result = await fn.call(context, ...(args?.value ?? []));
+    if (result instanceof Rules) {
+      return result;
+    }
+    return Rules.create([]);
+  }
+}
+
+defineType(MixinCollection, 'MixinCollection', 'mixincoll');

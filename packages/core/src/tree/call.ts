@@ -7,7 +7,7 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
+import { MixinCollection, getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
@@ -184,8 +184,9 @@ export class Call extends Node<CallValue, CallOptions> {
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
-    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
-      n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
+    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n) || n instanceof MixinCollection) {
+      const entries = n instanceof MixinCollection ? n.value : (Array.isArray(n) ? n : [n]);
+      n = cast(getFunctionFromMixins(entries as MixinEntry[]));
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);

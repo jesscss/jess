@@ -562,7 +562,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           );
         } else if (isArray(returnVal)) {
-          // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
             item.sourceParent = this;
             if (!isNode(item, N.Mixin | N.Ruleset)) {

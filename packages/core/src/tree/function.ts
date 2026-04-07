@@ -6,8 +6,7 @@ import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
 import { Mixin } from './mixin.js';
-import { getFunctionFromMixins } from './rules.js';
-import { cast } from './util/cast.js';
+import { MixinCollection } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
@@ -98,8 +97,8 @@ export class Func extends Node<FuncValue, FuncOptions> {
       this.parent.adopt(mixinLike);
     }
 
-    const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.value.map(a => cast(a)));
+    const coll = new MixinCollection([mixinLike]);
+    const evaluated = await coll.evalCall(context, args);
 
     if (!(evaluated instanceof Rules)) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
