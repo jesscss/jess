@@ -75,8 +75,6 @@ export interface Color extends Node<ColorData, ColorOptions> {
  * Conversion only happens when modifying colors or when explicitly requested.
  */
 export class Color extends Node<ColorData, ColorOptions> {
-  type = 'Color' as const;
-  shortType = 'color' as const;
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],

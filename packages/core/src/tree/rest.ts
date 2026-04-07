@@ -8,9 +8,6 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
  * lists / sequences, so this is mostly for serialization.
  */
 export class Rest extends Node<Node | string | undefined> {
-  type = 'Rest' as const;
-  shortType = 'rest' as const;
-
   get name(): string {
     let { value } = this;
     if (value) {

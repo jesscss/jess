@@ -30,9 +30,6 @@ export type PseudoSelectorValue = {
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  type = 'PseudoSelector';
-  shortType = 'pseudo';
-
   override get keySet(): Set<string> {
     if (this._keySet === undefined) {
       this._computeKeySetAndFastReject();

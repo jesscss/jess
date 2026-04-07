@@ -46,9 +46,6 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  type = 'Extend' as const;
-  shortType = 'extend' as const;
-
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);

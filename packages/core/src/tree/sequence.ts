@@ -25,9 +25,6 @@ export type SequenceOptions = {
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
-  type = 'Sequence';
-  shortType = 'seq';
-
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';

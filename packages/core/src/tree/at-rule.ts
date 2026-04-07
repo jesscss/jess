@@ -63,8 +63,6 @@ export type AtRuleOptions = NodeOptions;
  * A rule like @charset or @media
  */
 export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
-  type = 'AtRule' as const;
-  shortType = 'atrule' as const;
   override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;

@@ -27,9 +27,6 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  type = 'AttributeSelector' as const;
-  shortType = 'attr' as const;
-
   override evalNode(context: Context): MaybePromise<this> {
     return pipe(
       () => {

@@ -14,9 +14,6 @@ import { selectorCompare } from './util/compare.js';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  type = 'SelectorList';
-  shortType = 'sellist';
-
   protected override _computeKeySetAndFastReject(): void {
     let combinedKeySet = new Set<string>();
     let combinedVisibleKeySet = new Set<string>();

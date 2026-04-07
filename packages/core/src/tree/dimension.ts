@@ -37,9 +37,6 @@ export interface Dimension extends Node<DimensionValue> {
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  type = 'Dimension';
-  shortType = 'dimension';
-
   constructor(...args: ConstructorParameters<typeof Node<DimensionValue>>) {
     super(...args);
     this.addFlag(F_STATIC);

@@ -10,9 +10,6 @@ export interface Bool extends Node<boolean> {
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.
  */
 export class Bool extends Node<boolean> {
-  type = 'Bool' as const;
-  shortType = 'bool' as const;
-
   constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
     super(...args);
     this.addFlag(F_STATIC);

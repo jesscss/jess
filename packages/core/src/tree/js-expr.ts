@@ -14,9 +14,6 @@ export interface JsExpression extends Node<string> {
 }
 
 export class JsExpression extends Node<string> {
-  type = 'JsExpression' as const;
-  shortType = 'jsexpr' as const;
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

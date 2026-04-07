@@ -354,11 +354,19 @@ function tokenTypeFromChevrotain(tok: ChevTok, lang: JessLang): SemanticTokenTyp
 
   const hasCat = (c: string) => cats.includes(c);
 
-  if (name === 'WS' || name === 'Newline') return null;
+  if (name === 'WS' || name === 'Newline') {
+    return null;
+  }
 
-  if (name.includes('Comment') || hasCat('Comment')) return 'comment';
-  if (name.includes('String') || name.includes('Quoted')) return 'string';
-  if (name === 'NonQuotedUrl' || name === 'UrlStart' || name === 'UrlEnd') return 'string';
+  if (name.includes('Comment') || hasCat('Comment')) {
+    return 'comment';
+  }
+  if (name.includes('String') || name.includes('Quoted')) {
+    return 'string';
+  }
+  if (name === 'NonQuotedUrl' || name === 'UrlStart' || name === 'UrlEnd') {
+    return 'string';
+  }
 
   // Less: treat `@ident` as variable references by default (including inside at-rule preludes),
   // but keep *known* CSS at-rules (like `@media`) as at-rule names.
@@ -381,29 +389,51 @@ function tokenTypeFromChevrotain(tok: ChevTok, lang: JessLang): SemanticTokenTyp
   // At-rules and keywords.
   // @charset is a special token that includes the entire declaration (e.g., '@charset "UTF-8";')
   // Treat it as namespace (at-rule) like other at-rules
-  if (name === 'Charset') return 'namespace';
-  if (hasCat('AtName') || /^At[A-Z]/.test(name)) return 'namespace';
-  if (name === 'When' || name === 'DefaultGuardIdent' || name === 'DefaultGuardFunc') return 'keyword';
+  if (name === 'Charset') {
+    return 'namespace';
+  }
+  if (hasCat('AtName') || /^At[A-Z]/.test(name)) {
+    return 'namespace';
+  }
+  if (name === 'When' || name === 'DefaultGuardIdent' || name === 'DefaultGuardFunc') {
+    return 'keyword';
+  }
 
   // Variables.
-  if (hasCat('VarOrProp') || name.includes('Variable') || name.includes('Var')) return 'variable';
-  if (lang === 'scss' && name === 'Dollar') return 'variable';
+  if (hasCat('VarOrProp') || name.includes('Variable') || name.includes('Var')) {
+    return 'variable';
+  }
+  if (lang === 'scss' && name === 'Dollar') {
+    return 'variable';
+  }
 
   // Numbers (dimension tokens are split later into number+unit where possible).
-  if (name.includes('Num') || name.includes('Int') || name.includes('Dimension') || name === 'Percent') return 'number';
+  if (name.includes('Num') || name.includes('Int') || name.includes('Dimension') || name === 'Percent') {
+    return 'number';
+  }
 
   // Operators / punctuation that often gets styled.
-  if (hasCat('CompareOperator') || name.includes('Operator') || name === 'Colon' || name === 'Semi') return 'operator';
+  if (hasCat('CompareOperator') || name.includes('Operator') || name === 'Colon' || name === 'Semi') {
+    return 'operator';
+  }
 
   // Function calls.
-  if (hasCat('FunctionStart') || name.includes('FunctionStart')) return 'function';
+  if (hasCat('FunctionStart') || name.includes('FunctionStart')) {
+    return 'function';
+  }
 
   // Selectors.
-  if (name.includes('Pseudo')) return 'class';
-  if (hasCat('Selector') || name.includes('HashName') || name.includes('DotName') || name.includes('Ampersand')) return 'class';
+  if (name.includes('Pseudo')) {
+    return 'class';
+  }
+  if (hasCat('Selector') || name.includes('HashName') || name.includes('DotName') || name.includes('Ampersand')) {
+    return 'class';
+  }
 
   // Plain identifiers: split later into property vs value where possible.
-  if (hasCat('Ident') || name === 'PlainIdent') return 'property';
+  if (hasCat('Ident') || name === 'PlainIdent') {
+    return 'property';
+  }
 
   return null;
 }
@@ -446,8 +476,10 @@ export function createEngine(): JessLanguageServiceEngine {
   // Cached imported documents (loaded from disk)
   const importedDocs = new Map<string, TrackedDoc>();
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
+    /* eslint-disable @typescript-eslint/naming-convention */
     'var/undefined': DiagnosticSeverity.Warning,
     'mixin/undefined': DiagnosticSeverity.Warning
+    /* eslint-enable @typescript-eslint/naming-convention */
   };
 
   function parseSeverity(value: unknown): DiagnosticSeverity | null {
@@ -1151,8 +1183,8 @@ export function createEngine(): JessLanguageServiceEngine {
       let depth = 0;
       while (depth < maxDepth && targetNode) {
         const n: any = targetNode;
-        if (n.type === 'VarDeclaration' || n.type === 'Mixin' || 
-            (n.type === 'Reference' && (n.options?.type === 'variable' || n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset'))) {
+        if (n.type === 'VarDeclaration' || n.type === 'Mixin'
+          || (n.type === 'Reference' && (n.options?.type === 'variable' || n.options?.type === 'mixin' || n.options?.type === 'mixin-ruleset'))) {
           break;
         }
         targetNode = (targetNode as any).parent;
@@ -1349,7 +1381,9 @@ export function createEngine(): JessLanguageServiceEngine {
       };
 
       const rangeFromTokenLike = (tok: any): Range | null => {
-        if (!tok) return null;
+        if (!tok) {
+          return null;
+        }
         const startLine = tok.startLine ?? tok.line;
         const startCol = tok.startColumn ?? tok.column;
         const endLine = tok.endLine;
@@ -1415,7 +1449,7 @@ export function createEngine(): JessLanguageServiceEngine {
         const declMixins = new Set<string>();
         const refsVar: Array<{ name: string; node: Node }> = [];
         const refsMixin: Array<{ name: string; node: Node }> = [];
-        
+
         // Detect modern features by checking source text (more reliable than AST for at-rules)
         const text = doc.getText();
         let hasModernFeatures = false;
@@ -1435,7 +1469,9 @@ export function createEngine(): JessLanguageServiceEngine {
         const seen = new Set<Node>();
         while (stack.length) {
           const node = stack.pop()!;
-          if (!node || seen.has(node)) continue;
+          if (!node || seen.has(node)) {
+            continue;
+          }
           seen.add(node);
 
           const n: any = node;
@@ -1443,7 +1479,9 @@ export function createEngine(): JessLanguageServiceEngine {
             const nameNode = n.value?.name;
             const nameStr = typeof nameNode === 'string' ? nameNode : String(nameNode?.valueOf?.() ?? nameNode?.value ?? '');
             const norm = normalizeVar(nameStr);
-            if (norm) declVars.add(norm);
+            if (norm) {
+              declVars.add(norm);
+            }
           } else if (n.type === 'Mixin') {
             const nameNode = n.value?.name;
             const nameStr = asStringName(nameNode);
@@ -1453,12 +1491,16 @@ export function createEngine(): JessLanguageServiceEngine {
             if (parenIdx >= 0) {
               norm = norm.slice(0, parenIdx);
             }
-            if (norm) declMixins.add(norm);
+            if (norm) {
+              declMixins.add(norm);
+            }
           } else if (n.type === 'Reference' && n.options?.type === 'variable') {
             const key = n.value?.key;
             const raw = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : String(key?.valueOf?.() ?? '');
             const norm = normalizeVar(raw);
-            if (norm) refsVar.push({ name: norm, node });
+            if (norm) {
+              refsVar.push({ name: norm, node });
+            }
           } else if (n.type === 'Call') {
             // Mixin calls can be Call nodes (e.g., .light() or .light(arg))
             // In Less, only .foo() and #foo() are mixins - everything else is a function call
@@ -1506,7 +1548,9 @@ export function createEngine(): JessLanguageServiceEngine {
             if (parenIdx >= 0) {
               nameStr = nameStr.slice(0, parenIdx);
             }
-            if (nameStr) refsMixin.push({ name: nameStr, node });
+            if (nameStr) {
+              refsMixin.push({ name: nameStr, node });
+            }
           } else if (n.type === 'Interpolated') {
             // Interpolated nodes contain replacement nodes in value.replacements
             // These replacement nodes should be collected as separate variable references
@@ -1557,7 +1601,7 @@ export function createEngine(): JessLanguageServiceEngine {
                 break;
               }
             }
-            
+
             if (isInInterpolation) {
               // Get the Reference node's span (this is the variable name inside @{...})
               // The Reference node span should be just the variable name (e.g., "in" or "terpolation")
@@ -1572,11 +1616,11 @@ export function createEngine(): JessLanguageServiceEngine {
                   actualRefSpan = getSpan(key as Node);
                 }
               }
-              
+
               if (actualRefSpan) {
                 const refStartPos = doc.positionAt(actualRefSpan.start);
                 const refEndPos = doc.positionAt(actualRefSpan.end);
-                
+
                 // Look backwards from reference start to find @{
                 // The @{ should be immediately before the reference node
                 let atBraceStart = actualRefSpan.start;
@@ -1605,7 +1649,7 @@ export function createEngine(): JessLanguageServiceEngine {
                     }
                   }
                 }
-                
+
                 // Look forwards from reference end to find }
                 // The } should be immediately after the reference node
                 let braceEnd = actualRefSpan.end;
@@ -1628,7 +1672,7 @@ export function createEngine(): JessLanguageServiceEngine {
                     braceEnd = doc.offsetAt(Position.create(refEndPos.line, refEndPos.character + braceIdx + 1));
                   }
                 }
-                
+
                 // Return the full interpolation span including @{ and }
                 // Only return if we found valid boundaries (atBraceStart should be before braceEnd)
                 if (atBraceStart < braceEnd && atBraceStart >= 0 && braceEnd > atBraceStart) {
@@ -1645,7 +1689,7 @@ export function createEngine(): JessLanguageServiceEngine {
                     // Try to find @{ and } around the key span
                     const keyStartPos = doc.positionAt(keySpan.start);
                     const keyEndPos = doc.positionAt(keySpan.end);
-                    
+
                     let atBraceStart = keySpan.start;
                     if (keyStartPos.character >= 2) {
                       const lookBackStart = Math.max(0, keyStartPos.character - 2);
@@ -1657,7 +1701,7 @@ export function createEngine(): JessLanguageServiceEngine {
                         atBraceStart = doc.offsetAt(Position.create(keyStartPos.line, lookBackStart));
                       }
                     }
-                    
+
                     let braceEnd = keySpan.end;
                     const textAfter = doc.getText(Range.create(
                       keyEndPos,
@@ -1666,7 +1710,7 @@ export function createEngine(): JessLanguageServiceEngine {
                     if (textAfter.startsWith('}')) {
                       braceEnd = doc.offsetAt(Position.create(keyEndPos.line, keyEndPos.character + 1));
                     }
-                    
+
                     if (atBraceStart < braceEnd && atBraceStart >= 0 && braceEnd > atBraceStart) {
                       return { start: atBraceStart, end: braceEnd };
                     }
@@ -1675,18 +1719,20 @@ export function createEngine(): JessLanguageServiceEngine {
               }
             }
           }
-          
+
           // For Call nodes (mixin calls), the Call node itself should have location info
           // that includes the full call including parentheses
           const span = getSpan(n as Node);
-          if (span) return span;
-          
+          if (span) {
+            return span;
+          }
+
           // Fallback: use span of reference key (common for Less mixin-ruleset refs).
           const key = n?.value?.key;
           if (isNode(key)) {
             return getSpan(key as Node);
           }
-          
+
           // For Call nodes, try to get span from the name node as fallback
           if (n.type === 'Call' && n.value?.name) {
             const nameNode = n.value.name;
@@ -1694,7 +1740,7 @@ export function createEngine(): JessLanguageServiceEngine {
               return getSpan(nameNode as Node);
             }
           }
-          
+
           return null;
         };
 
@@ -1745,23 +1791,27 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // Sort, dedupe, cap.
       diagnostics.sort((a, b) => {
-        if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
+        if (a.range.start.line !== b.range.start.line) {
+          return a.range.start.line - b.range.start.line;
+        }
         return a.range.start.character - b.range.start.character;
       });
       const seen = new Set<string>();
       const out: Diagnostic[] = [];
       for (const d of diagnostics) {
         const key = `${d.code ?? ''}:${d.range.start.line}:${d.range.start.character}:${d.range.end.line}:${d.range.end.character}:${d.message}`;
-        if (seen.has(key)) continue;
+        if (seen.has(key)) {
+          continue;
+        }
         seen.add(key);
         out.push(d);
-        if (out.length >= 200) break;
+        if (out.length >= 200) {
+          break;
+        }
       }
 
       return out;
-    }
-
-    ,
+    },
 
     getFoldingRanges(uri) {
       const tracked = ensure(uri);
@@ -1782,17 +1832,25 @@ export function createEngine(): JessLanguageServiceEngine {
           || n?.type === 'AtRule'
           || n?.type === 'Mixin'
           || n?.type === 'Func';
-        if (!foldable) continue;
+        if (!foldable) {
+          continue;
+        }
 
         const span = getSpan(entry.node);
-        if (!span) continue;
+        if (!span) {
+          continue;
+        }
 
         const start = doc.positionAt(span.start);
         const end = doc.positionAt(span.end);
-        if (end.line <= start.line) continue;
+        if (end.line <= start.line) {
+          continue;
+        }
 
         const key = `${start.line}:${end.line}:${n.type}`;
-        if (seen.has(key)) continue;
+        if (seen.has(key)) {
+          continue;
+        }
         seen.add(key);
 
         out.push({
@@ -1801,7 +1859,9 @@ export function createEngine(): JessLanguageServiceEngine {
           kind: FoldingRangeKind.Region
         });
 
-        if (out.length >= 2000) break;
+        if (out.length >= 2000) {
+          break;
+        }
       }
 
       out.sort((a, b) => (a.startLine - b.startLine) || (a.endLine - b.endLine));
@@ -1813,7 +1873,7 @@ export function createEngine(): JessLanguageServiceEngine {
       const doc = tracked.document;
       const index = tracked.index;
       if (!index) {
-        return positions.map((p) => ({ range: { start: p, end: p } as Range }));
+        return positions.map(p => ({ range: { start: p, end: p } as Range }));
       }
 
       const rangesForOffset = (offset: number): Range[] => {
@@ -1829,10 +1889,14 @@ export function createEngine(): JessLanguageServiceEngine {
         for (const c of containing) {
           const r = { start: doc.positionAt(c.start), end: doc.positionAt(c.end) } as Range;
           const key = `${r.start.line}:${r.start.character}:${r.end.line}:${r.end.character}`;
-          if (seen.has(key)) continue;
+          if (seen.has(key)) {
+            continue;
+          }
           seen.add(key);
           out.push(r);
-          if (out.length >= 50) break;
+          if (out.length >= 50) {
+            break;
+          }
         }
         return out;
       };
@@ -1974,7 +2038,9 @@ export function createEngine(): JessLanguageServiceEngine {
       const links: DocumentLink[] = [];
       const tryResolveFileTarget = (rawTarget: string): string => {
         const t = rawTarget.trim();
-        if (!t) return t;
+        if (!t) {
+          return t;
+        }
         if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(t) || t.startsWith('file:')) {
           return t;
         }
@@ -1990,7 +2056,9 @@ export function createEngine(): JessLanguageServiceEngine {
         }
 
         // If we can't resolve, still return raw.
-        if (!basePath) return t;
+        if (!basePath) {
+          return t;
+        }
 
         // Strip query/hash for filesystem checks, but preserve for final URL.
         const m = t.match(/^([^?#]+)([?#].*)?$/);
@@ -2017,10 +2085,14 @@ export function createEngine(): JessLanguageServiceEngine {
       };
 
       const pushLink = (startOffset: number, endOffset: number, target: string) => {
-        if (!target) return;
+        if (!target) {
+          return;
+        }
         const start = doc.positionAt(startOffset);
         const end = doc.positionAt(endOffset);
-        if (start.line > end.line || (start.line === end.line && start.character >= end.character)) return;
+        if (start.line > end.line || (start.line === end.line && start.character >= end.character)) {
+          return;
+        }
         links.push({
           range: { start, end } as Range,
           target: tryResolveFileTarget(target)
@@ -2030,9 +2102,11 @@ export function createEngine(): JessLanguageServiceEngine {
       // 1) url(...) links (quoted or unquoted)
       // We keep this regex conservative to avoid false positives.
       const urlRe = /url\(\s*(?:'([^']+)'|"([^"]+)"|([^) \t\r\n]+))\s*\)/g;
-      for (let m: RegExpExecArray | null; (m = urlRe.exec(text)); ) {
+      for (let m: RegExpExecArray | null; (m = urlRe.exec(text));) {
         const raw = m[1] ?? m[2] ?? m[3] ?? '';
-        if (!raw) continue;
+        if (!raw) {
+          continue;
+        }
         const rawStartInMatch =
           m[1] != null ? m[0].indexOf(m[1]) : m[2] != null ? m[0].indexOf(m[2]) : m[0].indexOf(m[3] ?? '');
         const start = m.index + rawStartInMatch;
@@ -2053,17 +2127,17 @@ export function createEngine(): JessLanguageServiceEngine {
         const raw = imp.specifier;
         const start = imp.specifierRange.startOffset;
         const end = imp.specifierRange.endOffset;
-        
+
         // Check if this import specifier contains interpolations
         // Look for @{...} pattern in the specifier text
         const specifierText = text.substring(start, end);
         const hasInterpolation = /@\{[^}]+\}/.test(specifierText);
-        
+
         // Skip creating links for interpolated imports
         if (hasInterpolation) {
           continue;
         }
-        
+
         if (fromFilePath) {
           const resolved = resolveImport(
             { exists: (p: string) => fs.existsSync(p) },
@@ -2080,9 +2154,11 @@ export function createEngine(): JessLanguageServiceEngine {
 
       // 3) bare http(s):// links inside strings (common in docs/comments)
       const httpRe = /(https?:\/\/[^\s"'<>]+)\b/g;
-      for (let m: RegExpExecArray | null; (m = httpRe.exec(text)); ) {
+      for (let m: RegExpExecArray | null; (m = httpRe.exec(text));) {
         const raw = m[1] ?? '';
-        if (!raw) continue;
+        if (!raw) {
+          continue;
+        }
         pushLink(m.index, m.index + raw.length, raw);
       }
 
@@ -2091,10 +2167,14 @@ export function createEngine(): JessLanguageServiceEngine {
       const out: DocumentLink[] = [];
       for (const l of links) {
         const k = `${l.range.start.line}:${l.range.start.character}:${l.range.end.line}:${l.range.end.character}:${l.target ?? ''}`;
-        if (seen.has(k)) continue;
+        if (seen.has(k)) {
+          continue;
+        }
         seen.add(k);
         out.push(l);
-        if (out.length >= 1000) break;
+        if (out.length >= 1000) {
+          break;
+        }
       }
       return out;
     },
@@ -2119,13 +2199,17 @@ export function createEngine(): JessLanguageServiceEngine {
       const nonWs = (t: ChevTok | undefined) => t && t.tokenType?.name !== 'WS' && t.tokenType?.name !== 'Newline';
       const prevNonWsIdx = (i: number) => {
         for (let j = i - 1; j >= 0; j--) {
-          if (nonWs(tokens[j])) return j;
+          if (nonWs(tokens[j])) {
+            return j;
+          }
         }
         return -1;
       };
       const nextNonWsIdx = (i: number) => {
         for (let j = i + 1; j < tokens.length; j++) {
-          if (nonWs(tokens[j])) return j;
+          if (nonWs(tokens[j])) {
+            return j;
+          }
         }
         return -1;
       };
@@ -2136,12 +2220,12 @@ export function createEngine(): JessLanguageServiceEngine {
       for (let i = 0; i < tokens.length; i++) {
         const tok = tokens[i]!;
         let type = tokenTypeFromChevrotain(tok, tracked.lang);
-        
+
         // CRITICAL: Never override string tokens - strings should always remain strings
         // Even if they contain interpolations like @{variable}, the string parts should stay as strings
         // String tokens are identified by tokenTypeFromChevrotain and should never be overridden
         const isStringToken = type === 'string';
-        
+
         // Check if this is a string token that will be split for interpolations
         // If so, we'll handle it specially and skip variable detection
         let willBeSplitForInterpolation = false;
@@ -2157,7 +2241,7 @@ export function createEngine(): JessLanguageServiceEngine {
             current = (current as any).parent;
           }
         }
-        
+
         // Override classification using AST for:
         // 1. Function calls (Call nodes) - ensure they're classified as 'function'
         // 2. Variable references (Reference nodes) - ensure they're classified as 'variable'
@@ -2169,7 +2253,7 @@ export function createEngine(): JessLanguageServiceEngine {
           const tokStartLine = (tok.startLine ?? 1) - 1;
           const tokStartChar = (tok.startColumn ?? 1) - 1;
           const tokEndChar = (tok.endColumn ?? tokStartChar);
-          
+
           // Check multiple points within the token to find the AST node
           const checkOffsets = [
             doc.offsetAt(Position.create(tokStartLine, tokStartChar)), // Start
@@ -2178,16 +2262,16 @@ export function createEngine(): JessLanguageServiceEngine {
             // Also check just after the @ symbol for Less variables
             doc.offsetAt(Position.create(tokStartLine, tokStartChar + 1))
           ];
-          
+
           let varRefNode: any = null;
           let callNode: any = null;
           const tokenImage = String(tok.image ?? '');
-          
+
           // First check: if this looks like an at-rule, don't treat it as a variable
           // At-rules can be known (in AT_RULES_MAP) or unknown, but neither should be variables
           const isAtRuleToken = tracked.lang === 'less' && tokenImage.startsWith('@') && tokenImage.length > 1;
           const isKnownAtRule = isAtRuleToken && AT_RULES_MAP.has(tokenImage.toLowerCase());
-          
+
           // If it's a known at-rule, ensure it's treated as namespace and skip variable detection
           if (isKnownAtRule) {
             // Don't override if it's already correctly classified
@@ -2205,7 +2289,7 @@ export function createEngine(): JessLanguageServiceEngine {
             const nextToken = nextTokenIdx < tokens.length ? tokens[nextTokenIdx] : undefined;
             const nextType = String(nextToken?.tokenType?.name ?? '');
             const looksLikeAtRule = nextType === 'LCurly' || nextType === 'LParen';
-            
+
             if (looksLikeAtRule) {
               // It's an unknown at-rule, treat as namespace
               if (type !== 'namespace') {
@@ -2215,42 +2299,46 @@ export function createEngine(): JessLanguageServiceEngine {
               // Not an at-rule, proceed with variable detection
               for (const offset of checkOffsets) {
                 const node = index.findNodeAtOffset(offset);
-                if (!node) continue;
-                
+                if (!node) {
+                  continue;
+                }
+
                 // Check for Call node first (function calls take precedence)
                 if ((node as any).type === 'Call') {
                   callNode = node;
                   break;
                 }
-                
+
                 // Check the node itself for variable reference
                 if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
                   varRefNode = node;
                   break;
                 }
-                
+
                 // Walk up the parent chain to find a Call or Reference node
                 // This handles cases where the token is inside a node (e.g., just the identifier part)
                 let current: any = node;
                 while (current && (current as any).parent) {
                   current = (current as any).parent;
-                  
+
                   // Check for Call node first (function calls take precedence)
                   if (current && current.type === 'Call') {
                     callNode = current;
                     break;
                   }
-                  
+
                   // Check for variable reference
                   if (current && current.type === 'Reference' && current.options?.type === 'variable') {
                     varRefNode = current;
                     break;
                   }
                 }
-                
-                if (callNode || varRefNode) break;
+
+                if (callNode || varRefNode) {
+                  break;
+                }
               }
-              
+
               // Function calls take precedence - don't override if already 'function'
               if (callNode && type !== 'function') {
                 type = 'function';
@@ -2266,41 +2354,45 @@ export function createEngine(): JessLanguageServiceEngine {
             // Not an @ token (or not Less), check for function calls and variable references
             for (const offset of checkOffsets) {
               const node = index.findNodeAtOffset(offset);
-              if (!node) continue;
-              
+              if (!node) {
+                continue;
+              }
+
               // Check for Call node first (function calls take precedence)
               if ((node as any).type === 'Call') {
                 callNode = node;
                 break;
               }
-              
+
               // Check the node itself for variable reference
               if ((node as any).type === 'Reference' && (node as any).options?.type === 'variable') {
                 varRefNode = node;
                 break;
               }
-              
+
               // Walk up the parent chain to find a Call or Reference node
               let current: any = node;
               while (current && (current as any).parent) {
                 current = (current as any).parent;
-                
+
                 // Check for Call node first (function calls take precedence)
                 if (current && current.type === 'Call') {
                   callNode = current;
                   break;
                 }
-                
+
                 // Check for variable reference
                 if (current && current.type === 'Reference' && current.options?.type === 'variable') {
                   varRefNode = current;
                   break;
                 }
               }
-              
-              if (callNode || varRefNode) break;
+
+              if (callNode || varRefNode) {
+                break;
+              }
             }
-            
+
             // Function calls take precedence - ensure they're classified as 'function'
             if (callNode && type !== 'function') {
               type = 'function';
@@ -2311,8 +2403,10 @@ export function createEngine(): JessLanguageServiceEngine {
             }
           }
         }
-        
-        if (!type) continue;
+
+        if (!type) {
+          continue;
+        }
 
         const prevIdx = prevNonWsIdx(i);
         const nextIdx = nextNonWsIdx(i);
@@ -2355,7 +2449,7 @@ export function createEngine(): JessLanguageServiceEngine {
             const atCharsetLen = atCharset.length;
             const quotedLen = quotedValue.length + 2; // +2 for the quotes
             const semicolonLen = semicolon.length;
-            
+
             // Emit @charset as namespace
             if (atCharsetLen > 0) {
               pending.push({
@@ -2366,7 +2460,7 @@ export function createEngine(): JessLanguageServiceEngine {
                 modifiers: 0
               });
             }
-            
+
             // Emit quoted string as string
             if (quotedLen > 0) {
               pending.push({
@@ -2377,7 +2471,7 @@ export function createEngine(): JessLanguageServiceEngine {
                 modifiers: 0
               });
             }
-            
+
             // Emit semicolon as operator (if present)
             if (semicolonLen > 0) {
               pending.push({
@@ -2388,7 +2482,7 @@ export function createEngine(): JessLanguageServiceEngine {
                 modifiers: 0
               });
             }
-            
+
             // Skip normal processing for this token since we've split it
             continue;
           }
@@ -2407,18 +2501,20 @@ export function createEngine(): JessLanguageServiceEngine {
           const tokenStartOffset = doc.offsetAt(Position.create(line, startChar));
           const tokenMidOffset = doc.offsetAt(Position.create(line, startChar + Math.floor(length / 2)));
           const tokenEndOffset = doc.offsetAt(Position.create(line, startChar + length - 1));
-          
+
           const checkOffsets = [tokenStartOffset, tokenMidOffset, tokenEndOffset];
-          
+
           // Check if this token corresponds to a Quoted node with an Interpolated value
           let quotedNode: any = null;
           let interpolatedNode: any = null;
-          
+
           // Try multiple offsets to find the Quoted node
           for (const offset of checkOffsets) {
             const node = index.findNodeAtOffset(offset);
-            if (!node) continue;
-            
+            if (!node) {
+              continue;
+            }
+
             // Walk up the parent chain to find a Quoted node
             let current: any = node;
             while (current) {
@@ -2432,21 +2528,23 @@ export function createEngine(): JessLanguageServiceEngine {
               }
               current = (current as any).parent;
             }
-            
-            if (quotedNode && interpolatedNode) break;
+
+            if (quotedNode && interpolatedNode) {
+              break;
+            }
           }
-          
+
           // If we found an Interpolated node, split the token using AST information
           // The source string contains %% placeholders that mark where interpolations occur
           if (interpolatedNode && interpolatedNode.value && interpolatedNode.value.source && Array.isArray(interpolatedNode.value.replacements)) {
             const source = interpolatedNode.value.source; // String with %% placeholders
             const replacements = interpolatedNode.value.replacements; // Array of Node[]
             const quotedSpan = getSpan(quotedNode);
-            
+
             if (quotedSpan && source.includes('%%')) {
               const quotedContentStart = quotedSpan.start + 1; // +1 for opening quote
               const quotedContentEnd = quotedSpan.end - 1; // -1 for closing quote
-              
+
               // Get spans for all replacement nodes (interpolations) - these are in order
               const replacementSpans: Array<{ start: number; end: number; node: any }> = [];
               for (const replacementNode of replacements) {
@@ -2455,10 +2553,10 @@ export function createEngine(): JessLanguageServiceEngine {
                   replacementSpans.push({ start: span.start, end: span.end, node: replacementNode });
                 }
               }
-              
+
               // Sort by start position to ensure correct order
               replacementSpans.sort((a, b) => a.start - b.start);
-              
+
               // Emit the opening quote as a string token
               const quotedStartPos = doc.positionAt(quotedSpan.start);
               if (quotedStartPos.line === line) {
@@ -2470,18 +2568,18 @@ export function createEngine(): JessLanguageServiceEngine {
                   modifiers: 0
                 });
               }
-              
+
               // Process string parts and interpolations
               // String parts are the gaps between interpolations (and before first, after last)
               let currentPos = quotedContentStart;
-              
+
               for (let i = 0; i < replacementSpans.length; i++) {
                 const replacementSpan = replacementSpans[i]!;
-                
+
                 // Find @{ before and } after the replacement node to get full interpolation boundaries
                 const interpStartPos = doc.positionAt(replacementSpan.start);
                 const interpEndPos = doc.positionAt(replacementSpan.end);
-                
+
                 // Look backwards from replacement start to find @{
                 let atBraceStart = replacementSpan.start;
                 if (interpStartPos.character >= 2) {
@@ -2494,7 +2592,7 @@ export function createEngine(): JessLanguageServiceEngine {
                     atBraceStart = doc.offsetAt(Position.create(interpStartPos.line, lookBackStart));
                   }
                 }
-                
+
                 // Look forwards from replacement end to find }
                 let braceEnd = replacementSpan.end;
                 const textAfter = doc.getText(Range.create(
@@ -2504,12 +2602,12 @@ export function createEngine(): JessLanguageServiceEngine {
                 if (textAfter.startsWith('}')) {
                   braceEnd = doc.offsetAt(Position.create(interpEndPos.line, interpEndPos.character + 1));
                 }
-                
+
                 // Emit string part before this interpolation
                 if (atBraceStart > currentPos) {
                   const stringPartStartPos = doc.positionAt(currentPos);
                   const stringPartEndPos = doc.positionAt(atBraceStart);
-                  
+
                   if (stringPartStartPos.line === line && stringPartEndPos.line === line) {
                     pending.push({
                       line,
@@ -2520,16 +2618,16 @@ export function createEngine(): JessLanguageServiceEngine {
                     });
                   }
                 }
-                
+
                 // Emit interpolation
                 const fullInterpStartPos = doc.positionAt(atBraceStart);
                 const fullInterpEndPos = doc.positionAt(braceEnd);
-                
+
                 if (fullInterpStartPos.line === line && fullInterpEndPos.line === line) {
                   // Determine semantic token type based on the replacement node
                   let replacementType: SemanticTokenType = 'variable';
                   const replacementNode = replacementSpan.node;
-                  
+
                   if (replacementNode.type === 'Reference' && replacementNode.options?.type === 'variable') {
                     replacementType = 'variable';
                   } else if (replacementNode.type === 'Call') {
@@ -2538,10 +2636,10 @@ export function createEngine(): JessLanguageServiceEngine {
                     replacementType = 'number';
                   } else if (replacementNode.type === 'Any') {
                     replacementType = 'property';
-                  } else if (replacementNode.type === 'Dimension' || replacementNode.type === 'Number') {
+                  } else if (replacementNode.type === 'Dimension' || replacementNode.type === 'Num') {
                     replacementType = 'number';
                   }
-                  
+
                   pending.push({
                     line,
                     char: fullInterpStartPos.character,
@@ -2550,16 +2648,16 @@ export function createEngine(): JessLanguageServiceEngine {
                     modifiers: 0
                   });
                 }
-                
+
                 // Advance past the interpolation
                 currentPos = braceEnd;
               }
-              
+
               // Emit remaining string part after last interpolation (includes closing quote position)
               if (currentPos <= quotedContentEnd) {
                 const stringPartStartPos = doc.positionAt(currentPos);
                 const stringPartEndPos = doc.positionAt(quotedContentEnd + 1); // Up to but not including closing quote
-                
+
                 if (stringPartStartPos.line === line && stringPartEndPos.line === line) {
                   pending.push({
                     line,
@@ -2570,7 +2668,7 @@ export function createEngine(): JessLanguageServiceEngine {
                   });
                 }
               }
-              
+
               // Emit the closing quote as a string token
               const quotedEndPos = doc.positionAt(quotedSpan.end);
               if (quotedEndPos.line === line) {
@@ -2582,7 +2680,7 @@ export function createEngine(): JessLanguageServiceEngine {
                   modifiers: 0
                 });
               }
-              
+
               // Skip normal processing for this token since we've split it
               continue;
             }
@@ -2685,7 +2783,7 @@ export function createEngine(): JessLanguageServiceEngine {
             modifiers |= MOD_DECLARATION;
           }
         }
-        
+
         // Also apply declaration modifier to variable references detected via AST
         // This makes them color the same as their declarations
         // We do this for all variable references found via AST lookup, since they're at least syntactically valid
@@ -2715,7 +2813,9 @@ export function createEngine(): JessLanguageServiceEngine {
         }
 
         const typeIdx = SEMANTIC_TOKEN_TYPES.indexOf(effType);
-        if (typeIdx === -1) continue;
+        if (typeIdx === -1) {
+          continue;
+        }
         pending.push({ line: start.line, char: start.character, length: fullLen, typeIdx, modifiers });
       }
 
@@ -2748,7 +2848,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
       for (const { node, color: colorNode } of colors) {
         const span = getNodeSpan(node);
-        if (!span) continue;
+        if (!span) {
+          continue;
+        }
 
         try {
           const lspColor = colorToLSP(colorNode);
@@ -2768,7 +2870,7 @@ export function createEngine(): JessLanguageServiceEngine {
     getColorPresentations(uri, color, range) {
       const { getColorPresentations: getPresentations } = require('./color-utils.js');
       const presentations = getPresentations(color);
-      
+
       // Set textEdit for each presentation
       return presentations.map((p: ColorPresentation) => ({
         ...p,

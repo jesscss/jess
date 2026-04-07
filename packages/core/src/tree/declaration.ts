@@ -82,8 +82,6 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
  * Once evaluated, name must be a string
  */
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
-  override type = 'Declaration';
-  override shortType = 'decl';
   override allowRuleRoot = true;
 
   /** If the value has curly braces, a semi-colon is not required */

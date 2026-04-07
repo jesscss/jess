@@ -5,9 +5,6 @@ type Fn = (...args: any[]) => any;
  * A JS function.
  */
 export class JsFunction extends Node<Fn> {
-  type = 'JsFunction' as const;
-  shortType = 'jsfunc' as const;
-
   name?: string | undefined;
 
   constructor(

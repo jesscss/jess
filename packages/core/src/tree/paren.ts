@@ -21,9 +21,6 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  type = 'Paren' as const;
-  shortType = 'paren' as const;
-
   constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     if (options?.escaped) {

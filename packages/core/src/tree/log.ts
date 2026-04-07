@@ -20,8 +20,6 @@ export interface Log extends Node<LogValue, NodeOptions> {
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
 export class Log extends Node<LogValue, NodeOptions> {
-  type = 'Log' as const;
-  shortType = 'log' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 
@@ -48,7 +46,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   override evalNode(context: Context): MaybePromise<Nil> {
     // Evaluate the message expression
     const messageResult = this.value.message.eval(context);
-    
+
     // Handle async evaluation if needed
     if (messageResult && typeof (messageResult as any).then === 'function') {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
@@ -56,7 +54,7 @@ export class Log extends Node<LogValue, NodeOptions> {
         return new Nil();
       });
     }
-    
+
     // Synchronous evaluation
     this._logMessage(messageResult as Node);
     return new Nil();
@@ -65,7 +63,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   private _logMessage(message: Node): void {
     const messageStr = String(message);
     const { level } = this.value;
-    
+
     switch (level) {
       case 'debug':
         logger.log?.(messageStr);

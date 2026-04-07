@@ -8,9 +8,6 @@ export interface DefaultGuard extends Node<string> {
 }
 
 export class DefaultGuard extends Node<string> {
-  type = 'DefaultGuard' as const;
-  shortType = 'defaultguard' as const;
-
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;

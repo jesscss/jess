@@ -131,8 +131,6 @@ export interface Rules extends Node<Node[], RulesOptions & NodeOptions> {
  * ]
  */
 export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
-  type = 'Rules';
-  shortType = 'rules';
   override allowRuleRoot = true;
   override allowRoot = true;
 

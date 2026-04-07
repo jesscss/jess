@@ -13,8 +13,6 @@ export interface Comment extends Node<string, CommentOptions> {
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
-  type = 'Comment' as const;
-  shortType = 'comment' as const;
   override allowRoot = true;
   override allowRuleRoot = true;
 

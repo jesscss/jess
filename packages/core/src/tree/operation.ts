@@ -22,9 +22,6 @@ export type OperationValue = [
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
-  type = 'Operation' as const;
-  shortType = 'op' as const;
-
   constructor(value: OperationValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Operations are always non-static, but can inherit may_async from children

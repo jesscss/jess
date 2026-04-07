@@ -76,7 +76,7 @@ export class Any<
     if (other.type === 'Any' || other.type === 'Keyword') {
       return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
-    if (other.type === 'Number' || other.type === 'Dimension') {
+    if (other.type === 'Num' || other.type === 'Dimension') {
       const text = this.value.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
@@ -126,9 +126,6 @@ defineType(Anonymous, 'Anonymous');
  * not Keyword nodes, unlike Less.js where they are Keyword instances.
  */
 export class Keyword extends Any<'keyword'> {
-  override type = 'Keyword' as const;
-  override shortType = 'keyword';
-
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
-import { rules, decl, any, list, vardecl, call, fn, nil } from '../index.js';
+import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
 
 describe('Func', () => {
   it('evaluates a stylesheet function and returns return: value', async () => {
@@ -18,14 +18,12 @@ describe('Func', () => {
           decl({ name: 'return', value: any('ok') })
         ])
       }),
-      // Call using plain string name should resolve through function registry
-      call({ name: 'add', args: list([any('x'), any('y')]) })
+      call({ name: ref('add', { type: 'function' }), args: list([any('x'), any('y')]) })
     ]);
 
-    // Evaluate root rules; the call should reduce to the return value node
     const out = await tree.eval(ctx);
     expect(String(out)).toBeString(`
-      add(x, y);
+      ok
     `);
   });
 });

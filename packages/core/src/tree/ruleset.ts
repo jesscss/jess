@@ -61,8 +61,6 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
  * }
  */
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
-  type = 'Ruleset';
-  shortType = 'ruleset';
   override allowRuleRoot = true;
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean

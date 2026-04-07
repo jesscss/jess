@@ -12,9 +12,6 @@ import { Sequence } from './sequence.js';
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
-  override type = 'QueryCondition';
-  override shortType = 'query';
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

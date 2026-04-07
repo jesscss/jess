@@ -75,9 +75,6 @@ export type MixinOptions = {
  * @todo - Even though we allow a selector as a name.
  */
 export class Mixin extends Node<MixinValue, MixinOptions> {
-  type = 'Mixin';
-  shortType = 'mixin';
-
   constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
     super(value, options, location, context);
     this.removeFlag(F_VISIBLE);

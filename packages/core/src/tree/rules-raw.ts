@@ -7,8 +7,6 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
  * without parent-managed newlines or indentation.
  */
 export class RawRules extends Rules {
-  override type = 'RawRules' as const;
-  override shortType = 'rules-raw' as const;
   override allowRuleRoot = true;
 
   // Do not add newlines/indent; emit children exactly as-is

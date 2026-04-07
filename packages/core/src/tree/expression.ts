@@ -15,9 +15,6 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  type = 'Expression' as const;
-  shortType = 'expr' as const;
-
   constructor(value: Node, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.addFlag(F_NON_STATIC);

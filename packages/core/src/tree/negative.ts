@@ -11,9 +11,6 @@ export interface Negative extends Node<Node> {
 }
 
 export class Negative extends Node<Node> {
-  type = 'Negative' as const;
-  shortType = 'negative' as const;
-
   constructor(value: Node, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Negative operations are always non-static, but can inherit may_async from children

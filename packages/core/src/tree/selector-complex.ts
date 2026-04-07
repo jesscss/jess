@@ -31,8 +31,6 @@ export type ComplexSelectorValue = ComplexSelectorComponent[];
  * relative selector, which means it may start with a combinator.
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  type = 'ComplexSelector';
-  shortType = 'sel';
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators

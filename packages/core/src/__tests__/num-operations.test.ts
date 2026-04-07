@@ -10,28 +10,28 @@ describe('Num operations', () => {
     // Addition should return Num
     const addResult = n1.operate(n2, '+');
     expect(addResult).toBeInstanceOf(Num);
-    expect(addResult.type).toBe('Number');
+    expect(addResult.type).toBe('Num');
     expect(addResult.value.number).toBe(4);
     expect(addResult.value.unit).toBeUndefined();
 
     // Subtraction should return Num
     const subResult = n1.operate(n2, '-');
     expect(subResult).toBeInstanceOf(Num);
-    expect(subResult.type).toBe('Number');
+    expect(subResult.type).toBe('Num');
     expect(subResult.value.number).toBe(2);
     expect(subResult.value.unit).toBeUndefined();
 
     // Multiplication should return Num
     const mulResult = n1.operate(n2, '*');
     expect(mulResult).toBeInstanceOf(Num);
-    expect(mulResult.type).toBe('Number');
+    expect(mulResult.type).toBe('Num');
     expect(mulResult.value.number).toBe(3);
     expect(mulResult.value.unit).toBeUndefined();
 
     // Division should return Num
     const divResult = n1.operate(n2, '/');
     expect(divResult).toBeInstanceOf(Num);
-    expect(divResult.type).toBe('Number');
+    expect(divResult.type).toBe('Num');
     expect(divResult.value.number).toBe(3);
     expect(divResult.value.unit).toBeUndefined();
   });
@@ -62,14 +62,14 @@ describe('Num operations', () => {
     // Addition should return Num (because result has no unit)
     const addResult = n1.operate(d1, '+');
     expect(addResult).toBeInstanceOf(Num);
-    expect(addResult.type).toBe('Number');
+    expect(addResult.type).toBe('Num');
     expect(addResult.value.number).toBe(5);
     expect(addResult.value.unit).toBeUndefined();
 
     // Subtraction should return Num (because result has no unit)
     const subResult = n1.operate(d1, '-');
     expect(subResult).toBeInstanceOf(Num);
-    expect(subResult.type).toBe('Number');
+    expect(subResult.type).toBe('Num');
     expect(subResult.value.number).toBe(1);
     expect(subResult.value.unit).toBeUndefined();
   });

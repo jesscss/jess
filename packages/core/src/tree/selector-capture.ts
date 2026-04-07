@@ -14,9 +14,6 @@ export interface SelectorCapture extends Node<Selector> {
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
-  type = 'SelectorCapture' as const;
-  shortType = 'selcap' as const;
-
   override valueOf(): string {
     return String(this.value.valueOf());
   }

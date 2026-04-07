@@ -14,9 +14,6 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  * This allows interpolation to be used in selector contexts
  */
 export class InterpolatedSelector extends SimpleSelector<Interpolated> {
-  type = 'InterpolatedSelector' as const;
-  shortType = 'interpolated-selector' as const;
-
   get isClass() {
     return /^\./.test(this.valueOf());
   }

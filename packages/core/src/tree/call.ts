@@ -73,8 +73,6 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * is not a string, but is an (optional) variable reference.
  */
 export class Call extends Node<CallValue, CallOptions> {
-  type = 'Call' as const;
-  shortType = 'call' as const;
   override _requiredSemi = true;
 
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
