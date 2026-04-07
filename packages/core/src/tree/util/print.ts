@@ -1,6 +1,7 @@
 import type { Context } from '../../context.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
+import type { RenderKey } from '../node-base.js';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -23,6 +24,8 @@ export type PrintOptions = {
   referenceRenderEnabled?: boolean;
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
+  /** RenderKey for fork-aware value reads during serialization. */
+  renderKey?: RenderKey;
 };
 
 export type FinalPrintOptions = PrintOptions & {
