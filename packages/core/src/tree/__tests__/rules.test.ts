@@ -40,6 +40,12 @@ function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOp
   return decl;
 }
 
+function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+  context.rulesContext = n;
+  opts.searchParents = true;
+  return n.find('declaration', key, undefined, opts);
+}
+
 // function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
 //   context.rulesContext = n;
 //   opts.searchParents = true;
@@ -58,11 +64,13 @@ describe('Rules', () => {
 
   let getProp = getPropWithContext.bind(context, context);
   let getVar = getVarWithContext.bind(context, context);
+  let getDeclEither = getDeclEitherWithContext.bind(context, context);
   // let getSelector = getSelectorWithContext.bind(context, context);
   beforeEach(() => {
     context = new Context();
     getProp = getPropWithContext.bind(context, context);
     getVar = getVarWithContext.bind(context, context);
+    getDeclEither = getDeclEitherWithContext.bind(context, context);
     // getSelector = getSelectorWithContext.bind(context, context);
     context.id = 'testing';
   });
@@ -109,6 +117,23 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
         expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
+      });
+
+      it('find(declaration, key, undefined) picks VarDeclaration or Declaration by source order', async () => {
+        let node = rules([
+          vardecl({ name: any('n'), value: any('from-var') }),
+          decl({ name: any('n'), value: any('from-decl') })
+        ]);
+        node = await node.eval(context);
+        expect(isNode(getDeclEither(node, 'n'), N.Declaration)).toBe(true);
+        expect(isNode(getDeclEither(node, 'n'), N.VarDeclaration)).toBe(false);
+
+        let node2 = rules([
+          decl({ name: any('m'), value: any('from-decl') }),
+          vardecl({ name: any('m'), value: any('from-var') })
+        ]);
+        node2 = await node2.eval(context);
+        expect(isNode(getDeclEither(node2, 'm'), N.VarDeclaration)).toBe(true);
       });
 
       it('replaces variable values', async () => {

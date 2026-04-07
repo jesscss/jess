@@ -135,12 +135,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     } else if (resolution === 'call-time') {
       w.add('~');
     }
-    // if (role === 'ident' && (type === 'variable' || type === 'property') && !target) {
-    //   w.add('$[');
-    //   emitKey(key);
-    //   w.add(']');
-    //   return w.getSince(mark);
-    // }
     switch (type) {
       case 'index':
         w.add('[');
@@ -157,11 +151,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add('.');
         emitKey(key);
         break;
-      // case 'property':
-      //   w.add('.\'');
-      //   emitKey(key);
-      //   w.add('\'');
-      //   break;
       case 'mixin':
         w.add(' > ');
         emitKey(key);
@@ -404,7 +393,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               } else {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
                 if (isNode(targetRules, N.Rules)) {
-                  return targetRules.find('declaration', `${keyStr}`, undefined, opts);
+                  const indexFilterType = isNode(this.value.key, N.Quoted) ? 'Declaration' as const : 'VarDeclaration' as const;
+                  return targetRules.find('declaration', `${keyStr}`, indexFilterType, opts);
                 } else if (isNode(targetRules, N.JsObject)) {
                   return (targetRules as any).value[keyStr];
                 }
@@ -450,20 +440,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 );
               }
               break;
-            // MOVED TO indexed form
-            // case 'property':
-            //   if (isNode(targetRules, N.Rules)) {
-            //     const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-            //     const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
-            //     if (declaration !== undefined) {
-            //       return declaration;
-            //     }
-            //     return undefined;
-            //   } else if (isNode(targetRules, N.JsObject)) {
-            //     const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-            //     return (targetRules as any).value[keyStr];
-            //   }
-            //   break;
             case 'mixin':
               if (isNode(targetRules, N.Rules)) {
                 // valueKey can be string or string[] - find() accepts both

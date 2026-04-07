@@ -170,8 +170,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         const normalizedAssign = assign;
         value = value.maybeClone(context);
         /** Reference type */
-        let type: 'property' | 'variable' =
-          node.type === 'Declaration' ? 'property' : 'variable';
+        let type: 'declaration' | 'variable' =
+          node.type === 'Declaration' ? 'declaration' : 'variable';
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {

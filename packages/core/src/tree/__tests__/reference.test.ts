@@ -15,11 +15,6 @@ describe('reference', () => {
       expect(`${node}`).toBe('$foo');
     });
 
-    // it('should serialize a property reference', () => {
-    //   let node = ref({ key: 'foo' }, { type: 'property' });
-    //   expect(`${node}`).toBe('.\'foo\'');
-    // });
-
     it('should serialize a declaration reference', () => {
       let node = ref({ key: 'foo' }, { type: 'declaration' });
       expect(`${node}`).toBe('$.foo');
@@ -80,8 +75,7 @@ describe('reference', () => {
       `);
     });
 
-    /** @todo - Rewrite as quoted index */
-    it.skip('should get a property from scope', async () => {
+    it('should get a property from scope via quoted index', async () => {
       let node = rules([
         decl({
           name: any('foo'),
@@ -89,7 +83,7 @@ describe('reference', () => {
         }),
         decl({
           name: any('bar'),
-          value: ref({ key: 'foo' }, { type: 'property' })
+          value: ref({ key: quoted('foo') }, { type: 'index' })
         })
       ]);
       let evald = await node.eval(context);
@@ -117,12 +111,11 @@ describe('reference', () => {
       `);
     });
 
-    /** @todo - Rewrite as quoted index */
-    it.skip('should get a prop from scope below reference', async () => {
+    it('should get a prop from scope below reference via quoted index', async () => {
       let node = rules([
         decl({
           name: any('bar'),
-          value: ref({ key: 'foo' }, { type: 'property' })
+          value: ref({ key: quoted('foo') }, { type: 'index' })
         }),
         decl({
           name: any('foo'),
@@ -133,6 +126,112 @@ describe('reference', () => {
       expect(`${evald}`).toBeString(`
         bar: red;
         foo: red;
+      `);
+    });
+
+    it('should treat keyword index as variable lookup', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'index' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      /** The var declaration will be removed when going to CSS */
+      expect(`${evald}`).toBeString(`
+        bar: red;
+      `);
+    });
+
+    it('should find a VarDeclaration via declaration type when both types exist', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'declaration' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: blue;
+      `);
+    });
+
+    it('should find a Declaration via declaration type when both types exist', async () => {
+      let node = rules([
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'declaration' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: red;
+      `);
+    });
+
+    it('should find a variable via keyword index (not a property)', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: 'foo' }, { type: 'index' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: red;
+      `);
+    });
+
+    it('should find a property via quoted index (not a variable)', async () => {
+      let node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('foo'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('bar'),
+          value: ref({ key: quoted('foo') }, { type: 'index' })
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        foo: blue;
+        bar: blue;
       `);
     });
 
@@ -372,7 +471,7 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
@@ -423,7 +522,7 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
@@ -512,7 +611,7 @@ describe('reference', () => {
               value: ref({
                 target: ref({ key: 'colors' }, { type: 'variable' }),
                 key: 'primary'
-              }, { type: 'property' })
+              }, { type: 'declaration' })
             })
           ])
         })
