@@ -3,6 +3,9 @@ import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from '.
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
+import { type BitSet, type BitSetLibrary } from './util/bitset.js';
+
+const { isArray } = Array;
 
 /**
  * This represents anything that is valid in a selector
@@ -53,10 +56,68 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   get canFastReject(): boolean {
     if (this._canFastReject === undefined) {
-      // Trigger computation of both keySet and canFastReject together
       this._computeKeySetAndFastReject();
     }
     return this._canFastReject!;
+  }
+
+  /** BitSet-based key properties for O(1) extend rejection */
+  keySetLibrary: BitSetLibrary<string> | undefined;
+  protected _keyBits: BitSet<string> | undefined;
+  protected _visibleKeyBits: BitSet<string> | undefined;
+  protected _requiredKeyBits: BitSet<string> | undefined;
+
+  get keyBits(): BitSet<string> {
+    if (!this._keyBits) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._keyBits!;
+  }
+
+  get visibleKeyBits(): BitSet<string> {
+    if (!this._visibleKeyBits) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._visibleKeyBits!;
+  }
+
+  /**
+   * Required keys — excludes OR paths (e.g., SelectorList inside :is()).
+   * If a target doesn't have ALL required bits, it can't match this selector.
+   */
+  get requiredKeyBits(): BitSet<string> {
+    if (!this._requiredKeyBits) {
+      this._computeKeySetAndFastReject();
+    }
+    return this._requiredKeyBits!;
+  }
+
+  /**
+   * Context-aware key computation. If context provided, walks children
+   * recursively. Otherwise returns cached keyBits.
+   */
+  getKeyBits(context?: Context): BitSet<string> {
+    if (!context) {
+      return this.keyBits;
+    }
+    const library = context.selectorBits;
+    this.keySetLibrary ??= library;
+
+    const children = (this as any).value;
+    if (isArray(children)) {
+      let bits: BitSet<string> | undefined;
+      for (const child of children as Selector[]) {
+        if (!(child as any).isSelector) {
+          continue;
+        }
+        const childBits = child.getKeyBits(context);
+        bits = bits ? bits.or(childBits) : childBits.clone();
+      }
+      return bits ?? library.getBitset();
+    }
+
+    const value = String(this.valueOf());
+    return library.getBitset([value]);
   }
 
   /**
@@ -64,7 +125,6 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
    * Subclasses should override this to implement their specific logic.
    */
   protected _computeKeySetAndFastReject(): void {
-    // Default implementation - subclasses override
     let value = String(this.valueOf());
     this._keySet = new Set([value]);
     if (this.hasFlag(F_VISIBLE)) {
@@ -73,6 +133,13 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       this._visibleKeySet = new Set();
     }
     this._canFastReject = true;
+
+    if (this.keySetLibrary) {
+      const lib = this.keySetLibrary;
+      this._keyBits = lib.getBitset([value]);
+      this._visibleKeyBits = this.hasFlag(F_VISIBLE) ? this._keyBits : lib.getBitset();
+      this._requiredKeyBits = this._keyBits;
+    }
   }
 }
 

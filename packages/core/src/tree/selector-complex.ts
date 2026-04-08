@@ -83,6 +83,27 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     this._keySet = combinedKeySet;
     this._visibleKeySet = combinedVisibleKeySet;
     this._canFastReject = canFastReject;
+
+    if (this.keySetLibrary) {
+      const lib = this.keySetLibrary;
+      let keyBits = lib.getBitset();
+      let visibleBits = lib.getBitset();
+      let requiredBits = lib.getBitset();
+      for (const component of this.value) {
+        if (isNode(component, N.Combinator)) {
+          continue;
+        }
+        const selector = component as Selector;
+        keyBits = keyBits.or(selector.keyBits);
+        if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
+          visibleBits = visibleBits.or(selector.visibleKeyBits);
+        }
+        requiredBits = requiredBits.or(selector.requiredKeyBits);
+      }
+      this._keyBits = keyBits;
+      this._visibleKeyBits = visibleBits;
+      this._requiredKeyBits = requiredBits;
+    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {

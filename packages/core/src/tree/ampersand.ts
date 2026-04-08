@@ -137,6 +137,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     }
     this._keySet = new Set(['&']);
     this._visibleKeySet = new Set();
+
+    if (this.keySetLibrary) {
+      const lib = this.keySetLibrary;
+      if (selector && 'keyBits' in selector) {
+        this._keyBits = (selector as unknown as Selector).keyBits;
+      } else {
+        this._keyBits = lib.getBitset(['&']);
+      }
+      this._visibleKeyBits = lib.getBitset();
+      this._requiredKeyBits = lib.getBitset();
+    }
   }
 
   /**

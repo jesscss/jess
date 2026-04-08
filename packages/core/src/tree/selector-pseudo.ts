@@ -71,6 +71,30 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       // Other pseudo-selectors are safe for fast rejection
       this._canFastReject = true;
     }
+
+    if (this.keySetLibrary) {
+      const lib = this.keySetLibrary;
+      if (hasSelectorListArg) {
+        let keyBits = lib.getBitset();
+        let visibleBits = lib.getBitset();
+        for (const selector of arg.value) {
+          keyBits = keyBits.or(selector.keyBits);
+          visibleBits = visibleBits.or(selector.visibleKeyBits);
+        }
+        this._keyBits = keyBits;
+        this._visibleKeyBits = visibleBits;
+        this._requiredKeyBits = lib.getBitset();
+      } else if (hasSelectorArg) {
+        this._keyBits = arg.keyBits;
+        this._visibleKeyBits = arg.visibleKeyBits;
+        this._requiredKeyBits = arg.requiredKeyBits;
+      } else {
+        const bits = lib.getBitset([this.valueOf()]);
+        this._keyBits = bits;
+        this._visibleKeyBits = bits;
+        this._requiredKeyBits = bits;
+      }
+    }
   }
 
   override toTrimmedString(options?: PrintOptions) {
