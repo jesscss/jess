@@ -99,7 +99,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.value;
+    let { name, rules, params, guard } = this.getValue(options.renderKey) as MixinValue;
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {

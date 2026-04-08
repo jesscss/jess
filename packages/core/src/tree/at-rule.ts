@@ -232,7 +232,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    let { name, prelude, rules } = this.value;
+    let { name, prelude, rules } = this.getValue(options.renderKey) as AtRuleValue;
 
     let idt = indent(options.depth);
     let out = idt;

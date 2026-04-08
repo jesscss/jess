@@ -59,7 +59,7 @@ export class Extend extends Node<ExtendValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag, namespace } = this.value;
+    let { target, selector, flag, namespace } = this.getValue(options.renderKey) as ExtendValue;
     const mark = w.mark();
     w.add('$extend');
     if (selector) {

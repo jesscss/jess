@@ -76,7 +76,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this.value;
+    const { name, op, value, mod } = this.getValue(options.renderKey) as AttributeSelectorValue;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);

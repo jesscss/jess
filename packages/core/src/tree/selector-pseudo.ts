@@ -76,7 +76,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this.value;
+    let { name, arg } = this.getValue(options.renderKey) as PseudoSelectorValue;
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));

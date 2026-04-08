@@ -305,7 +305,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const { selector } = this.value;
+    const { selector } = this.getValue(options.renderKey) as RulesetValue;
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
