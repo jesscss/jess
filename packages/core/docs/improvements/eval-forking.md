@@ -147,12 +147,28 @@ If a forked Rules node needs new registry entries (e.g., a mixin call adds decla
     - The selector's `valueOf()` or initial `computeKeySets()` may produce different results with the new parent (e.g., flat `.do .re .mi .fa .sol .la .si` vs `:is()`-wrapped form), producing different start keys.
     - The `.si` key gets overwritten by `.do` in the mixin registry index.
 
-    **Key question**: Should `set()` call `_processNodes/adopt()` on the new value for keyed property updates? `adopt()` changes parent chains, which affects selector computation. For the forking use case, we're replacing a property value — the new value's parent relationship might not need to change.
+    **Resolution: Remove getImplicitSelector from preEval entirely**
 
-    **Possible fixes**:
-    1. `set()` keyed path should NOT call `_processNodes` — just store the value. Parent tracking for forks happens via `_parentForks`, not via `adopt()` on property values.
-    2. Make `indexPendingItems` eager (run immediately after add, during preEval) so it captures the correct selector state.
-    3. Ensure selector `computeKeySets()` is stable regardless of parent chain — cache at first computation and never recompute.
+    The root cause is that `getImplicitSelector` mutates every nested selector during preEval, wrapping with `:is()` and parent context. This is:
+    - Expensive: runs on ALL selectors whether extended or not
+    - A mutation: conflicts with forking (the selector form changes, producing different registry keys)
+    - Premature: only needed for extend matching and hoistToRoot serialization
+
+    Instead:
+    - Keep selectors as-authored during preEval (no mutation, no forking needed)
+    - During extend matching: pass parent selector as context, compute implicit form on the fly
+    - During serialization with hoistToRoot: compute full selector at render time
+    - Cache computed forms in WeakMaps, scoped to the extend pass
+
+    This eliminates:
+    - The `set('selector')` fork issue entirely (selector isn't mutated)
+    - The `_processNodes/adopt()` parent chain problem
+    - The double-registration / key-overwrite problem
+    - The global cost of getImplicitSelector on all selectors
+
+    **Performance principle**: Extend is a feature used on a small subset of selectors. Its cost must be proportional to the number of extended selectors, not the total selectors in the stylesheet.
+
+    **BitSet integration**: Parent bitsets are OR'd in lazily during the extend pass (not globally upfront). Registry uses as-authored selector keys (stable, immutable). BitSets computed once from canonical selectors, never invalidated.
 11. **RenderRoot parent renderKey tracking** — When a lookup climbs past a renderRoot boundary (e.g., exiting a $for iteration's scope), it needs to restore to the parent's renderKey. RenderRoots should store the parentRenderKey that was active when they were created.
 11. **Selector bitsets from jess-dev** — Replace keySet (Set<string>) with BitSet for O(1) extend rejection. jess-dev has `BitSetLibrary<string>` on Context, `getKeySet(context)` on selectors, `requiredKeySet` excluding OR paths. Pull this in when retooling keySet computation for renderKey awareness. Source: `/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/util/bitset.ts` and `selector.ts`.
     - **Key insight**: jess-dev has invalidation machinery for bitsets because selectors get mutated. With the forking system, canonical selectors are IMMUTABLE — bitsets computed from canonical state never need invalidation. Compute once at registration, use forever. For extends: OR the new selector's bits into the target. No recomputation, no renderKey awareness needed for bitsets — they're derived from canonical (immutable) state.
