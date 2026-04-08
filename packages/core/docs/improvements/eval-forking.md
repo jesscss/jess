@@ -122,7 +122,12 @@ If a forked Rules node needs new registry entries (e.g., a mixin call adds decla
    - **Important**: don't mutate `this.value` during serialization — just use the return value of `getValue()`
 8. **After serialization is renderKey-aware**: remove `copy()` from $for output collection
 9. **Mixin calls** — same pattern as $for, more complex due to param binding
-10. **RenderRoot parent renderKey tracking** — When a lookup climbs past a renderRoot boundary (e.g., exiting a $for iteration's scope), it needs to restore to the parent's renderKey. RenderRoots should store the parentRenderKey that was active when they were created.
+10. **set() EVAL default investigation** — One remaining failure: compound selector mixin test (.do.re.mi.fa.sol.la.si). The EVAL fast path (direct mutation when thisRenderKey === renderKey) works for 76/77 test files. The remaining failure is in how canonical-to-EVAL forking interacts with mixin compound selector lookups. Key findings:
+    - `_renderKey` should only be set by `set()` (when value changes), not blanket by evalStatic
+    - Nodes that evaluate to themselves unchanged stay canonical (undefined _renderKey)
+    - adopt() correctly stores parent forks when renderKeys differ
+    - The specific failure needs deep tracing: why does cloneValue + keyed property update on the Ruleset value object break compound selector lookup?
+11. **RenderRoot parent renderKey tracking** — When a lookup climbs past a renderRoot boundary (e.g., exiting a $for iteration's scope), it needs to restore to the parent's renderKey. RenderRoots should store the parentRenderKey that was active when they were created.
 11. **Selector bitsets from jess-dev** — Replace keySet (Set<string>) with BitSet for O(1) extend rejection. jess-dev has `BitSetLibrary<string>` on Context, `getKeySet(context)` on selectors, `requiredKeySet` excluding OR paths. Pull this in when retooling keySet computation for renderKey awareness. Source: `/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/util/bitset.ts` and `selector.ts`.
     - **Key insight**: jess-dev has invalidation machinery for bitsets because selectors get mutated. With the forking system, canonical selectors are IMMUTABLE — bitsets computed from canonical state never need invalidation. Compute once at registration, use forever. For extends: OR the new selector's bits into the target. No recomputation, no renderKey awareness needed for bitsets — they're derived from canonical (immutable) state.
 12. **Remove `resetEvalStateDeep`** — once all deep-clone sites are converted
