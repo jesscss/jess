@@ -1,7 +1,6 @@
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
-import { Sequence } from './sequence.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
 
@@ -52,78 +51,6 @@ export type ForIterable =
     includeStart: boolean;
     includeEnd: boolean;
   };
-
-type LegacyLoopValue = {
-  header: Sequence;
-  rules: Rules;
-};
-
-function parsePatternNode(patternNode: Node): ForPattern {
-  if (isNode(patternNode, N.VarDeclaration)) {
-    return { kind: 'single', value: patternNode };
-  }
-  if (patternNode.type === 'Block' && patternNode.options?.type === 'square' && isNode(patternNode.value, N.List)) {
-    const values = patternNode.value.value.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
-    if (values.length === 1) {
-      return { kind: 'single', value: values[0]! };
-    }
-    if (values.length > 1) {
-      return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
-    }
-  }
-  if (isNode(patternNode, N.List | N.Sequence)) {
-    const values = (patternNode as List).value.filter((entry): entry is VarDeclaration => isNode(entry, N.VarDeclaration));
-    if (values.length === 1) {
-      return { kind: 'single', value: values[0]! };
-    }
-    if (values.length > 1) {
-      return { kind: 'tuple', values: values as [VarDeclaration, ...VarDeclaration[]] };
-    }
-  }
-  throw new Error('Invalid $for pattern: expected one or more variables');
-}
-
-function parseLegacyHeader(header: Sequence): {
-  pattern: ForPattern;
-  iterable: ForIterable;
-} {
-  const headerNode = header.value[0];
-  const inner = isNode(headerNode, N.Paren) && headerNode.value
-    ? headerNode.value
-    : headerNode;
-  const sequence = isNode(inner, N.Sequence)
-    ? inner.value
-    : [inner].filter(Boolean) as Node[];
-  const ofIndex = sequence.findIndex(node => isNode(node, N.Any) && node.valueOf() === 'of');
-  if (ofIndex <= 0 || ofIndex >= sequence.length - 1) {
-    throw new Error('Invalid $for header: expected "<pattern> of <iterable>"');
-  }
-  const patternParts = sequence.slice(0, ofIndex);
-  const iterableParts = sequence.slice(ofIndex + 1);
-  const patternNode = patternParts.length === 1
-    ? patternParts[0]!
-    : new Sequence(patternParts);
-  const iterableNode = iterableParts.length === 1
-    ? iterableParts[0]!
-    : new Sequence(iterableParts);
-  let iterable: ForIterable;
-  if (isNode(iterableNode, N.Range)) {
-    iterable = {
-      kind: 'range',
-      start: iterableNode.value.start,
-      end: iterableNode.value.end,
-      step: iterableNode.value.step,
-      includeStart: iterableNode.options?.includeStart !== false,
-      includeEnd: iterableNode.options?.includeEnd !== false
-    };
-  } else {
-    iterable = { kind: 'node', value: iterableNode };
-  }
-  return {
-    pattern: parsePatternNode(patternNode),
-    iterable
-  };
-}
 
 function getBindingNames(pattern: ForPattern): string[] {
   if (pattern.kind === 'single') {
@@ -263,8 +190,6 @@ export type StructuredLoopValue = {
   rules: Rules;
 };
 
-export type LoopValue = StructuredLoopValue | LegacyLoopValue;
-
 /**
  * `$for <header> { ... }`
  */
@@ -272,20 +197,10 @@ export class For extends Node<StructuredLoopValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: LoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
-    const normalized = ('header' in value)
-      ? (() => {
-          const parsed = parseLegacyHeader(value.header);
-          return {
-            pattern: parsed.pattern,
-            iterable: parsed.iterable,
-            rules: value.rules
-          };
-        })()
-      : value;
-    super(normalized, options, location, treeContext);
+  constructor(value: StructuredLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(normalized.rules);
+    makeDirectiveRulesPublic(value.rules);
   }
 
   override preEval(context: Context): MaybePromise<Node> {
@@ -379,30 +294,6 @@ export class For extends Node<StructuredLoopValue> {
     return w.getSince(mark);
   }
 }
-
-/**
- * `$each <header> { ... }`
- */
-// export class Each extends Node<LegacyLoopValue> {
-//   override allowRoot = true;
-//   override allowRuleRoot = true;
-
-//   constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
-//     super(value, options, location, treeContext);
-//     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-//   }
-
-//   override toTrimmedString(options?: PrintOptions): string {
-//     options = getPrintOptions(options);
-//     const w = options.writer!;
-//     const mark = w.mark();
-//     w.add('$each ', this);
-//     this.value.header.toString(options);
-//     w.add(' ');
-//     this.value.rules.toBraced(options);
-//     return w.getSince(mark);
-//   }
-// }
 
 export type WhileValue = {
   condition: Node;
