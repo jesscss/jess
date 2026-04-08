@@ -186,7 +186,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node.value.arg = evaluatedArg;
+        node.set('arg', evaluatedArg, context.renderKey);
         return node;
       }
     );

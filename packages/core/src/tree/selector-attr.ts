@@ -50,7 +50,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                 const out = decl.value.value.eval(context);
                 if (isThenable(out)) {
                   return (out as Promise<Node>).then((evaluated) => {
-                    this.value.value = quoted(String(evaluated.valueOf()));
+                    this.set('value', quoted(String(evaluated.valueOf())), context.renderKey);
                     this._valueOf = undefined;
                     this._keySet = undefined;
                     this._visibleKeySet = undefined;
@@ -58,7 +58,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                     return this;
                   });
                 }
-                this.value.value = quoted(String((out as Node).valueOf()));
+                this.set('value', quoted(String((out as Node).valueOf())), context.renderKey);
                 this._valueOf = undefined;
                 this._keySet = undefined;
                 this._visibleKeySet = undefined;
