@@ -124,6 +124,7 @@ If a forked Rules node needs new registry entries (e.g., a mixin call adds decla
 9. **Mixin calls** — same pattern as $for, more complex due to param binding
 10. **RenderRoot parent renderKey tracking** — When a lookup climbs past a renderRoot boundary (e.g., exiting a $for iteration's scope), it needs to restore to the parent's renderKey. RenderRoots should store the parentRenderKey that was active when they were created.
 11. **Selector bitsets from jess-dev** — Replace keySet (Set<string>) with BitSet for O(1) extend rejection. jess-dev has `BitSetLibrary<string>` on Context, `getKeySet(context)` on selectors, `requiredKeySet` excluding OR paths. Pull this in when retooling keySet computation for renderKey awareness. Source: `/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/util/bitset.ts` and `selector.ts`.
+    - **Key insight**: jess-dev has invalidation machinery for bitsets because selectors get mutated. With the forking system, canonical selectors are IMMUTABLE — bitsets computed from canonical state never need invalidation. Compute once at registration, use forever. For extends: OR the new selector's bits into the target. No recomputation, no renderKey awareness needed for bitsets — they're derived from canonical (immutable) state.
 12. **Remove `resetEvalStateDeep`** — once all deep-clone sites are converted
 
 ### Performance Constraints
