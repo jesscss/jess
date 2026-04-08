@@ -511,9 +511,18 @@ export abstract class Node<
   }
 
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>, renderKey?: RenderKey): void;
-  set(key: null | string | number, value: any, renderKey: RenderKey = EVAL) {
+  set(key: null | string | number, value: any, renderKey?: RenderKey) {
+    /** No renderKey → direct mutation (non-forking fast path) */
+    if (renderKey === undefined) {
+      if (key == null) {
+        (this as Mutable<Node>).value = this._processNodes(value);
+      } else {
+        (this.value as Record<string | number, any>)[key] = this._processNodes(value);
+      }
+      return;
+    }
     const existingValue = this.value;
-    /** Don't create EVAL nodes if the value is the same */
+    /** Don't create fork if the value is the same */
     if (existingValue === value
       || existingValue?.valueOf?.() === value?.valueOf?.()
     ) {

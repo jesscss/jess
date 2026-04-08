@@ -530,12 +530,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
               }
               if (!guardPasses) {
-                // Guard failed - mark as Nil and return it
-                this.value.guard = new Nil();
+                this.set('guard', new Nil(), context.renderKey);
                 return new Nil();
               }
-              // Guard passed - clear it and continue with selector evaluation
-              this.value.guard = undefined;
+              this.set('guard', undefined, context.renderKey);
               return undefined;
             }
           );
@@ -558,23 +556,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // This allows rules to be output even when there's no selector context
           // We don't push frames because there's no selector context
           // Store Nil in selector so next step can detect this case
-          this.value.selector = selector;
+          this.set('selector', selector, context.renderKey);
           const evaluatedRules = this.value.rules.eval(context);
-          // Update this.value.rules to point to evaluated Rules to prevent circular reference
-          // when debug code traverses the AST
           if (isThenable(evaluatedRules)) {
             return (evaluatedRules as Promise<Rules>).then((rules) => {
-              this.value.rules = rules;
+              this.set('rules', rules, context.renderKey);
               return rules;
             });
           }
-          this.value.rules = evaluatedRules as Rules;
+          this.set('rules', evaluatedRules as Rules, context.renderKey);
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
-        this.value.selector = selector;
-        // Restore the sourceNode on the new selector so it's available when copying
+        this.set('selector', selector, context.renderKey);
         if (preservedSourceNode && this.value.selector) {
           this.value.selector.sourceNode = preservedSourceNode;
         }
@@ -609,7 +604,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
 
-        this.value.rules = evaluatedRules;
+        this.set('rules', evaluatedRules, context.renderKey);
         const rules = this.value.rules;
 
         if (rules.visibleRules().length === 0) {
