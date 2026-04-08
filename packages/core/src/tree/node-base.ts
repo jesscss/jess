@@ -674,9 +674,10 @@ export abstract class Node<
    */
   private _visitValues(
     cb: (value: unknown) => void,
-    reverse?: boolean
+    reverse?: boolean,
+    renderKey?: RenderKey
   ) {
-    const data = this.value;
+    const data = renderKey !== undefined ? this.getValue(renderKey) : this.value;
     if (isArray(data)) {
       if (reverse) {
         for (let i = data.length - 1; i >= 0; i--) {
@@ -1352,7 +1353,7 @@ export abstract class Node<
           w.add(s, this);
         }
       }
-    });
+    }, false, options.renderKey);
     return w.getSince(mark);
   }
 
