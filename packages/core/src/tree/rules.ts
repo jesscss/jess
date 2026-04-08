@@ -415,6 +415,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.depth ?? 0;
     const space = indent(depth);
     const { value } = this;
+    if (this._renderKey !== undefined) {
+      options.renderKey = this._renderKey;
+    }
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 

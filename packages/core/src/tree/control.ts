@@ -348,14 +348,18 @@ export class For extends Node<StructuredLoopValue> {
         context.renderKeyStack.pop();
 
         if (isNode(result, N.Rules)) {
-          for (const outNode of result.value) {
-            outputRules.push(outNode.copy());
-          }
+          result._renderKey = renderKey;
+          outputRules.push(result);
         } else {
           outputRules.push(result);
         }
       }
-      return new Rules(outputRules);
+      const output = Rules.create([]);
+      output.inherit(originalRules);
+      for (const r of outputRules) {
+        output.push(r);
+      }
+      return output;
     };
     return run();
   }

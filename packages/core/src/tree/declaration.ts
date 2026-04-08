@@ -92,7 +92,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   protected declTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const { name, value, important } = this.value;
+    const { name, value, important } = this.getValue(options.renderKey) as DeclarationValue;
     const { assign = ':', setDefined } = this.options;
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
