@@ -512,7 +512,6 @@ export abstract class Node<
 
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>, renderKey?: RenderKey): void;
   set(key: null | string | number, value: any, renderKey?: RenderKey) {
-    /** No renderKey → direct mutation (non-forking fast path) */
     if (renderKey === undefined) {
       if (key == null) {
         (this as Mutable<Node>).value = this._processNodes(value);
