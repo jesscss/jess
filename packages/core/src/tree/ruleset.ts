@@ -325,6 +325,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
     }
+    if (options.collapseNesting && !(renderSelector instanceof Nil)) {
+      (options.composedSelectorStack ??= []).push(renderSelector as Selector);
+    }
     const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
     renderSelector = Array.isArray(renderNormalizedResult)
       ? SelectorList.create(renderNormalizedResult.map(s => s.copy(true) as Selector)).inherit(renderSelector as Selector) as typeof selector

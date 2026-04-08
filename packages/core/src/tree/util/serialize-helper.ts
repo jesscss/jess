@@ -299,7 +299,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     for (let i = lastRenderedFrames.length - 1; i > matches; i--) {
       w.add(indent(i) + '}\n');
       frameHeaders.pop();
-      lastRenderedFrames.pop();
+      const poppedFrame = lastRenderedFrames.pop();
+      if (options.composedSelectorStack && isNode(poppedFrame, N.Ruleset)) {
+        options.composedSelectorStack.pop();
+      }
       options.depth = i;
     }
 
@@ -307,14 +310,14 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       let s = frameHeaders[i];
       let f = inFrames[i]!;
       lastRenderedFrames.push(f);
+      options.depth = i;
       if (s === undefined) {
-        s = inFrames[i]!.getHeaderString({ ...options, depth: i });
+        s = inFrames[i]!.getHeaderString(options as FinalPrintOptions);
         frameHeaders[i] = s;
       } else if (s === '') {
-        s = inFrames[i]!.getHeaderString({ ...options, depth: i }, true);
+        s = inFrames[i]!.getHeaderString(options as FinalPrintOptions, true);
         frameHeaders[i] = s;
       }
-      options.depth = i;
       w.add(s!);
     }
 

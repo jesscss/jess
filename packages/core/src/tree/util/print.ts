@@ -1,6 +1,7 @@
 import type { Context } from '../../context.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
+import type { Selector } from '../selector.js';
 import type { RenderKey } from '../node-base.js';
 
 export type PrintOptions = {
@@ -26,6 +27,8 @@ export type PrintOptions = {
   referenceFilterTargets?: boolean;
   /** RenderKey for fork-aware value reads during serialization. */
   renderKey?: RenderKey;
+  /** Stack of composed selectors for collapseNesting on-demand composition. */
+  composedSelectorStack?: Selector[];
 };
 
 export type FinalPrintOptions = PrintOptions & {
