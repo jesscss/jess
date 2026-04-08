@@ -23,6 +23,7 @@ import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { type RenderKey } from './tree/node-base.js';
+import { BitSetLibrary } from './tree/util/bitset.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -285,6 +286,8 @@ export class Context {
    */
   id = generateId();
   ruleCounter = 1;
+
+  selectorBits = new BitSetLibrary<string>();
 
   /** Rules depth, used to figure out source order */
   depth = -1;
