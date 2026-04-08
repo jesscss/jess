@@ -135,10 +135,14 @@ If a forked Rules node needs new registry entries (e.g., a mixin call adds decla
 
     **Why direct mutation works**: With `this.value.selector = evaledSelector`, `_renderKey` stays undefined. `_multiPassPreEval` still reads the eval'd selector, but the registration timing is different — `_indexRules` ran BEFORE the selector was updated, so it indexed the pre-eval selector keys. With `set()`, the fork path runs `_processNodes → adopt()` which triggers re-indexing.
 
-    **Fix options**:
-    1. Registration should always use the PRE-EVAL (canonical) selector keys for indexing, not the eval'd selector
-    2. `_indexRules` / `registerNode` should read canonical value via `getValue(CANONICAL)` for registration
-    3. Or: separate the "indexable selector" (canonical, for registry) from the "rendered selector" (eval'd, for output)
+    **Refined finding**: The issue is DOUBLE REGISTRATION. Rulesets are registered once during preEval (correct — uses the preEval'd selector with proper `:is()` wrapping) and again during evalNode when `_indexRules` re-fires on a cloned Rules (clones have `rulesIndexed = 0`). The second registration reads the EVAL-forked selector which has a different form (flat complex vs `:is()`-wrapped), producing different start keys that overwrite the correct preEval registration.
+
+    With direct mutation (`_renderKey` stays undefined), the second registration still happens but uses the same selector object — same keys — so the overwrite is harmless. With EVAL fork, `_renderKey = EVAL` causes `value.selector` to return the EVAL fork selector (different form) → different keys → broken lookup.
+
+    **Fix**: Prevent double registration. Options:
+    1. `_indexRules` should not re-index nodes that were already registered during preEval — track registration state, not just `rulesIndexed` count
+    2. Cloned Rules should inherit `rulesIndexed` from source so they don't re-index
+    3. Or: `registerNode` should be idempotent — if a Ruleset is already in the mixin registry, don't re-add it
 11. **RenderRoot parent renderKey tracking** — When a lookup climbs past a renderRoot boundary (e.g., exiting a $for iteration's scope), it needs to restore to the parent's renderKey. RenderRoots should store the parentRenderKey that was active when they were created.
 11. **Selector bitsets from jess-dev** — Replace keySet (Set<string>) with BitSet for O(1) extend rejection. jess-dev has `BitSetLibrary<string>` on Context, `getKeySet(context)` on selectors, `requiredKeySet` excluding OR paths. Pull this in when retooling keySet computation for renderKey awareness. Source: `/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/util/bitset.ts` and `selector.ts`.
     - **Key insight**: jess-dev has invalidation machinery for bitsets because selectors get mutated. With the forking system, canonical selectors are IMMUTABLE — bitsets computed from canonical state never need invalidation. Compute once at registration, use forever. For extends: OR the new selector's bits into the target. No recomputation, no renderKey awareness needed for bitsets — they're derived from canonical (immutable) state.
