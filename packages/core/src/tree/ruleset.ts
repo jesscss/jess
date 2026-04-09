@@ -323,7 +323,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     this.invalidateSelectorValueCache();
 
     let renderSelector = withoutComments ? (this.value.selector.copy(true) as typeof selector) : this.value.selector;
-    if (this.hoistToRoot && !(renderSelector instanceof Nil) && this.frames) {
+    if (options.collapseNesting && !(renderSelector instanceof Nil) && this.frames) {
       if (!this._composedSelector) {
         let composed = renderSelector as Selector;
         const selectorSource = composed.sourceNode ?? composed;
