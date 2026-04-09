@@ -383,9 +383,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
   inFrames.pop();
   frameHeaders.pop();
-  if (isNode(node, N.Ruleset) && options.composedSelectorStack?.length) {
-    options.composedSelectorStack.pop();
-  }
   if (prevTreeFrames) {
     treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
   }
@@ -413,6 +410,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     w.add(childOut, deferred);
+  }
+  if (isNode(node, N.Ruleset) && options.composedSelectorStack?.length) {
+    options.composedSelectorStack.pop();
   }
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;
