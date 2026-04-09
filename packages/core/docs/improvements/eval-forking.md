@@ -187,7 +187,40 @@ If a forked Rules node needs new registry entries (e.g., a mixin call adds decla
     - Compute selector metadata ONCE per Ruleset, not per instruction (precompute for all targets)
     - When extend adds a selector: mutate the effective bitset with `bits.or(newSelectorBits)` — O(1), no recomputation
     - Extend root loop should skip entire Rulesets when effective bitset has zero overlap with ALL instructions' bits
-13. **Remove `resetEvalStateDeep`** — once all deep-clone sites are converted
+13. **RenderKey-aware extend** — How forking interacts with the extend system:
+    - Extend runs AFTER eval. With forking ($for, mixin calls), the same Ruleset may have different selectors under different renderKeys.
+    - The extend system operates on the EVAL renderKey (normal single-pass eval). Forked iterations produce output Rules with their own renderKeys — extend doesn't apply to those (they're already resolved).
+    - For the bitset cache: the effective bitset is computed from the EVAL-state selector (the one that's actually in the output). Forked states have their own selectors but those are in iteration-scoped output, not in the extend target set.
+    - Key invariant: extend targets come from preEval registration (which happens once, under EVAL). The extend matching reads EVAL-state selectors. Forked iterations don't add new extend targets — they produce resolved output.
+    - The composedSelectorStack (serialization) is per-render. Extend is a separate pass that runs before serialization. Extend modifies the EVAL-state tree (adds selectors to Rulesets). Serialization then renders the modified tree with compose-on-demand.
+    - `set()` defaulting to EVAL: once extend and selector composition work without `getImplicitSelector`, the EVAL fork preserves canonical selectors. Extend reads EVAL-state selectors. `set('selector', ...)` in evalNode forks correctly because the selector IS the preEval'd local form (no `:is()` wrapping to differ between forks).
+14. **Remove `resetEvalStateDeep`** — once all deep-clone sites are converted
+
+## Current Status
+
+### What works (getImplicitSelector removed):
+- **Nesting collapse**: 12/13 tests pass. On-demand composition via composedSelectorStack.
+  - Last failure: wrapper `& { }` from at-rule bubbling shares frame cache with outer parent
+- **Ampersand**: 12/14 tests pass. Deferred `&` resolution via composedSelectorStack + ampersandFirst flag.
+  - Remaining: SelectorList `:is()` wrapping edge case, selector ordering
+- **Deferred `&` eval**: Ampersand.evalNode no longer eagerly resolves when collapseNesting. Only resolves for appendValue and explicit hoistToRoot.
+- **Serialization**: getHeaderString composes from stack, Ampersand.toTrimmedString resolves from stack, ComplexSelector/CompoundSelector set ampersandFirst position flag.
+- **Cruft removed**: deferredExpandedChildren (74 lines), string-based selector comparison hack
+
+### What's broken:
+- **Extend**: 18 tests. Needs implicit parent matching (prefix/suffix decomposition against parent chain).
+- **Mixin**: 6 tests. Compound selector lookup + recursion detection need local selector keys.
+- **At-rule**: 1 test. Media.less AST serialization.
+- **Process-leading-is**: 1 test.
+
+### Dependency chain to completion:
+1. Fix last nesting-collapse test (wrapper frame caching)
+2. Extend implicit matching with parent context + bitset fast-rejection + O(1) bitset mutation
+3. Fix mixin registry for local selector keys
+4. `set()` defaults to EVAL (now safe — no selector form divergence)
+5. Convert Ruleset/AtRule eval mutations to `set()`
+6. Mixin call forking
+7. Remove `resetEvalStateDeep`
 
 ### Performance Constraints
 
