@@ -326,9 +326,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (this.hoistToRoot && !(renderSelector instanceof Nil) && this.frames) {
       if (!this._composedSelector) {
         let composed = renderSelector as Selector;
-        // Walk frames inner-to-outer, composing with parent Rulesets.
-        // Skip if a root-only at-rule separates us from the parent.
         let hitRootOnlyAtRule = false;
+        const ownSelStr = renderSelector.valueOf();
         for (let i = this.frames.length - 1; i >= 0; i--) {
           const frame = this.frames[i];
           if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
@@ -340,6 +339,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             }
             const parentSel = (frame as Ruleset).value?.selector;
             if (parentSel && !(parentSel instanceof Nil)) {
+              // Skip wrapper Rulesets with same selector (from at-rule bubbling)
+              if (parentSel.valueOf() === ownSelStr) {
+                continue;
+              }
               const parentComposed = (frame as Ruleset)._composedSelector ?? parentSel;
               composed = getImplicitSelectorUtil(composed, parentComposed as Selector, true);
             }
