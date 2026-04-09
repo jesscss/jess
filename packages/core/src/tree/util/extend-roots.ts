@@ -4,7 +4,7 @@ import type { AtRule } from '../at-rule.js';
 import { Combinator } from '../combinator.js';
 import { ComplexSelector } from '../selector-complex.js';
 import type { Rules } from '../rules.js';
-import type { Ruleset } from '../ruleset.js';
+import { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
@@ -15,6 +15,54 @@ import { N } from '../node-type.js';
 import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
+
+/**
+ * Get the parent Ruleset's selector by walking up the tree.
+ * Returns undefined if there's no parent Ruleset (root level).
+ */
+function getParentSelector(ruleset: Ruleset): Selector | undefined {
+  // ruleset.parent is Rules, Rules.parent is the parent Ruleset
+  const parentRules = ruleset.getParent();
+  if (!parentRules || !isNode(parentRules, N.Rules)) {
+    return undefined;
+  }
+  const parentRuleset = parentRules.getParent();
+  if (!parentRuleset || !isNode(parentRuleset, N.Ruleset)) {
+    return undefined;
+  }
+  const sel = (parentRuleset as Ruleset).value?.selector;
+  if (!sel || sel instanceof Nil) {
+    return undefined;
+  }
+  return sel as Selector;
+}
+
+/**
+ * Get or compute the effective (composed) selector for a Ruleset,
+ * including parent context. Cached on the Ruleset for reuse across
+ * multiple extend instructions.
+ */
+function getEffectiveSelector(ruleset: Ruleset): Selector | undefined {
+  if (ruleset._composedSelector) {
+    return ruleset._composedSelector as Selector;
+  }
+  const sel = ruleset.value.selector as Selector | undefined;
+  if (!sel || isNode(sel, N.Nil)) {
+    return undefined;
+  }
+  const parentSel = getParentSelector(ruleset);
+  if (parentSel) {
+    // Get parent's effective selector (recursive, cached)
+    const parentRules = ruleset.getParent();
+    const parentRuleset = parentRules?.getParent() as Ruleset | undefined;
+    const parentEffective = parentRuleset ? getEffectiveSelector(parentRuleset) : parentSel;
+    if (parentEffective) {
+      ruleset._composedSelector = (ruleset.constructor as typeof Ruleset).composeSelector(sel, parentEffective);
+      return ruleset._composedSelector as Selector;
+    }
+  }
+  return sel;
+}
 
 /**
  * Fast check: would applying a single extend instruction change the selector?
@@ -339,7 +387,7 @@ export function processExtends(context: Context): void {
         continue;
       }
       for (const ruleset of rulesetSet) {
-        const selector = ruleset.value.selector as Selector | undefined;
+        const selector = getEffectiveSelector(ruleset);
         if (!selector || isNode(selector, N.Nil)) {
           ruleset.removeFlag(F_EXTENDED);
           continue;
