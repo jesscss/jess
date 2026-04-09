@@ -337,9 +337,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           if (hitRootOnlyAtRule) {
             break;
           }
-          const frameSel = (frame as Ruleset).value?.selector;
-          if (frameSel && !(frameSel instanceof Nil)) {
-            parentComposedSelector = (frame as Ruleset)._composedSelector ?? frameSel;
+          const frameComposed = (frame as Ruleset)._composedSelector;
+          const frameSel = frameComposed ?? (frame as Ruleset).value?.selector;
+          if (frameSel && !(frameSel instanceof Nil) && !isNode(frameSel, N.Ampersand)) {
+            parentComposedSelector = frameSel;
             break;
           }
         }
