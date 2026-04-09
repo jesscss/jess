@@ -199,9 +199,9 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: true });
+    const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ collapseNesting: true, context });
+    const css = evald.toString({ context });
 
     expect(css).toBeString(`
       .header .header-nav,

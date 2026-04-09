@@ -351,14 +351,29 @@ function isInstructionVisibleForRoot(
 
 export function processExtends(context: Context): void {
   try {
-    const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => ({
-      target,
-      extendWith: selectorWithExtend,
-      partial,
-      extendRoot,
-      extendNode,
-      fromReferenceScope: fromReferenceScope === true
-    }));
+    const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
+      // Compose extendWith with its parent context
+      let composedExtendWith = selectorWithExtend;
+      let cursor = extendNode?.parent;
+      while (cursor) {
+        if (isNode(cursor, N.Ruleset)) {
+          const effective = getEffectiveSelector(cursor as Ruleset);
+          if (effective) {
+            composedExtendWith = effective;
+          }
+          break;
+        }
+        cursor = cursor.parent;
+      }
+      return {
+        target,
+        extendWith: composedExtendWith,
+        partial,
+        extendRoot,
+        extendNode,
+        fromReferenceScope: fromReferenceScope === true
+      };
+    });
 
     if (!instructions.length) {
       return;
@@ -678,10 +693,11 @@ export function processExtends(context: Context): void {
             }
           }
           ruleset.value.selector = newSelector;
+          ruleset._composedSelector = newSelector;
           ruleset.invalidateSelectorValueCache();
-          if (newSelector.hoistToRoot) {
-            ruleset.hoistToRoot = true;
-          }
+          // If extend used the effective (composed) selector, the Ruleset must be hoisted
+          // to render the composed form at root level
+          ruleset.hoistToRoot = true;
         }
       }
     }
