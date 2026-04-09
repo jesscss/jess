@@ -230,7 +230,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const { appendValue } = this.value;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
-    // Check if appendValue is defined (including empty string), or if hoistToRoot/collapseNesting is set
     if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
