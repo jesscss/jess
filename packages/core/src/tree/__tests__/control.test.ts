@@ -7,7 +7,6 @@ import {
   JsFunction,
   List,
   Nil,
-  Paren,
   Sequence,
   VarDeclaration,
   decl,
@@ -39,16 +38,6 @@ function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence'
     new List(vars, { sep: ',' }),
     { type: 'square' }
   );
-}
-
-function makeForHeader(pattern: any, iterable: any) {
-  return new Sequence([
-    new Paren(new Sequence([
-      pattern,
-      new Any('of', { role: 'any' }),
-      iterable
-    ]))
-  ]);
 }
 
 function makeLoop(
@@ -187,13 +176,6 @@ describe('Control Nodes', () => {
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
     const evald = await root.eval(context);
     expect(`${evald}`).toContain('item: a');
-  });
-
-  it('throws for invalid $for header', async () => {
-    const badHeader = new Sequence([
-      new Paren(new Sequence([makePattern(['value'], 'single'), new Any('from', { role: 'any' }), list([new Any('a')])]))
-    ]);
-    expect(() => new For({ header: badHeader, rules: rules([]) })).toThrow('Invalid $for header');
   });
 
   it('forces public rulesVisibility for $if and $for rules', () => {

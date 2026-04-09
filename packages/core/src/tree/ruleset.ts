@@ -65,6 +65,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   frames: (Ruleset | AtRule)[] | undefined;
+  _composedSelector: Selector | undefined;
 
   get selector() {
     return this.value.selector;
@@ -322,11 +323,31 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     this.invalidateSelectorValueCache();
 
     let renderSelector = withoutComments ? (this.value.selector.copy(true) as typeof selector) : this.value.selector;
-    if (this.hoistToRoot && options.depth === 0 && !(renderSelector instanceof Nil)) {
-      renderSelector = Ruleset.materializeHoistedImplicitAmpersands(renderSelector as Selector) as typeof selector;
-    }
-    if (options.collapseNesting && !(renderSelector instanceof Nil)) {
-      (options.composedSelectorStack ??= []).push(renderSelector as Selector);
+    if (this.hoistToRoot && !(renderSelector instanceof Nil) && this.frames) {
+      if (!this._composedSelector) {
+        let composed = renderSelector as Selector;
+        // Walk frames inner-to-outer, composing with parent Rulesets.
+        // Skip if a root-only at-rule separates us from the parent.
+        let hitRootOnlyAtRule = false;
+        for (let i = this.frames.length - 1; i >= 0; i--) {
+          const frame = this.frames[i];
+          if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
+            hitRootOnlyAtRule = true;
+          }
+          if (isNode(frame, N.Ruleset) && frame !== this) {
+            if (hitRootOnlyAtRule) {
+              break;
+            }
+            const parentSel = (frame as Ruleset).value?.selector;
+            if (parentSel && !(parentSel instanceof Nil)) {
+              const parentComposed = (frame as Ruleset)._composedSelector ?? parentSel;
+              composed = getImplicitSelectorUtil(composed, parentComposed as Selector, true);
+            }
+          }
+        }
+        this._composedSelector = composed;
+      }
+      renderSelector = Ruleset.materializeHoistedImplicitAmpersands(this._composedSelector) as typeof selector;
     }
     const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
     renderSelector = Array.isArray(renderNormalizedResult)
@@ -409,21 +430,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       } else {
         node.options = { ownSelector: selector } as RulesetOptions;
       }
-      if (parentSelector && !(parentSelector instanceof Nil) && !(selector instanceof Nil) && parentRuleset) {
-        let selectorForImplicit = selector;
-        const shouldCanonicalizeSelectorList = (
-          !context.opts.collapseNesting
-          && isNode(selector, N.SelectorList)
-          && (selector as SelectorList).value.some(item => isNode(item, N.ComplexSelector))
-        );
-        if (shouldCanonicalizeSelectorList) {
-          const synthetic = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
-          synthetic.generated = true;
-          selectorForImplicit = synthetic;
-        }
-        selector = getImplicitSelectorUtil(selectorForImplicit, parentRuleset as Ruleset, context.opts.collapseNesting);
-        selector.sourceNode = node === this ? selector.clone(true) : selector;
-      }
+      /* getImplicitSelector removed — selector stays as-authored.
+       * Composed form (with parent context) computed on-demand during:
+       * - serialization (composedSelectorStack in PrintOptions)
+       * - extend matching (parent context parameter)
+       */
       // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
       // Just evaluate the selector
       return pipe(
