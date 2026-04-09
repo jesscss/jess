@@ -5,6 +5,7 @@ import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.j
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import type { Selector } from '../selector.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -337,7 +338,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     options.depth--;
     lastRenderedFrames.pop();
   }
-  if (isNode(node, N.Ruleset) && options.composedSelectorStack?.length) {
+  if (options.collapseNesting && isNode(node, N.Ruleset) && options.composedSelectorStack?.length) {
     options.composedSelectorStack.pop();
   }
   options.referenceMode = previousReferenceMode;
