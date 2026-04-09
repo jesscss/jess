@@ -326,24 +326,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (options.collapseNesting && !(renderSelector instanceof Nil) && this.frames) {
       if (!this._composedSelector) {
         let composed = renderSelector as Selector;
-        const selectorSource = composed.sourceNode ?? composed;
-        const hasExplicitAmpersand = selectorSource.hasFlag(F_AMPERSAND) || composed.hasFlag(F_AMPERSAND);
-        if (!hasExplicitAmpersand) {
-          let hitRootOnlyAtRule = false;
-          for (let i = this.frames.length - 1; i >= 0; i--) {
-            const frame = this.frames[i];
-            if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
-              hitRootOnlyAtRule = true;
+        let hitRootOnlyAtRule = false;
+        for (let i = this.frames.length - 1; i >= 0; i--) {
+          const frame = this.frames[i];
+          if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
+            hitRootOnlyAtRule = true;
+          }
+          if (isNode(frame, N.Ruleset) && frame !== this) {
+            if (hitRootOnlyAtRule) {
+              break;
             }
-            if (isNode(frame, N.Ruleset) && frame !== this) {
-              if (hitRootOnlyAtRule) {
-                break;
-              }
-              const frameSel = (frame as Ruleset).value?.selector;
-              if (frameSel && !(frameSel instanceof Nil)) {
-                const parentComposed = (frame as Ruleset)._composedSelector ?? frameSel;
-                composed = getImplicitSelectorUtil(composed, parentComposed as Selector, true);
-              }
+            const frameSel = (frame as Ruleset).value?.selector;
+            if (frameSel && !(frameSel instanceof Nil)) {
+              const parentComposed = (frame as Ruleset)._composedSelector ?? frameSel;
+              composed = getImplicitSelectorUtil(composed, parentComposed as Selector, true);
             }
           }
         }
