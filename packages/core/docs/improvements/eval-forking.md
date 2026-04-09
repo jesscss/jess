@@ -178,7 +178,16 @@ If a forked Rules node needs new registry entries (e.g., a mixin call adds decla
 11. **RenderRoot parent renderKey tracking** — When a lookup climbs past a renderRoot boundary (e.g., exiting a $for iteration's scope), it needs to restore to the parent's renderKey. RenderRoots should store the parentRenderKey that was active when they were created.
 11. **Selector bitsets from jess-dev** — Replace keySet (Set<string>) with BitSet for O(1) extend rejection. jess-dev has `BitSetLibrary<string>` on Context, `getKeySet(context)` on selectors, `requiredKeySet` excluding OR paths. Pull this in when retooling keySet computation for renderKey awareness. Source: `/Users/matthew/git/worktrees/jess-dev/packages/core/src/tree/util/bitset.ts` and `selector.ts`.
     - **Key insight**: jess-dev has invalidation machinery for bitsets because selectors get mutated. With the forking system, canonical selectors are IMMUTABLE — bitsets computed from canonical state never need invalidation. Compute once at registration, use forever. For extends: OR the new selector's bits into the target. No recomputation, no renderKey awareness needed for bitsets — they're derived from canonical (immutable) state.
-12. **Remove `resetEvalStateDeep`** — once all deep-clone sites are converted
+12. **Extend matching with parent context** — Core extend rework needed:
+    - Pass parent selector into extend matching (don't create composed selectors)
+    - Match implicitly: decompose extend target, match suffix against local selector, match prefix against parent chain
+    - Matching the parent prefix = crossing the `&` boundary
+    - Precompute effective bitset per Ruleset: own keyBits OR parent keyBits (computed lazily, cached)
+    - Fast-reject with bitset: if `isSubsetOf(instruction.requiredBits, target.effectiveBits)` is false, skip
+    - Compute selector metadata ONCE per Ruleset, not per instruction (precompute for all targets)
+    - When extend adds a selector: mutate the effective bitset with `bits.or(newSelectorBits)` — O(1), no recomputation
+    - Extend root loop should skip entire Rulesets when effective bitset has zero overlap with ALL instructions' bits
+13. **Remove `resetEvalStateDeep`** — once all deep-clone sites are converted
 
 ### Performance Constraints
 
