@@ -112,8 +112,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let { value } = this;
     let length = value.length;
     const mark = w.mark();
+    let isFirstSelector = true;
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
+      if (!isNode(component, N.Combinator)) {
+        options.ampersandFirst = isFirstSelector;
+        isFirstSelector = false;
+      }
       /** Add some combinator spacing */
       if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */

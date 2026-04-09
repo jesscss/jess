@@ -324,26 +324,37 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     let renderSelector = withoutComments ? (this.value.selector.copy(true) as typeof selector) : this.value.selector;
     if (options.collapseNesting && !(renderSelector instanceof Nil) && this.frames) {
-      if (!this._composedSelector) {
-        let composed = renderSelector as Selector;
-        let hitRootOnlyAtRule = false;
-        for (let i = this.frames.length - 1; i >= 0; i--) {
-          const frame = this.frames[i];
-          if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
-            hitRootOnlyAtRule = true;
+      // Find the nearest parent Ruleset's composed selector and push it
+      // onto the stack so Ampersand nodes can resolve from it.
+      let parentComposedSelector: Selector | undefined;
+      let hitRootOnlyAtRule = false;
+      for (let i = this.frames.length - 1; i >= 0; i--) {
+        const frame = this.frames[i];
+        if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
+          hitRootOnlyAtRule = true;
+        }
+        if (isNode(frame, N.Ruleset) && frame !== this) {
+          if (hitRootOnlyAtRule) {
+            break;
           }
-          if (isNode(frame, N.Ruleset) && frame !== this) {
-            if (hitRootOnlyAtRule) {
-              break;
-            }
-            const frameSel = (frame as Ruleset).value?.selector;
-            if (frameSel && !(frameSel instanceof Nil)) {
-              const parentComposed = (frame as Ruleset)._composedSelector ?? frameSel;
-              composed = getImplicitSelectorUtil(composed, parentComposed as Selector, true);
-            }
+          const frameSel = (frame as Ruleset).value?.selector;
+          if (frameSel && !(frameSel instanceof Nil)) {
+            parentComposedSelector = (frame as Ruleset)._composedSelector ?? frameSel;
+            break;
           }
         }
-        this._composedSelector = composed;
+      }
+      if (parentComposedSelector) {
+        (options.composedSelectorStack ??= []).push(parentComposedSelector);
+      }
+      if (!this._composedSelector) {
+        // For selectors WITHOUT explicit &, compose with parent
+        if (!renderSelector.hasFlag(F_AMPERSAND) && !(renderSelector.sourceNode ?? renderSelector).hasFlag(F_AMPERSAND) && parentComposedSelector) {
+          this._composedSelector = getImplicitSelectorUtil(renderSelector as Selector, parentComposedSelector as Selector, true);
+        } else {
+          // Selector has &, composition happens during serialization via the stack
+          this._composedSelector = renderSelector as Selector;
+        }
       }
       renderSelector = Ruleset.materializeHoistedImplicitAmpersands(this._composedSelector) as typeof selector;
     }
@@ -559,9 +570,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
         let { selector } = this.value;
         const frame = atIndex(context.rulesetFrames, -1);
-        if (frame && (this.hoistToRoot ?? context.opts.collapseNesting)) {
-          this.hoistToRoot = true;
-        }
 
         if (selector instanceof Nil) {
           // If selector evaluates to Nil, return the rules body directly instead of the ruleset

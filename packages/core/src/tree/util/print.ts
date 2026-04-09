@@ -29,6 +29,8 @@ export type PrintOptions = {
   renderKey?: RenderKey;
   /** Stack of composed selectors for collapseNesting on-demand composition. */
   composedSelectorStack?: Selector[];
+  /** Whether the current ampersand is at the start of its containing selector. */
+  ampersandFirst?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {

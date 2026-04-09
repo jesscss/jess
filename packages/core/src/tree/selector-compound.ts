@@ -8,7 +8,7 @@ import type { SimpleSelector } from './selector-simple.js';
 
 import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
  * @example
@@ -79,14 +79,20 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    // Components in a compound selector are joined without spaces.
-    // However, parser/copy/extend pipelines can preserve `post=1` (single space) on components,
-    // which would serialize `.e.e` as `.e .e`. Normalize here as a final guard.
+    options = getPrintOptions(options);
     const value = this.value;
     for (let i = 0; i < value.length - 1; i++) {
       (value[i] as any).post = undefined;
     }
-    return super.toTrimmedString(options);
+    // Set ampersandFirst for each component so Ampersand knows its position
+    const w = options.writer!;
+    const mark = w.mark();
+    for (let i = 0; i < value.length; i++) {
+      options.ampersandFirst = (i === 0);
+      const out = w.capture(() => value[i]!.toString(options));
+      w.add(out.trim(), value[i]!);
+    }
+    return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {

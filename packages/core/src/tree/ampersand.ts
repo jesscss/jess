@@ -179,10 +179,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const { appendValue } = this.value;
     if (appendValue) {
       w.add('&(');
-      if (appendValue) {
-        w.add(appendValue, this);
-      }
+      w.add(appendValue, this);
       w.add(')');
+    } else if (options.collapseNesting && options.composedSelectorStack?.length) {
+      const parent = options.composedSelectorStack.at(-1)!;
+      if (options.ampersandFirst !== false) {
+        parent.toString(options);
+      } else {
+        w.add(':is(');
+        parent.toString(options);
+        w.add(')');
+      }
     } else {
       w.add('&', this);
     }
@@ -230,7 +237,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const { appendValue } = this.value;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
-    if (appendValue !== undefined || this.hoistToRoot || context.opts.collapseNesting) {
+    if (appendValue !== undefined || this.hoistToRoot) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ?? frame?.selector;
