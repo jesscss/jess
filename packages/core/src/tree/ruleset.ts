@@ -374,7 +374,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
       }
       renderSelector = this._composedSelector as typeof selector;
-      (options.composedSelectorStack ??= []).push(renderSelector as Selector);
     }
     const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
     renderSelector = Array.isArray(renderNormalizedResult)

@@ -61,6 +61,27 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   if (node.type === 'Ruleset' && node.value.selector instanceof Nil) {
     return '';
   }
+  // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
+  // getHeaderString normally handles this, but cached frame headers skip it.
+  let pushedComposed = false;
+  if (options.collapseNesting && isNode(node, N.Ruleset)) {
+    const rs = node as Ruleset;
+    if (!rs._composedSelector) {
+      const parentComposed = options.composedSelectorStack?.at(-1);
+      const sel = rs.value.selector;
+      if (sel && !(sel instanceof Nil)) {
+        if (parentComposed) {
+          rs._composedSelector = (rs.constructor as typeof Ruleset).composeSelector(sel as Selector, parentComposed as Selector);
+        } else {
+          rs._composedSelector = sel as Selector;
+        }
+      }
+    }
+    if (rs._composedSelector) {
+      (options.composedSelectorStack ??= []).push(rs._composedSelector as Selector);
+      pushedComposed = true;
+    }
+  }
   // let header = node.getHeaderString(options);
 
   const mark = w.mark();
@@ -338,8 +359,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     options.depth--;
     lastRenderedFrames.pop();
   }
-  if (options.collapseNesting && isNode(node, N.Ruleset) && options.composedSelectorStack?.length) {
-    options.composedSelectorStack.pop();
+  if (pushedComposed) {
+    options.composedSelectorStack!.pop();
   }
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;
