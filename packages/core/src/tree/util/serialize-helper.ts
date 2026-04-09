@@ -112,7 +112,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
-  const deferredExpandedChildren: any[] = [];
   const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
     const seen = new Set<any>();
     const queue: any[] = [start];
@@ -218,60 +217,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
 
     if (isNode(n, N.Ruleset | N.AtRule)) {
-      if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
-        const parentSelector = String(node.value.selector?.valueOf?.() ?? '');
-        const childSelector = String(n.value.selector?.valueOf?.() ?? '');
-        const isExpandedDescendant = parentSelector !== '' && (
-          childSelector.startsWith(`${parentSelector} `)
-          || childSelector.startsWith(`${parentSelector}.`)
-          || childSelector.startsWith(`${parentSelector}#`)
-          || childSelector.startsWith(`${parentSelector}:`)
-          || childSelector.startsWith(`${parentSelector}[`)
-        );
-        const isSelfWrappedDescendant = parentSelector !== ''
-          && (
-            childSelector === `${parentSelector} ${parentSelector}`
-            || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
-          );
-        const fromCall = originatesFromCall(n as any);
-        const laterCandidates = rulesToRender.slice(idx + 1);
-        const hasLaterExternalNonContainer = laterCandidates.some((later) => {
-          if (!later.visible && !later.fullRender) {
-            return false;
-          }
-          if (isNode(later, N.Ruleset | N.AtRule | N.Rules)) {
-            return false;
-          }
-          if (isNode(later, N.Declaration) && skippedDuplicateDeclarations.has(later)) {
-            return false;
-          }
-          const ownedByCurrentChild = sourceChainHas(later, (current) => {
-            if (current === n) {
-              return true;
-            }
-            if (current?.type !== 'Ruleset') {
-              return false;
-            }
-            const currentSelector = String(current.value?.selector?.valueOf?.() ?? '');
-            return currentSelector !== '' && currentSelector === childSelector;
-          });
-          return !ownedByCurrentChild;
-        });
-        const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
-          return otherIdx !== idx
-            && isNode(other, N.Ruleset)
-            && String(other.value.selector?.valueOf?.() ?? '') === childSelector;
-        });
-        if (isExpandedDescendant
-          && !isSelfWrappedDescendant
-          && fromCall
-          && hasLaterExternalNonContainer
-          && hasRepeatedExpandedSelectorAny
-        ) {
-          deferredExpandedChildren.push(n);
-          continue;
-        }
-      }
       const childOptions = {
         ...options,
         referenceMode: inReferenceMode,
@@ -391,25 +336,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     w.add(indent(renderedLength - 1) + '}\n');
     options.depth--;
     lastRenderedFrames.pop();
-  }
-  for (const deferred of deferredExpandedChildren) {
-    const deferredWriter = new OutputWriter();
-    const childOptions = {
-      ...options,
-      writer: deferredWriter,
-      frameHeaders: [],
-      lastRenderedFrames: [],
-      treeFrames: [],
-      inFrames: [],
-      referenceMode: inReferenceMode,
-      referenceRenderEnabled: renderEnabled
-    } as FinalPrintOptions;
-    const childOut = deferred.toTrimmedString(childOptions);
-    if (!childOut) {
-      continue;
-    }
-
-    w.add(childOut, deferred);
   }
   if (isNode(node, N.Ruleset) && options.composedSelectorStack?.length) {
     options.composedSelectorStack.pop();
