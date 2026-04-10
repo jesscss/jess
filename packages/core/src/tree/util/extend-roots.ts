@@ -583,16 +583,20 @@ export function processExtends(context: Context): void {
             }
           }
         }
-        // Build apply-time instructions: use the extendWith composed relative
-        // to the current target ruleset's parent chain.
+        // Build apply-time instructions: when the extend has no explicit `selector`
+        // (jess-specific override), compose extendWith with the extending ruleset's
+        // parent chain relative to the current target. When `selector` IS set, use
+        // the user-specified extendWith as-is.
         const localApplicableExtends: ExtendInstruction[] = [];
         for (const inst of visibleExtends) {
           if (excludedFromLocal.has(inst)) {
             continue;
           }
+          const extendNode = (inst as any).extendNode;
+          const hasExplicitSelector = extendNode && extendNode.value && extendNode.value.selector;
           const extendingRs = (inst as any).extendingRuleset as Ruleset | undefined;
           let applyExtendWith = inst.extendWith;
-          if (extendingRs) {
+          if (!hasExplicitSelector && extendingRs) {
             const composed = composeExtendWithRelativeToTarget(extendingRs, ruleset);
             if (composed) {
               applyExtendWith = composed;
@@ -601,10 +605,7 @@ export function processExtends(context: Context): void {
           if (applyExtendWith === inst.extendWith) {
             localApplicableExtends.push(inst);
           } else {
-            localApplicableExtends.push({
-              ...inst,
-              extendWith: applyExtendWith
-            });
+            localApplicableExtends.push({ ...inst, extendWith: applyExtendWith });
           }
         }
         const hasCrossingMatch = crossingInstructions.length > 0;
