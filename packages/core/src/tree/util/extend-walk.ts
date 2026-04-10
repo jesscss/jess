@@ -970,6 +970,8 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
 // Dry-run: would this extend change the selector?
 // ─────────────────────────────────────────────────
 
+export type MatchResult = false | 'local' | 'within-ampersand' | 'crossing';
+
 export function wouldExtendChange(
   target: Selector,
   find: Selector,
@@ -977,6 +979,17 @@ export function wouldExtendChange(
   partial: boolean,
   parentSelector?: Selector
 ): boolean {
+  const spec = decomposeFind(find);
+  return !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+}
+
+export function classifyExtendMatch(
+  target: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean,
+  parentSelector?: Selector
+): MatchResult {
   const spec = decomposeFind(find);
   return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
 }
@@ -988,7 +1001,7 @@ function wouldMatchNode(
   partial: boolean,
   ctx: WalkContext,
   parentSelector?: Selector
-): boolean {
+): MatchResult {
   if (spec.original.valueOf() === extendWith.valueOf()) {
     return false;
   }
@@ -999,84 +1012,99 @@ function wouldMatchNode(
         return false;
       }
     }
-    return true;
+    return 'local';
   }
 
   if (isNode(node, N.SelectorList)) {
-    return (node as SelectorList).value.some((item, i) =>
-      wouldMatchNode(item as Selector, spec, extendWith, partial, {
+    for (let i = 0; i < (node as SelectorList).value.length; i++) {
+      const result = wouldMatchNode((node as SelectorList).value[i] as Selector, spec, extendWith, partial, {
         isRoot: false,
         parentType: 'SelectorList',
         hasContentBefore: i > 0,
         hasContentAfter: i < (node as SelectorList).value.length - 1
-      }, parentSelector)
-    );
+      }, parentSelector);
+      if (result) {
+        return result;
+      }
+    }
+    return false;
   }
 
   if (isNode(node, N.ComplexSelector)) {
     if (isMultiPosition(spec)) {
       if (wouldSubsequenceMatch(node as ComplexSelector, spec, partial)) {
-        return true;
+        return 'local';
       }
       // Continue into parent — the local complex selector + parent form a longer chain
       if (parentSelector && partial) {
-        return wouldMatchWithParent(node, spec, partial, parentSelector);
+        return wouldMatchWithParent(node, spec, partial, parentSelector) ? 'crossing' : false;
       }
       return false;
     }
-    return (node as ComplexSelector).value.some((comp, i) => {
+    for (let i = 0; i < (node as ComplexSelector).value.length; i++) {
+      const comp = (node as ComplexSelector).value[i]!;
       if (isNode(comp, N.Combinator)) {
-        return false;
+        continue;
       }
-      return wouldMatchNode(comp as Selector, spec, extendWith, partial, {
+      const result = wouldMatchNode(comp as Selector, spec, extendWith, partial, {
         isRoot: false,
         parentType: 'ComplexSelector',
         hasContentBefore: i > 0,
         hasContentAfter: i < (node as ComplexSelector).value.length - 1
       });
-    });
+      if (result) {
+        return result;
+      }
+    }
+    return false;
   }
 
   // For simple/compound nodes with a multi-position find, the parent provides
   // the implicit & context — treat [parent, ' ', node] as a virtual complex
   if (parentSelector && isMultiPosition(spec)) {
-    return wouldMatchWithParent(node, spec, partial, parentSelector);
+    return wouldMatchWithParent(node, spec, partial, parentSelector) ? 'crossing' : false;
   }
 
   if (isNode(node, N.CompoundSelector)) {
     if (isMultiSimple(spec) && partial) {
-      return wouldSimplesMatch(node as CompoundSelector, spec);
+      return wouldSimplesMatch(node as CompoundSelector, spec) ? 'local' : false;
     }
-    return (node as CompoundSelector).value.some((comp, i) =>
-      wouldMatchNode(comp as Selector, spec, extendWith, partial, {
+    for (let i = 0; i < (node as CompoundSelector).value.length; i++) {
+      const comp = (node as CompoundSelector).value[i]!;
+      const result = wouldMatchNode(comp as Selector, spec, extendWith, partial, {
         isRoot: false,
         parentType: 'CompoundSelector',
         hasContentBefore: i > 0,
         hasContentAfter: i < (node as CompoundSelector).value.length - 1
-      })
-    );
+      });
+      if (result) {
+        return result;
+      }
+    }
+    return false;
   }
 
-  // Ampersand = implicit parent. Continue matching into the stored parent selector.
+  // Ampersand = implicit parent. Match within the & means the parent carries the extend.
   if (isNode(node, N.Ampersand)) {
     const amp = node as Ampersand;
     const storedSel = amp._selectorContainer?.selector;
     if (storedSel && !isNode(storedSel, N.Nil)) {
-      return wouldMatchNode(storedSel as Selector, spec, extendWith, partial, {
+      const innerResult = wouldMatchNode(storedSel as Selector, spec, extendWith, partial, {
         isRoot: false,
         parentType: ctx.parentType,
         hasContentBefore: ctx.hasContentBefore,
         hasContentAfter: ctx.hasContentAfter
       });
+      return innerResult ? 'within-ampersand' : false;
     }
-    // No stored selector — try the provided parent
     if (parentSelector) {
-      return wouldMatchNode(parentSelector, spec, extendWith, partial, {
+      const innerResult = wouldMatchNode(parentSelector, spec, extendWith, partial, {
         isRoot: false,
         parentType: ctx.parentType,
         hasContentBefore: ctx.hasContentBefore,
         hasContentAfter: ctx.hasContentAfter
       });
+      return innerResult ? 'within-ampersand' : false;
     }
     return false;
   }
@@ -1107,10 +1135,10 @@ function wouldMatchPseudoTailAware(
   spec: FindSpec,
   extendWith: Selector,
   partial: boolean
-): boolean {
+): MatchResult {
   const arg = pseudo.value.arg as Selector;
 
-  const checkAlt = (alt: Selector): boolean => {
+  const checkAlt = (alt: Selector): MatchResult => {
     if (!isNode(alt, N.ComplexSelector)) {
       return wouldMatchNode(alt, spec, extendWith, partial, {
         isRoot: false,
@@ -1119,7 +1147,6 @@ function wouldMatchPseudoTailAware(
         hasContentAfter: false
       });
     }
-    // Complex: only check the tail
     const comps = (alt as ComplexSelector).value;
     for (let i = comps.length - 1; i >= 0; i--) {
       if (!isNode(comps[i], N.Combinator)) {
@@ -1135,7 +1162,13 @@ function wouldMatchPseudoTailAware(
   };
 
   if (isNode(arg, N.SelectorList)) {
-    return (arg as SelectorList).value.some((alt: Selector) => checkAlt(alt));
+    for (const alt of (arg as SelectorList).value) {
+      const result = checkAlt(alt as Selector);
+      if (result) {
+        return result;
+      }
+    }
+    return false;
   }
   return checkAlt(arg);
 }

@@ -12,7 +12,7 @@ import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume } from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, type MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
 
@@ -64,25 +64,27 @@ function getLocalSelector(ruleset: Ruleset): Selector | undefined {
   return sel;
 }
 
-/**
- * Fast check: would applying a single extend instruction change the selector?
- *
- * Uses the walk-and-consume dry-run for SimpleSelector find targets (O(depth)),
- * falls back to the full applyExtendsToSelector + valueOf comparison for complex targets.
- */
+/** Boolean wrapper for backward compatibility with analyzeNonPartialExtends */
 function wouldInstructionChangeSel(
   selector: Selector,
   instruction: ExtendInstruction,
   parentSelector?: Selector
 ): boolean {
+  return !!classifyInstructionMatch(selector, instruction, parentSelector);
+}
+
+function classifyInstructionMatch(
+  selector: Selector,
+  instruction: ExtendInstruction,
+  parentSelector?: Selector
+): MatchResult {
   const { target, extendWith, partial } = instruction;
-  // Walk-and-consume fast path — parent passed through for boundary-crossing matches
   if (canUseWalkAndConsume(selector, target, !!parentSelector)) {
-    return wouldExtendChange(selector, target, extendWith, partial, parentSelector);
+    return classifyExtendMatch(selector, target, extendWith, partial, parentSelector);
   }
-  // Fallback: full extend + compare
+  // Fallback: legacy path (no parent context)
   const after = applyExtendsToSelector(selector, [instruction]);
-  return after.valueOf() !== selector.valueOf();
+  return after.valueOf() !== selector.valueOf() ? 'local' : false;
 }
 
 interface NonPartialAnalysis {
@@ -410,6 +412,8 @@ export function processExtends(context: Context): void {
           continue;
         }
         let isActivatedByVisibleExtend = false;
+        let hasWithinAmpersandMatch = false;
+        let hasCrossingMatch = false;
         for (const instruction of visibleExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
@@ -417,10 +421,24 @@ export function processExtends(context: Context): void {
               instructionMatched.add(instruction);
               isActivatedByVisibleExtend = true;
             }
-          } else if (wouldInstructionChangeSel(selector, instruction, parentSel)) {
-            instructionMatched.add(instruction);
-            if (!instruction.partial) {
-              isActivatedByVisibleExtend = true;
+          } else {
+            const matchType = classifyInstructionMatch(selector, instruction, parentSel);
+            if (matchType) {
+              instructionMatched.add(instruction);
+              if (matchType === 'within-ampersand') {
+                // Parent carries this extend — child inherits via & at render time
+                hasWithinAmpersandMatch = true;
+              } else if (matchType === 'crossing') {
+                hasCrossingMatch = true;
+                if (!instruction.partial) {
+                  isActivatedByVisibleExtend = true;
+                }
+              } else {
+                // 'local' match
+                if (!instruction.partial) {
+                  isActivatedByVisibleExtend = true;
+                }
+              }
             }
           }
         }
