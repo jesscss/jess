@@ -182,13 +182,19 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       w.add(appendValue, this);
       w.add(')');
     } else if (options.collapseNesting && options.composedSelectorStack?.length) {
-      const parent = options.composedSelectorStack.at(-1)!;
-      if (options.ampersandFirst !== false) {
-        parent.toString(options);
-      } else {
-        w.add(':is(');
-        parent.toString(options);
-        w.add(')');
+      // Temporarily pop the top so any nested Ampersand inside the parent
+      // resolves to the grandparent (not self — which would infinite-loop).
+      const parent = options.composedSelectorStack.pop()!;
+      try {
+        if (options.ampersandFirst !== false) {
+          parent.toString(options);
+        } else {
+          w.add(':is(');
+          parent.toString(options);
+          w.add(')');
+        }
+      } finally {
+        options.composedSelectorStack.push(parent);
       }
     } else {
       w.add('&', this);
