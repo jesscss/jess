@@ -58,7 +58,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (node.type === 'Ruleset' && node.value.selector instanceof Nil) {
+  if (isNode(node, N.Ruleset) && (node as Ruleset).value.selector instanceof Nil) {
     return '';
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
