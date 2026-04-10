@@ -680,7 +680,7 @@ describe('Style import extend behavior', () => {
       expect(css).toContain('.c {');
       expect(css).toContain('&:hover {');
       expect(css).toContain('& + & {');
-      expect(css).toContain('& :is(.sub) {');
+      expect(css).toContain('.sub {');
     });
 
     it('characterization: reference extend shape with collapseNesting true', async () => {
@@ -742,7 +742,7 @@ describe('Style import extend behavior', () => {
             }
             & + & {
               color: green;
-              & :is(.sub) {
+              .sub {
                 color: green;
               }
             }
@@ -798,7 +798,7 @@ describe('Style import extend behavior', () => {
             }
             & + & {
               color: green;
-              & :is(.sub) {
+              .sub {
                 color: green;
               }
             }

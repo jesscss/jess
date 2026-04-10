@@ -30,7 +30,8 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
   if (!parentRuleset || !isNode(parentRuleset, N.Ruleset)) {
     return undefined;
   }
-  const sel = (parentRuleset as Ruleset).value?.selector;
+  // Use the pre-extend snapshot to avoid composing with already-extended selectors.
+  const sel = preExtendSelectors.get(parentRuleset as Ruleset) ?? (parentRuleset as Ruleset).value?.selector;
   if (!sel || sel instanceof Nil) {
     return undefined;
   }
@@ -38,27 +39,70 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
 }
 
 /**
- * Get or compute the effective (composed) selector for a Ruleset,
- * including parent context. Cached on the Ruleset for reuse across
- * multiple extend instructions.
+ * Compose parent + child selectors by expanding all combinations.
+ * Unlike Ruleset.composeSelector (which wraps in :is()), this produces
+ * individual results that are directly matchable by the extend algorithm.
+ *
+ * parent=A,B + child=X,Y → A X, A Y, B X, B Y
+ * parent=A,B + child=&:after → A:after, B:after
+ */
+function composeExpanded(child: Selector, parent: Selector): Selector {
+  const parentItems: Selector[] = isNode(parent, N.SelectorList)
+    ? (parent as SelectorList).value.slice()
+    : [parent];
+  const childItems: Selector[] = isNode(child, N.SelectorList)
+    ? (child as SelectorList).value.slice()
+    : [child];
+  const results: Selector[] = [];
+  for (const p of parentItems) {
+    for (const c of childItems) {
+      // Use composeSelector for each individual parent item.
+      // Since individual items are not SelectorList/ComplexSelector,
+      // composeSelector won't wrap in :is() — it replaces & or prepends directly.
+      results.push(
+        Ruleset.composeSelector(c.copy(true) as Selector, p.copy(true) as Selector) as Selector
+      );
+    }
+  }
+  if (results.length === 1) {
+    return results[0]!;
+  }
+  return SelectorList.create(results).inherit(child) as Selector;
+}
+
+/** WeakMap cache for matching-specific expanded compositions */
+const matchingSelectorCache = new WeakMap<Ruleset, Selector>();
+
+/** Snapshot of eval'd selectors before any extend modifications */
+let preExtendSelectors = new WeakMap<Ruleset, Selector>();
+
+/**
+ * Get or compute the effective (expanded) selector for a Ruleset,
+ * including parent context. Uses expanded composition (not :is()) so
+ * the extend matching algorithm can find targets directly.
+ *
+ * Cached per Ruleset in a WeakMap (separate from _composedSelector
+ * which is for serialization with :is() wrapping).
  */
 function getEffectiveSelector(ruleset: Ruleset): Selector | undefined {
-  if (ruleset._composedSelector) {
-    return ruleset._composedSelector as Selector;
+  const cached = matchingSelectorCache.get(ruleset);
+  if (cached) {
+    return cached;
   }
-  const sel = ruleset.value.selector as Selector | undefined;
+  // Use pre-extend snapshot to avoid composing with already-extended selectors
+  const sel = (preExtendSelectors.get(ruleset) ?? ruleset.value.selector) as Selector | undefined;
   if (!sel || isNode(sel, N.Nil)) {
     return undefined;
   }
   const parentSel = getParentSelector(ruleset);
   if (parentSel) {
-    // Get parent's effective selector (recursive, cached)
     const parentRules = ruleset.getParent();
     const parentRuleset = parentRules?.getParent() as Ruleset | undefined;
     const parentEffective = parentRuleset ? getEffectiveSelector(parentRuleset) : parentSel;
     if (parentEffective) {
-      ruleset._composedSelector = (ruleset.constructor as typeof Ruleset).composeSelector(sel, parentEffective);
-      return ruleset._composedSelector as Selector;
+      const expanded = composeExpanded(sel, parentEffective);
+      matchingSelectorCache.set(ruleset, expanded);
+      return expanded;
     }
   }
   return sel;
@@ -351,8 +395,21 @@ function isInstructionVisibleForRoot(
 
 export function processExtends(context: Context): void {
   try {
+    // Snapshot eval'd selectors before any extend modifications.
+    // This ensures getEffectiveSelector composes with original selectors,
+    // not ones already modified by earlier extends in this pass.
+    preExtendSelectors = new WeakMap<Ruleset, Selector>();
+    for (const [, rulesetSet] of rulesetsByRoot) {
+      for (const rs of rulesetSet) {
+        const sel = rs.value?.selector;
+        if (sel && !(sel instanceof Nil)) {
+          preExtendSelectors.set(rs, sel as Selector);
+        }
+      }
+    }
+
     const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
-      // Compose extendWith with its parent context
+      // Compose extendWith with its parent context for matching against composed selectors
       let composedExtendWith = selectorWithExtend;
       let cursor = extendNode?.parent;
       while (cursor) {
@@ -368,6 +425,7 @@ export function processExtends(context: Context): void {
       return {
         target,
         extendWith: composedExtendWith,
+        localExtendWith: selectorWithExtend,
         partial,
         extendRoot,
         extendNode,
@@ -378,6 +436,10 @@ export function processExtends(context: Context): void {
     if (!instructions.length) {
       return;
     }
+
+    /** Convert instructions to use local (non-composed) extendWith for local selector application */
+    const toLocal = <T extends { extendWith: Selector; localExtendWith: Selector }>(insts: T[]): T[] =>
+      insts.map(inst => inst.extendWith === inst.localExtendWith ? inst : { ...inst, extendWith: inst.localExtendWith });
 
     const instructionMatched = new Set<typeof instructions[0]>();
 
@@ -444,7 +506,7 @@ export function processExtends(context: Context): void {
         );
         const hasOnlyPartialExtends = visibleExtends.length > 0 && visibleExtends.every(instruction => instruction.partial);
         if (ownSelector && hasResolvedNestedSelector && hasOnlyPartialExtends) {
-          const ownNewSelector = applyExtendsToSelector(ownSelector, visibleExtends);
+          const ownNewSelector = applyExtendsToSelector(ownSelector, toLocal(visibleExtends));
           const fullNewSelector = applyExtendsToSelector(selector, visibleExtends);
           const ownBefore = ownSelector.valueOf();
           const ownAfter = ownNewSelector.valueOf();
@@ -467,7 +529,7 @@ export function processExtends(context: Context): void {
           const partialOnly = visibleExtends.filter(instruction => instruction.partial);
           const nonPartialOnly = visibleExtends.filter(instruction => !instruction.partial);
           if (partialOnly.length > 0 && nonPartialOnly.length === 0) {
-            const ownAfterPartialOnly = applyExtendsToSelector(ownSelector, partialOnly);
+            const ownAfterPartialOnly = applyExtendsToSelector(ownSelector, toLocal(partialOnly));
             const fullAfterPartialOnly = applyExtendsToSelector(selector, partialOnly);
             const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
             const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
@@ -516,15 +578,15 @@ export function processExtends(context: Context): void {
 
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
-                const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
+                const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, toLocal(nonPartialOwnOnly));
                 ruleset.value.selector = ownAfterOwnOnly;
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
                 ruleset.invalidateSelectorValueCache();
                 continue;
               }
             } else {
-              const ownAfterPartial = applyExtendsToSelector(ownSelector, partialOnly);
-              const ownAfterNonPartial = applyExtendsToSelector(ownSelector, nonPartialOnly);
+              const ownAfterPartial = applyExtendsToSelector(ownSelector, toLocal(partialOnly));
+              const ownAfterNonPartial = applyExtendsToSelector(ownSelector, toLocal(nonPartialOnly));
               const fullAfterNonPartial = applyExtendsToSelector(selector, nonPartialOnly);
               const ownChangedByNonPartial = ownAfterNonPartial.valueOf() !== ownSelector.valueOf();
               const fullChangedByNonPartial = fullAfterNonPartial.valueOf() !== selector.valueOf();
@@ -544,7 +606,7 @@ export function processExtends(context: Context): void {
               if (ownChangedByPartial || nonPartialOwnOnly.length > 0) {
                 const ownAfterBoth = applyExtendsToSelector(
                   ownSelector,
-                  [...partialOnly, ...nonPartialOwnOnly]
+                  toLocal([...partialOnly, ...nonPartialOwnOnly])
                 );
                 ruleset.value.selector = ownAfterBoth;
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterBoth;
@@ -578,7 +640,7 @@ export function processExtends(context: Context): void {
             ? visibleExtends.filter(instruction => instruction.partial)
             : visibleExtends;
           const ownAfterRelevant = (ownSelector && hasResolvedNestedSelector)
-            ? applyExtendsToSelector(ownSelector, ownRelevantExtends)
+            ? applyExtendsToSelector(ownSelector, toLocal(ownRelevantExtends))
             : null;
           const ownChangedByRelevant = Boolean(
             ownSelector
@@ -692,12 +754,31 @@ export function processExtends(context: Context): void {
               }
             }
           }
-          ruleset.value.selector = newSelector;
-          ruleset._composedSelector = newSelector;
+          // If the selector was composed (with parent context), store the composed form
+          // in _composedSelector for serialization. Keep the local form in value.selector
+          // for non-collapseNesting output.
+          const localSelector = ruleset.value.selector;
+          const wasComposed = selector !== localSelector;
+          if (wasComposed) {
+            if (newSelector.hoistToRoot || ruleset.hoistToRoot) {
+              // Hoisted to root - value.selector needs full composed form
+              // (processLeadingIs will normalize to :is() in getHeaderString)
+              ruleset.value.selector = newSelector;
+              ruleset._composedSelector = newSelector;
+            } else {
+              // Not hoisted - keep value.selector local
+              const localNew = applyExtendsToSelector(localSelector as Selector, toLocal(visibleExtends));
+              ruleset.value.selector = localNew;
+              ruleset._composedSelector = newSelector;
+            }
+          } else {
+            ruleset.value.selector = newSelector;
+            ruleset._composedSelector = newSelector;
+          }
           ruleset.invalidateSelectorValueCache();
-          // If extend used the effective (composed) selector, the Ruleset must be hoisted
-          // to render the composed form at root level
-          ruleset.hoistToRoot = true;
+          if (newSelector.hoistToRoot) {
+            ruleset.hoistToRoot = true;
+          }
         }
       }
     }

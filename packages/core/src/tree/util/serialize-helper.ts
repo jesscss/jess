@@ -78,7 +78,20 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       }
     }
     if (rs._composedSelector) {
-      (options.composedSelectorStack ??= []).push(rs._composedSelector as Selector);
+      // Push the PRE-EXTEND composed form to the stack for child composition.
+      // Extend additions to this selector should not propagate to children's compositions
+      // (Less.js: .visible:extend(.z) adds .visible to .z but .z .c stays as .z .c).
+      // Use ownSelector (eval'd, pre-extend) as the base for stack composition.
+      const ownSel = (rs.options as { ownSelector?: Selector })?.ownSelector;
+      if (ownSel && ownSel.valueOf() !== rs.value.selector?.valueOf()) {
+        const parentComposed = options.composedSelectorStack?.at(-1);
+        const stackEntry = parentComposed
+          ? (rs.constructor as typeof Ruleset).composeSelector(ownSel as Selector, parentComposed as Selector)
+          : ownSel as Selector;
+        (options.composedSelectorStack ??= []).push(stackEntry);
+      } else {
+        (options.composedSelectorStack ??= []).push(rs._composedSelector as Selector);
+      }
       pushedComposed = true;
     }
   }
