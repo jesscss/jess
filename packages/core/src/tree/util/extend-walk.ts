@@ -54,6 +54,7 @@ import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
+import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
@@ -379,7 +380,7 @@ const ROOT_CTX: WalkContext = {
 // Quick eligibility check
 // ─────────────────────────────────────────────────
 
-export function canUseWalkAndConsume(target: Selector, find: Selector): boolean {
+export function canUseWalkAndConsume(target: Selector, find: Selector, hasParent?: boolean): boolean {
   if (
     !isNode(find, N.SimpleSelector)
     && !isNode(find, N.CompoundSelector)
@@ -387,7 +388,9 @@ export function canUseWalkAndConsume(target: Selector, find: Selector): boolean 
   ) {
     return false;
   }
-  if (containsAmpersand(target)) {
+  // When a parent is provided, ampersands in the target are treated as
+  // the implicit parent — the cursor continues into the parent selector.
+  if (!hasParent && containsAmpersand(target)) {
     return false;
   }
   return true;
@@ -972,10 +975,11 @@ export function wouldExtendChange(
   target: Selector,
   find: Selector,
   extendWith: Selector,
-  partial: boolean
+  partial: boolean,
+  parentSelector?: Selector
 ): boolean {
   const spec = decomposeFind(find);
-  return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX);
+  return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
 }
 
 function wouldMatchNode(
@@ -983,7 +987,8 @@ function wouldMatchNode(
   spec: FindSpec,
   extendWith: Selector,
   partial: boolean,
-  ctx: WalkContext
+  ctx: WalkContext,
+  parentSelector?: Selector
 ): boolean {
   if (spec.original.valueOf() === extendWith.valueOf()) {
     return false;
@@ -1005,13 +1010,20 @@ function wouldMatchNode(
         parentType: 'SelectorList',
         hasContentBefore: i > 0,
         hasContentAfter: i < (node as SelectorList).value.length - 1
-      })
+      }, parentSelector)
     );
   }
 
   if (isNode(node, N.ComplexSelector)) {
     if (isMultiPosition(spec)) {
-      return wouldSubsequenceMatch(node as ComplexSelector, spec, partial);
+      if (wouldSubsequenceMatch(node as ComplexSelector, spec, partial)) {
+        return true;
+      }
+      // Continue into parent — the local complex selector + parent form a longer chain
+      if (parentSelector && partial) {
+        return wouldMatchWithParent(node, spec, partial, parentSelector);
+      }
+      return false;
     }
     return (node as ComplexSelector).value.some((comp, i) => {
       if (isNode(comp, N.Combinator)) {
@@ -1026,6 +1038,12 @@ function wouldMatchNode(
     });
   }
 
+  // For simple/compound nodes with a multi-position find, the parent provides
+  // the implicit & context — treat [parent, ' ', node] as a virtual complex
+  if (parentSelector && isMultiPosition(spec)) {
+    return wouldMatchWithParent(node, spec, partial, parentSelector);
+  }
+
   if (isNode(node, N.CompoundSelector)) {
     if (isMultiSimple(spec) && partial) {
       return wouldSimplesMatch(node as CompoundSelector, spec);
@@ -1038,6 +1056,30 @@ function wouldMatchNode(
         hasContentAfter: i < (node as CompoundSelector).value.length - 1
       })
     );
+  }
+
+  // Ampersand = implicit parent. Continue matching into the stored parent selector.
+  if (isNode(node, N.Ampersand)) {
+    const amp = node as Ampersand;
+    const storedSel = amp._selectorContainer?.selector;
+    if (storedSel && !isNode(storedSel, N.Nil)) {
+      return wouldMatchNode(storedSel as Selector, spec, extendWith, partial, {
+        isRoot: false,
+        parentType: ctx.parentType,
+        hasContentBefore: ctx.hasContentBefore,
+        hasContentAfter: ctx.hasContentAfter
+      });
+    }
+    // No stored selector — try the provided parent
+    if (parentSelector) {
+      return wouldMatchNode(parentSelector, spec, extendWith, partial, {
+        isRoot: false,
+        parentType: ctx.parentType,
+        hasContentBefore: ctx.hasContentBefore,
+        hasContentAfter: ctx.hasContentAfter
+      });
+    }
+    return false;
   }
 
   if (isNode(node, N.PseudoSelector) && (node as PseudoSelector).value.arg && ((node as PseudoSelector).value.arg as any).isSelector) {
@@ -1101,6 +1143,36 @@ function wouldMatchPseudoTailAware(
 
 function wouldSimplesMatch(target: CompoundSelector, spec: FindSpec): boolean {
   return consumeSimples(target.value, spec.positions[0]!) !== null;
+}
+
+/**
+ * Try matching a multi-position find against a virtual [parent, ' ', child] complex.
+ * The parent IS the implicit &. No selector creation — just array concatenation
+ * fed directly into findSubsequence.
+ */
+function wouldMatchWithParent(
+  child: Selector,
+  spec: FindSpec,
+  partial: boolean,
+  parentSelector: Selector
+): boolean {
+  // Build the virtual components array: [...parentComponents, SPACE, ...childComponents]
+  const parentComps = isNode(parentSelector, N.ComplexSelector)
+    ? (parentSelector as ComplexSelector).value
+    : [parentSelector];
+  const childComps = isNode(child, N.ComplexSelector)
+    ? (child as ComplexSelector).value
+    : [child];
+  const virtualComps = [...parentComps, { type: 'Combinator', value: ' ' }, ...childComps];
+  const start = findSubsequence(virtualComps, spec);
+  if (start < 0) {
+    return false;
+  }
+  if (!partial) {
+    const findLen = spec.positions.length + spec.combinators.length;
+    return start === 0 && findLen === virtualComps.length;
+  }
+  return true;
 }
 
 function wouldSubsequenceMatch(
