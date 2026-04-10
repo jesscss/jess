@@ -464,19 +464,30 @@ export function processExtends(context: Context): void {
           ruleset.removeFlag(F_EXTENDED);
         }
         // Crossing match: target spans parent+child boundary → hoist to root.
-        // Compose parent+child into the final form, apply ALL visible extends,
-        // store as value.selector with hoistToRoot = true.
+        // The composed (parent+child) form IS the thing being extended as a whole.
+        // Build a SelectorList: [composedForm, ...crossingExtendWiths].
         if (hasCrossingMatch && parentSel) {
-          const composed = (Ruleset as typeof Ruleset).composeSelector(selector, parentSel);
-          const newSelector = applyExtendsToSelector(composed, visibleExtends);
-          if (newSelector.valueOf() !== composed.valueOf()) {
-            ruleset.value.selector = newSelector;
-            ruleset._composedSelector = newSelector;
-            ruleset.hoistToRoot = true;
-            newSelector.hoistToRoot = true;
-            ruleset.invalidateSelectorValueCache();
-            continue;
+          // Wrap child SelectorList in :is() so composition doesn't distribute.
+          let childForCompose: Selector = selector;
+          if (isNode(selector, N.SelectorList) && !selector.hasFlag(F_AMPERSAND)) {
+            const childIs = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
+            childIs.generated = true;
+            childForCompose = childIs as unknown as Selector;
           }
+          const composed = (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel);
+          const items: Selector[] = [composed];
+          for (const inst of crossingInstructions) {
+            items.push(inst.extendWith.copy(true) as Selector);
+          }
+          const newSelector = items.length === 1
+            ? composed
+            : SelectorList.create(items).inherit(selector) as Selector;
+          ruleset.value.selector = newSelector;
+          ruleset._composedSelector = newSelector;
+          ruleset.hoistToRoot = true;
+          newSelector.hoistToRoot = true;
+          ruleset.invalidateSelectorValueCache();
+          continue;
         }
         const ownSelector = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
         const hasResolvedNestedSelector = Boolean(
