@@ -27,7 +27,7 @@ export type PrintOptions = {
   referenceFilterTargets?: boolean;
   /** RenderKey for fork-aware value reads during serialization. */
   renderKey?: RenderKey;
-  /** Stack of composed selectors for collapseNesting on-demand composition. */
+  /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
