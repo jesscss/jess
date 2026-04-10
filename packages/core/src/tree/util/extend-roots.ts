@@ -547,6 +547,7 @@ export function processExtends(context: Context): void {
         }
         let isActivatedByVisibleExtend = false;
         let hasWithinAmpersandMatch = false;
+        let hasAnyLocalMatch = false;
         const crossingInstructions: ExtendInstruction[] = [];
         // Instructions excluded from local application (within-ampersand / crossing):
         const excludedFromLocal = new Set<ExtendInstruction>();
@@ -556,6 +557,7 @@ export function processExtends(context: Context): void {
             if (findExtendableLocations(selector, instruction.target).hasMatches) {
               instructionMatched.add(instruction);
               isActivatedByVisibleExtend = true;
+              hasAnyLocalMatch = true;
             }
           } else {
             const matchType = classifyInstructionMatch(selector, instruction, parentSel);
@@ -573,6 +575,7 @@ export function processExtends(context: Context): void {
                 }
               } else {
                 // 'local' match
+                hasAnyLocalMatch = true;
                 if (!instruction.partial) {
                   isActivatedByVisibleExtend = true;
                 }
@@ -607,7 +610,7 @@ export function processExtends(context: Context): void {
         const hasCrossingMatch = crossingInstructions.length > 0;
         // If all matches are within-ampersand (no local or crossing matches),
         // the parent carries the extend — child inherits via & at render time.
-        if (hasWithinAmpersandMatch && !isActivatedByVisibleExtend && !hasCrossingMatch) {
+        if (hasWithinAmpersandMatch && !hasAnyLocalMatch && !hasCrossingMatch) {
           continue;
         }
         if (isActivatedByVisibleExtend) {
