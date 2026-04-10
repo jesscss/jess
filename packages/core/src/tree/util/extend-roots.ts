@@ -442,6 +442,11 @@ export function processExtends(context: Context): void {
             }
           }
         }
+        // If all matches are within-ampersand (no local or crossing matches),
+        // the parent carries the extend — child inherits via & at render time.
+        if (hasWithinAmpersandMatch && !isActivatedByVisibleExtend && !hasCrossingMatch) {
+          continue;
+        }
         if (isActivatedByVisibleExtend) {
           ruleset.addFlag(F_EXTENDED);
           ruleset.addFlag(F_VISIBLE);
