@@ -361,26 +361,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         }
       }
 
-      let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (context.opts.collapseNesting || this.hoistToRoot || appendValue !== undefined);
-      const shouldWrapComplexSelector = isNode(selector, N.ComplexSelector);
-
-      if (shouldWrapSelectorList || shouldWrapComplexSelector) {
-        result = PseudoSelector.create({ name: ':is', arg: selector });
-        // When create() is invoked from this eval path, generated is not set on the instance
-        // (repro: process-leading-is test "unwraps evaled &[e] with frame * b"). Set explicitly.
-        result.generated = true;
-      } else {
-        result = selector;
-      }
-
-      // If we're appending (e.g. `&-1`), we must hoist this selector out of its parent frames
-      // because it materially changes the inherited selector.
-      if (appendValue !== undefined) {
-        result.hoistToRoot = true;
-      }
-      // Only set hoistToRoot if we actually wrapped or if it was already set
-      if (shouldWrapSelectorList || shouldWrapComplexSelector || this.hoistToRoot) {
+      // No `:is()` wrapping here: for the append/hoist case, the result is
+      // the new top-level selector (marked hoistToRoot so composeSelector
+      // won't re-prepend the parent). A SelectorList or ComplexSelector
+      // result renders correctly on its own at the top level.
+      const result: Selector | Nil = selector;
+      if (appendValue !== undefined || this.hoistToRoot) {
         result.hoistToRoot = true;
       }
       return result;

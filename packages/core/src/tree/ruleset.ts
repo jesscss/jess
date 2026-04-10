@@ -20,7 +20,6 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
-import { processLeadingIs } from './util/process-leading-is.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
@@ -153,8 +152,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   /**
    * Recursively substitute every `&` in `child` with `parent`. Assumes
    * `child` contains at least one `&`. Does not mutate `child` or `parent`.
+   *
+   * `insideComplex` signals that `child` is a component of an enclosing
+   * ComplexSelector. In that case a compound with leading `&` cannot be
+   * smart-spliced into a complex parent, because the surrounding
+   * combinators in the outer complex would misattach to the wrong end of
+   * the parent chain.
    */
-  private static _substituteAmpersand(child: Selector, parent: Selector): Selector {
+  private static _substituteAmpersand(child: Selector, parent: Selector, insideComplex = false): Selector {
     // Bare `&` — substitute raw. `&` is in "whole position": no wrapping.
     if (isNode(child, N.Ampersand)) {
       return parent;
@@ -166,7 +171,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     if (isNode(child, N.CompoundSelector)) {
-      return Ruleset._substituteAmpInCompound(child as CompoundSelector, parent);
+      return Ruleset._substituteAmpInCompound(child as CompoundSelector, parent, insideComplex);
     }
 
     if (isNode(child, N.ComplexSelector)) {
@@ -180,13 +185,70 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return child;
   }
 
-  private static _substituteAmpInCompound(compound: CompoundSelector, parent: Selector): Selector {
+  private static _substituteAmpInCompound(compound: CompoundSelector, parent: Selector, insideComplex = false): Selector {
+    const components = compound.value as SimpleSelector[];
+
+    // Count direct `&` components and find the position of the first one.
+    let ampCount = 0;
+    let firstAmpIdx = -1;
+    for (let i = 0; i < components.length; i++) {
+      if (isNode(components[i]!, N.Ampersand)) {
+        ampCount++;
+        if (firstAmpIdx === -1) {
+          firstAmpIdx = i;
+        }
+      }
+    }
+
+    // Smart splice candidate: exactly one `&`, at the leading position, and
+    // the compound is not itself a component of an enclosing complex where
+    // splicing would misattach surrounding combinators.
+    const canSmartSplice = ampCount === 1 && firstAmpIdx === 0 && !insideComplex;
+
+    if (canSmartSplice) {
+      const suffix = components.slice(1);
+      // Simple / Compound parent — splice directly into the compound.
+      if (!isNode(parent, N.ComplexSelector) && !isNode(parent, N.SelectorList)) {
+        const parentComponents: SimpleSelector[] = isNode(parent, N.CompoundSelector)
+          ? ((parent as CompoundSelector).value as SimpleSelector[])
+          : [parent as unknown as SimpleSelector];
+        const merged = [...parentComponents, ...suffix];
+        if (merged.length === 1) {
+          return merged[0] as unknown as Selector;
+        }
+        return CompoundSelector.create(merged).inherit(compound);
+      }
+      // ComplexSelector parent — attach the suffix to the parent's last
+      // non-combinator part, returning a new complex.
+      if (isNode(parent, N.ComplexSelector)) {
+        const parentParts = (parent as ComplexSelector).value.slice() as ComplexSelectorComponent[];
+        let lastIdx = -1;
+        for (let i = parentParts.length - 1; i >= 0; i--) {
+          if (!isNode(parentParts[i]!, N.Combinator)) {
+            lastIdx = i;
+            break;
+          }
+        }
+        if (lastIdx !== -1 && suffix.length > 0) {
+          const lastPart = parentParts[lastIdx]!;
+          const existing: SimpleSelector[] = isNode(lastPart, N.CompoundSelector)
+            ? ((lastPart as CompoundSelector).value as SimpleSelector[])
+            : [lastPart as SimpleSelector];
+          const merged = [...existing, ...suffix];
+          parentParts[lastIdx] = merged.length === 1
+            ? (merged[0] as ComplexSelectorComponent)
+            : (CompoundSelector.create(merged) as ComplexSelectorComponent);
+        }
+        return ComplexSelector.create(parentParts).inherit(compound);
+      }
+      // SelectorList parent falls through to the general path below.
+    }
+
+    // General path: walk components, substituting each `&` in place.
+    // Simple/Compound parents splice; Complex/List parents wrap in `:is()`.
     const newComponents: SimpleSelector[] = [];
-    for (const comp of compound.value) {
+    for (const comp of components) {
       if (isNode(comp, N.Ampersand)) {
-        // `&` inside a tight compound: simple/compound parents splice in
-        // place; complex or list parents would clash with the tight join
-        // or require distribution, so wrap in `:is()`.
         if (isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
           newComponents.push(Ruleset._wrapIs(parent));
         } else if (isNode(parent, N.CompoundSelector)) {
@@ -195,9 +257,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           newComponents.push(parent as unknown as SimpleSelector);
         }
       } else if (comp.hasFlag(F_AMPERSAND)) {
+        // `&` is nested deeper (e.g. inside a pseudo arg).
         const sub = Ruleset._substituteAmpersand(comp as unknown as Selector, parent);
-        // Sub should remain a valid compound component (simple or compound
-        // flattened into this compound). Complex/list sub would be a bug.
         if (isNode(sub, N.CompoundSelector)) {
           newComponents.push(...((sub as CompoundSelector).value as SimpleSelector[]));
         } else {
@@ -206,6 +267,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       } else {
         newComponents.push(comp);
       }
+    }
+    if (newComponents.length === 1) {
+      return newComponents[0] as unknown as Selector;
     }
     return CompoundSelector.create(newComponents).inherit(compound);
   }
@@ -234,7 +298,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           newParts.push(parent as unknown as ComplexSelectorComponent);
         }
       } else if (!isNode(part, N.Combinator) && (part as Node).hasFlag(F_AMPERSAND)) {
-        const sub = Ruleset._substituteAmpersand(part as unknown as Selector, parent);
+        const sub = Ruleset._substituteAmpersand(part as unknown as Selector, parent, true);
         if (isNode(sub, N.ComplexSelector)) {
           // Flatten a complex sub into this complex's components.
           newParts.push(...((sub as ComplexSelector).value as ComplexSelectorComponent[]));
@@ -329,11 +393,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this._valueOf = '';
       return this._valueOf;
     }
-    const normalizedResult = processLeadingIs(selector as Selector);
-    const normalizedSelector = Array.isArray(normalizedResult)
-      ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
-      : (normalizedResult as Selector);
-    this._valueOf = (normalizedSelector as Selector | Nil) instanceof Nil ? '' : (normalizedSelector as Selector).valueOf();
+    this._valueOf = (selector as Selector).valueOf();
     return this._valueOf;
   }
 
@@ -522,14 +582,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return '';
     }
 
-    const normalizedResult = processLeadingIs(selector as Selector);
-    const normalizedSelector = Array.isArray(normalizedResult)
-      ? SelectorList.create(normalizedResult.map(s => s.copy(true) as Selector)).inherit(selector as Selector)
-      : (normalizedResult as Selector);
-    this.value.selector = normalizedSelector as typeof selector;
-    this.invalidateSelectorValueCache();
-
-    let renderSelector = withoutComments ? (this.value.selector.copy(true) as typeof selector) : this.value.selector;
+    let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
       const parentComposed = options.composedSelectorStack?.at(-1);
       if (!this._composedSelector) {
@@ -541,10 +594,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       renderSelector = this._composedSelector as typeof selector;
     }
-    const renderNormalizedResult = processLeadingIs(renderSelector as Selector);
-    renderSelector = Array.isArray(renderNormalizedResult)
-      ? SelectorList.create(renderNormalizedResult.map(s => s.copy(true) as Selector)).inherit(renderSelector as Selector) as typeof selector
-      : renderNormalizedResult as typeof selector;
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
