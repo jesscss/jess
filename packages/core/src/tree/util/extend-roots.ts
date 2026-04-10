@@ -64,6 +64,34 @@ function getLocalSelector(ruleset: Ruleset): Selector | undefined {
   return sel;
 }
 
+/**
+ * Compose a selector with its full parent chain for OUTPUT purposes.
+ * Used when an extend crosses the parent boundary and we need the
+ * extending ruleset's fully-composed form as the extendWith.
+ */
+function getFullComposedForm(ruleset: Ruleset): Selector | undefined {
+  const local = getLocalSelector(ruleset);
+  if (!local) {
+    return undefined;
+  }
+  const parent = getParentRuleset(ruleset);
+  if (!parent) {
+    return local;
+  }
+  const parentComposed = getFullComposedForm(parent);
+  if (!parentComposed) {
+    return local;
+  }
+  // Wrap child SelectorList in :is() to avoid distribution in composeSelector
+  let childForCompose: Selector = local;
+  if (isNode(local, N.SelectorList) && !local.hasFlag(F_AMPERSAND)) {
+    const childIs = PseudoSelector.create({ name: ':is', arg: local.copy(true) as Selector });
+    childIs.generated = true;
+    childForCompose = childIs as unknown as Selector;
+  }
+  return (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentComposed);
+}
+
 /** Boolean wrapper for backward compatibility with analyzeNonPartialExtends */
 function wouldInstructionChangeSel(
   selector: Selector,
@@ -465,7 +493,7 @@ export function processExtends(context: Context): void {
         }
         // Crossing match: target spans parent+child boundary → hoist to root.
         // The composed (parent+child) form IS the thing being extended as a whole.
-        // Build a SelectorList: [composedForm, ...crossingExtendWiths].
+        // Build a SelectorList: [composedForm, ...crossingExtendWithsComposed].
         if (hasCrossingMatch && parentSel) {
           // Wrap child SelectorList in :is() so composition doesn't distribute.
           let childForCompose: Selector = selector;
@@ -477,7 +505,18 @@ export function processExtends(context: Context): void {
           const composed = (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel);
           const items: Selector[] = [composed];
           for (const inst of crossingInstructions) {
-            items.push(inst.extendWith.copy(true) as Selector);
+            // For crossing matches, the extendWith must be the fully-composed
+            // form of the extending ruleset (e.g. .footer-nav under .footer → .footer .footer-nav)
+            let extendWithComposed: Selector | undefined;
+            let cursor: any = inst.extendNode?.parent;
+            while (cursor) {
+              if (isNode(cursor, N.Ruleset)) {
+                extendWithComposed = getFullComposedForm(cursor as Ruleset);
+                break;
+              }
+              cursor = cursor.parent;
+            }
+            items.push((extendWithComposed ?? inst.extendWith).copy(true) as Selector);
           }
           const newSelector = items.length === 1
             ? composed
