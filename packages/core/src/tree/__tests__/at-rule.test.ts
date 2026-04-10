@@ -1668,7 +1668,7 @@ describe('AtRule', () => {
 
       /** This represents already eval'd nodes */
       const evald = await node.eval(context);
-      const serialized = evald.toString();
+      const serialized = evald.toString({ context });
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`

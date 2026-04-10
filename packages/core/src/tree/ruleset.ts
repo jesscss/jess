@@ -85,21 +85,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * Returns a fully resolved selector with no & nodes.
    */
   static composeSelector(child: Selector, parent: Selector): Selector {
+    const hasAmpersand = child.hasFlag(F_AMPERSAND) || (child.sourceNode ?? child).hasFlag(F_AMPERSAND);
+    // Child is a bare `&` — the composed result is just the parent, unchanged.
+    // Do this before any `:is()` wrapping since nothing is being substituted.
+    if (hasAmpersand && isNode(child, N.Ampersand)) {
+      return parent;
+    }
+    // A SelectorList parent must be wrapped in `:is()` so comma-grouping is
+    // preserved when joined with the child. A ComplexSelector parent only
+    // needs wrapping when we're substituting `&` into a larger compound.
     let parentForCompose: Selector = parent;
-    if (isNode(parentForCompose, N.SelectorList) || isNode(parentForCompose, N.ComplexSelector)) {
+    const needsIsForList = isNode(parentForCompose, N.SelectorList);
+    const needsIsForComplex = hasAmpersand && isNode(parentForCompose, N.ComplexSelector);
+    if (needsIsForList || needsIsForComplex) {
       const is = PseudoSelector.create({ name: ':is', arg: parentForCompose });
       is.generated = true;
       parentForCompose = is;
     }
-
-    const hasAmpersand = child.hasFlag(F_AMPERSAND) || (child.sourceNode ?? child).hasFlag(F_AMPERSAND);
     if (!hasAmpersand) {
       return ComplexSelector.create([parentForCompose, Combinator.create(' '), child]).inherit(child);
-    }
-
-    // Replace & with parent in the child selector's direct children
-    if (isNode(child, N.Ampersand)) {
-      return parentForCompose;
     }
     if (isNode(child, N.CompoundSelector) || isNode(child, N.ComplexSelector)) {
       const newComponents = (child as CompoundSelector | ComplexSelector).value.map(

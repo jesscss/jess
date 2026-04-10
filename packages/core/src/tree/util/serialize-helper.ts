@@ -64,22 +64,33 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
   let pushedComposed = false;
+  // A bare `&` selector with no real parent on the stack is a generated
+  // wrapper (e.g. synthetic `& { ... }` wrapping @media body when hoisted).
+  // It must be fully transparent: don't compose, don't push, don't emit as a
+  // frame — just render children as if they were direct children of the
+  // parent at-rule.
+  let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
-    if (!rs._composedSelector) {
-      const parentComposed = options.composedSelectorStack?.at(-1);
-      const sel = rs.value.selector;
-      if (sel && !(sel instanceof Nil)) {
-        if (parentComposed) {
-          rs._composedSelector = (rs.constructor as typeof Ruleset).composeSelector(sel as Selector, parentComposed as Selector);
-        } else {
-          rs._composedSelector = sel as Selector;
+    const parentComposed = options.composedSelectorStack?.at(-1);
+    const sel = rs.value.selector;
+    const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
+    if (isBareAmp && !parentComposed) {
+      isTransparentWrapper = true;
+    } else {
+      if (!rs._composedSelector) {
+        if (sel && !(sel instanceof Nil)) {
+          if (parentComposed) {
+            rs._composedSelector = (rs.constructor as typeof Ruleset).composeSelector(sel as Selector, parentComposed as Selector);
+          } else {
+            rs._composedSelector = sel as Selector;
+          }
         }
       }
-    }
-    if (rs._composedSelector) {
-      (options.composedSelectorStack ??= []).push(rs._composedSelector as Selector);
-      pushedComposed = true;
+      if (rs._composedSelector) {
+        (options.composedSelectorStack ??= []).push(rs._composedSelector as Selector);
+        pushedComposed = true;
+      }
     }
   }
   // let header = node.getHeaderString(options);
@@ -194,8 +205,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const hoisted = node.isHoisted(options);
   // const isRuleset = isNode(node, 'Ruleset');
   const treeFrames = options.treeFrames!;
-  const prevTreeFrames = hoisted ? treeFrames.slice() : undefined;
-  if (hoisted) {
+  const prevTreeFrames = hoisted && !isTransparentWrapper ? treeFrames.slice() : undefined;
+  if (isTransparentWrapper) {
+    // Transparent `&` wrapper: don't add self as a frame, just render children
+    // using the parent frame context.
+    options.inFrames = inFrames = treeFrames!;
+  } else if (hoisted) {
     // When hoisting, we must reset the active frame stack to at-rules only.
     // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
     // in `treeFrames` and cause nested output like:
@@ -348,8 +363,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     //   n.toString({ ...options, depth: options.depth + 1 });
     // }
   }
-  inFrames.pop();
-  frameHeaders.pop();
+  if (!isTransparentWrapper) {
+    inFrames.pop();
+    frameHeaders.pop();
+  }
   if (prevTreeFrames) {
     treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
   }
