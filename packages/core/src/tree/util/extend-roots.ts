@@ -413,7 +413,7 @@ export function processExtends(context: Context): void {
         }
         let isActivatedByVisibleExtend = false;
         let hasWithinAmpersandMatch = false;
-        let hasCrossingMatch = false;
+        const crossingInstructions: ExtendInstruction[] = [];
         for (const instruction of visibleExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
@@ -429,7 +429,7 @@ export function processExtends(context: Context): void {
                 // Parent carries this extend — child inherits via & at render time
                 hasWithinAmpersandMatch = true;
               } else if (matchType === 'crossing') {
-                hasCrossingMatch = true;
+                crossingInstructions.push(instruction);
                 if (!instruction.partial) {
                   isActivatedByVisibleExtend = true;
                 }
@@ -442,6 +442,7 @@ export function processExtends(context: Context): void {
             }
           }
         }
+        const hasCrossingMatch = crossingInstructions.length > 0;
         // If all matches are within-ampersand (no local or crossing matches),
         // the parent carries the extend — child inherits via & at render time.
         if (hasWithinAmpersandMatch && !isActivatedByVisibleExtend && !hasCrossingMatch) {
@@ -461,6 +462,21 @@ export function processExtends(context: Context): void {
           }
         } else {
           ruleset.removeFlag(F_EXTENDED);
+        }
+        // Crossing match: target spans parent+child boundary → hoist to root.
+        // Compose parent+child into the final form, apply ALL visible extends,
+        // store as value.selector with hoistToRoot = true.
+        if (hasCrossingMatch && parentSel) {
+          const composed = (Ruleset as typeof Ruleset).composeSelector(selector, parentSel);
+          const newSelector = applyExtendsToSelector(composed, visibleExtends);
+          if (newSelector.valueOf() !== composed.valueOf()) {
+            ruleset.value.selector = newSelector;
+            ruleset._composedSelector = newSelector;
+            ruleset.hoistToRoot = true;
+            newSelector.hoistToRoot = true;
+            ruleset.invalidateSelectorValueCache();
+            continue;
+          }
         }
         const ownSelector = (ruleset.options as { ownSelector?: Selector })?.ownSelector;
         const hasResolvedNestedSelector = Boolean(

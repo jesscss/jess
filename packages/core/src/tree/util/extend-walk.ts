@@ -1181,6 +1181,9 @@ function wouldSimplesMatch(target: CompoundSelector, spec: FindSpec): boolean {
  * Try matching a multi-position find against a virtual [parent, ' ', child] complex.
  * The parent IS the implicit &. No selector creation — just array concatenation
  * fed directly into findSubsequence.
+ *
+ * If the parent is a SelectorList, each item is tried as a potential parent chain.
+ * If the child is a SelectorList, each item is tried as a potential child chain.
  */
 function wouldMatchWithParent(
   child: Selector,
@@ -1188,23 +1191,38 @@ function wouldMatchWithParent(
   partial: boolean,
   parentSelector: Selector
 ): boolean {
-  // Build the virtual components array: [...parentComponents, SPACE, ...childComponents]
-  const parentComps = isNode(parentSelector, N.ComplexSelector)
-    ? (parentSelector as ComplexSelector).value
+  const parentItems: Selector[] = isNode(parentSelector, N.SelectorList)
+    ? (parentSelector as SelectorList).value
     : [parentSelector];
-  const childComps = isNode(child, N.ComplexSelector)
-    ? (child as ComplexSelector).value
+  const childItems: Selector[] = isNode(child, N.SelectorList)
+    ? (child as SelectorList).value
     : [child];
-  const virtualComps = [...parentComps, { type: 'Combinator', value: ' ' }, ...childComps];
-  const start = findSubsequence(virtualComps, spec);
-  if (start < 0) {
-    return false;
+
+  const spaceComb = Combinator.create(' ');
+  for (const pItem of parentItems) {
+    const parentComps = isNode(pItem, N.ComplexSelector)
+      ? (pItem as ComplexSelector).value
+      : [pItem];
+    for (const cItem of childItems) {
+      const childComps = isNode(cItem, N.ComplexSelector)
+        ? (cItem as ComplexSelector).value
+        : [cItem];
+      const virtualComps: any[] = [...parentComps, spaceComb, ...childComps];
+      const start = findSubsequence(virtualComps, spec);
+      if (start < 0) {
+        continue;
+      }
+      if (!partial) {
+        const findLen = spec.positions.length + spec.combinators.length;
+        if (start === 0 && findLen === virtualComps.length) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
   }
-  if (!partial) {
-    const findLen = spec.positions.length + spec.combinators.length;
-    return start === 0 && findLen === virtualComps.length;
-  }
-  return true;
+  return false;
 }
 
 function wouldSubsequenceMatch(
