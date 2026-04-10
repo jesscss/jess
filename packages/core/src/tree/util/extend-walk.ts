@@ -972,6 +972,30 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
 
 export type MatchResult = false | 'local' | 'within-ampersand' | 'crossing';
 
+/**
+ * Check if a parent selector contains the target as one of its components.
+ * Used to detect same-target nesting (e.g., .bb under .bb) where exact
+ * extends should not apply to avoid duplication.
+ */
+function parentContainsTarget(parent: Selector, target: Selector): boolean {
+  const targetVal = target.valueOf();
+  if (parent.valueOf() === targetVal) {
+    return true;
+  }
+  if (isNode(parent, N.SelectorList)) {
+    return (parent as SelectorList).value.some(item => parentContainsTarget(item as Selector, target));
+  }
+  if (isNode(parent, N.ComplexSelector)) {
+    return (parent as ComplexSelector).value.some(comp =>
+      !isNode(comp, N.Combinator) && parentContainsTarget(comp as Selector, target)
+    );
+  }
+  if (isNode(parent, N.CompoundSelector)) {
+    return (parent as CompoundSelector).value.some(comp => parentContainsTarget(comp as Selector, target));
+  }
+  return false;
+}
+
 export function wouldExtendChange(
   target: Selector,
   find: Selector,
@@ -1010,6 +1034,13 @@ function wouldMatchNode(
     if (!partial) {
       if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
         return false;
+      }
+      // If we're at root with a parent selector that contains the target,
+      // applying this extend would create a duplicate via nesting
+      // (e.g., .bb under .bb + extend(.bb)). Treat as within-ampersand:
+      // the parent's extend carries it.
+      if (ctx.isRoot && parentSelector && parentContainsTarget(parentSelector, node)) {
+        return 'within-ampersand';
       }
     }
     return 'local';
