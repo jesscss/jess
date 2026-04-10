@@ -88,6 +88,73 @@ function getLocalSelectorPreExtend(ruleset: Ruleset): Selector | undefined {
 }
 
 /**
+ * Get the set of Ruleset ancestors of a ruleset (excluding itself).
+ */
+function getRulesetAncestors(ruleset: Ruleset): Ruleset[] {
+  const ancestors: Ruleset[] = [];
+  let current: Ruleset | undefined = getParentRuleset(ruleset);
+  while (current) {
+    ancestors.push(current);
+    current = getParentRuleset(current);
+  }
+  return ancestors;
+}
+
+/**
+ * Compose an extendWith selector relative to a target ruleset's parent chain.
+ *
+ * The extendWith should represent the path from the TARGET's parent (exclusive)
+ * to the extending ruleset. When target and extending share a parent, the
+ * extendWith is just the extending ruleset's local selector. When they differ,
+ * the extending ruleset's path is composed up to (but not including) the
+ * target's parent level.
+ *
+ * Example:
+ *   .bordered { ... }  (target, root-level)
+ *   .page { .content { extend: .bordered all } }  (extending)
+ *   → extendWith = .page .content (composed from root)
+ *
+ *   .parent { [data] { ... }  .child { extend: [data] all } }
+ *   → extendWith = .child (both siblings of same parent)
+ */
+function composeExtendWithRelativeToTarget(
+  extendingRuleset: Ruleset,
+  targetRuleset: Ruleset | undefined
+): Selector | undefined {
+  const extendingLocal = getLocalSelectorPreExtend(extendingRuleset);
+  if (!extendingLocal) {
+    return undefined;
+  }
+  // Walk up from extending ruleset, collecting local selectors, until we
+  // reach a ruleset that is also an ancestor of the target (or root).
+  const targetAncestors = targetRuleset
+    ? new Set<Ruleset>([targetRuleset, ...getRulesetAncestors(targetRuleset)])
+    : new Set<Ruleset>();
+  const pathLocals: Selector[] = [extendingLocal];
+  let current: Ruleset | undefined = getParentRuleset(extendingRuleset);
+  while (current && !targetAncestors.has(current)) {
+    const local = getLocalSelectorPreExtend(current);
+    if (local) {
+      pathLocals.unshift(local);
+    }
+    current = getParentRuleset(current);
+  }
+  // Compose from outermost to innermost
+  let result: Selector = pathLocals[0]!;
+  for (let i = 1; i < pathLocals.length; i++) {
+    let child: Selector = pathLocals[i]!;
+    // Wrap child SelectorList in :is() to avoid distribution
+    if (isNode(child, N.SelectorList) && !child.hasFlag(F_AMPERSAND)) {
+      const childIs = PseudoSelector.create({ name: ':is', arg: child.copy(true) as Selector });
+      childIs.generated = true;
+      child = childIs as unknown as Selector;
+    }
+    result = (Ruleset as typeof Ruleset).composeSelector(child, result);
+  }
+  return result;
+}
+
+/**
  * Compose a selector with its full parent chain for OUTPUT purposes.
  * Used when an extend crosses the parent boundary and we need the
  * extending ruleset's fully-composed form as the extendWith.
@@ -418,10 +485,23 @@ export function processExtends(context: Context): void {
       }
     }
 
+    // Find the nearest Ruleset ancestor of an extend node.
+    const findExtendingRuleset = (extendNode: any): Ruleset | undefined => {
+      let cursor: any = extendNode?.parent;
+      while (cursor) {
+        if (isNode(cursor, N.Ruleset)) {
+          return cursor as Ruleset;
+        }
+        cursor = cursor.parent;
+      }
+      return undefined;
+    };
+
     const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
       return {
         target,
         extendWith: selectorWithExtend,
+        extendingRuleset: findExtendingRuleset(extendNode),
         partial,
         extendRoot,
         extendNode,
@@ -500,7 +580,30 @@ export function processExtends(context: Context): void {
             }
           }
         }
-        const localApplicableExtends = visibleExtends.filter(i => !excludedFromLocal.has(i));
+        // Build apply-time instructions: use the extendWith composed relative
+        // to the current target ruleset's parent chain.
+        const localApplicableExtends: ExtendInstruction[] = [];
+        for (const inst of visibleExtends) {
+          if (excludedFromLocal.has(inst)) {
+            continue;
+          }
+          const extendingRs = (inst as any).extendingRuleset as Ruleset | undefined;
+          let applyExtendWith = inst.extendWith;
+          if (extendingRs) {
+            const composed = composeExtendWithRelativeToTarget(extendingRs, ruleset);
+            if (composed) {
+              applyExtendWith = composed;
+            }
+          }
+          if (applyExtendWith === inst.extendWith) {
+            localApplicableExtends.push(inst);
+          } else {
+            localApplicableExtends.push({
+              ...inst,
+              extendWith: applyExtendWith
+            });
+          }
+        }
         const hasCrossingMatch = crossingInstructions.length > 0;
         // If all matches are within-ampersand (no local or crossing matches),
         // the parent carries the extend — child inherits via & at render time.
