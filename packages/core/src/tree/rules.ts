@@ -2175,53 +2175,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
       }
     };
-    const resetEvalStateDeep = (node: Node): void => {
-      node.preEvaluated = false;
-      node.evaluated = false;
-      if (isNode(node, N.Ruleset)) {
-        const rulesetNode = node as Ruleset;
-        const selector = rulesetNode.value.selector as Selector | Nil;
-        const sourceSelector = selector?.sourceNode;
-        if (sourceSelector && isNode(sourceSelector)) {
-          // Recover definition-time selector shape (e.g. raw `&`) so call-site
-          // preEval can rebuild selectors in the caller's frame.
-          rulesetNode.value.selector = sourceSelector.copy(true) as Selector | Nil;
-          rulesetNode.value.selector.sourceNode = sourceSelector;
-        }
-      }
-      if (isNode(node, N.Ampersand)) {
-        // Ampersands cloned from mixin definitions can carry a stale selector container
-        // that points at definition-time selectors. Clear it so call-site frames rebind `&`.
-        const ampNode = node as unknown as { _selectorContainer?: unknown; _storedSelector?: unknown };
-        ampNode._selectorContainer = undefined;
-        ampNode._storedSelector = undefined;
-      }
-      const value = (node as { value?: unknown }).value;
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            resetEvalStateDeep(child);
-          }
-        }
-        return;
-      }
-      if (value && typeof value === 'object') {
-        const record = value as Record<string, unknown>;
-        for (const propValue of Object.values(record)) {
-          if (isNode(propValue)) {
-            resetEvalStateDeep(propValue);
-            continue;
-          }
-          if (Array.isArray(propValue)) {
-            for (const item of propValue) {
-              if (isNode(item)) {
-                resetEvalStateDeep(item);
-              }
-            }
-          }
-        }
-      }
-    };
     const getRootSourceRules = (rules: Rules): Rules => {
       let current = rules;
       const seen = new Set<Rules>();
@@ -2331,7 +2284,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true);
-        resetEvalStateDeep(rules as unknown as Node);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -2356,7 +2308,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         const sourceRules = getRootSourceRules(candidate.value.rules);
         let unlocked = sourceRules.clone(true);
-        resetEvalStateDeep(unlocked as unknown as Node);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
@@ -2370,7 +2321,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(true);
-      resetEvalStateDeep(rules as unknown as Node);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
