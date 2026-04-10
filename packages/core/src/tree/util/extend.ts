@@ -285,9 +285,8 @@ export function applyExtendsToSelector(
             changed = true;
             break;
           }
-          // No match — skip over all instructions in this batch group
-          i = batchIndices[batchIndices.length - 1]!;
-          continue;
+          // No match — fall through to individual tryExtendSelector
+          // (do NOT jump over interleaved instructions with different targets)
         }
       }
 

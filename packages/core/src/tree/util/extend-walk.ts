@@ -1011,9 +1011,6 @@ function wouldMatchNode(
       if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
         return false;
       }
-      if (ctx.isRoot && parentSelector) {
-        return 'within-ampersand';
-      }
     }
     return 'local';
   }
