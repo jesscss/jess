@@ -37,26 +37,49 @@ function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
  * Returns undefined if there's no parent Ruleset (root level).
  */
 function getParentSelector(ruleset: Ruleset): Selector | undefined {
-  const parentRuleset = getParentRuleset(ruleset);
-  if (!parentRuleset) {
-    return undefined;
+  // Walk up through & -only parents (implicit wrappers around at-rule contents)
+  // to find the nearest parent Ruleset with actual selector content.
+  let current: Ruleset = ruleset;
+  while (true) {
+    const parentRuleset = getParentRuleset(current);
+    if (!parentRuleset) {
+      return undefined;
+    }
+    const sel = getLocalSelectorPreExtend(parentRuleset);
+    if (!sel) {
+      return undefined;
+    }
+    // If the parent selector is just an Ampersand, keep walking up
+    if (isNode(sel, N.Ampersand)) {
+      current = parentRuleset;
+      continue;
+    }
+    return sel;
   }
-  // Use the pre-extend snapshot to avoid composing with already-extended selectors.
-  const sel = preExtendSelectors.get(parentRuleset) ?? parentRuleset.value?.selector;
-  if (!sel || sel instanceof Nil) {
-    return undefined;
-  }
-  return sel as Selector;
 }
 
 /** Snapshot of eval'd selectors before any extend modifications */
 let preExtendSelectors = new WeakMap<Ruleset, Selector>();
 
 /**
- * Get the local (pre-extend) selector for a Ruleset.
- * Uses the pre-extend snapshot to avoid seeing already-extended selectors.
+ * Get the current local selector for a Ruleset (value.selector).
+ * Used for classification and application where we want to see prior updates
+ * (supports extend chaining).
  */
 function getLocalSelector(ruleset: Ruleset): Selector | undefined {
+  const sel = ruleset.value.selector as Selector | undefined;
+  if (!sel || isNode(sel, N.Nil)) {
+    return undefined;
+  }
+  return sel;
+}
+
+/**
+ * Get the PRE-EXTEND local selector for a Ruleset (from snapshot).
+ * Used for parent lookups in composed forms so we don't propagate extend
+ * additions through parent chains.
+ */
+function getLocalSelectorPreExtend(ruleset: Ruleset): Selector | undefined {
   const sel = (preExtendSelectors.get(ruleset) ?? ruleset.value.selector) as Selector | undefined;
   if (!sel || isNode(sel, N.Nil)) {
     return undefined;
@@ -70,7 +93,7 @@ function getLocalSelector(ruleset: Ruleset): Selector | undefined {
  * extending ruleset's fully-composed form as the extendWith.
  */
 function getFullComposedForm(ruleset: Ruleset): Selector | undefined {
-  const local = getLocalSelector(ruleset);
+  const local = getLocalSelectorPreExtend(ruleset);
   if (!local) {
     return undefined;
   }
@@ -433,7 +456,10 @@ export function processExtends(context: Context): void {
         continue;
       }
       for (const ruleset of rulesetSet) {
+        // For classification: use pre-extend snapshot (original form).
+        // For application: use current value.selector (for chaining).
         const selector = getLocalSelector(ruleset);
+        const currentSelector = ruleset.value.selector as Selector | undefined;
         const parentSel = getParentSelector(ruleset);
         if (!selector || isNode(selector, N.Nil)) {
           ruleset.removeFlag(F_EXTENDED);
@@ -442,6 +468,8 @@ export function processExtends(context: Context): void {
         let isActivatedByVisibleExtend = false;
         let hasWithinAmpersandMatch = false;
         const crossingInstructions: ExtendInstruction[] = [];
+        // Instructions excluded from local application (within-ampersand / crossing):
+        const excludedFromLocal = new Set<ExtendInstruction>();
         for (const instruction of visibleExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
@@ -456,8 +484,10 @@ export function processExtends(context: Context): void {
               if (matchType === 'within-ampersand') {
                 // Parent carries this extend — child inherits via & at render time
                 hasWithinAmpersandMatch = true;
+                excludedFromLocal.add(instruction);
               } else if (matchType === 'crossing') {
                 crossingInstructions.push(instruction);
+                excludedFromLocal.add(instruction);
                 if (!instruction.partial) {
                   isActivatedByVisibleExtend = true;
                 }
@@ -470,6 +500,7 @@ export function processExtends(context: Context): void {
             }
           }
         }
+        const localApplicableExtends = visibleExtends.filter(i => !excludedFromLocal.has(i));
         const hasCrossingMatch = crossingInstructions.length > 0;
         // If all matches are within-ampersand (no local or crossing matches),
         // the parent carries the extend — child inherits via & at render time.
@@ -662,120 +693,17 @@ export function processExtends(context: Context): void {
             }
           }
         }
-        let newSelector = applyExtendsToSelector(selector, visibleExtends);
-        if (newSelector !== selector) {
-          const beforeValue = selector.valueOf();
-          const ownRelevantExtends = (ownSelector && hasResolvedNestedSelector)
-            ? visibleExtends.filter(instruction => instruction.partial)
-            : visibleExtends;
-          const ownAfterRelevant = (ownSelector && hasResolvedNestedSelector)
-            ? applyExtendsToSelector(ownSelector, ownRelevantExtends)
-            : null;
-          const ownChangedByRelevant = Boolean(
-            ownSelector
-            && ownAfterRelevant
-            && ownAfterRelevant.valueOf() !== ownSelector.valueOf()
-          );
-          const parentRuleset = (
-            ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
-              ? (ruleset.parent.parent as Ruleset)
-              : null
-          );
-          const parentSelectorForBoundary = parentRuleset?.value.selector;
-          const parentHasCombinatorContext = Boolean(
-            parentSelectorForBoundary
-            && !(parentSelectorForBoundary instanceof Nil)
-            && (() => {
-              try {
-                for (const n of (parentSelectorForBoundary as Selector).nodes()) {
-                  if (isNode(n, N.Combinator)) {
-                    return true;
-                  }
-                }
-              } catch {}
-              return false;
-            })()
-          );
-          const parentHoistedBoundaryCompose = Boolean(
-            ownSelector
-            && hasResolvedNestedSelector
-            && !hasOnlyPartialExtends
-            && !ownChangedByRelevant
-            && (rootRules.options as any)?.referenceMode !== true
-            && parentRuleset?.hoistToRoot
-            && !newSelector.hoistToRoot
-          );
-          if (parentHoistedBoundaryCompose) {
-            const parentSelector = parentRuleset?.value.selector;
-            if (parentSelector && !(parentSelector instanceof Nil) && isNode(parentSelector, N.SelectorList)) {
-              const parentItems = (parentSelector as SelectorList).value;
-              const complexItems = parentItems.filter(item => isNode(item, N.ComplexSelector)) as ComplexSelector[];
-              if (complexItems.length === parentItems.length && complexItems.length >= 2) {
-                const first = complexItems[0]!;
-                const allTri = complexItems.every(c => c.value.length === 3 && isNode(c.value[1], N.Combinator));
-                if (allTri) {
-                  const leftKey = first.value[0]!.valueOf();
-                  const combKey = first.value[1]!.valueOf();
-                  const samePrefix = complexItems.every(c =>
-                    c.value[0]!.valueOf() === leftKey
-                    && c.value[1]!.valueOf() === combKey
-                  );
-                  if (samePrefix) {
-                    const ownSelectorNode = ownSelector as Selector;
-                    const middleIs = PseudoSelector.create({
-                      name: ':is',
-                      arg: SelectorList.create(
-                        complexItems.map(c => c.value[2]!.copy(true) as Selector)
-                      )
-                    });
-                    const parentFactored = ComplexSelector.create([
-                      first.value[0]!.copy(true) as Selector,
-                      (first.value[1] as Combinator).copy(true),
-                      middleIs
-                    ]);
-                    const ownArg = isNode(ownSelectorNode, N.SelectorList)
-                      ? SelectorList.create((ownSelectorNode as SelectorList).value.map(s => s.copy(true) as Selector))
-                      : SelectorList.create([ownSelectorNode.copy(true) as Selector]);
-                    const ownIs = PseudoSelector.create({ name: ':is', arg: ownArg });
-                    newSelector = ComplexSelector.create([
-                      ...parentFactored.value.map(c => c.copy(true)),
-                      Combinator.create(' '),
-                      ownIs
-                    ]).inherit(newSelector) as Selector;
-                    newSelector.hoistToRoot = true;
-                  }
-                }
-              }
-            }
-          }
-          const boundaryOnlyNestedExactChange = Boolean(
-            ownSelector
-            && hasResolvedNestedSelector
-            && !hasOnlyPartialExtends
-            && !ownChangedByRelevant
-            && parentHasCombinatorContext
-            && !(
-              ruleset.parent?.parent
-              && isNode(ruleset.parent.parent, N.Ruleset)
-              && Boolean((ruleset.parent.parent as Ruleset).hoistToRoot)
-            )
-            && !newSelector.hoistToRoot
-          );
-          if (boundaryOnlyNestedExactChange) {
-            newSelector.hoistToRoot = true;
-          }
-          const finalAfterValue = newSelector.valueOf();
-          if (beforeValue === finalAfterValue) {
-            continue;
-          }
+        const applyInput = (currentSelector && !isNode(currentSelector, N.Nil) ? currentSelector : selector) as Selector;
+        const newSelector = applyExtendsToSelector(applyInput, localApplicableExtends);
+        if (newSelector.valueOf() !== applyInput.valueOf()) {
           if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
             const previousValues = new Set<string>();
-            if (isNode(selector, N.SelectorList)) {
-              for (const item of (selector as SelectorList).value) {
+            if (isNode(applyInput, N.SelectorList)) {
+              for (const item of (applyInput as SelectorList).value) {
                 previousValues.add(item.valueOf());
               }
             } else {
-              previousValues.add(selector.valueOf());
+              previousValues.add(applyInput.valueOf());
             }
             for (const item of (newSelector as SelectorList).value) {
               if (!previousValues.has(item.valueOf())) {
