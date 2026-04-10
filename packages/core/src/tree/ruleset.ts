@@ -12,6 +12,7 @@ import { Ampersand } from './ampersand.js';
 import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { CompoundSelector } from './selector-compound.js';
+import type { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print.js';
@@ -79,48 +80,209 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * @todo - this is LLM garbage, remove later
    */
   /**
-   * Compose a child selector with a parent selector.
-   * If child has explicit &, replaces & with parent (wrapping in :is() based on position).
-   * If child has no &, prepends parent with descendant combinator.
-   * Returns a fully resolved selector with no & nodes.
+   * Compose a child selector with its parent selector, resolving `&`.
+   *
+   * Two cases:
+   * - **Child contains `&`** (explicit): recursively substitutes every `&`
+   *   with `parent`, wrapping `parent` in `:is()` only at positions where a
+   *   raw substitution would change combinator precedence, break a tight
+   *   compound, or require distributing across a list.
+   * - **Child has no `&`** (implicit): prepends `parent` to `child` via a
+   *   descendant combinator. A `SelectorList` parent is wrapped in `:is()`
+   *   to avoid distribution; simple/compound/complex parents splice inline.
    */
   static composeSelector(child: Selector, parent: Selector): Selector {
-    const hasAmpersand = child.hasFlag(F_AMPERSAND) || (child.sourceNode ?? child).hasFlag(F_AMPERSAND);
-    // Child is a bare `&` — the composed result is just the parent, unchanged.
-    // Do this before any `:is()` wrapping since nothing is being substituted.
-    if (hasAmpersand && isNode(child, N.Ampersand)) {
+    // Child is a parent-replacement: its `&` has already been fully resolved
+    // against the parent context (e.g. `.a, .b { &-1 { ... } }` →
+    // `.a-1, .b-1`). The selector already contains the parent; composing
+    // further would re-prepend it. Signaled by `hoistToRoot` on the selector,
+    // set by `Ampersand.evalNode` when substituting a bare `&` or `&-X`.
+    if (child.hoistToRoot === true) {
+      return child;
+    }
+    // Child is a SelectorList: compose each item independently. Each item
+    // carries its own explicit-vs-implicit & semantics.
+    if (isNode(child, N.SelectorList)) {
+      const items = (child as SelectorList).value as Selector[];
+      const out: Selector[] = [];
+      for (const item of items) {
+        const composed = Ruleset.composeSelector(item, parent);
+        // A bare-& item substituted with a list parent comes back as a list:
+        // flatten its items into the outer result.
+        if (isNode(composed, N.SelectorList)) {
+          out.push(...((composed as SelectorList).value as Selector[]));
+        } else {
+          out.push(composed);
+        }
+      }
+      if (out.length === 1) {
+        return out[0]!;
+      }
+      return SelectorList.create(out).inherit(child);
+    }
+
+    const childHasAmp = child.hasFlag(F_AMPERSAND)
+      || (child.sourceNode ?? child).hasFlag(F_AMPERSAND);
+
+    if (childHasAmp) {
+      return Ruleset._substituteAmpersand(child, parent);
+    }
+
+    // Implicit descendant compose: `parent child`.
+    return Ruleset._prependParent(parent, child);
+  }
+
+  private static _prependParent(parent: Selector, child: Selector): Selector {
+    const leading: ComplexSelectorComponent[] = isNode(parent, N.ComplexSelector)
+      ? ((parent as ComplexSelector).value.slice() as ComplexSelectorComponent[])
+      : isNode(parent, N.SelectorList)
+        ? [Ruleset._wrapIs(parent)]
+        : [parent as unknown as ComplexSelectorComponent];
+
+    const trailing: ComplexSelectorComponent[] = isNode(child, N.ComplexSelector)
+      ? ((child as ComplexSelector).value.slice() as ComplexSelectorComponent[])
+      : [child as unknown as ComplexSelectorComponent];
+
+    return ComplexSelector.create([
+      ...leading,
+      Combinator.create(' '),
+      ...trailing
+    ]).inherit(child);
+  }
+
+  /**
+   * Recursively substitute every `&` in `child` with `parent`. Assumes
+   * `child` contains at least one `&`. Does not mutate `child` or `parent`.
+   */
+  private static _substituteAmpersand(child: Selector, parent: Selector): Selector {
+    // Bare `&` — substitute raw. `&` is in "whole position": no wrapping.
+    if (isNode(child, N.Ampersand)) {
       return parent;
     }
-    // A SelectorList parent must be wrapped in `:is()` so comma-grouping is
-    // preserved when joined with the child. A ComplexSelector parent only
-    // needs wrapping when we're substituting `&` into a larger compound.
-    let parentForCompose: Selector = parent;
-    const needsIsForList = isNode(parentForCompose, N.SelectorList);
-    const needsIsForComplex = hasAmpersand && isNode(parentForCompose, N.ComplexSelector);
-    if (needsIsForList || needsIsForComplex) {
-      const is = PseudoSelector.create({ name: ':is', arg: parentForCompose });
-      is.generated = true;
-      parentForCompose = is;
-    }
-    if (!hasAmpersand) {
-      return ComplexSelector.create([parentForCompose, Combinator.create(' '), child]).inherit(child);
-    }
-    if (isNode(child, N.CompoundSelector) || isNode(child, N.ComplexSelector)) {
-      const newComponents = (child as CompoundSelector | ComplexSelector).value.map(
-        (component: any) => isNode(component, N.Ampersand) ? parentForCompose : component
-      );
-      if (isNode(child, N.CompoundSelector)) {
-        return CompoundSelector.create(newComponents).inherit(child);
-      }
-      return ComplexSelector.create(newComponents).inherit(child);
-    }
+
+    // SelectorList — delegate back to composeSelector so per-item semantics apply.
     if (isNode(child, N.SelectorList)) {
-      const newItems = (child as SelectorList).value.map(
-        (item: Selector) => Ruleset.composeSelector(item, parent)
-      );
-      return SelectorList.create(newItems).inherit(child);
+      return Ruleset.composeSelector(child, parent);
     }
+
+    if (isNode(child, N.CompoundSelector)) {
+      return Ruleset._substituteAmpInCompound(child as CompoundSelector, parent);
+    }
+
+    if (isNode(child, N.ComplexSelector)) {
+      return Ruleset._substituteAmpInComplex(child as ComplexSelector, parent);
+    }
+
+    if (isNode(child, N.PseudoSelector)) {
+      return Ruleset._substituteAmpInPseudo(child as PseudoSelector, parent);
+    }
+
     return child;
+  }
+
+  private static _substituteAmpInCompound(compound: CompoundSelector, parent: Selector): Selector {
+    const newComponents: SimpleSelector[] = [];
+    for (const comp of compound.value) {
+      if (isNode(comp, N.Ampersand)) {
+        // `&` inside a tight compound: simple/compound parents splice in
+        // place; complex or list parents would clash with the tight join
+        // or require distribution, so wrap in `:is()`.
+        if (isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
+          newComponents.push(Ruleset._wrapIs(parent));
+        } else if (isNode(parent, N.CompoundSelector)) {
+          newComponents.push(...((parent as CompoundSelector).value as SimpleSelector[]));
+        } else {
+          newComponents.push(parent as unknown as SimpleSelector);
+        }
+      } else if (comp.hasFlag(F_AMPERSAND)) {
+        const sub = Ruleset._substituteAmpersand(comp as unknown as Selector, parent);
+        // Sub should remain a valid compound component (simple or compound
+        // flattened into this compound). Complex/list sub would be a bug.
+        if (isNode(sub, N.CompoundSelector)) {
+          newComponents.push(...((sub as CompoundSelector).value as SimpleSelector[]));
+        } else {
+          newComponents.push(sub as unknown as SimpleSelector);
+        }
+      } else {
+        newComponents.push(comp);
+      }
+    }
+    return CompoundSelector.create(newComponents).inherit(compound);
+  }
+
+  private static _substituteAmpInComplex(complex: ComplexSelector, parent: Selector): Selector {
+    const parts = complex.value;
+    const newParts: ComplexSelectorComponent[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      if (isNode(part, N.Ampersand)) {
+        const leftTight = Ruleset._isTightCombinatorAt(parts, i - 1);
+        const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
+        if (isNode(parent, N.SelectorList)) {
+          // Lists can't be distributed; wrap in `:is()`.
+          newParts.push(Ruleset._wrapIs(parent));
+        } else if (isNode(parent, N.ComplexSelector)) {
+          if (leftTight || rightTight) {
+            // Splicing would attach a tight combinator to the wrong end of
+            // the parent chain; wrap in `:is()` to preserve meaning.
+            newParts.push(Ruleset._wrapIs(parent));
+          } else {
+            newParts.push(...((parent as ComplexSelector).value as ComplexSelectorComponent[]));
+          }
+        } else {
+          // Simple or Compound parent: single-component insertion, always safe.
+          newParts.push(parent as unknown as ComplexSelectorComponent);
+        }
+      } else if (!isNode(part, N.Combinator) && (part as Node).hasFlag(F_AMPERSAND)) {
+        const sub = Ruleset._substituteAmpersand(part as unknown as Selector, parent);
+        if (isNode(sub, N.ComplexSelector)) {
+          // Flatten a complex sub into this complex's components.
+          newParts.push(...((sub as ComplexSelector).value as ComplexSelectorComponent[]));
+        } else {
+          newParts.push(sub as unknown as ComplexSelectorComponent);
+        }
+      } else {
+        newParts.push(part);
+      }
+    }
+    return ComplexSelector.create(newParts).inherit(complex);
+  }
+
+  private static _substituteAmpInPseudo(pseudo: PseudoSelector, parent: Selector): Selector {
+    const arg = pseudo.value.arg as Selector | undefined;
+    if (!arg) {
+      return pseudo;
+    }
+    // Pseudo arg is a full selector slot, so its content is effectively in
+    // "whole position" w.r.t. the enclosing pseudo. Recurse without any
+    // extra wrapping at the arg boundary.
+    const newArg = Ruleset._substituteAmpersand(arg, parent);
+    const newPseudo = PseudoSelector.create({
+      name: pseudo.value.name,
+      arg: newArg
+    });
+    if (pseudo.generated) {
+      newPseudo.generated = true;
+    }
+    return newPseudo.inherit(pseudo) as unknown as Selector;
+  }
+
+  private static _isTightCombinatorAt(parts: ComplexSelectorComponent[], idx: number): boolean {
+    if (idx < 0 || idx >= parts.length) {
+      return false;
+    }
+    const c = parts[idx];
+    if (!c || !isNode(c, N.Combinator)) {
+      return false;
+    }
+    const v = String((c as Combinator).valueOf() ?? '');
+    return v.trim().length > 0;
+  }
+
+  private static _wrapIs(selector: Selector): PseudoSelector {
+    const is = PseudoSelector.create({ name: ':is', arg: selector });
+    is.generated = true;
+    return is;
   }
 
   static ensureDescendantRulesetsHaveOwnValue(
