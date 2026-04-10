@@ -1035,11 +1035,16 @@ function wouldMatchNode(
       if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
         return false;
       }
-      // If we're at root with a parent selector that contains the target,
-      // applying this extend would create a duplicate via nesting
-      // (e.g., .bb under .bb + extend(.bb)). Treat as within-ampersand:
-      // the parent's extend carries it.
-      if (ctx.isRoot && parentSelector && parentContainsTarget(parentSelector, node)) {
+      // For non-partial exact extends, the target must equal the entire local
+      // selector. Inside a SelectorList item, the whole local is the list, not
+      // the item — so exact matches at a list item with a parent selector are
+      // overshadowed by the parent's extension (within-ampersand).
+      if (ctx.parentType === 'SelectorList' && parentSelector) {
+        return 'within-ampersand';
+      }
+      // If parent already contains this target, applying this extend would
+      // produce nesting duplicates (e.g., .bb under .bb with extend(.bb)).
+      if (parentSelector && parentContainsTarget(parentSelector, node)) {
         return 'within-ampersand';
       }
     }

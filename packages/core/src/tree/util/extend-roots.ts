@@ -12,7 +12,8 @@ import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, type MatchResult } from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
+import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
 
@@ -551,35 +552,67 @@ export function processExtends(context: Context): void {
         const crossingInstructions: ExtendInstruction[] = [];
         // Instructions excluded from local application (within-ampersand / crossing):
         const excludedFromLocal = new Set<ExtendInstruction>();
+        // First pass: classify each instruction.
+        const classifications = new Map<ExtendInstruction, MatchResult>();
         for (const instruction of visibleExtends) {
           const isSelfExtend = instruction.target.valueOf() === instruction.extendWith.valueOf();
           if (isSelfExtend) {
-            if (findExtendableLocations(selector, instruction.target).hasMatches) {
-              instructionMatched.add(instruction);
+            const selfMatches = findExtendableLocations(selector, instruction.target).hasMatches;
+            classifications.set(instruction, selfMatches ? 'local' : false);
+          } else {
+            classifications.set(instruction, classifyInstructionMatch(selector, instruction, parentSel));
+          }
+        }
+        // Second pass: if a local match's extending ruleset has another visible
+        // extend whose target matches the PARENT selector, reclassify as
+        // within-ampersand (parent's extension covers this via nesting).
+        if (parentSel) {
+          for (const [instruction, matchType] of classifications) {
+            if (matchType !== 'local') {
+              continue;
+            }
+            const extendingRs = (instruction as any).extendingRuleset as Ruleset | undefined;
+            if (!extendingRs) {
+              continue;
+            }
+            for (const other of visibleExtends) {
+              if (other === instruction) {
+                continue;
+              }
+              const otherExtendingRs = (other as any).extendingRuleset as Ruleset | undefined;
+              if (otherExtendingRs !== extendingRs) {
+                continue;
+              }
+              // Does this other extend match the parent selector?
+              if (canUseWalkAndConsume(parentSel, other.target)
+                && wouldExtendChange(parentSel, other.target, other.extendWith, other.partial)) {
+                classifications.set(instruction, 'within-ampersand');
+                break;
+              }
+            }
+          }
+        }
+        // Third pass: aggregate.
+        for (const instruction of visibleExtends) {
+          const matchType = classifications.get(instruction);
+          if (!matchType) {
+            continue;
+          }
+          instructionMatched.add(instruction);
+          if (matchType === 'within-ampersand') {
+            hasWithinAmpersandMatch = true;
+            excludedFromLocal.add(instruction);
+          } else if (matchType === 'crossing') {
+            crossingInstructions.push(instruction);
+            excludedFromLocal.add(instruction);
+            if (!instruction.partial) {
               isActivatedByVisibleExtend = true;
-              hasAnyLocalMatch = true;
             }
           } else {
-            const matchType = classifyInstructionMatch(selector, instruction, parentSel);
-            if (matchType) {
-              instructionMatched.add(instruction);
-              if (matchType === 'within-ampersand') {
-                // Parent carries this extend — child inherits via & at render time
-                hasWithinAmpersandMatch = true;
-                excludedFromLocal.add(instruction);
-              } else if (matchType === 'crossing') {
-                crossingInstructions.push(instruction);
-                excludedFromLocal.add(instruction);
-                if (!instruction.partial) {
-                  isActivatedByVisibleExtend = true;
-                }
-              } else {
-                // 'local' match
-                hasAnyLocalMatch = true;
-                if (!instruction.partial) {
-                  isActivatedByVisibleExtend = true;
-                }
-              }
+            // 'local' match
+            hasAnyLocalMatch = true;
+            if (!instruction.partial) {
+              isActivatedByVisibleExtend = true;
             }
           }
         }
