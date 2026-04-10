@@ -20,18 +20,29 @@ import { F_AMPERSAND, F_EXTENDED, F_VISIBLE } from '../node.js';
  * Get the parent Ruleset's selector by walking up the tree.
  * Returns undefined if there's no parent Ruleset (root level).
  */
-function getParentSelector(ruleset: Ruleset): Selector | undefined {
-  // ruleset.parent is Rules, Rules.parent is the parent Ruleset
+function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
   const parentRules = ruleset.getParent();
   if (!parentRules || !isNode(parentRules, N.Rules)) {
     return undefined;
   }
-  const parentRuleset = parentRules.getParent();
+  const parentRuleset = (parentRules as Rules).getParent();
   if (!parentRuleset || !isNode(parentRuleset, N.Ruleset)) {
     return undefined;
   }
+  return parentRuleset as Ruleset;
+}
+
+/**
+ * Get the parent Ruleset's selector by walking up the tree.
+ * Returns undefined if there's no parent Ruleset (root level).
+ */
+function getParentSelector(ruleset: Ruleset): Selector | undefined {
+  const parentRuleset = getParentRuleset(ruleset);
+  if (!parentRuleset) {
+    return undefined;
+  }
   // Use the pre-extend snapshot to avoid composing with already-extended selectors.
-  const sel = preExtendSelectors.get(parentRuleset as Ruleset) ?? (parentRuleset as Ruleset).value?.selector;
+  const sel = preExtendSelectors.get(parentRuleset) ?? parentRuleset.value?.selector;
   if (!sel || sel instanceof Nil) {
     return undefined;
   }
@@ -96,8 +107,7 @@ function getEffectiveSelector(ruleset: Ruleset): Selector | undefined {
   }
   const parentSel = getParentSelector(ruleset);
   if (parentSel) {
-    const parentRules = ruleset.getParent();
-    const parentRuleset = parentRules?.getParent() as Ruleset | undefined;
+    const parentRuleset = getParentRuleset(ruleset);
     const parentEffective = parentRuleset ? getEffectiveSelector(parentRuleset) : parentSel;
     if (parentEffective) {
       const expanded = composeExpanded(sel, parentEffective);
@@ -438,7 +448,8 @@ export function processExtends(context: Context): void {
     }
 
     /** Convert instructions to use local (non-composed) extendWith for local selector application */
-    const toLocal = <T extends { extendWith: Selector; localExtendWith: Selector }>(insts: T[]): T[] =>
+    type InstructionWithLocal = ExtendInstruction & { localExtendWith: Selector };
+    const toLocal = (insts: InstructionWithLocal[]): ExtendInstruction[] =>
       insts.map(inst => inst.extendWith === inst.localExtendWith ? inst : { ...inst, extendWith: inst.localExtendWith });
 
     const instructionMatched = new Set<typeof instructions[0]>();
@@ -578,7 +589,7 @@ export function processExtends(context: Context): void {
 
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
-                const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, toLocal(nonPartialOwnOnly));
+                const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, toLocal(nonPartialOwnOnly as InstructionWithLocal[]));
                 ruleset.value.selector = ownAfterOwnOnly;
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterOwnOnly;
                 ruleset.invalidateSelectorValueCache();
@@ -606,7 +617,7 @@ export function processExtends(context: Context): void {
               if (ownChangedByPartial || nonPartialOwnOnly.length > 0) {
                 const ownAfterBoth = applyExtendsToSelector(
                   ownSelector,
-                  toLocal([...partialOnly, ...nonPartialOwnOnly])
+                  toLocal([...partialOnly, ...nonPartialOwnOnly] as InstructionWithLocal[])
                 );
                 ruleset.value.selector = ownAfterBoth;
                 (ruleset.options as { ownSelector?: Selector }).ownSelector = ownAfterBoth;
