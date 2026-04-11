@@ -345,8 +345,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           if (withValues.type === 'set' && evaldRules) {
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // Clone the imported rules BEFORE evaluation so registries are populated on the clone
-          let modifiedRules = rules.clone(true) as Rules;
+          // Shallow-clone the imported rules wrapper so injected variables
+          // (line-by-line array splices + declaration registry mutations)
+          // don't mutate the shared canonical tree. Children are still
+          // referenced from the original, which is safe because `withValues`
+          // only replaces/adds declarations — it doesn't touch deeper nodes.
+          let modifiedRules = rules.clone(false) as Rules;
           // withValues.node might be a Reference, so evaluate it first to get Rules
           let withRulesNode = withValues.node;
           if (isNode(withRulesNode, N.Reference)) {
@@ -463,7 +467,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the rules have not been evaluated yet
        * - the import type is `import`
       */
-        let evaluatedInImplicitReferenceMode = false;
         if (withValues || !evaldRules || type === 'import') {
           const preserveOriginalNodes = context.preserveOriginalNodes;
           context.preserveOriginalNodes = true;
@@ -475,7 +478,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && !importOptions!.multiple
           );
           if (isImplicitReferenceModeForEval) {
-            evaluatedInImplicitReferenceMode = true;
             // Dedupe re-imports behave like an implicit reference traversal:
             // evaluate for symbol availability, but avoid outward extend side effects.
             context.pushImportScope({ reference: true });
@@ -525,16 +527,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             context.evaldTrees.set(resolvedPath, rules);
           }
         } else {
-        // Clone the unevaluated rules BEFORE evaluation so registries are populated on the clone
-        // This ensures registration happens post-clone, not on the cached evaldRules
-        // sourceNode is already set above, so the cloned Rules will have it
-          rules = rules.clone(true) as Rules;
-          let preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
-          // Note: For compose type, we don't set rules.parent = node
-          // (only import type needs this for older import behavior)
-          rules = await rules.eval(context);
-          context.preserveOriginalNodes = preserveOriginalNodes;
+          // Compose cache hit: `rules` is already the fully-evaluated tree
+          // from `context.evaldTrees` (assigned at line 353). No clone and
+          // no re-eval is needed — shape differences per compose scope are
+          // handled by the shallow wrapper built in `getFinalRules` below,
+          // which applies per-scope visibility/reference options without
+          // mutating the shared cached tree.
         }
 
         // Pop extend root if we pushed one
