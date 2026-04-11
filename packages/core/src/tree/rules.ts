@@ -561,6 +561,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return finalRules;
   }
 
+  /**
+   * Same traversal as `flatRules`, but also returns the `_renderKey` of the
+   * nearest enclosing Rules (including `this`) for each leaf. Used by
+   * serialization to propagate per-call forks into shared leaf nodes adopted
+   * into multiple per-renderKey wrapper Rules (mixin calls, $for iterations).
+   *
+   * Returning a parallel `renderKeys` array instead of wrapping each entry
+   * keeps the happy path (`flatRules()` → `Node[]`) unchanged for its many
+   * other callers.
+   */
+  flatRulesWithKeys(visibleOnly: boolean = false): {
+    nodes: Node[];
+    renderKeys: Array<number | symbol | undefined>;
+  } {
+    const nodes: Node[] = [];
+    const renderKeys: Array<number | symbol | undefined> = [];
+    const iterateRules = (rules: Rules, inheritedKey: number | symbol | undefined) => {
+      const effectiveKey = rules._renderKey ?? inheritedKey;
+      for (let n of rules.value) {
+        if (isNode(n, N.Rules)) {
+          iterateRules(n as Rules, effectiveKey);
+          continue;
+        }
+        if (!visibleOnly || n.visible || n.fullRender) {
+          nodes.push(n);
+          renderKeys.push(effectiveKey);
+        }
+      }
+    };
+    iterateRules(this, this._renderKey);
+    return { nodes, renderKeys };
+  }
+
   visibleRules() {
     return this.value.filter(n => n.visible);
   }
@@ -2216,6 +2249,25 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return;
       }
 
+      // Allocate a unique renderKey per call so shared body nodes fork their
+      // `.value` state on mutation during eval, and so the recently-reused
+      // re-eval machinery in Node.evalStatic can detect and re-evaluate
+      // canonical nodes against this call's scope.
+      //
+      // NB: assign `_renderKey` on the call's wrapper BEFORE pushing children
+      // into it. `adopt` writes to `_parentForks[thisRenderKey]` only when the
+      // parent has a renderKey — setting it afterward would leave the shared
+      // body children with a canonical-only parent chain, and the last call
+      // to adopt would overwrite `child.parent` for every previous call. That
+      // wrecks per-call scope lookups, selector composition, and serialization
+      // renderKey propagation (which uses the Rules ancestor chain).
+      const renderKey = thisContext.ruleCounter++;
+      if (outerRules) {
+        outerRules._renderKey = renderKey;
+      } else {
+        rules._renderKey = renderKey;
+      }
+      thisContext.renderKeyStack.push(renderKey);
       try {
         let newRules: Rules;
         if (!outerRules) {
@@ -2228,6 +2280,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           outerRules.push(...rules.value);
           newRules = await outerRules.eval(thisContext);
         }
+        newRules._renderKey = renderKey;
         candidate.parent!.adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
@@ -2269,6 +2322,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (currentCall) {
           thisContext.callMap.delete(currentCall);
         }
+        thisContext.renderKeyStack.pop();
       }
     };
 
@@ -2320,7 +2374,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(true);
+      rules = rules.clone(false);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};

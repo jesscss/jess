@@ -302,7 +302,15 @@ export abstract class Node<
     if (!renderKey) {
       return this.parent;
     }
-    return this._parentForks?.get(renderKey ?? CANONICAL);
+    const forked = this._parentForks?.get(renderKey);
+    if (forked !== undefined) {
+      return forked;
+    }
+    // No fork entry for this renderKey — fall back to the canonical parent.
+    // Canonical nodes walked under a fresh renderKey (e.g. during a mixin
+    // call, where bodies are deep-cloned so children carry `.parent` only)
+    // still need to resolve scope walks via their canonical parent chain.
+    return this.parent;
   }
 
   /** Patched at runtime in node.ts to return Nil instance */
@@ -1116,6 +1124,13 @@ export abstract class Node<
 
     if (needsReeval) {
       node.getValue(CANONICAL);
+      // Node-class preEval/evalNode methods gate on these flags internally,
+      // so we must clear them here when the evalStatic layer has already
+      // decided a re-eval is needed under a new fork. Without this, the
+      // node-class check wins and the second call reuses the first call's
+      // `.value` contents.
+      node.preEvaluated = false;
+      node.evaluated = false;
     }
 
     if (!node.hasFlag(F_MAY_ASYNC)) {

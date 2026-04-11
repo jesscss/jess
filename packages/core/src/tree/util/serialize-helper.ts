@@ -78,17 +78,16 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (isBareAmp && !parentComposed) {
       isTransparentWrapper = true;
     } else {
-      if (!rs._composedSelector) {
-        if (sel && !(sel instanceof Nil)) {
-          if (parentComposed) {
-            rs._composedSelector = (rs.constructor as typeof Ruleset).composeSelector(sel as Selector, parentComposed as Selector);
-          } else {
-            rs._composedSelector = sel as Selector;
-          }
-        }
+      const rk = options.renderKey;
+      let cached = rs.getComposedSelector(rk);
+      if (!cached && sel && !(sel instanceof Nil)) {
+        cached = parentComposed
+          ? (rs.constructor as typeof Ruleset).composeSelector(sel as Selector, parentComposed as Selector)
+          : (sel as Selector);
+        rs.setComposedSelector(cached, rk);
       }
-      if (rs._composedSelector) {
-        (options.composedSelectorStack ??= []).push(rs._composedSelector as Selector);
+      if (cached) {
+        (options.composedSelectorStack ??= []).push(cached as Selector);
         pushedComposed = true;
       }
     }
@@ -141,7 +140,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     return w.getSince(mark);
   }
 
-  const rulesToRender = rules.flatRules(true);
+  const { nodes: rulesToRender, renderKeys: rulesRenderKeys } = rules.flatRulesWithKeys(true);
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
@@ -185,7 +184,13 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       continue;
     }
     const declWriter = new OutputWriter();
-    const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
+    const entryRenderKey = rulesRenderKeys[i];
+    const declOptions = getPrintOptions({
+      ...options,
+      writer: declWriter,
+      depth: options.depth + 1,
+      renderKey: entryRenderKey ?? options.renderKey
+    });
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
     const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
@@ -230,6 +235,11 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   /** Don't output selector yet. Let's see if any child rules need hoisting. */
   for (let idx = 0; idx < rulesToRender.length; idx++) {
     let n = rulesToRender[idx]!;
+    // Per-leaf renderKey: for leaves pulled up from nested Rules(_renderKey=X)
+    // in mixin call / $for output, this is the call's renderKey. Used to
+    // read the matching fork when serializing shared body nodes.
+    const entryRenderKey = rulesRenderKeys[idx];
+    const effectiveRenderKey = entryRenderKey ?? options.renderKey;
     const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
     if (!n.visible && !n.fullRender) {
@@ -257,7 +267,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const childOptions = {
         ...options,
         referenceMode: inReferenceMode,
-        referenceRenderEnabled: renderEnabled
+        referenceRenderEnabled: renderEnabled,
+        renderKey: effectiveRenderKey
       } as FinalPrintOptions;
       const childOut = w.capture(() => n.toTrimmedString(childOptions));
       if (!childOut) {
@@ -304,11 +315,12 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let idt = indent(options.depth + 1);
     /** Re-widen type after accumulated isNode narrowing above */
     const nn = n as Node;
-    let pre = w.capture(() => nn.processPrePost('pre', undefined, options));
+    const leafChildOptions = { ...options, depth: options.depth + 1, renderKey: effectiveRenderKey };
+    let pre = w.capture(() => nn.processPrePost('pre', undefined, leafChildOptions));
     /** normalize pre spacing */
     let out = isNode(nn, N.Declaration)
-      ? (declarationOutputCache.get(nn) ?? w.capture(() => nn.toTrimmedString({ ...options, depth: options.depth + 1 })))
-      : w.capture(() => nn.toTrimmedString({ ...options, depth: options.depth + 1 }));
+      ? (declarationOutputCache.get(nn) ?? w.capture(() => nn.toTrimmedString(leafChildOptions)))
+      : w.capture(() => nn.toTrimmedString(leafChildOptions));
     // Suppress pure-void Any nodes from generating blank output lines.
     if (
       isNode(nn, N.Any)

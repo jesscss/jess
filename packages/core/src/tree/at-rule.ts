@@ -382,13 +382,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           context.rulesContext = liftedRulesContext;
           const out = prelude.eval(context);
           context.rulesContext = savedRulesContext;
+          const rk = context.renderKey;
           if (isThenable(out)) {
             return (out as Promise<Node>).then((n) => {
-              node.value.prelude = n;
+              node.set('prelude', n, rk);
               return undefined;
             });
           }
-          node.value.prelude = out as Node;
+          node.set('prelude', out as Node, rk);
         }
       },
       () => {

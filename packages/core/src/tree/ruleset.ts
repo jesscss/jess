@@ -65,7 +65,46 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   frames: (Ruleset | AtRule)[] | undefined;
-  _composedSelector: Selector | undefined;
+  /**
+   * Cached composed (parent-merged) selector per render key. Mixin calls and
+   * $for iterations adopt shared body Rulesets into distinct per-call wrapper
+   * Rules; the composed selector differs by call because the effective parent
+   * chain differs. Keyed by the serializer's `options.renderKey` with
+   * `undefined` treated as the canonical slot.
+   */
+  private _composedSelectorByKey: Map<number | symbol | undefined, Selector> | undefined;
+
+  /** Read a cached composed selector for the given renderKey. */
+  getComposedSelector(renderKey?: number | symbol): Selector | undefined {
+    return this._composedSelectorByKey?.get(renderKey);
+  }
+
+  /** Store a cached composed selector for the given renderKey. */
+  setComposedSelector(selector: Selector, renderKey?: number | symbol): void {
+    (this._composedSelectorByKey ??= new Map()).set(renderKey, selector);
+  }
+
+  /** Clear all cached composed selectors (used by extend post-processing). */
+  clearComposedSelectorCache(): void {
+    this._composedSelectorByKey = undefined;
+  }
+
+  /**
+   * Back-compat shim for call sites that haven't been converted to the
+   * renderKey-aware get/set yet. Reads/writes the canonical slot only.
+   * Prefer `getComposedSelector(rk)` / `setComposedSelector(sel, rk)`.
+   */
+  get _composedSelector(): Selector | undefined {
+    return this._composedSelectorByKey?.get(undefined);
+  }
+
+  set _composedSelector(selector: Selector | undefined) {
+    if (selector === undefined) {
+      this._composedSelectorByKey?.delete(undefined);
+      return;
+    }
+    (this._composedSelectorByKey ??= new Map()).set(undefined, selector);
+  }
 
   get selector() {
     return this.value.selector;
@@ -585,14 +624,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
       const parentComposed = options.composedSelectorStack?.at(-1);
-      if (!this._composedSelector) {
-        if (parentComposed) {
-          this._composedSelector = Ruleset.composeSelector(renderSelector as Selector, parentComposed as Selector);
-        } else {
-          this._composedSelector = renderSelector as Selector;
-        }
+      const rk = options.renderKey;
+      let cached = this.getComposedSelector(rk);
+      if (!cached) {
+        cached = parentComposed
+          ? Ruleset.composeSelector(renderSelector as Selector, parentComposed as Selector)
+          : (renderSelector as Selector);
+        this.setComposedSelector(cached, rk);
       }
-      renderSelector = this._composedSelector as typeof selector;
+      renderSelector = cached as typeof selector;
     }
     if (
       options.referenceMode === true
