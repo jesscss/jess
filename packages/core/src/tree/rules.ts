@@ -2338,13 +2338,26 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(false);
+        // Allocate a renderKey per ruleset-as-mixin call so shared body
+        // children (the nested Rulesets like `.bar`) get per-call forks for
+        // their composed selectors. Without this, the cached selector from
+        // the original render (e.g. `.container .foo .bar`) leaks into the
+        // call site where the selector should be just `.bar`.
+        const renderKey = thisContext.ruleCounter++;
+        rules._renderKey = renderKey;
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
-        rules = await rules.eval(thisContext);
-        thisContext.rulesContext = originalContext;
+        thisContext.renderKeyStack.push(renderKey);
+        try {
+          rules = await rules.eval(thisContext);
+        } finally {
+          thisContext.renderKeyStack.pop();
+          thisContext.rulesContext = originalContext;
+        }
+        rules._renderKey = renderKey;
         candidate.parent!.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;

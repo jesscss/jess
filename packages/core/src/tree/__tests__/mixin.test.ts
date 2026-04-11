@@ -567,7 +567,7 @@ describe('Mixin', () => {
       ]);
       context.opts.collapseNesting = true;
       let evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.toString({ context });
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
           color: cyan;
