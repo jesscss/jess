@@ -27,9 +27,7 @@ describe('BasicSelector', () => {
 
   test('keys', () => {
     let rule = el('.foo');
-    rule.eval(context);
-    expect(rule.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(rule.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(rule.keySet).toEqual(new Set(['.foo']));
   });
   // it('should serialize a module', () => {
   //   let rule = el('foo')

@@ -14,29 +14,17 @@
 import {
   Node,
   type LocationInfo,
-  type LocationInfoOrEmpty,
-  type OptionalLocation,
-  EVAL,
   F_VISIBLE,
   F_MAY_ASYNC,
   F_STATIC,
-  F_NON_STATIC
+  F_NON_STATIC,
+  EVAL,
+  CANONICAL
 } from './node.js';
-import { type Context, TreeContext } from '../context.js';
+import { TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
 
-export {
-  Node,
-  TreeContext,
-  type LocationInfo,
-  type LocationInfoOrEmpty,
-  type OptionalLocation,
-  EVAL,
-  F_VISIBLE,
-  F_MAY_ASYNC,
-  F_STATIC,
-  F_NON_STATIC
-};
+export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC, EVAL, CANONICAL };
 export { N } from './node-type.js';
 
 import { Selector } from './selector.js';
@@ -98,23 +86,23 @@ export * from './rest.js';
 export * from './url.js';
 
 // Patch Selector.compare after all exports to avoid circular dependency
-import { selectorMatch } from './util/selector-match-core.js';
+import { selectorCompare } from './util/compare.js';
 
 /** Patch Selector to avoid circularity */
-Selector.prototype.compare = function(other: Node, context?: Context) {
+Selector.prototype.compare = function(other: Node) {
   // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
   // if the same file is loaded via different specifiers.
-  if (!!other && typeof other === 'object' && 'isSelector' in other && other.isSelector === true) {
+  if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
     const otherSelector = other as unknown as Selector;
-    const forward = selectorMatch(this, otherSelector, undefined, context);
-    if (forward.fullMatch) {
+    const forward = selectorCompare(this, otherSelector);
+    if (forward.isEquivalent) {
       return 0;
     }
-    if (forward.partialMatch) {
+    if (forward.hasPartialMatch) {
       return -1;
     }
-    const backward = selectorMatch(otherSelector, this, undefined, context);
-    if (backward.partialMatch) {
+    const backward = selectorCompare(otherSelector, this);
+    if (backward.hasPartialMatch) {
       return 1;
     }
   }

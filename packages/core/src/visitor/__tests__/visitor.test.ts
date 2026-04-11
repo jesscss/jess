@@ -7,22 +7,22 @@ describe('Visitor Pattern', () => {
     it('should visit node itself first, then children', () => {
       const visited: string[] = [];
 
-      const visitor = {
-        enter: (node: any) => {
+      const visitor: Visitor = {
+        enter: (node) => {
           visited.push(`enter:${node?.type}`);
         },
-        ruleset: (node: any) => {
+        ruleset: (node) => {
           visited.push(`ruleset`);
           return node;
         },
-        declaration: (node: any) => {
+        declaration: (node) => {
           visited.push(`declaration`);
           return node;
         }
-      } as Visitor;
+      };
 
       const declaration = decl({ name: 'color', value: any('red') });
-      const rs = ruleset({ selector: null as any, rules: rules([declaration]) });
+      const rs = ruleset({ selector: null, rules: rules([declaration]) });
 
       rs.accept(visitor);
 
@@ -39,36 +39,37 @@ describe('Visitor Pattern', () => {
     });
 
     it('should handle node replacement', () => {
-      const visitor = {
-        declaration: (node: any) => {
+      const visitor: Visitor = {
+        declaration: (node) => {
+          // Replace with new declaration
           return decl({ name: 'background', value: any('blue') });
         }
-      } as unknown as Visitor;
+      };
 
       const declaration = decl({ name: 'color', value: any('red') });
       const result = declaration.accept(visitor);
 
       expect(result.type).toBe('Declaration');
-      expect((result as any).name.valueOf()).toBe('background');
+      expect((result as any).value.name.valueOf()).toBe('background');
     });
 
     it('should recursively visit children', () => {
       const visited: string[] = [];
 
-      const visitor = {
-        ruleset: (node: any) => {
+      const visitor: Visitor = {
+        ruleset: (node) => {
           visited.push('ruleset');
           return node;
         },
-        declaration: (node: any) => {
+        declaration: (node) => {
           visited.push('declaration');
           return node;
         }
-      } as Visitor;
+      };
 
       const decl1 = decl({ name: 'color', value: any('red') });
       const decl2 = decl({ name: 'background', value: any('blue') });
-      const rs = ruleset({ selector: null as any, rules: rules([decl1, decl2]) });
+      const rs = ruleset({ selector: null, rules: rules([decl1, decl2]) });
 
       rs.accept(visitor);
 
@@ -95,7 +96,7 @@ describe('Visitor Pattern', () => {
 
       const visitor = new TestVisitor();
       const declaration = decl({ name: 'color', value: any('red') });
-      const rs = ruleset({ selector: null as any, rules: rules([declaration]) });
+      const rs = ruleset({ selector: null, rules: rules([declaration]) });
 
       visitor.visit(rs);
 
@@ -109,7 +110,7 @@ describe('Visitor Pattern', () => {
     it('should handle ABORT symbol', () => {
       const visited: string[] = [];
 
-      const visitor = {
+      const visitor: Visitor = {
         enter: () => {
           visited.push('enter');
           return ABORT;
@@ -117,11 +118,11 @@ describe('Visitor Pattern', () => {
         ruleset: () => {
           visited.push('ruleset');
         }
-      } as unknown as Visitor;
+      };
 
-      const rs = ruleset({ selector: null as any, rules: rules([]) });
+      const rs = ruleset({ selector: null, rules: rules([]) });
       const visitorInstance = new (class extends Visitor {
-        override visit(n: any) {
+        visit(n: any) {
           return super.visit(n);
         }
       })();

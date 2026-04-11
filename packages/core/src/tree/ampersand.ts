@@ -1,4 +1,4 @@
-import { defineType, type NodeOptions, type OptionalLocation, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
@@ -10,24 +10,7 @@ import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from './util/ampersand-template.js';
-import { wrapParentSelectorForNestedContext } from './util/selector-utils.js';
-
-const ampersandTemplateInterpolationRegex = /[$@]\{[^}]+\}/g;
-const ampersandTemplateRegex = new RegExp(`^(?:${AMPERSAND_TEMPLATE_CONTENTS_REGEX.source})$`);
-
-function isSelectorNode(value: unknown): value is Selector {
-  return isNode(value, N.Selector);
-}
-
-function isSelectorListNode(value: unknown): value is SelectorList {
-  return isNode(value, N.SelectorList);
-}
-
-function isNilNode(value: unknown): value is Nil {
-  return isNode(value, N.Nil);
-}
-
+import { F_VISIBLE } from './node.js';
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -78,188 +61,111 @@ export type AmpersandValue = {
        color: red;
      }
 
-   *
-   * `undefined` => plain `&`
-   * `''` => `&()` root-hoist while still rendering the parent
-   * `string` => `&(template)` / `&-suffix`
-   * `Nil` => `&(nil)` and suppress the parent entirely
-   *
-   * A template without an `&` is shorthand for replacing the parent selector
-   * at the same location. So `template: '-1'` means the `&-1` form.
    */
-  template?: string | Nil;
-  /** @deprecated Use `template` */
-  appendValue?: string | Nil;
+  /** Set to an empty string to hoist to root */
+  appendValue?: string;
 
   /**
    * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
-  selectorContainer?: {
-    selector?: Selector | Nil | undefined;
-    getEffectiveSelector?: (collapseNesting?: boolean, context?: Context) => Selector | Nil | undefined;
-  };
+  selectorContainer?: { selector?: Selector | Nil | undefined };
 };
-
-type SelectorContainer = NonNullable<AmpersandValue['selectorContainer']>;
-
-function getSelectorFromContainer(
-  selectorContainer: SelectorContainer | undefined,
-  context?: Context
-): Selector | Nil | undefined {
-  if (!selectorContainer) {
-    return undefined;
-  }
-  if (typeof selectorContainer.getEffectiveSelector === 'function') {
-    return selectorContainer.getEffectiveSelector(false, context);
-  }
-  return selectorContainer.selector;
-}
-
-function cloneStoredSelector(
-  storedSelector: Selector | Nil | undefined,
-  deep?: boolean
-): Selector | Nil | undefined {
-  if (!isSelectorNode(storedSelector)) {
-    return storedSelector;
-  }
-  const storedClone = storedSelector.clone(deep);
-  const sourceLibrary = storedSelector.keySetLibrary;
-  if (sourceLibrary && isSelectorNode(storedClone)) {
-    storedClone.keySetLibrary = sourceLibrary;
-    for (const child of storedClone.children(true)) {
-      if (isSelectorNode(child)) {
-        child.keySetLibrary = sourceLibrary;
-      }
-    }
-  }
-  return storedClone;
-}
 
 /**
  * The '&' selector element
  */
-export interface Ampersand {
-  type: 'Ampersand';
-  shortType: 'amp';
-}
-export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
-  static override childKeys = null as null;
-
-  template: string | Nil | undefined;
-
+export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   private _storedSelector: Selector | Nil | undefined;
-  private _selectorContainer: SelectorContainer | undefined;
-
-  private _getSelector(context?: Context): Selector | Nil | undefined {
-    if (!context) {
-      return this._storedSelector;
-    }
-    return getSelectorFromContainer(this._selectorContainer, context) ?? this._storedSelector;
-  }
+  private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
 
   constructor(
-    value?: AmpersandValue | string | Nil,
+    value?: AmpersandValue | string,
     options?: NodeOptions,
-    location?: OptionalLocation,
+    location?: LocationInfo,
     treeContext?: TreeContext
   ) {
-    let finalTemplate: string | Nil | undefined;
-    if (typeof value === 'string' || value instanceof Nil) {
-      finalTemplate = value;
-      super({ template: value }, options, location, treeContext);
+    let finalValue: AmpersandValue = {};
+    if (typeof value === 'string') {
+      finalValue.appendValue = value;
+      super(finalValue, options, location, treeContext);
     } else {
-      finalTemplate = value?.template ?? value?.appendValue;
-      super(value ?? {}, options, location, treeContext);
+      finalValue = value ? { appendValue: value.appendValue } : {};
+      super(finalValue, options, location, treeContext);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
-        const storedSelector = getSelectorFromContainer(selectorContainer);
-        this._storedSelector = cloneStoredSelector(storedSelector, true);
+        this._storedSelector = selectorContainer?.selector;
       }
-    }
-    this.template = finalTemplate;
-    if (finalTemplate instanceof Nil) {
-      this.adopt(finalTemplate);
     }
 
     // Set the F_AMPERSAND flag so it bubbles up to parent selectors
     this.addFlag(F_AMPERSAND);
   }
 
-  isPlainAmpersand(): boolean {
-    return this.template === undefined;
-  }
-
-  omitsParent(): boolean {
-    return isNilNode(this.template);
-  }
-
-  get appendValue(): string | Nil | undefined {
-    return this.template;
-  }
-
-  set appendValue(value: string | Nil | undefined) {
-    this.template = value;
-    if (value instanceof Nil) {
-      this.adopt(value);
-    }
-  }
-
-  override computeKeySets(): void {
-    let library = this.keySetLibrary!;
+  override get keySet() {
     const stored = this._storedSelector;
-    const current = this._getSelector();
-    let keySet = this._keySet;
-    /** Ampersands don't participate to the visible key set */
-    if (!this._visibleKeySet) {
-      this._visibleKeySet = library.getBitset();
-    }
-    if (!this._requiredKeySet) {
-      this._requiredKeySet = library.getBitset();
-    }
+    const current = this._selectorContainer?.selector;
     if (!current || isNode(current, N.Nil)) {
-      if (!keySet) {
-        this._keySet = library.getBitset();
+      return new Set(['&']);
+    }
+    let keySet = this._keySet;
+    if (!keySet || stored !== current) {
+      this._computeKeySetAndFastReject();
+      return this._keySet!;
+    }
+    return keySet;
+  }
+
+  /** The keys of an ampersand are the keys of the selector it contains */
+  protected override _computeKeySetAndFastReject(): void {
+    const selector = this._selectorContainer?.selector;
+    if (selector && 'keySet' in selector) {
+      this._keySet = selector.keySet;
+      // For visibleKeySet, if this ampersand has a selector value, it's an implicit ampersand
+      // (added by getImplicitSelector). For indexing purposes, we want to exclude implicit ampersands
+      // regardless of visibility, so always set visibleKeySet to empty when there's a selector value
+      if (this.hasFlag(F_VISIBLE) && !selector) {
+        // Only include visibleKeySet if visible AND no selector value (explicit ampersand)
+        this._visibleKeySet = new Set();
+      } else {
+        // Implicit ampersand (has selector value) or invisible - exclude from visibleKeySet
+        this._visibleKeySet = new Set();
       }
+      this._canFastReject = selector.canFastReject;
       return;
     }
-    if (!keySet || stored !== current) {
-      this._keySet = current.keySet;
-    }
-  }
+    this._keySet = new Set(['&']);
+    this._visibleKeySet = new Set();
 
-  override getKeySet(context?: Context) {
-    if (!context) {
-      return this.keySet;
-    }
-
-    const current = this._getSelector(context);
-    if (!current || isNode(current, N.Nil)) {
-      const library = this.keySetLibrary;
-      if (!library) {
-        throw new Error('Selector keySet library not found');
+    if (this.keySetLibrary) {
+      const lib = this.keySetLibrary;
+      if (selector && 'keyBits' in selector) {
+        this._keyBits = (selector as unknown as Selector).keyBits;
+      } else {
+        this._keyBits = lib.getBitset(['&']);
       }
-      return library.getBitset();
+      this._visibleKeyBits = lib.getBitset();
+      this._requiredKeyBits = lib.getBitset();
     }
-
-    return current.getKeySet(context);
   }
 
   /**
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
-  getResolvedSelector(context?: Context): Selector | Nil | undefined {
-    const selector = this._getSelector(context);
-    if (isSelectorNode(selector) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      return wrapParentSelectorForNestedContext(selector);
+  getResolvedSelector(): Selector | Nil | undefined {
+    const selector = this._selectorContainer?.selector;
+    if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
+      wrapped.generated = true;
+      return wrapped;
     }
     return selector;
   }
 
-  override valueOf(context?: Context) {
-    const selector = this._getSelector(context);
+  override valueOf() {
+    const selector = this._selectorContainer?.selector;
     if (selector) {
       return selector.valueOf();
     }
@@ -270,15 +176,26 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { template } = this;
-    if (template !== undefined) {
+    const { appendValue } = this.value;
+    if (appendValue) {
       w.add('&(');
-      if (isNilNode(template)) {
-        w.add('nil', this);
-      } else if (typeof template === 'string' && template) {
-        w.add(template, this);
-      }
+      w.add(appendValue, this);
       w.add(')');
+    } else if (options.collapseNesting && options.composedSelectorStack?.length) {
+      // Temporarily pop the top so any nested Ampersand inside the parent
+      // resolves to the grandparent (not self — which would infinite-loop).
+      const parent = options.composedSelectorStack.pop()!;
+      try {
+        if (options.ampersandFirst !== false) {
+          parent.toString(options);
+        } else {
+          w.add(':is(');
+          parent.toString(options);
+          w.add(')');
+        }
+      } finally {
+        options.composedSelectorStack.push(parent);
+      }
     } else {
       w.add('&', this);
     }
@@ -299,7 +216,8 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
         if (ch === inQuote && str[i - 1] !== '\\') {
           inQuote = null;
         }
-      } else if (ch === '\'' || ch === String.fromCharCode(34)) {
+      // eslint-disable-next-line @stylistic/quotes
+      } else if (ch === '"' || ch === "'") {
         inQuote = ch;
       } else if (ch === '(' || ch === '[') {
         depth++;
@@ -322,43 +240,26 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
-    this.keySetLibrary = context.selectorBits;
-    const template = this.template;
-    const hoistToRoot = this.hoistToRoot;
+    const { appendValue } = this.value;
     const selectorContainer = this._selectorContainer;
-    const storedSelector = getSelectorFromContainer(selectorContainer, context);
-    // Check if template is defined (including empty string), or if hoistToRoot/collapseNesting is set
-    if (template !== undefined || hoistToRoot || context.opts.collapseNesting) {
+    const storedSelector = selectorContainer?.selector;
+    if (appendValue !== undefined || this.hoistToRoot) {
       // Use the stored selector if available, otherwise fall back to frame selector
       let frame = atIndex(context.rulesetFrames, -1);
-      let selector = storedSelector ?? frame?.getEffectiveSelector?.(false, context) ?? frame?.get('selector');
-      if (isNilNode(template)) {
-        const result = new Nil(undefined, undefined, undefined, this.treeContext);
-        result.hoistToRoot = true;
-        return result;
-      }
+      let selector = storedSelector ?? frame?.selector;
       if (!selector) {
         return new Nil();
       }
-      // Collapse/hoist/template processing normalizes spacing and may rewrite
-      // selector contents, so never mutate the live parent selector in place.
-      if (isSelectorNode(selector)) {
-        selector = selector.copy(true);
+      // Never mutate the frame selector in-place for append forms (&-foo / &()).
+      if (appendValue !== undefined && !isNode(selector, N.Nil)) {
+        selector = selector.clone(true) as Selector;
       }
       /** Remove any surrounding whitespace */
       selector.pre = undefined;
       selector.post = undefined;
 
-      if (typeof template === 'string' && template && !isNode(selector, N.Nil)) {
-        const normalizedTemplate = template.replace(ampersandTemplateInterpolationRegex, 'x');
-        const isBareIdentifierTemplate = /^[A-Za-z_\u0080-\uffff][\w\u0080-\uffff-]*$/u.test(normalizedTemplate);
-        if (
-          normalizedTemplate === 'nil'
-          || (!ampersandTemplateRegex.test(normalizedTemplate) && !isBareIdentifierTemplate)
-        ) {
-          throw new SyntaxError(`Invalid ampersand template "${template}"`);
-        }
-        const isTemplateMerge = template.includes('&');
+      if (appendValue && !isNode(selector, N.Nil)) {
+        const isTemplateMerge = appendValue.includes('&');
         if (isTemplateMerge) {
           const isIdentJoinChar = (char: string | undefined): boolean => {
             return !!char && /[a-zA-Z0-9_-]/.test(char);
@@ -389,20 +290,13 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             const baseSelectors: Selector[] = [];
             if (
               isNode(baseSelector, N.PseudoSelector)
-              && baseSelector.get('name') === ':is'
-              && isSelectorListNode(baseSelector.get('arg'))
+              && baseSelector.value.name === ':is'
+              && baseSelector.value.arg
+              && isNode(baseSelector.value.arg, N.SelectorList)
             ) {
-              for (const item of baseSelector.get('arg').get('value')) {
-                if (isSelectorNode(item)) {
-                  baseSelectors.push(item);
-                }
-              }
-            } else if (isSelectorListNode(baseSelector)) {
-              for (const item of baseSelector.get('value')) {
-                if (isSelectorNode(item)) {
-                  baseSelectors.push(item);
-                }
-              }
+              baseSelectors.push(...baseSelector.value.arg.value.map(item => item as Selector));
+            } else if (isNode(baseSelector, N.SelectorList)) {
+              baseSelectors.push(...baseSelector.value.map(item => item as Selector));
             } else {
               // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
               // by splitting into individual items so the template distributes across all of them.
@@ -418,27 +312,20 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             }
             const merged = baseSelectors.map((item) => {
               const value = item.toTrimmedString();
-              assertValidTemplateJoin(template, value);
-              return new BasicSelector(template.split('&').join(value)).inherit(baseSelector);
+              assertValidTemplateJoin(appendValue, value);
+              return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
             });
             if (merged.length === 1) {
               return merged[0]!;
             }
             return new SelectorList(merged).inherit(baseSelector);
           };
-          if (isSelectorListNode(selector)) {
+          if (isNode(selector, N.SelectorList)) {
             const mergedItems: Selector[] = [];
-            for (const item of selector.get('value')) {
-              if (!isSelectorNode(item)) {
-                continue;
-              }
-              const merged = mergeTemplate(item);
-              if (isSelectorListNode(merged)) {
-                for (const nestedItem of merged.get('value')) {
-                  if (isSelectorNode(nestedItem)) {
-                    mergedItems.push(nestedItem);
-                  }
-                }
+            for (const item of selector.value) {
+              const merged = mergeTemplate(item as Selector);
+              if (isNode(merged, N.SelectorList)) {
+                mergedItems.push(...merged.value);
               } else {
                 mergedItems.push(merged);
               }
@@ -453,79 +340,57 @@ export class Ampersand extends SimpleSelector<{ template?: string | Nil }> {
             for (let s of n.nodes(true)) {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
-                if ('value' in s && typeof s.value === 'string') {
-                  s.setData(s.value + template);
+                if (typeof s.value === 'string') {
+                  s.value += appendValue;
                   appended = true;
                   break;
                 }
-                throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
+                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
               }
             }
             if (!appended) {
-              throw new SyntaxError(`Cannot append "${template}" to this type of selector`);
+              throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
             }
           };
 
-          if (isSelectorListNode(selector)) {
-            selector.get('value').forEach(doAppendValue);
+          if (isNode(selector, N.SelectorList)) {
+            selector.value.forEach(doAppendValue);
           } else {
             doAppendValue(selector);
           }
         }
       }
 
-      let result: Selector | Nil;
-      const shouldWrapSelectorList = isNode(selector, N.SelectorList) && (hoistToRoot || template !== undefined);
-
-      if (shouldWrapSelectorList) {
-        result = PseudoSelector.create({ name: ':is', arg: selector });
-        result.generated = true;
-      } else {
-        result = selector;
-      }
-
-      if (template !== undefined || shouldWrapSelectorList || hoistToRoot) {
+      // No `:is()` wrapping here: for the append/hoist case, the result is
+      // the new top-level selector (marked hoistToRoot so composeSelector
+      // won't re-prepend the parent). A SelectorList or ComplexSelector
+      // result renders correctly on its own at the top level.
+      const result: Selector | Nil = selector;
+      if (appendValue !== undefined || this.hoistToRoot) {
         result.hoistToRoot = true;
       }
       return result;
     }
 
-    const amp: Ampersand = this.clone();
+    const amp: Ampersand = this.maybeClone(context);
     let frame = atIndex(context.rulesetFrames, -1);
-    const frameSelector = isNode(frame, N.Ruleset) ? frame.get('selector') : undefined;
     /**
      * Attach the current context selector if we need it later, for extends and such.
      * The frame is constant, so we can use the selector directly.
      * If the ampersand already has a stored selector (from getImplicitSelector),
      * preserve it instead of overwriting with the frame selector.
      */
-    if (!amp._selectorContainer && frame && frameSelector) {
-      amp._selectorContainer = {
-        selector: frameSelector,
-        getEffectiveSelector: (collapseNesting?: boolean, nestedContext?: Context) => {
-          if (frame && isNode(frame, N.Ruleset)) {
-            return frame.getEffectiveSelector(collapseNesting, nestedContext);
-          }
-          return frameSelector;
-        }
-      };
+    if (!amp._selectorContainer && frame && frame.selector) {
+      amp._selectorContainer = frame;
     }
     return amp;
   }
 
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newNode = super.clone(deep, cloneFn);
-    // super.clone() for leaf nodes reconstructs the leaf value generically.
-    // Ampersand stores its data in the template instance field, not in .value,
-    // so we must patch it explicitly on the clone.
-    newNode.template = this.template;
-    if (newNode.template instanceof Nil) {
-      newNode.adopt(newNode.template);
+    const newNode = super.clone(deep, cloneFn) as this;
+    if (this._selectorContainer) {
+      newNode._selectorContainer = this._selectorContainer;
     }
-    // Preserve authored selector context when it already exists. EvalNode will
-    // still bind the current frame when the clone has no selector container.
-    newNode._selectorContainer = this._selectorContainer;
-    newNode._storedSelector = cloneStoredSelector(this._storedSelector, deep);
     return newNode;
   }
 

@@ -87,7 +87,7 @@ async function scenario2(N: number) {
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
-        rules: rules([extend({ target: el('.base') })])
+        rules: rules([extend({ target: el('.base'), all: true })])
       })
     )
   ]);
@@ -121,7 +121,7 @@ async function scenario3(N: number) {
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
-        rules: rules([extend({ target: el('.a0') })])
+        rules: rules([extend({ target: el('.a0'), all: true })])
       })
     )
   ]);

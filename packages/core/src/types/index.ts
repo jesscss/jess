@@ -1,4 +1,4 @@
-import { type ILexingResult, type IRecognitionException, type IToken } from '@chevrotain/types';
+import { type ILexingResult, type IRecognitionException, type IToken } from 'chevrotain';
 import type { Node } from '../tree/index.js';
 
 export * from './modes.js';

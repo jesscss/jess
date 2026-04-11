@@ -163,7 +163,7 @@ describe('processPrePost with capture', () => {
 
   it('processPrePost with string value returns that string', () => {
     const node = any('test');
-    node.pre = ['  '];
+    node.pre = '  ';
 
     const result = node.processPrePost('pre', '', options);
     expect(result).toBe('  ');
@@ -171,7 +171,7 @@ describe('processPrePost with capture', () => {
 
   it('capture properly captures output from processPrePost with string value', () => {
     const node = any('test');
-    node.pre = ['  '];
+    node.pre = '  ';
 
     const captured = w.capture(() => {
       node.processPrePost('pre', '', options);

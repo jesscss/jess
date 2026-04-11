@@ -32,12 +32,8 @@ export function isNode(
   }
   if (mask === undefined) {
     /** No-arg: check if it's any Node (including types not in the bitmask table) */
-    if (value instanceof Node) {
-      return true;
-    }
-    const record = value as Record<string, unknown>;
-    return typeof record.type === 'string' && typeof record.children === 'function';
+    return value instanceof Node
+      || (typeof (value as any).type === 'string' && typeof (value as any).children === 'function');
   }
-  const record = value as Record<string, unknown>;
-  return ((record.nodeType as number) & mask) !== 0;
+  return ((value as any).nodeType & mask) !== 0;
 }

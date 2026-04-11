@@ -1,4 +1,4 @@
-import { Dimension, Num } from './tree/index.js';
+import { Dimension, Num, Sequence, Operation, List } from './tree/index.js';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
@@ -38,8 +38,8 @@ function memoize<Args extends any[], Return>(
  * Memoized so that percentOf(255) always returns the same function instance
  */
 export const percentOf = memoize((base: number): ConversionPlugin => (value: unknown) => {
-  if (value instanceof Dimension && value.unit === '%') {
-    const converted = value.number * base / 100;
+  if (value instanceof Dimension && value.value.unit === '%') {
+    const converted = value.value.number * base / 100;
     return new Num(converted);
   }
   return value;
@@ -54,7 +54,7 @@ export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) =
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
   if (unit === 'turn') {
     return new Num(number * 360);
   }
@@ -79,7 +79,7 @@ export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => 
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
   let degrees = number;
 
   if (unit === 'turn') {
@@ -110,7 +110,7 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
   let result = number;
 
   if (unit === '%') {
@@ -131,19 +131,18 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
  */
 export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension) {
-    return new Num(value.number); // Extract number from Dimension
+    return new Num(value.value.number); // Extract number from Dimension
   }
   if (value instanceof Num) {
-    return new Num(value.number);
+    return new Num(value.value.number);
   }
   return value; // Don't know how to handle this, pass through
 });
 
 export const clamp = (min: number, max: number): ConversionPlugin => (value: unknown) => {
-  if (typeof value === 'number') {
-    return Math.max(min, Math.min(max, value));
+  if (typeof value !== 'number') {
+    return Math.max(min, Math.min(max, value as number));
   }
-  return value;
 };
 
 /**
@@ -154,7 +153,7 @@ export const lengthToPx = (baseFontSize: number = 16): ConversionPlugin => (valu
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
 
   switch (unit) {
     case 'px': return new Num(number);
@@ -177,7 +176,7 @@ export const timeToMs = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
   if (unit === 'ms') {
     return new Num(number);
   }
@@ -195,7 +194,7 @@ export const frequencyToHz = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
   if (unit === 'hz') {
     return new Num(number);
   }
@@ -213,7 +212,7 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value;
+  const { number, unit } = value.value;
   if (unit === 'turn') {
     return new Num(number * 2 * Math.PI);
   }
@@ -243,31 +242,29 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
  * ```
  */
 export const splitSequence = (): PreprocessParams => {
-  return (args: any[], _context: Context): any[] => {
+  return (args: any[], context: Context): any[] => {
     // Only process if we have exactly one argument that is a Sequence
     if (args.length !== 1 || !isNode(args[0], N.Sequence)) {
       return args;
     }
 
-    const sequence = args[0];
+    const sequence = args[0] as Sequence;
 
     // Split the sequence into individual arguments
     const splitArgs: any[] = [];
-    const seqItems = sequence.get('value');
-    for (let i = 0; i < seqItems.length; i++) {
-      const item = seqItems[i]!;
+    for (let i = 0; i < sequence.value.length; i++) {
+      const item = sequence.value[i]!;
 
       // Check if this is the last item and it's an Operation (likely a slash)
-      if (i === seqItems.length - 1 && item.type === 'Operation') {
-        const left = item.get('left');
-        const right = item.get('right');
+      if (i === sequence.value.length - 1 && item.type === 'Operation') {
+        const [left, op, right] = (item as Operation).value;
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)
         // This handles test cases where Num(0) is used as a placeholder for undefined
         if (right) {
-          const isPlaceholder = isNode(right, N.Dimension)
-            && right.number === 0;
+          const isPlaceholder = right.type === 'Num'
+            && (right as any).value?.number === 0;
           if (!isPlaceholder) {
             splitArgs.push(right);
           }

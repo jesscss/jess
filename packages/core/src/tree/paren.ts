@@ -2,17 +2,16 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC, type OptionalLocation, type TreeContext } from './node.js';
+import { Node, defineType, F_NON_STATIC, type Mutable } from './node.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+// import type { Context } from '../context.js'
+// import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
-  escaped?: boolean;
-  delimiter?: 'paren' | 'square';
+  escaped: boolean;
 };
-
-export type ParenChildData = { value: Node | undefined };
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
   return node instanceof Operation || node instanceof Expression;
@@ -21,58 +20,24 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 /**
  * An expression in parenthesis
  */
-export interface Paren {
-  type: 'Paren';
-  shortType: 'paren';
-  eval(context: Context): MaybePromise<Node>;
-}
-
-export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> {
-  static override childKeys = ['value'] as const;
-
-  value: Node | undefined;
-
-  constructor(value?: Node, options?: ParenOptions, location?: OptionalLocation, treeContext?: TreeContext) {
+export class Paren extends Node<Node | undefined, ParenOptions> {
+  constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
-    if (value instanceof Node) {
-      this.adopt(value);
-    }
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
-  }
-
-  private _isEscaped(_context?: Context): boolean {
-    return Boolean(this.options?.escaped);
-  }
-
-  private _unwrapValue(value: Node, context?: Context): Node {
-    let current = value;
-    while (current instanceof Paren) {
-      const next = current.get('value', context);
-      if (!next) {
-        break;
-      }
-      current = next;
-    }
-    return current;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const parenOptions = this.options;
-    const escapeChar = parenOptions?.escaped ? '~' : '';
-    const delimiter = parenOptions?.delimiter ?? 'paren';
-    const open = delimiter === 'square' ? '[' : '(';
-    const close = delimiter === 'square' ? ']' : ')';
+    const escapeChar = this.options?.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    w.add(open);
-    let value = this.get('value', options.context);
+    w.add('(');
+    let value = this.value;
     if (value) {
       if (value instanceof Node) {
         let out = w.capture(() => value.toString(options));
@@ -81,12 +46,12 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
         w.add(String(value), this);
       }
     }
-    w.add(close);
+    w.add(')');
     return w.getSince(mark);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    let value = this.get('value', context);
+    let { value } = this;
     if (value) {
       let isOp = isOpOrExpression(value);
       if (isOp) {
@@ -98,35 +63,49 @@ export class Paren extends Node<Node | undefined, ParenOptions, ParenChildData> 
         if (isOp) {
           context.parenFrames.pop();
         }
-        if (this._isEscaped(context) && value instanceof Node) {
+        if (this.options?.escaped && value instanceof Node) {
           return value;
         }
-        const delimiter = this.options?.delimiter ?? 'paren';
-        if (delimiter === 'paren') {
-          value = this._unwrapValue(value, context);
-          if (value instanceof Bool || value instanceof Dimension) {
-            return value;
-          }
-          if (isOp && !isOpOrExpression(value)) {
-            return value;
-          }
+        /**
+         * Removing nested parens or parens around a single
+         * dimension is a bit presumptuous, but I think Less's
+         * argument is that it's unnecessary at runtime,
+         * so it's really just a DX tool that can be ignored
+         * on output.
+         */
+        while (value instanceof Paren && value.value) {
+          value = value.value;
         }
-        const node = this.clone();
-        const previousValue = node.value;
-        node.value = value;
-        if (previousValue instanceof Node && previousValue !== value) {
-          previousValue.parent = undefined;
+        if (value instanceof Bool || value instanceof Dimension) {
+          return value;
         }
-        node.adopt(value);
-        return node;
+        if (isOp && !isOpOrExpression(value)) {
+          return value;
+        }
+        this.set(null, value, context.renderKey);
+        return this;
       };
       if (isThenable(maybeEvald)) {
         return (maybeEvald as Promise<Node>).then(after);
       }
       return after(maybeEvald as Node);
     }
+    this.set(null, value, context.renderKey);
     return this;
   }
+
+  // toCSS(context: Context, out: OutputCollector) {
+  //   out.add('(')
+  //   this.value.toCSS(context, out)
+  //   out.add(')')
+  // }
+
+  // toModule(context: Context, out: OutputCollector) {
+  //   const loc = this.location
+  //   out.add('$J.paren(', loc)
+  //   this.value.toModule(context, out)
+  //   out.add(')')
+  // }
 }
 
 export const paren = defineType(Paren, 'Paren');

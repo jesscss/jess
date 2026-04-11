@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context } from '../../context.js';
-import { Node } from '../node.js';
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -311,59 +310,6 @@ describe('Color Node', () => {
     });
   });
 
-  describe('compare', () => {
-    it('compares semantically equal colors across formats as equal', () => {
-      const left = new Color('#ff0000');
-      const right = new Color({
-        format: ColorFormat.HSL,
-        hsl: [0, 1, 0.5],
-        alpha: 1
-      });
-
-      expect(left.compare(right, new Context())).toBe(0);
-    });
-
-    it('compares colors by normalized rgba channels instead of node object identity', () => {
-      const left = new Color({
-        format: ColorFormat.RGB,
-        rgb: [255, 0, 0],
-        alpha: 1
-      });
-      const right = new Color({
-        format: ColorFormat.RGB,
-        rgb: [0, 0, 255],
-        alpha: 1
-      });
-
-      expect(left.compare(right, new Context())).toBe(1);
-      expect(right.compare(left, new Context())).toBe(-1);
-    });
-
-    it('forwards compare(context) through contextual valueOf on the generic node path', () => {
-      class ContextualNode extends Node<string> {
-        static override childKeys = null as null;
-        raw: string;
-
-        constructor(value: string) {
-          super(value);
-          this.raw = value;
-        }
-
-        override valueOf(context?: Context) {
-          return context?.id ?? this.raw;
-        }
-      }
-
-      const left = new ContextualNode('left');
-      const right = new ContextualNode('right');
-      const context = new Context();
-      context.id = 'shared';
-
-      expect(left.compare(right, context)).toBe(0);
-      expect(left.compare(right)).toBe(-1);
-    });
-  });
-
   describe('Clamping During Serialization', () => {
     it('should clamp RGB values during serialization', () => {
       const color = new Color({
@@ -413,7 +359,7 @@ describe('Color Node', () => {
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      const callNode = new Call({ name: 'rgb', args: args as any });
+      const callNode = new Call({ name: 'rgb', args });
 
       const color = new Color({
         node: callNode,
@@ -422,8 +368,8 @@ describe('Color Node', () => {
       }, { format: ColorFormat.RGB });
 
       expect(color.options.format).toBe(ColorFormat.RGB);
-      expect(color._nodeValue).toBeInstanceOf(Call);
-      expect((color._nodeValue as Call).get('name')).toBe('rgb');
+      expect(color.value.node).toBeInstanceOf(Call);
+      expect((color.value.node as Call).value.name).toBe('rgb');
       expect(color.alpha).toBe(1);
     });
 
@@ -433,7 +379,7 @@ describe('Color Node', () => {
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      const callNode = new Call({ name: 'hsl', args: args as any });
+      const callNode = new Call({ name: 'hsl', args });
 
       const color = new Color({
         node: callNode,
@@ -442,8 +388,8 @@ describe('Color Node', () => {
       }, { format: ColorFormat.HSL });
 
       expect(color.options.format).toBe(ColorFormat.HSL);
-      expect(color._nodeValue).toBeInstanceOf(Call);
-      expect((color._nodeValue as Call).get('name')).toBe('hsl');
+      expect(color.value.node).toBeInstanceOf(Call);
+      expect((color.value.node as Call).value.name).toBe('hsl');
       expect(color.alpha).toBe(1);
     });
   });

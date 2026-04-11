@@ -1,16 +1,8 @@
 import type { Call } from '../call.js';
 import type { List } from '../list.js';
-import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
 
-type CallItem = string | undefined;
-
-function getCallArgsSignature(args: List | undefined, context?: Context): string | undefined {
-  if (!isNode(args)) {
-    return undefined;
-  }
-  return args.toTrimmedString(context ? { context } : undefined);
-}
+type CallItem = List | string | undefined;
 /**
  * This memoizes arguments for a call and returns true
  * if the call has called itself with the same arguments.
@@ -21,18 +13,20 @@ function getCallArgsSignature(args: List | undefined, context?: Context): string
 export class CallMap {
   private _callMap = new Map<Call, [CallItem, ...CallItem[]]>();
 
-  add(call: Call, args: List | undefined, context?: Context) {
+  add(call: Call, args: List | undefined) {
     let set = this._callMap.get(call);
-    const argsSignature = getCallArgsSignature(args, context);
     if (!set) {
-      this._callMap.set(call, [argsSignature]);
+      this._callMap.set(call, [isNode(args) ? (args.sourceNode as List) : undefined]);
     } else {
-      if (argsSignature === undefined && set.includes(undefined)) {
+      if (args === undefined && set.includes(undefined)) {
         return true;
       }
+      let argsValue = (args as List).valueOf();
+
       for (let i = 0; i < set.length; i++) {
         let item = set[i]!;
-        if (item === argsSignature) {
+        let itemValue = item.valueOf();
+        if (itemValue === argsValue) {
           return true;
         }
       }

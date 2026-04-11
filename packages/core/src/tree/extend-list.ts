@@ -1,9 +1,7 @@
-import { Node, F_VISIBLE, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
-
-export type ExtendListChildData = { value: Extend[] };
 
 /**
  * An extend statement list with no rules
@@ -11,27 +9,16 @@ export type ExtendListChildData = { value: Extend[] };
  * e.g.
  *  .a:extend(.b), .c:extend(.d);
  */
-export interface ExtendList extends Node<Extend[], NodeOptions, ExtendListChildData> {
-  type: 'ExtendList';
-  shortType: 'extendlist';
+export interface ExtendList extends Node<Extend[]> {
   eval(context: Context): ExtendList;
 }
 
-export class ExtendList extends Node<Extend[], NodeOptions, ExtendListChildData> {
-  static override childKeys = ['value'] as const;
-
-  readonly value!: Extend[];
+export class ExtendList extends Node<Extend[]> {
+  override allowRoot = true;
+  override allowRuleRoot = true;
 
   constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.value = value;
-    for (const child of value) {
-      if (child instanceof Node) {
-        this.adopt(child);
-      }
-    }
-    this.allowRoot = true;
-    this.allowRuleRoot = true;
     this.removeFlag(F_VISIBLE);
   }
 
@@ -39,9 +26,7 @@ export class ExtendList extends Node<Extend[], NodeOptions, ExtendListChildData>
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (const child of this.get('value', options.context)) {
-      child.toTrimmedString(options);
-    }
+    void super.toTrimmedString(options);
     // toTrimmedString side effect is already emitted to writer; getSince captures it. Add ';'
     w.add(';');
     return w.getSince(mark);

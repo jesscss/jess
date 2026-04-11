@@ -1,2005 +1,1971 @@
 import { Selector } from '../selector.js';
+import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
-import { F_AMPERSAND, type Node } from '../node.js';
-import type { Context as EvalContext } from '../../context.js';
+import { ComplexSelector } from '../selector-complex.js';
+import { CompoundSelector } from '../selector-compound.js';
+import { PseudoSelector } from '../selector-pseudo.js';
+import { Ampersand } from '../ampersand.js';
+import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { isDisjoint, type BitSet } from './bitset.js';
-import { type PseudoSelector } from '../selector-pseudo.js';
-import { type CompoundSelector } from '../selector-compound.js';
-import { type ComplexSelector } from '../selector-complex.js';
+import { isSubsetOf, isDisjoint } from './bitset.js';
+/**
+ * Helper functions for extend operations that eliminate genuine code duplication
+ * These preserve all original logic while extracting commonly repeated patterns
+ */
 
 /**
- * A single located selector match.
- *
- * `startIndex` / `endIndex` are measured in the `containingNode`'s local
- * ordered data when the containing node is ordered.
- *
- * `exact` means the matched route consumed its span end-to-end without extra
- * unmatched basic selectors on that route.
- *
- * `crossesAmpersand` is set on synthetic cross-boundary matches completed
- * through a parent selector context.
- *
- * `consumedTarget` means this location matched everything it could possibly
- * match in its target container. This is distinct from route-level
- * `fullMatch`, which only means one exact match route succeeded.
+ * Determines the extension type based on selector type and location context
+ * Extracted from multiple places in extend.ts with preserved original logic
  */
-interface SelectorMatchLocation {
-  startIndex?: number;
-  endIndex?: number;
-  matchedIndices?: number[];
-  containingNode: Node;
-  exact?: boolean;
-  crossesAmpersand?: boolean;
-  consumedTarget?: boolean;
-  ampersandCrossings?: SelectorMatchAmpersandCrossing[];
-}
+export function determineExtensionType(
+  selector: Selector,
+  basePath: Array<string | number>
+): 'replace' | 'append' | 'wrap' {
+  // If we're inside a pseudo-selector argument (like :where() or :is())
+  if (basePath.some(segment => segment === 'arg')) {
+    // Check if we're matching a component within a compound selector inside the argument
+    // Path format: ['arg', selectorListIndex, compoundIndex, ...]
+    // If we have at least 3 segments and the last numeric segment is a compound index,
+    // we should wrap to preserve compound selector structure
+    const numericSegments = basePath.filter((s): s is number => typeof s === 'number');
+    if (numericSegments.length >= 2) {
+      // We're inside a compound selector - use 'wrap' to create :is() wrapper
+      return 'wrap';
+    }
+    return 'append'; // Can append to pseudo-selector argument lists
+  }
 
-interface SelectorMatchSegment {
-  containingNode: Node;
-  startIndex?: number;
-  endIndex?: number;
-  matchedIndices?: number[];
-}
+  // Check if we're matching a component within a compound selector
+  // Path format: [compoundIndex, ...] where compoundIndex is a number
+  // If the path starts with a number and we're in a compound selector context, use 'wrap'
+  if (basePath.length > 0 && typeof basePath[0] === 'number') {
+    // This could be a compound selector component match - check if selector is CompoundSelector
+    // Actually, we can't check the selector type here, so we'll rely on the caller to set 'wrap'
+    // For now, default to 'replace' for numeric paths
+  }
 
-interface SelectorMatchAmpersandCrossing {
-  ampersandNode?: Node;
-  targetSegment: SelectorMatchSegment;
-  parentSegment?: SelectorMatchSegment;
+  // If we're in a SelectorList context (not just any numeric path)
+  // We need to check the context more carefully
+  // Numeric paths can mean: SelectorList index, CompoundSelector index, or ComplexSelector index
+  // Only SelectorList contexts should use 'append' - others should use 'replace'
+
+  // For now, default to replace for all direct matches
+  // The 'append' behavior should be handled by specialized logic in pseudo-selector handling
+  return 'replace';
 }
 
 /**
- * Aggregate selector-match result.
- *
- * `fullMatch` means at least one exact end-to-end route matched.
- * `partialMatch` means at least one match of any kind was found.
- * `crossesAmpersand` means at least one recorded match crossed an ampersand
- * boundary instead of matching entirely on one side of it.
+ * Checks if a value can be treated as a selector
+ * Extracted from multiple pseudo-selector checks
  */
-interface SelectorMatchState {
-  fullMatch: boolean;
-  partialMatch: boolean;
-  crossesAmpersand: boolean;
-  matches: SelectorMatchLocation[];
+export function isSelector(value: any): value is Selector {
+  // Avoid `instanceof` (module identity can diverge under Vite/Vitest).
+  // All selector nodes set `isSelector = true` on the base Selector class.
+  return !!value && typeof value === 'object' && (value as any).isSelector === true;
 }
 
-/** The set of basic selectors that one unordered position can satisfy. */
-type MatchGroupRequirement = {
-  basicSelectorIndex: Map<string, number>;
-  basicSelectorCounts: number[];
-  basicSelectorTotal: number;
-  hasComplexBranch: boolean;
-  branchTailAmbiguous: boolean;
-};
+/**
+ * Filters components to get only non-combinator selectors
+ * This pattern appears in many complex selector algorithms
+ */
+export function getNonCombinatorComponents(selector: ComplexSelector): Selector[] {
+  return selector.value.filter(c => !isNode(c, N.Combinator)) as Selector[];
+}
 
-/** One position can satisfy any one of its alternatives, such as `:is(...)`. */
-type MatchGroup = {
-  alternatives: MatchGroupRequirement[];
-};
+/**
+ * Filters components to get only combinators
+ * Used in complex selector matching algorithms
+ */
+export function getCombinatorComponents(selector: ComplexSelector): Combinator[] {
+  return selector.value.filter(c => isNode(c, N.Combinator)) as Combinator[];
+}
 
-/** One ordered unit in a route-level match plan. */
-type MatchPlanUnit =
-  | {
-    kind: 'group';
-    index: number;
-    node: Node;
-    group: MatchGroup;
+/**
+ * Checks if two selectors match using component-level logic
+ * Preserves the exact original matching semantics from multiple locations
+ */
+export function componentsMatch(a: Selector, b: Selector): boolean {
+  // Exact string match first (fast path)
+  if (a.valueOf() === b.valueOf()) {
+    return true;
   }
-  | {
-    kind: 'combinator';
-    index: number;
-    node: Node;
-    value: string;
-  };
 
-type RouteMatchPlan = {
-  kind: 'route';
-  selector: Selector;
-  units: MatchPlanUnit[];
-  hasAmbiguousBranchTail: boolean;
-};
+  // Handle compound selector equivalence (order-independent)
+  if (isNode(a, N.CompoundSelector) && isNode(b, N.CompoundSelector)) {
+    return areCompoundSelectorsEquivalent(a, b);
+  }
 
-type SelectorListMatchPlan = {
-  kind: 'list';
-  selector: SelectorList;
-  alternates: MatchPlan[];
-};
+  // Handle compound vs simple: compound contains simple (improved structural matching)
+  if (isNode(a, N.CompoundSelector) && isNode(b, N.SimpleSelector)) {
+    return a.value.some(comp => comp.valueOf() === b.valueOf());
+  }
 
-type MatchPlan = RouteMatchPlan | SelectorListMatchPlan;
+  // Handle simple vs compound: compound contains simple (improved structural matching)
+  if (isNode(a, N.SimpleSelector) && isNode(b, N.CompoundSelector)) {
+    return b.value.some(comp => comp.valueOf() === a.valueOf());
+  }
 
-type MatchGroupState = {
-  remainingCounts: number[];
-  remainingTotal: number;
-  exact: boolean;
-  matchedOutsideAmpersand: boolean;
-};
+  // Handle pseudo-selector equivalence
+  if (isNode(a, N.PseudoSelector) && isNode(b, N.PseudoSelector)) {
+    return a.value.name === b.value.name
+      && areSelectorArgumentsEquivalent(a.value.arg as Selector, b.value.arg as Selector);
+  }
 
-type MatchWindowResult = {
-  matched: boolean;
-  exact: boolean;
-};
-
-type GroupMatchCache = WeakMap<Node, WeakMap<MatchGroup, MatchWindowResult>>;
-type SelectorMatchPairCache = WeakMap<Selector, WeakMap<Selector, SelectorMatchState>>;
-type SelectorMatchContext = {
-  pairCache: SelectorMatchPairCache;
-  evalContext?: EvalContext;
-};
-
-const selectorMatchPlanCache = new WeakMap<Selector, {
-  value: string;
-  plan: MatchPlan;
-}>();
-
-function selectorValueOf(node: Node | Selector, context?: EvalContext): string {
-  return String((node as unknown as { valueOf(context?: EvalContext): string }).valueOf(context));
+  return false;
 }
 
-function bitSetValues(bitSet: BitSet<string> | undefined): string[] | undefined {
-  return bitSet?._library?.valuesOf(bitSet);
+/**
+ * Compound component semantic equivalence — pointer-based, no object creation.
+ *
+ * Walks the existing AST structure to answer "can `find` occupy this position in `target`?"
+ * without expanding or rewriting either selector.
+ *
+ * Rules (mirrors the walk-and-consume algorithm):
+ *  - Direct match: find.valueOf() === target.valueOf()
+ *  - find is :is(...): any ONE alternative of find matches target  (find provides alternatives)
+ *  - target is :is(...): any ONE alternative of target matches find (target provides alternatives)
+ *  - Both are non-:is() pseudo-selectors: delegate to arePseudoSelectorsEquivalent
+ */
+export function compoundComponentMatches(find: Selector, target: Selector): boolean {
+  // Fast path
+  if (find.valueOf() === target.valueOf()) {
+    return true;
+  }
+
+  // find is :is(...) — walk its alternatives without creating new structures
+  if (isNode(find, N.PseudoSelector) && find.value.name === ':is' && find.value.arg && isSelector(find.value.arg)) {
+    const arg = find.value.arg as Selector;
+    if (isNode(arg, N.SelectorList)) {
+      return arg.value.some((alt: Selector) => compoundComponentMatches(alt, target));
+    }
+    return compoundComponentMatches(arg, target);
+  }
+
+  // target is :is(...) — walk its alternatives
+  if (isNode(target, N.PseudoSelector) && target.value.name === ':is' && target.value.arg && isSelector(target.value.arg)) {
+    const arg = target.value.arg as Selector;
+    if (isNode(arg, N.SelectorList)) {
+      return arg.value.some((alt: Selector) => compoundComponentMatches(find, alt));
+    }
+    return compoundComponentMatches(find, arg);
+  }
+
+  // Both are non-:is() pseudo-selectors
+  if (isNode(find, N.PseudoSelector) && find.value.arg && isSelector(find.value.arg) && isNode(target, N.PseudoSelector)) {
+    return arePseudoSelectorsEquivalent(find, target);
+  }
+
+  return false;
 }
 
-function safeIsDisjoint(
-  left: BitSet<string> | undefined,
-  right: BitSet<string> | undefined
-): boolean {
-  if (!left || !right) {
+/**
+ * Checks pseudo-selector equivalence including argument matching
+ * Handles all pseudo-selectors with selector arguments, not just specific ones
+ * Extracted from find-extendable-locations.ts with preserved original logic
+ */
+export function arePseudoSelectorsEquivalent(a: any, b: any): boolean {
+  if (!isNode(a, N.PseudoSelector) || !isNode(b, N.PseudoSelector)) {
     return false;
   }
-  if (left._library && right._library && left._library === right._library) {
-    return isDisjoint(left, right);
-  }
-  const leftValues = bitSetValues(left);
-  const rightValues = bitSetValues(right);
-  if (!leftValues || !rightValues) {
+  if (a.value.name !== b.value.name) {
     return false;
   }
-  const rightSet = new Set(rightValues);
-  for (const value of leftValues) {
-    if (rightSet.has(value)) {
+
+  const aArg = a.value.arg;
+  const bArg = b.value.arg;
+
+  if (!aArg && !bArg) {
+    return true;
+  }
+  if (!aArg || !bArg) {
+    return false;
+  }
+
+  // If both have selector arguments, check equivalence
+  if (isSelector(aArg) && isSelector(bArg)) {
+    return areSelectorArgumentsEquivalent(aArg as Selector, bArg as Selector);
+  }
+
+  // For non-selector arguments, use string comparison
+  return String(aArg) === String(bArg);
+}
+
+/**
+ * Checks equivalence of selector arguments in pseudo-selectors
+ * Preserves complex original logic for :is(), :where(), etc.
+ */
+export function areSelectorArgumentsEquivalent(a: Selector, b: Selector): boolean {
+  // Handle selector lists (order-independent)
+  if (isNode(a, N.SelectorList) && isNode(b, N.SelectorList)) {
+    if (a.value.length !== b.value.length) {
+      return false;
+    }
+
+    return a.value.every(aItem =>
+      b.value.some(bItem => componentsMatch(aItem, bItem))
+    );
+  }
+
+  // Handle compound selectors
+  if (isNode(a, N.CompoundSelector) && isNode(b, N.CompoundSelector)) {
+    return areCompoundSelectorsEquivalent(a, b);
+  }
+
+  // Default comparison
+  return componentsMatch(a, b);
+}
+
+/**
+ * Efficient compound selector equivalence check (order-independent)
+ * Preserves exact original algorithm from find-extendable-locations.ts
+ */
+/**
+ * True when find's components appear in target in order (subsequence). Enables .a.c.b to match .a.b.
+ */
+function compoundContainsCompoundSubsequence(target: CompoundSelector, find: CompoundSelector): boolean {
+  if (find.value.length > target.value.length) {
+    return false;
+  }
+  const eq = (t: Selector, f: Selector) => compoundComponentMatches(f, t);
+  let tIdx = 0;
+  for (const fComp of find.value) {
+    let found = false;
+    while (tIdx < target.value.length) {
+      if (eq(target.value[tIdx]!, fComp)) {
+        tIdx++;
+        found = true;
+        break;
+      }
+      tIdx++;
+    }
+    if (!found) {
       return false;
     }
   }
   return true;
 }
 
-/**
- * Returns true for pseudos whose selector arguments can be searched recursively
- * but cannot be consumed as part of a continuing outer match, unlike `:is()`.
- */
-function isSearchablePseudoBoundary(node: Node): node is PseudoSelector {
-  return (
-    isNode(node, N.PseudoSelector)
-    && node.get('name') !== ':is'
-    && isNode(node.get('arg'), N.Selector)
+export function areCompoundSelectorsEquivalent(a: CompoundSelector, b: CompoundSelector): boolean {
+  if (a.value.length !== b.value.length) {
+    return false;
+  }
+
+  // Order-independent component matching: two compounds are equivalent if they have the same
+  // multiset of components. Components are small (typically 2-5), so O(N²) is fine.
+  // Uses compoundComponentMatches for :is()-aware pointer walk — no object creation.
+  return a.value.every(aComp =>
+    b.value.some(bComp => compoundComponentMatches(aComp as Selector, bComp as Selector))
   );
 }
 
-function createRequirement(): MatchGroupRequirement {
-  const basicSelectorIndex = new Map<string, number>();
-  const basicSelectorCounts: number[] = [];
-
-  return {
-    basicSelectorIndex,
-    basicSelectorCounts,
-    basicSelectorTotal: 0,
-    hasComplexBranch: false,
-    branchTailAmbiguous: false
-  };
-}
-
-function addRequirementValue(requirement: MatchGroupRequirement, value: string): MatchGroupRequirement {
-  const existingIndex = requirement.basicSelectorIndex.get(value);
-  if (existingIndex !== undefined) {
-    requirement.basicSelectorCounts[existingIndex]!++;
-    requirement.basicSelectorTotal++;
-    return requirement;
-  }
-
-  requirement.basicSelectorIndex.set(value, requirement.basicSelectorCounts.length);
-  requirement.basicSelectorCounts.push(1);
-  requirement.basicSelectorTotal++;
-  return requirement;
-}
-
-function cloneRequirement(requirement: MatchGroupRequirement): MatchGroupRequirement {
-  return {
-    basicSelectorIndex: new Map(requirement.basicSelectorIndex),
-    basicSelectorCounts: [...requirement.basicSelectorCounts],
-    basicSelectorTotal: requirement.basicSelectorTotal,
-    hasComplexBranch: requirement.hasComplexBranch,
-    branchTailAmbiguous: requirement.branchTailAmbiguous
-  };
-}
-
-function mergeRequirements(
-  left: MatchGroupRequirement,
-  right: MatchGroupRequirement
-): MatchGroupRequirement {
-  const merged = cloneRequirement(left);
-  for (const [value, index] of right.basicSelectorIndex.entries()) {
-    const count = right.basicSelectorCounts[index] ?? 0;
-    for (let i = 0; i < count; i++) {
-      addRequirementValue(merged, value);
-    }
-  }
-  merged.hasComplexBranch ||= right.hasComplexBranch;
-  merged.branchTailAmbiguous ||= right.branchTailAmbiguous;
-  return merged;
-}
-
-function markComplexBranchRequirements(
-  requirements: MatchGroupRequirement[],
-  branch: Selector & { value?: readonly Node[] },
-  parent?: Selector,
-  context?: EvalContext
-): MatchGroupRequirement[] {
-  const earlierValues = new Set<string>();
-
-  if (isNode(branch, N.ComplexSelector)) {
-    for (let i = 0; i < (branch as ComplexSelector).get('value').length - 1; i++) {
-      const component = (branch as ComplexSelector).get('value')[i]!;
-      const nested = buildGroupRequirements(component, parent, context);
-      for (let j = 0; j < nested.length; j++) {
-        for (const value of nested[j]!.basicSelectorIndex.keys()) {
-          earlierValues.add(value);
-        }
-      }
-    }
-  }
-
-  for (let i = 0; i < requirements.length; i++) {
-    const requirement = requirements[i]!;
-    requirement.hasComplexBranch = true;
-    for (const value of requirement.basicSelectorIndex.keys()) {
-      if (earlierValues.has(value)) {
-        requirement.branchTailAmbiguous = true;
-        break;
-      }
-    }
-  }
-
-  return requirements;
-}
-
-function buildGroupRequirements(
-  node: Node,
-  parent?: Selector,
-  context?: EvalContext,
-  activePath: Set<Node> = new Set()
-): MatchGroupRequirement[] {
-  if (activePath.has(node)) {
-    return [createRequirement()];
-  }
-  activePath.add(node);
-
-  if (isNode(node, N.BasicSelector)) {
-    const requirement = createRequirement();
-    addRequirementValue(requirement, selectorValueOf(node, context));
-    activePath.delete(node);
-    return [requirement];
-  }
-
-  if (isNode(node, N.Ampersand)) {
-    const resolved = node.getResolvedSelector(context) ?? parent;
-    if (resolved && !isNode(resolved, N.Nil)) {
-      if (activePath.has(resolved)) {
-        activePath.delete(node);
-        return [createRequirement()];
-      }
-      const result = buildGroupRequirements(resolved, parent, context, activePath);
-      activePath.delete(node);
-      return result;
-    }
-
-    activePath.delete(node);
-    return [createRequirement()];
-  }
-
-  if (isNode(node, N.ComplexSelector)) {
-    for (let i = (node as ComplexSelector).get('value').length - 1; i >= 0; i--) {
-      const component = (node as ComplexSelector).get('value')[i]!;
-      if (!isNode(component, N.Combinator)) {
-        return markComplexBranchRequirements(
-          buildGroupRequirements(component, parent, context, activePath),
-          node as unknown as Selector & { value?: readonly Node[] },
-          parent,
-          context
-        );
-      }
-    }
-
-    activePath.delete(node);
-    return [createRequirement()];
-  }
-
-  if (isNode(node, N.PseudoSelector) && node.get('name') !== ':is') {
-    const requirement = createRequirement();
-    addRequirementValue(requirement, selectorValueOf(node, context));
-    activePath.delete(node);
-    return [requirement];
-  }
-
-  if (isSearchablePseudoBoundary(node)) {
-    activePath.delete(node);
-    return [createRequirement()];
-  }
-
-  if (isNode(node, N.SelectorList)) {
-    const alternatives: MatchGroupRequirement[] = [];
-    for (let i = 0; i < (node as SelectorList).get('value').length; i++) {
-      const nested = buildGroupRequirements((node as SelectorList).get('value')[i]!, parent, context, activePath);
-      for (let j = 0; j < nested.length; j++) {
-        alternatives.push(nested[j]!);
-      }
-    }
-    activePath.delete(node);
-    return alternatives;
-  }
-
-  let requirements: MatchGroupRequirement[] = [createRequirement()];
-  const children = node.children();
-  let child = children.next();
-
-  while (!child.done) {
-    const childRequirements = buildGroupRequirements(child.value, parent, context, activePath);
-    const nextRequirements: MatchGroupRequirement[] = [];
-    for (let i = 0; i < requirements.length; i++) {
-      for (let j = 0; j < childRequirements.length; j++) {
-        nextRequirements.push(
-          mergeRequirements(requirements[i]!, childRequirements[j]!)
-        );
-      }
-    }
-    requirements = nextRequirements;
-    child = children.next();
-  }
-
-  activePath.delete(node);
-  return requirements;
-}
-
-function buildMatchGroup(node: Node, parent?: Selector, context?: EvalContext): MatchGroup {
-  return {
-    alternatives: buildGroupRequirements(node, parent, context)
-  };
-}
-
-function buildRouteMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): RouteMatchPlan {
-  if (isNode(selector, N.ComplexSelector)) {
-    const units: MatchPlanUnit[] = [];
-    let hasAmbiguousBranchTail = false;
-
-    for (let i = 0; i < (selector as ComplexSelector).get('value').length; i++) {
-      const component = (selector as ComplexSelector).get('value')[i]!;
-      if (isNode(component, N.Combinator)) {
-        units.push({
-          kind: 'combinator',
-          index: i,
-          node: component,
-          value: selectorValueOf(component, context)
-        });
-        continue;
-      }
-
-      const group = buildMatchGroup(
-        component,
-        isNode(component, N.Ampersand) && i === 0 ? undefined : parent,
-        context
-      );
-      const hasAlternatives = group.alternatives.some(alternate => alternate.basicSelectorTotal > 0);
-      if (hasAlternatives) {
-        hasAmbiguousBranchTail ||= group.alternatives.some(alternate => alternate.branchTailAmbiguous);
-        units.push({
-          kind: 'group',
-          index: i,
-          node: component,
-          group
-        });
-      }
-    }
-
-    return {
-      kind: 'route',
-      selector,
-      units,
-      hasAmbiguousBranchTail
-    };
-  }
-
-  if (isNode(selector, N.Combinator)) {
-    return {
-      kind: 'route',
-      selector,
-      hasAmbiguousBranchTail: false,
-      units: [{
-        kind: 'combinator',
-        index: 0,
-        node: selector,
-        value: selectorValueOf(selector, context)
-      }]
-    };
-  }
-
-  const group = buildMatchGroup(selector, parent, context);
-  return {
-    kind: 'route',
-    selector,
-    hasAmbiguousBranchTail: group.alternatives.some(alternate => alternate.branchTailAmbiguous),
-    units: group.alternatives.some(alternate => alternate.basicSelectorTotal > 0)
-      ? [{
-          kind: 'group',
-          index: 0,
-          node: selector,
-          group
-        }]
-      : []
-  };
-}
-
-function buildMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): MatchPlan {
-  if (isNode(selector, N.SelectorList)) {
-    return {
-      kind: 'list',
-      selector,
-      alternates: (selector as SelectorList).get('value').map(item => getSelectorMatchPlan(item, parent, context))
-    };
-  }
-
-  return buildRouteMatchPlan(selector, parent, context);
-}
-
-function getSelectorMatchPlan(selector: Selector, parent?: Selector, context?: EvalContext): MatchPlan {
-  if (parent || context) {
-    return buildMatchPlan(selector, parent, context);
-  }
-
-  const value = selectorValueOf(selector);
-  const cached = selectorMatchPlanCache.get(selector);
-  if (cached && cached.value === value) {
-    return cached.plan;
-  }
-
-  const plan = buildMatchPlan(selector);
-  selectorMatchPlanCache.set(selector, { value, plan });
-  return plan;
-}
-
-function cloneGroupStates(states: MatchGroupState[]): MatchGroupState[] {
-  const nextStates = new Array<MatchGroupState>(states.length);
-  for (let i = 0; i < states.length; i++) {
-    const state = states[i]!;
-    nextStates[i] = {
-      remainingCounts: [...state.remainingCounts],
-      remainingTotal: state.remainingTotal,
-      exact: state.exact,
-      matchedOutsideAmpersand: state.matchedOutsideAmpersand
-    };
-  }
-  return nextStates;
-}
-
-function allStatesAreTerminalPartial(states: MatchGroupState[]): boolean {
-  for (let i = 0; i < states.length; i++) {
-    const state = states[i]!;
-    if (state.remainingTotal > 0 || state.exact) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function consumeGroupBasics(
-  node: Node,
-  group: MatchGroupRequirement,
-  states: MatchGroupState[],
-  insideAmpersand = false,
-  parent?: Selector,
-  context?: EvalContext,
-  activePath: Set<Node> = new Set()
-): MatchGroupState[] {
-  if (states.length === 0) {
-    return states;
-  }
-
-  if (activePath.has(node)) {
-    return states;
-  }
-  activePath.add(node);
-
-  if (isNode(node, N.BasicSelector) || (isNode(node, N.PseudoSelector) && node.get('name') !== ':is')) {
-    const idx = group.basicSelectorIndex.get(selectorValueOf(node, context));
-
-    for (let i = 0; i < states.length; i++) {
-      const state = states[i]!;
-
-      if (state.remainingTotal === 0 && !state.exact) {
-        continue;
-      }
-
-      if (idx === undefined || state.remainingCounts[idx] === 0) {
-        state.exact = false;
-        continue;
-      }
-
-      state.remainingCounts[idx]!--;
-      state.remainingTotal--;
-      if (!insideAmpersand) {
-        state.matchedOutsideAmpersand = true;
-      }
-    }
-
-    activePath.delete(node);
-    return states;
-  }
-
-  if (isNode(node, N.Ampersand)) {
-    const resolved = node.getResolvedSelector(context) ?? parent;
-    if (resolved && !isNode(resolved, N.Nil)) {
-      if (activePath.has(resolved)) {
-        activePath.delete(node);
-        return states;
-      }
-      const result = consumeGroupBasics(resolved, group, states, true, parent, context, activePath);
-      activePath.delete(node);
-      return result;
-    }
-
-    activePath.delete(node);
-    return states;
-  }
-
-  if (isSearchablePseudoBoundary(node)) {
-    activePath.delete(node);
-    return states;
-  }
-
-  if (isNode(node, N.SelectorList)) {
-    const alternates = node.children();
-    const routes = [alternates.mark()];
-    const nextStates: MatchGroupState[] = [];
-
-    while (routes.length > 0) {
-      alternates.restore(routes.pop()!);
-      const alternate = alternates.next();
-
-      if (alternate.done) {
-        continue;
-      }
-
-      routes.push(alternates.mark());
-
-      nextStates.push(
-        ...consumeGroupBasics(
-          alternate.value,
-          group,
-          cloneGroupStates(states),
-          insideAmpersand,
-          parent,
-          context,
-          activePath
-        )
-      );
-    }
-
-    activePath.delete(node);
-    return nextStates;
-  }
-
-  const children = node.children();
-  let nextStates = states;
-  let child = children.next();
-
-  while (!child.done && nextStates.length > 0 && !allStatesAreTerminalPartial(nextStates)) {
-    nextStates = consumeGroupBasics(child.value, group, nextStates, insideAmpersand, parent, context, activePath);
-    child = children.next();
-  }
-
-  activePath.delete(node);
-  return nextStates;
-}
-
-/** Summarizes a set of consume-states with a single pass. */
-function summarizeStates(states: MatchGroupState[]): MatchWindowResult {
-  let matched = false;
-  let exact = false;
-
-  for (let i = 0; i < states.length; i++) {
-    const state = states[i]!;
-    if (state.remainingTotal !== 0 || !state.matchedOutsideAmpersand) {
-      continue;
-    }
-
-    matched = true;
-    if (state.exact) {
-      exact = true;
-      break;
-    }
-  }
-
-  return { matched, exact };
-}
-
 /**
- * Matches a single unordered target position against one match group.
- *
- * This is the core "consume basics within a position" operation used by
- * route-level matching.
+ * Expands compound selectors by handling :is() pseudo-selectors
+ * Preserves exact original expansion algorithm - only handles :is() specially
  */
-function matchTargetGroup(
-  targetGroup: Node,
-  findGroup: MatchGroup,
-  parent?: Selector,
-  allowAmpersandOnlyMatch = false,
-  context?: EvalContext
-): MatchWindowResult {
-  let matched = false;
-  let exact = false;
+export function expandCompoundWithPseudoSelectors(compound: CompoundSelector): CompoundSelector[] {
+  const expansions: CompoundSelector[] = [compound];
 
-  for (let i = 0; i < findGroup.alternatives.length; i++) {
-    const requirement = findGroup.alternatives[i]!;
-    const states = consumeGroupBasics(targetGroup, requirement, [{
-      remainingCounts: [...requirement.basicSelectorCounts],
-      remainingTotal: requirement.basicSelectorTotal,
-      exact: true,
-      matchedOutsideAmpersand: false
-    }], false, parent, context);
-    const summary = summarizeStates(states);
-    if (!summary.matched && allowAmpersandOnlyMatch) {
-      for (let j = 0; j < states.length; j++) {
-        const state = states[j]!;
-        if (state.remainingTotal !== 0) {
-          continue;
-        }
+  // Only expand :is() pseudo-selectors (preserving original logic)
+  compound.value.forEach((component, index) => {
+    if (isNode(component, N.PseudoSelector) && component.value.name === ':is' && component.value.arg && isSelector(component.value.arg)) {
+      const arg = component.value.arg as Selector;
 
-        summary.matched = true;
-        if (state.exact) {
-          summary.exact = true;
-          break;
-        }
-      }
-    }
+      // Handle :is() with compound selector argument
+      if (isNode(arg, N.CompoundSelector)) {
+        // Create new expansions by replacing :is() with its contents
+        const newExpansions: CompoundSelector[] = [];
 
-    matched ||= summary.matched;
-    exact ||= summary.exact && !requirement.hasComplexBranch;
-
-    if (exact) {
-      break;
-    }
-  }
-
-  return { matched, exact };
-}
-
-function matchCompoundWindow(
-  targetCompound: Selector & { value: readonly Node[] },
-  start: number,
-  end: number,
-  requirement: MatchGroupRequirement,
-  parent?: Selector,
-  context?: EvalContext
-): MatchWindowResult {
-  let states = [{
-    remainingCounts: [...requirement.basicSelectorCounts],
-    remainingTotal: requirement.basicSelectorTotal,
-    exact: true,
-    matchedOutsideAmpersand: false
-  }];
-
-  for (let i = start; i <= end && states.length > 0 && !allStatesAreTerminalPartial(states); i++) {
-    states = consumeGroupBasics(targetCompound.value[i]!, requirement, states, false, parent, context);
-  }
-
-  const summary = summarizeStates(states);
-  if (!summary.matched && parent) {
-    let allAmpersands = true;
-    for (let i = start; i <= end; i++) {
-      if (!isNode(targetCompound.value[i]!, N.Ampersand)) {
-        allAmpersands = false;
-        break;
-      }
-    }
-
-    if (allAmpersands) {
-      for (let i = 0; i < states.length; i++) {
-        const state = states[i]!;
-        if (state.remainingTotal !== 0) {
-          continue;
-        }
-        summary.matched = true;
-        if (state.exact) {
-          summary.exact = true;
-          break;
-        }
-      }
-    }
-  }
-  if (requirement.hasComplexBranch) {
-    summary.exact = false;
-  }
-  return summary;
-}
-
-function collectMatchedIndicesForWindow(
-  targetCompound: Selector & { value: readonly Node[] },
-  start: number,
-  end: number,
-  requirement: MatchGroupRequirement,
-  context?: EvalContext
-): number[] | undefined {
-  const remainingCounts = [...requirement.basicSelectorCounts];
-  const matchedIndices: number[] = [];
-
-  for (let i = start; i <= end; i++) {
-    const node = targetCompound.value[i]!;
-    if (!isNode(node, N.BasicSelector) && !(isNode(node, N.PseudoSelector) && node.get('name') !== ':is')) {
-      continue;
-    }
-
-    const idx = requirement.basicSelectorIndex.get(selectorValueOf(node, context));
-    if (idx === undefined || remainingCounts[idx] === 0) {
-      continue;
-    }
-
-    remainingCounts[idx]!--;
-    matchedIndices.push(i);
-  }
-
-  if (matchedIndices.length === 0) {
-    return undefined;
-  }
-
-  const spanLength = end - start + 1;
-  if (matchedIndices.length === spanLength) {
-    return undefined;
-  }
-
-  return matchedIndices;
-}
-
-/**
- * Collects every group-local span match for a target node.
- *
- * For compounds this scans contiguous windows so repeated matches in the same
- * compound are reported independently.
- *
- * @todo This is still the hottest path in selector matching. It currently
- * scans O(n^2) spans and may re-run `matchCompoundWindow()` for the same
- * requirement to prove minimality (`withoutStartMatches` / `withoutEndMatches`).
- * If this becomes a measurable bottleneck, replace the brute-force span scan
- * with a requirement-aware sliding window or prefix-count index that can:
- * 1. detect whether a span satisfies the requirement,
- * 2. prove minimality without rescanning adjacent subspans, and
- * 3. still preserve current semantics for extras-inside-span, matchedIndices,
- *    branch-tail ambiguity, and repeated independent matches in one compound.
- */
-function collectGroupMatchLocations(
-  targetGroup: Node,
-  findGroup: MatchGroup,
-  parent?: Selector,
-  context?: EvalContext
-): SelectorMatchLocation[] {
-  if (!isNode(targetGroup, N.CompoundSelector)) {
-    const groupMatch = matchTargetGroup(
-      targetGroup,
-      findGroup,
-      parent,
-      !!parent && isNode(targetGroup, N.Ampersand),
-      context
-    );
-    return groupMatch.matched
-      ? [{
-          startIndex: 0,
-          endIndex: 0,
-          containingNode: targetGroup,
-          exact: groupMatch.exact,
-          consumedTarget: groupMatch.exact
-        }]
-      : [];
-  }
-
-  const matches: SelectorMatchLocation[] = [];
-  const seen = new Set<number>();
-  const targetCompound = targetGroup as unknown as Selector & { value: readonly Node[] };
-  const targetLength = (targetGroup as CompoundSelector).get('value').length;
-
-  for (let i = 0; i < findGroup.alternatives.length; i++) {
-    const requirement = findGroup.alternatives[i]!;
-    for (let start = 0; start < targetLength; start++) {
-      for (let end = start; end < targetLength; end++) {
-        const windowMatch = matchCompoundWindow(
-          targetCompound,
-          start,
-          end,
-          requirement,
-          parent,
-          context
-        );
-
-        if (!windowMatch.matched) {
-          continue;
-        }
-
-        const withoutStartMatches = start < end
-          && matchCompoundWindow(targetCompound, start + 1, end, requirement, parent, context).matched;
-        if (withoutStartMatches) {
-          continue;
-        }
-
-        const withoutEndMatches = start < end
-          && matchCompoundWindow(targetCompound, start, end - 1, requirement, parent, context).matched;
-        if (withoutEndMatches) {
-          continue;
-        }
-
-        const key = start * targetLength + end;
-        if (seen.has(key)) {
-          continue;
-        }
-
-        seen.add(key);
-
-        matches.push({
-          startIndex: start,
-          endIndex: end,
-          matchedIndices: collectMatchedIndicesForWindow(targetCompound, start, end, requirement, context),
-          containingNode: targetGroup,
-          exact: windowMatch.exact && start === 0 && end === targetLength - 1,
-          consumedTarget: windowMatch.exact && start === 0 && end === targetLength - 1
+        expansions.forEach((expansion: CompoundSelector) => {
+          const newComponents = [...expansion.value];
+          newComponents.splice(index, 1, ...arg.value); // Replace :is() with its contents
+          newExpansions.push(new CompoundSelector(newComponents));
         });
+
+        expansions.push(...newExpansions);
+      } else if (isNode(arg, N.SimpleSelector)) {
+        // Handle :is() with simple selector argument
+        const newExpansions: CompoundSelector[] = [];
+
+        expansions.forEach((expansion: CompoundSelector) => {
+          const newComponents = [...expansion.value];
+          newComponents.splice(index, 1, arg); // Replace :is() with the simple selector
+          newExpansions.push(new CompoundSelector(newComponents));
+        });
+
+        expansions.push(...newExpansions);
+      } else if (isNode(arg, N.SelectorList)) {
+        // Handle :is() with selector list argument
+        const newExpansions: CompoundSelector[] = [];
+
+        const listArg = arg as SelectorList;
+        expansions.forEach((expansion: CompoundSelector) => {
+          listArg.value.forEach((listItem: Selector) => {
+            const newComponents = [...expansion.value];
+
+            if (isNode(listItem, N.CompoundSelector)) {
+              newComponents.splice(index, 1, ...listItem.value);
+            } else {
+              newComponents.splice(index, 1, listItem as any);
+            }
+
+            newExpansions.push(new CompoundSelector(newComponents));
+          });
+        });
+
+        expansions.push(...newExpansions);
       }
     }
-  }
-
-  matches.sort((left, right) => {
-    const leftStart = left.startIndex ?? 0;
-    const rightStart = right.startIndex ?? 0;
-    if (leftStart !== rightStart) {
-      return leftStart - rightStart;
-    }
-
-    const leftEnd = left.endIndex ?? leftStart;
-    const rightEnd = right.endIndex ?? rightStart;
-    return leftEnd - rightEnd;
   });
 
-  const filtered: SelectorMatchLocation[] = [];
-  let lastEnd = -1;
-  for (let i = 0; i < matches.length; i++) {
-    const match = matches[i]!;
-    const start = match.startIndex ?? 0;
-    const end = match.endIndex ?? start;
+  return expansions;
+}
 
-    if (start <= lastEnd) {
-      continue;
+/**
+ * Expands complex selectors containing :is() pseudo-selectors into equivalent selector lists
+ * This handles cases like: a :is(b, c) -> a b, a c
+ */
+export function expandComplexSelectorWithIs(complexSelector: ComplexSelector): Selector[] {
+  // Look for :is() pseudo-selectors in the complex selector
+  let hasIsSelector = false;
+  let isIndex = -1;
+  let isArg: Selector | null = null;
+  let isFromBareIsCompound = false;
+  let isFromAmpersandSelector = false;
+
+  for (let i = 0; i < complexSelector.value.length; i++) {
+    const component = complexSelector.value[i];
+    if (isNode(component, N.PseudoSelector) && component.value.name === ':is' && component.value.arg && isSelector(component.value.arg)) {
+      hasIsSelector = true;
+      isIndex = i;
+      isArg = component.value.arg as Selector;
+      break; // Handle first :is() found for now
     }
-
-    filtered.push(match);
-    lastEnd = end;
-  }
-
-  return filtered;
-}
-
-/** Fast constructor for the no-match result shape. */
-function emptySelectorMatchState(): SelectorMatchState {
-  return {
-    fullMatch: false,
-    partialMatch: false,
-    crossesAmpersand: false,
-    matches: []
-  };
-}
-
-/** Appends one result list into another without allocating a combined array. */
-function pushMatches(
-  target: SelectorMatchLocation[],
-  source: SelectorMatchLocation[]
-): void {
-  for (let i = 0; i < source.length; i++) {
-    target.push(source[i]!);
-  }
-}
-
-function cloneMatchSegment(
-  segment: SelectorMatchSegment | undefined
-): SelectorMatchSegment | undefined {
-  if (!segment) {
-    return undefined;
-  }
-
-  return {
-    containingNode: segment.containingNode,
-    startIndex: segment.startIndex,
-    endIndex: segment.endIndex,
-    matchedIndices: segment.matchedIndices ? [...segment.matchedIndices] : undefined
-  };
-}
-
-function cloneAmpersandCrossings(
-  crossings: SelectorMatchAmpersandCrossing[] | undefined
-): SelectorMatchAmpersandCrossing[] | undefined {
-  if (!crossings || crossings.length === 0) {
-    return undefined;
-  }
-
-  const next = new Array<SelectorMatchAmpersandCrossing>(crossings.length);
-  for (let i = 0; i < crossings.length; i++) {
-    const crossing = crossings[i]!;
-    next[i] = {
-      ampersandNode: crossing.ampersandNode,
-      targetSegment: cloneMatchSegment(crossing.targetSegment)!,
-      parentSegment: cloneMatchSegment(crossing.parentSegment)
-    };
-  }
-
-  return next;
-}
-
-function getCachedGroupMatch(
-  cache: GroupMatchCache,
-  targetGroup: Node,
-  findGroup: MatchGroup,
-  parent?: Selector,
-  evalContext?: EvalContext
-): MatchWindowResult {
-  let nodeCache = cache.get(targetGroup);
-  if (!nodeCache) {
-    nodeCache = new WeakMap<MatchGroup, MatchWindowResult>();
-    cache.set(targetGroup, nodeCache);
-  }
-
-  const cached = nodeCache.get(findGroup);
-  if (cached) {
-    return cached;
-  }
-
-  let result: MatchWindowResult;
-  if (isNode(targetGroup, N.CompoundSelector)) {
-    let matched = false;
-    let exact = false;
-
-    for (let i = 0; i < findGroup.alternatives.length; i++) {
-      const windowMatch = matchCompoundWindow(
-        targetGroup as unknown as Selector & { value: readonly Node[] },
-        0,
-        (targetGroup as CompoundSelector).get('value').length - 1,
-        findGroup.alternatives[i]!,
-        parent,
-        evalContext
-      );
-      matched ||= windowMatch.matched;
-      exact ||= windowMatch.exact;
-
-      if (exact) {
-        break;
+    // Also support the common case where `:is(...)` is wrapped in a single-item CompoundSelector
+    // (e.g. `:is(.a, .b) .c`) so matching can expand alternatives.
+    if (isNode(component, N.CompoundSelector) && component.value.length === 1) {
+      const only = component.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.value.name === ':is' && only.value.arg && isSelector(only.value.arg)) {
+        hasIsSelector = true;
+        isIndex = i;
+        isArg = only.value.arg as Selector;
+        isFromBareIsCompound = true;
+        break; // Handle first :is() found for now
       }
     }
-
-    result = { matched, exact };
-  } else {
-    result = matchTargetGroup(
-      targetGroup,
-      findGroup,
-      parent,
-      !!parent && isNode(targetGroup, N.Ampersand),
-      evalContext
-    );
-  }
-  nodeCache.set(findGroup, result);
-  return result;
-}
-
-function getBranchAlternatives(node: Node): readonly Selector[] | undefined {
-  if (isNode(node, N.SelectorList)) {
-    return (node as SelectorList).get('value');
-  }
-
-  if (isNode(node, N.PseudoSelector) && node.get('name') === ':is' && isNode(node.get('arg'), N.Selector)) {
-    if (isNode(node.get('arg'), N.SelectorList)) {
-      return (node.get('arg') as SelectorList).get('value');
-    }
-
-    return [node.get('arg') as Selector];
-  }
-
-  return undefined;
-}
-
-function matchGroupNodes(
-  findNode: Node,
-  targetNode: Node,
-  findGroup: MatchGroup,
-  groupMatchCache: GroupMatchCache,
-  context: SelectorMatchContext,
-  parent?: Selector
-): MatchWindowResult {
-  const targetBranches = getBranchAlternatives(targetNode);
-  const findBranches = getBranchAlternatives(findNode);
-  if (targetBranches && findBranches) {
-    let matched = false;
-    let exact = false;
-
-    for (let i = 0; i < findBranches.length; i++) {
-      for (let j = 0; j < targetBranches.length; j++) {
-        const nested = selectorMatchInternal(findBranches[i]!, targetBranches[j]!, parent, context);
-        matched ||= nested.partialMatch;
-        exact ||= nested.fullMatch;
-
-        if (exact) {
+    // Also support the case where `:is(...)` is carried inside an implicit ampersand's resolved selector.
+    // This shows up as a ComplexSelector beginning with Ampersand(selector=:is(...)).
+    if (isNode(component, N.Ampersand)) {
+      const sel = (component as Ampersand).getResolvedSelector();
+      if (sel && isNode(sel, N.PseudoSelector) && sel.value.name === ':is' && sel.value.arg && isSelector(sel.value.arg)) {
+        hasIsSelector = true;
+        isIndex = i;
+        isArg = sel.value.arg as Selector;
+        isFromAmpersandSelector = true;
+        break;
+      }
+      if (sel && isNode(sel, N.CompoundSelector) && sel.value.length === 1) {
+        const only = sel.value[0]!;
+        if (isNode(only, N.PseudoSelector) && only.value.name === ':is' && only.value.arg && isSelector(only.value.arg)) {
+          hasIsSelector = true;
+          isIndex = i;
+          isArg = only.value.arg as Selector;
+          isFromAmpersandSelector = true;
           break;
         }
       }
+    }
+  }
 
-      if (exact) {
-        break;
+  if (!hasIsSelector || !isArg) {
+    return [complexSelector]; // No :is() found, return original
+  }
+
+  const results: ComplexSelector[] = [];
+
+  // Get the list of alternatives from :is()
+  const alternatives = isNode(isArg, N.SelectorList) ? isArg.value : [isArg];
+
+  // For each alternative, create a new complex selector
+  alternatives.forEach((alternative) => {
+    const newComponents = [...complexSelector.value];
+    if (isFromAmpersandSelector) {
+      // Inline the resolved alternative directly so we do not reintroduce synthetic
+      // ampersand nodes while expanding match candidates.
+      if (isNode(alternative, N.ComplexSelector)) {
+        newComponents.splice(isIndex, 1, ...alternative.value);
+      } else {
+        newComponents[isIndex] = alternative as any;
       }
-    }
-
-    return { matched, exact };
-  }
-
-  if (targetBranches) {
-    let matched = false;
-    let exact = false;
-
-    for (let i = 0; i < targetBranches.length; i++) {
-      const nested = selectorMatchInternal(findNode as Selector, targetBranches[i]!, parent, context);
-      matched ||= nested.partialMatch;
-      exact ||= nested.fullMatch;
-
-      if (exact) {
-        break;
-      }
-    }
-
-    return { matched, exact };
-  }
-
-  return getCachedGroupMatch(groupMatchCache, targetNode, findGroup, parent, context.evalContext);
-}
-
-function pushNestedBranchMatches(
-  findNode: Node,
-  target: Selector,
-  matches: SelectorMatchLocation[],
-  context: SelectorMatchContext,
-  parent?: Selector
-): void {
-  const branches = getBranchAlternatives(findNode);
-  if (branches) {
-    for (let i = 0; i < branches.length; i++) {
-      const nested = selectorMatchInternal(target, branches[i]!, parent, context);
-      if (!nested.fullMatch) {
-        continue;
-      }
-      for (let j = 0; j < nested.matches.length; j++) {
-        const match = nested.matches[j]!;
-        matches.push({
-          startIndex: match.startIndex,
-          endIndex: match.endIndex,
-          matchedIndices: match.matchedIndices,
-          containingNode: match.containingNode,
-          exact: false,
-          consumedTarget: match.consumedTarget,
-          ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
-        });
-      }
-    }
-    return;
-  }
-
-  const children = findNode.children();
-  let child = children.next();
-  while (!child.done) {
-    pushNestedBranchMatches(child.value, target, matches, context, parent);
-    child = children.next();
-  }
-}
-
-/**
- * Compares a contiguous slice of ordered units.
- *
- * Groups compare via unordered basic-selector consumption, while combinators
- * must match exactly in place.
- */
-function matchUnitWindow(
-  findUnits: MatchPlanUnit[],
-  findStart: number,
-  targetUnits: MatchPlanUnit[],
-  targetStart: number,
-  length: number,
-  groupMatchCache: GroupMatchCache,
-  context: SelectorMatchContext,
-  parent?: Selector
-): MatchWindowResult {
-  let exact = true;
-
-  for (let offset = 0; offset < length; offset++) {
-    const findUnit = findUnits[findStart + offset]!;
-    const targetUnit = targetUnits[targetStart + offset]!;
-
-    if (findUnit.kind !== targetUnit.kind) {
-      return { matched: false, exact: false };
-    }
-
-    if (findUnit.kind === 'combinator') {
-      if (targetUnit.kind !== 'combinator' || findUnit.value !== targetUnit.value) {
-        return { matched: false, exact: false };
-      }
-      continue;
-    }
-
-    const groupMatch = matchGroupNodes(
-      findUnit.node,
-      targetUnit.node,
-      findUnit.group,
-      groupMatchCache,
-      context,
-      parent
-    );
-    if (!groupMatch.matched) {
-      return { matched: false, exact: false };
-    }
-
-    exact &&= groupMatch.exact;
-  }
-
-  return { matched: true, exact };
-}
-
-/** True when a complex selector begins with a visible ampersand boundary. */
-function hasLeadingAmpersandBoundary(selector: Selector): boolean {
-  return (
-    isNode(selector, N.ComplexSelector)
-    && (selector as ComplexSelector).get('value').length > 0
-    && isNode((selector as ComplexSelector).get('value')[0]!, N.Ampersand)
-  );
-}
-
-function getBoundaryTailUnits(routePlan: RouteMatchPlan): MatchPlanUnit[] {
-  if (hasLeadingAmpersandBoundary(routePlan.selector)) {
-    return routePlan.units;
-  }
-
-  return [{
-    kind: 'combinator',
-    index: -1,
-    node: routePlan.selector,
-    value: ' '
-  }, ...routePlan.units];
-}
-
-function locationCrossesAmpersand(location: SelectorMatchLocation): boolean {
-  if (location.ampersandCrossings && location.ampersandCrossings.length > 0) {
-    return true;
-  }
-
-  if (location.crossesAmpersand) {
-    return true;
-  }
-
-  const { containingNode, startIndex, endIndex } = location;
-
-  if (!containingNode.hasFlag(F_AMPERSAND)) {
-    return false;
-  }
-
-  if (startIndex === undefined || endIndex === undefined) {
-    return true;
-  }
-
-  if (isNode(containingNode, N.CompoundSelector) || isNode(containingNode, N.ComplexSelector)) {
-    for (let i = startIndex; i <= endIndex; i++) {
-      if (containingNode.get('value')[i]?.hasFlag(F_AMPERSAND)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  if (isNode(containingNode, N.SelectorList)) {
-    return !!(containingNode as SelectorList).get('value')[startIndex]?.hasFlag(F_AMPERSAND);
-  }
-
-  return true;
-}
-
-function getLocationAmpersandCrossings(
-  location: SelectorMatchLocation,
-  context?: EvalContext
-): SelectorMatchAmpersandCrossing[] | undefined {
-  if (location.ampersandCrossings && location.ampersandCrossings.length > 0) {
-    return location.ampersandCrossings;
-  }
-
-  const { containingNode } = location;
-  if (!containingNode.hasFlag(F_AMPERSAND)) {
-    return undefined;
-  }
-
-  const indices = location.matchedIndices && location.matchedIndices.length > 0
-    ? location.matchedIndices
-    : undefined;
-  const start = location.startIndex ?? indices?.[0] ?? 0;
-  const end = location.endIndex ?? indices?.[indices.length - 1] ?? start;
-  const targetSegment: SelectorMatchSegment = {
-    containingNode,
-    startIndex: location.startIndex,
-    endIndex: location.endIndex,
-    matchedIndices: location.matchedIndices ? [...location.matchedIndices] : undefined
-  };
-
-  const crossings: SelectorMatchAmpersandCrossing[] = [];
-  const seenAmpersands = new Set<Node>();
-  const pushCrossing = (ampersandNode: Node): void => {
-    if (seenAmpersands.has(ampersandNode)) {
-      return;
-    }
-
-    seenAmpersands.add(ampersandNode);
-
-    let parentSegment: SelectorMatchSegment | undefined;
-    if (isNode(ampersandNode, N.Ampersand)) {
-      const resolved = ampersandNode.getResolvedSelector(context);
-      if (resolved && !isNode(resolved, N.Nil)) {
-        parentSegment = {
-          containingNode: resolved
-        };
-      }
-    }
-
-    crossings.push({
-      ampersandNode,
-      targetSegment,
-      parentSegment
-    });
-  };
-
-  if (isNode(containingNode, N.Ampersand)) {
-    pushCrossing(containingNode);
-    return crossings;
-  }
-
-  if (isNode(containingNode, N.CompoundSelector) || isNode(containingNode, N.ComplexSelector)) {
-    if (indices) {
-      for (let i = 0; i < indices.length; i++) {
-        const idx = indices[i]!;
-        const node = containingNode.get('value')[idx];
-        if (node && isNode(node, N.Ampersand)) {
-          pushCrossing(node);
-        }
-      }
-    }
-
-    for (let i = start; i <= end; i++) {
-      const node = containingNode.get('value')[i];
-      if (node && isNode(node, N.Ampersand)) {
-        pushCrossing(node);
-      }
-    }
-  }
-
-  if (isNode(containingNode, N.SelectorList) && start === end) {
-    const node = (containingNode as SelectorList).get('value')[start];
-    if (node && isNode(node, N.Ampersand)) {
-      pushCrossing(node);
-    } else if (node && (isNode(node, N.CompoundSelector) || isNode(node, N.ComplexSelector))) {
-      for (let i = 0; i < node.get('value').length; i++) {
-        const child = node.get('value')[i];
-        if (child && isNode(child, N.Ampersand)) {
-          const resolved = child.getResolvedSelector(context);
-          crossings.push({
-            ampersandNode: child,
-            targetSegment,
-            parentSegment: resolved && !isNode(resolved, N.Nil)
-              ? { containingNode: resolved as Selector }
-              : undefined
-          });
-        }
-      }
-    }
-  }
-
-  return crossings.length > 0 ? crossings : undefined;
-}
-
-/**
- * Finalizes aggregate booleans from the collected match list.
- *
- * This intentionally uses a single scan to avoid repeated array passes on a
- * hot path.
- */
-function finalizeMatchState(result: SelectorMatchState, context?: EvalContext): SelectorMatchState {
-  let fullMatch = false;
-  let crossesAmpersand = false;
-
-  for (let i = 0; i < result.matches.length; i++) {
-    const match = result.matches[i]!;
-    if (!match.ampersandCrossings) {
-      match.ampersandCrossings = getLocationAmpersandCrossings(match, context);
-    }
-    fullMatch ||= !!match.exact;
-    crossesAmpersand ||= locationCrossesAmpersand(match);
-
-    if (fullMatch && crossesAmpersand) {
-      break;
-    }
-  }
-
-  result.fullMatch ||= fullMatch;
-  result.partialMatch ||= result.matches.length > 0;
-  result.crossesAmpersand = crossesAmpersand;
-  return result;
-}
-
-/**
- * Recursively searches inside searchable pseudo-selector arguments.
- *
- * These nested matches are root-like searches; they do not allow an outer
- * match route to continue through the pseudo boundary.
- */
-function pushNestedPseudoMatches(
-  find: Selector,
-  targetNode: Node,
-  matches: SelectorMatchLocation[],
-  context: SelectorMatchContext
-): void {
-  if (isSearchablePseudoBoundary(targetNode)) {
-    if (isSearchablePseudoBoundary(find)) {
-      if (find.get('name') !== targetNode.get('name')) {
-        return;
-      }
-
-      const nested = selectorMatchInternal(find.get('arg') as Selector, targetNode.get('arg') as Selector, undefined, context);
-      for (let i = 0; i < nested.matches.length; i++) {
-        const match = nested.matches[i]!;
-        matches.push({
-          startIndex: match.startIndex,
-          endIndex: match.endIndex,
-          containingNode: match.containingNode,
-          exact: match.exact,
-          consumedTarget: match.consumedTarget,
-          ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
-        });
-      }
-      return;
-    }
-
-    const nested = selectorMatchInternal(find, targetNode.get('arg') as Selector, undefined, context);
-    for (let i = 0; i < nested.matches.length; i++) {
-      const match = nested.matches[i]!;
-      matches.push({
-        startIndex: match.startIndex,
-        endIndex: match.endIndex,
-        containingNode: match.containingNode,
-        exact: false,
-        consumedTarget: match.consumedTarget,
-        ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
-      });
-    }
-    return;
-  }
-
-  const children = targetNode.children();
-  let child = children.next();
-  while (!child.done) {
-    pushNestedPseudoMatches(find, child.value, matches, context);
-    child = children.next();
-  }
-}
-
-/**
- * Finds all occurrences of `find` inside `target`.
- *
- * Matching is ordered at the route level, unordered only inside a single
- * compound-like position, and branches only at `SelectorList` alternatives.
- * A selector list on the find side is treated as alternate find routes: any
- * one alternate may match, and each matching alternate contributes its own
- * recorded locations.
- *
- * When `parent` is provided, it acts like an implicit prefix context joined to
- * `target` by a descendant combinator. Parent traversal is attempted only when
- * a match reaches a left-side ampersand boundary with partial-but-incomplete
- * progress; matches that exist only inside the parent do not get added on
- * their own.
- *
- * That same `parent` context is preserved when matching through nested
- * selector-list and `:is(...)` alternatives, because those are still the same
- * authored match route. It is not preserved for root-like searches inside
- * non-`:is()` pseudo-selector boundaries, because those searches must not
- * continue the outer route through that boundary.
- *
- * Complex selector branches inside `:is(...)` or selector lists are treated as
- * alternate branch routes. Matching may succeed inside one branch, but the
- * outer route cannot continue leftward through that branch unless that branch
- * itself was consumed end-to-end.
- */
-function selectorMatchUncached(
-  find: Selector,
-  target: Selector,
-  parent: Selector | undefined,
-  context: SelectorMatchContext
-): SelectorMatchState {
-  const evalContext = context.evalContext;
-
-  if (isNode(find, N.SelectorList)) {
-    const result = emptySelectorMatchState();
-
-    for (let i = 0; i < (find as SelectorList).get('value').length; i++) {
-      const nested = selectorMatchInternal((find as SelectorList).get('value')[i]!, target, parent, context);
-      result.fullMatch ||= nested.fullMatch;
-      result.partialMatch ||= nested.partialMatch;
-      result.crossesAmpersand ||= nested.crossesAmpersand;
-      pushMatches(result.matches, nested.matches);
-    }
-
-    return finalizeMatchState(result, context.evalContext);
-  }
-
-  if (
-    isNode(find, N.PseudoSelector)
-    && find.get('name') !== ':is'
-    && isNode(find.get('arg'), N.Selector)
-  ) {
-    if (isSearchablePseudoBoundary(target)) {
-      if (find.get('name') !== target.get('name')) {
-        return emptySelectorMatchState();
-      }
-
-      return selectorMatchInternal(find.get('arg') as Selector, target.get('arg') as Selector, parent, context);
-    }
-
-    const nested = selectorMatchInternal(find.get('arg') as Selector, target, parent, context);
-    if (!nested.partialMatch) {
-      return nested;
-    }
-
-    const matches = new Array<SelectorMatchLocation>(nested.matches.length);
-    for (let i = 0; i < nested.matches.length; i++) {
-      const match = nested.matches[i]!;
-      matches[i] = {
-        startIndex: match.startIndex,
-        endIndex: match.endIndex,
-        containingNode: find.get('arg') as Node,
-        exact: false,
-        consumedTarget: false,
-        ampersandCrossings: cloneAmpersandCrossings(match.ampersandCrossings)
-      };
-    }
-
-    return {
-      fullMatch: false,
-      partialMatch: true,
-      crossesAmpersand: matches.some(locationCrossesAmpersand),
-      matches
-    };
-  }
-
-  const findValue = selectorValueOf(find, evalContext);
-  if (isNode(target, N.SelectorList)) {
-    for (let i = 0; i < (target as SelectorList).get('value').length; i++) {
-      const sel = (target as SelectorList).get('value')[i]!;
-      if (findValue === selectorValueOf(sel, evalContext)) {
-        return {
-          fullMatch: true,
-          partialMatch: true,
-          crossesAmpersand: sel.hasFlag(F_AMPERSAND),
-          matches: [{
-            startIndex: i,
-            endIndex: i,
-            matchedIndices: [i],
-            containingNode: target,
-            exact: true,
-            consumedTarget: (target as SelectorList).get('value').length === 1,
-            ampersandCrossings: getLocationAmpersandCrossings({
-              startIndex: i,
-              endIndex: i,
-              matchedIndices: [i],
-              containingNode: target,
-              exact: true,
-              consumedTarget: (target as SelectorList).get('value').length === 1
-            }, evalContext)
-          }]
-        };
-      }
-
-      const nested = selectorMatchInternal(find, sel, parent, context);
-      if (nested.partialMatch) {
-        return {
-          fullMatch: nested.fullMatch,
-          partialMatch: true,
-          crossesAmpersand: nested.crossesAmpersand || sel.hasFlag(F_AMPERSAND),
-          matches: [{
-            startIndex: i,
-            endIndex: i,
-            matchedIndices: [i],
-            containingNode: target,
-            exact: nested.fullMatch,
-            consumedTarget: nested.fullMatch && (target as SelectorList).get('value').length === 1,
-            ampersandCrossings: cloneAmpersandCrossings(nested.matches[0]?.ampersandCrossings)
-          }]
-        };
-      }
-    }
-    return emptySelectorMatchState();
-  } else {
-    if (findValue === selectorValueOf(target, evalContext)) {
-      return {
-        fullMatch: true,
-        partialMatch: true,
-        crossesAmpersand: target.hasFlag(F_AMPERSAND),
-        matches: [{
-          containingNode: target,
-          exact: true,
-          consumedTarget: true,
-          ampersandCrossings: getLocationAmpersandCrossings({
-            containingNode: target,
-            exact: true,
-            consumedTarget: true
-          }, evalContext)
-        }]
-      };
-    }
-  }
-
-  if (
-    !parent
-    && find.keySetLibrary
-    && target.keySetLibrary
-  ) {
-    if (evalContext) {
-      if (safeIsDisjoint(find.getKeySet(evalContext), target.getKeySet(evalContext))) {
-        return emptySelectorMatchState();
+    } else if (isFromBareIsCompound) {
+      // The original `:is(...)` lived inside a CompoundSelector position. Replace that slot with the
+      // alternative selector's components where possible.
+      if (isNode(alternative, N.ComplexSelector)) {
+        newComponents.splice(isIndex, 1, ...alternative.value);
+      } else {
+        newComponents[isIndex] = alternative as any;
       }
     } else {
-      if (
-        !find.hasFlag(F_AMPERSAND)
-        && target.hasFlag(F_AMPERSAND)
-        && safeIsDisjoint(find.visibleKeySet, target.visibleKeySet)
-      ) {
-        return emptySelectorMatchState();
-      }
-      if (
-        !safeIsDisjoint(find.requiredKeySet, find.keySet)
-        && safeIsDisjoint(find.requiredKeySet, target.keySet)
-      ) {
-        return emptySelectorMatchState();
-      }
+      newComponents[isIndex] = alternative as any; // Replace :is() with the alternative
     }
-  }
+    results.push(new ComplexSelector(newComponents).inherit(complexSelector));
+  });
 
-  const findPlan = getSelectorMatchPlan(find, undefined, evalContext);
-  if (findPlan.kind !== 'route' || findPlan.units.length === 0) {
-    return emptySelectorMatchState();
-  }
-  const groupMatchCache: GroupMatchCache = new WeakMap();
-
-  const matchParentRoute = (
-    routePlan: RouteMatchPlan,
-    parentPlan: MatchPlan
-  ): SelectorMatchState => {
-    const result = emptySelectorMatchState();
-    const routeUnits = routePlan.units;
-    const findUnits = findPlan.units;
-
-    if (routeUnits.length === 0) {
-      return result;
-    }
-
-    const boundaryTailUnits = getBoundaryTailUnits(routePlan);
-    const boundaryTailLength = boundaryTailUnits.length;
-    const findLength = findUnits.length;
-    const matchedAll = (
-      findLength <= boundaryTailLength
-      && matchUnitWindow(
-        findUnits,
-        0,
-        boundaryTailUnits,
-        boundaryTailLength - findLength,
-        findLength,
-        groupMatchCache,
-        context,
-        parent
-      ).matched
-    );
-
-    if (matchedAll || boundaryTailLength > findLength) {
-      return result;
-    }
-
-    const targetBoundaryMatch = matchUnitWindow(
-      findUnits,
-      findLength - boundaryTailLength,
-      boundaryTailUnits,
-      0,
-      boundaryTailLength,
-      groupMatchCache,
-      context,
-      parent
-    );
-
-    if (!targetBoundaryMatch.matched) {
-      return result;
-    }
-
-    const remainingFindLength = findLength - boundaryTailLength;
-    if (remainingFindLength === 0) {
-      return result;
-    }
-
-    const matchParentPlan = (plan: MatchPlan): void => {
-      if (plan.kind === 'list') {
-        for (let i = 0; i < plan.alternates.length; i++) {
-          matchParentPlan(plan.alternates[i]!);
-        }
-        return;
-      }
-
-      const parentUnits = plan.units;
-      if (parentUnits.length < remainingFindLength) {
-        return;
-      }
-
-      const parentMatch = matchUnitWindow(
-        findUnits,
-        0,
-        parentUnits,
-        parentUnits.length - remainingFindLength,
-        remainingFindLength,
-        groupMatchCache,
-        context
-      );
-
-      if (!parentMatch.matched) {
-        return;
-      }
-
-      const exact = (
-        parentMatch.exact
-        && targetBoundaryMatch.exact
-        && remainingFindLength === parentUnits.length
-      );
-      const firstTargetUnit = boundaryTailUnits[0]!;
-      const lastTargetUnit = boundaryTailUnits[boundaryTailLength - 1]!;
-      const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
-      const lastParentUnit = parentUnits[parentUnits.length - 1]!;
-      const leadingAmpersand = hasLeadingAmpersandBoundary(routePlan.selector)
-        ? (routePlan.selector as ComplexSelector).value[0]
-        : undefined;
-      const ampersandCrossings: SelectorMatchAmpersandCrossing[] = [{
-        ampersandNode: leadingAmpersand,
-        targetSegment: {
-          containingNode: routePlan.selector,
-          startIndex: firstTargetUnit.index,
-          endIndex: lastTargetUnit.index
-        },
-        parentSegment: {
-          containingNode: plan.selector,
-          startIndex: firstParentUnit.index,
-          endIndex: lastParentUnit.index
-        }
-      }];
-
-      if (isNode(routePlan.selector, N.CompoundSelector) || isNode(routePlan.selector, N.ComplexSelector)) {
-        result.matches.push({
-          startIndex: 0,
-          endIndex: (routePlan.selector as CompoundSelector | ComplexSelector).get('value').length - 1,
-          containingNode: routePlan.selector,
-          exact,
-          crossesAmpersand: true,
-          consumedTarget: !!exact,
-          ampersandCrossings
-        });
-        return;
-      }
-
-      result.matches.push({
-        containingNode: routePlan.selector,
-        exact,
-        crossesAmpersand: true,
-        consumedTarget: !!exact,
-        ampersandCrossings
-      });
-    };
-
-    matchParentPlan(parentPlan);
-    return finalizeMatchState(result, context.evalContext);
-  };
-
-  const pushMidRouteAmpersandMatches = (
-    matches: SelectorMatchLocation[],
-    routePlan: RouteMatchPlan
-  ): void => {
-    const routeUnits = routePlan.units;
-    const findUnits = findPlan.units;
-
-    const pushMatchesForResolvedPlan = (
-      plan: MatchPlan,
-      ampStart: number,
-      ampUnit: MatchPlanUnit & { kind: 'group' },
-      tailLength: number,
-      tailMatch: MatchWindowResult
-    ): void => {
-      if (plan.kind === 'list') {
-        for (let i = 0; i < plan.alternates.length; i++) {
-          pushMatchesForResolvedPlan(plan.alternates[i]!, ampStart, ampUnit, tailLength, tailMatch);
-        }
-        return;
-      }
-
-      const remainingFindLength = findUnits.length - tailLength;
-      if (remainingFindLength <= 0) {
-        return;
-      }
-
-      const parentUnits = plan.units;
-      if (parentUnits.length < remainingFindLength) {
-        return;
-      }
-
-      const parentMatch = matchUnitWindow(
-        findUnits,
-        0,
-        parentUnits,
-        parentUnits.length - remainingFindLength,
-        remainingFindLength,
-        groupMatchCache,
-        context
-      );
-      if (!parentMatch.matched) {
-        return;
-      }
-
-      const tailEndUnit = routeUnits[ampStart + tailLength] ?? routeUnits[routeUnits.length - 1]!;
-      const firstParentUnit = parentUnits[parentUnits.length - remainingFindLength]!;
-      const lastParentUnit = parentUnits[parentUnits.length - 1]!;
-      const exact = (
-        ampStart === 0
-        && ampStart + tailLength === routeUnits.length - 1
-        && remainingFindLength === parentUnits.length
-        && parentMatch.exact
-        && tailMatch.exact
-      );
-
-      matches.push({
-        startIndex: ampUnit.index,
-        endIndex: tailEndUnit.index,
-        containingNode: routePlan.selector,
-        exact,
-        crossesAmpersand: true,
-        consumedTarget: !!exact,
-        ampersandCrossings: [{
-          ampersandNode: ampUnit.node,
-          targetSegment: {
-            containingNode: routePlan.selector,
-            startIndex: ampUnit.index,
-            endIndex: tailEndUnit.index
-          },
-          parentSegment: {
-            containingNode: plan.selector,
-            startIndex: firstParentUnit.index,
-            endIndex: lastParentUnit.index
-          }
-        }]
-      });
-    };
-
-    for (let ampStart = 0; ampStart < routeUnits.length - 1; ampStart++) {
-      const ampUnit = routeUnits[ampStart]!;
-      if (!(ampUnit.kind === 'group' && isNode(ampUnit.node, N.Ampersand))) {
-        continue;
-      }
-
-      const resolved = ampUnit.node.getResolvedSelector(evalContext) ?? parent;
-      if (!resolved || isNode(resolved, N.Nil)) {
-        continue;
-      }
-
-      const resolvedPlan = getSelectorMatchPlan(resolved as Selector, undefined, evalContext);
-      const maxTailLength = Math.min(
-        routeUnits.length - (ampStart + 1),
-        findUnits.length - 1
-      );
-
-      for (let tailLength = 1; tailLength <= maxTailLength; tailLength++) {
-        const tailMatch = matchUnitWindow(
-          findUnits,
-          findUnits.length - tailLength,
-          routeUnits,
-          ampStart + 1,
-          tailLength,
-          groupMatchCache,
-          context,
-          parent
-        );
-        if (!tailMatch.matched) {
-          continue;
-        }
-
-        pushMatchesForResolvedPlan(resolvedPlan, ampStart, {
-          ...ampUnit,
-          kind: 'group'
-        }, tailLength, tailMatch);
-      }
-    }
-  };
-
-  const matchTargetRoute = (
-    routePlan: RouteMatchPlan,
-    parentPlan?: MatchPlan
-  ): SelectorMatchState => {
-    const result = emptySelectorMatchState();
-    const routeUnits = routePlan.units;
-    const findUnits = findPlan.units;
-    const singleFindGroup = findUnits.length === 1 && findUnits[0]!.kind === 'group'
-      ? findUnits[0]!
-      : undefined;
-    const suppressAmbiguousBranchLocations = findUnits.length > 0 && routePlan.selector !== find
-      ? findPlan.hasAmbiguousBranchTail
-      : findPlan.hasAmbiguousBranchTail;
-
-    if (routeUnits.length >= findUnits.length) {
-      const lastStart = routeUnits.length - findUnits.length;
-
-      for (let start = 0; start <= lastStart; start++) {
-        let exact = start === 0 && routeUnits.length === findUnits.length;
-        const windowMatch = matchUnitWindow(
-          findUnits,
-          0,
-          routeUnits,
-          start,
-          findUnits.length,
-          groupMatchCache,
-          context,
-          parent
-        );
-        let matched = windowMatch.matched;
-        exact &&= windowMatch.exact;
-
-        if (!matched) {
-          continue;
-        }
-
-        if (
-          parent
-          && findUnits.length === 1
-          && routeUnits.length > 1
-          && routeUnits[start]?.kind === 'group'
-          && isNode(routeUnits[start]!.node, N.Ampersand)
-        ) {
-          continue;
-        }
-
-        if (singleFindGroup) {
-          const targetUnit = routeUnits[start]!;
-          if (targetUnit.kind === 'group') {
-            const groupLocations = collectGroupMatchLocations(
-              targetUnit.node,
-              singleFindGroup.group,
-              parent,
-              evalContext
-            );
-            for (let i = 0; i < groupLocations.length; i++) {
-              const location = groupLocations[i]!;
-              result.matches.push({
-                ...location,
-                exact: exact && location.exact,
-                consumedTarget: !!location.consumedTarget,
-                ampersandCrossings: cloneAmpersandCrossings(location.ampersandCrossings)
-              });
-            }
-            continue;
-          }
-        }
-
-        if (!windowMatch.exact && suppressAmbiguousBranchLocations) {
-          result.partialMatch = true;
-          continue;
-        }
-
-        result.matches.push({
-          startIndex: routeUnits[start]!.index,
-          endIndex: routeUnits[start + findUnits.length - 1]!.index,
-          containingNode: routePlan.selector as Node,
-          exact,
-          consumedTarget: !!exact
-        });
-      }
-    }
-
-    pushMidRouteAmpersandMatches(result.matches, routePlan);
-
-    if (parentPlan) {
-      pushMatches(result.matches, matchParentRoute(routePlan, parentPlan).matches);
-    }
-
-    return finalizeMatchState(result, context.evalContext);
-  };
-
-  const matchTargetPlan = (
-    plan: MatchPlan,
-    parentPlan?: MatchPlan
-  ): SelectorMatchState => {
-    if (plan.kind === 'route') {
-      return matchTargetRoute(plan, parentPlan);
-    }
-
-    const result = emptySelectorMatchState();
-    for (let i = 0; i < plan.alternates.length; i++) {
-      const match = matchTargetPlan(plan.alternates[i]!, parentPlan);
-      pushMatches(result.matches, match.matches);
-    }
-
-    return finalizeMatchState(result, context.evalContext);
-  };
-
-  const parentPlan = parent ? getSelectorMatchPlan(parent, undefined, evalContext) : undefined;
-  const result = matchTargetPlan(getSelectorMatchPlan(target, parent, evalContext), parentPlan);
-  pushNestedPseudoMatches(find, target, result.matches, context);
-  if (!result.partialMatch && result.matches.length === 0) {
-    pushNestedBranchMatches(find, target, result.matches, context, parent);
-  }
-  return finalizeMatchState(result, context.evalContext);
+  return results;
 }
 
-function selectorMatchInternal(
-  find: Selector,
+/**
+ * Expands any selector that might contain :is() into equivalent forms for comparison
+ */
+export function expandSelectorWithIs(selector: Selector): Selector[] {
+  if (isNode(selector, N.ComplexSelector)) {
+    return expandComplexSelectorWithIs(selector);
+  }
+
+  // For other types, check if they need expansion
+  if (isNode(selector, N.CompoundSelector)) {
+    const expansions = expandCompoundWithPseudoSelectors(selector);
+    return expansions.length > 1 ? expansions : [selector];
+  }
+
+  return [selector]; // No expansion needed
+}
+
+/**
+ * Creates a standardized path representation for selector tree navigation
+ * Eliminates duplicate path building logic
+ */
+export function buildSelectorPath(
+  basePath: Array<string | number>,
+  ...segments: Array<string | number>
+): Array<string | number> {
+  return [...basePath, ...segments];
+}
+
+/**
+ * Checks if two complex selectors are equivalent using the original algorithm
+ * Preserves exact combinator and component matching logic from find-extendable-locations.ts
+ */
+export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
+  if (a.value.length !== b.value.length) {
+    return false;
+  }
+
+  // Check each component matches
+  for (let i = 0; i < a.value.length; i++) {
+    const aComp = a.value[i];
+    const bComp = b.value[i];
+
+    if (!aComp || !bComp) {
+      return false;
+    }
+
+    // Both must be same type
+    if (isNode(aComp, N.Combinator) && isNode(bComp, N.Combinator)) {
+      if (aComp.value !== bComp.value) {
+        return false;
+      }
+    } else if (!isNode(aComp, N.Combinator) && !isNode(bComp, N.Combinator)) {
+      // Both are selectors - check equivalence
+      if (isNode(aComp, N.CompoundSelector) && isNode(bComp, N.CompoundSelector)) {
+        if (!areCompoundSelectorsEquivalent(aComp, bComp)) {
+          return false;
+        }
+      } else if (isNode(aComp, N.PseudoSelector) && aComp.value.name === ':is' && aComp.value.arg && isSelector(aComp.value.arg)) {
+        // Allow `:is(.a, .b)` to match `.a` (or any selector in its arg list) for complex selector equivalence.
+        const arg = aComp.value.arg as Selector;
+        if (isNode(arg, N.SelectorList)) {
+          const matchesAny = arg.value.some(sel => sel.valueOf() === bComp.valueOf());
+          if (!matchesAny) {
+            return false;
+          }
+        } else {
+          if (arg.valueOf() !== bComp.valueOf()) {
+            return false;
+          }
+        }
+      } else if (isNode(bComp, N.PseudoSelector) && bComp.value.name === ':is' && bComp.value.arg && isSelector(bComp.value.arg)) {
+        // Symmetric case: allow `.a` to match `:is(.a, .b)`
+        const arg = bComp.value.arg as Selector;
+        if (isNode(arg, N.SelectorList)) {
+          const matchesAny = arg.value.some(sel => sel.valueOf() === aComp.valueOf());
+          if (!matchesAny) {
+            return false;
+          }
+        } else {
+          if (arg.valueOf() !== aComp.valueOf()) {
+            return false;
+          }
+        }
+      } else if (aComp.valueOf() !== bComp.valueOf()) {
+        return false;
+      }
+    } else {
+      // One is combinator, other is not
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Checks if two selectors are structurally equal (same type and content)
+ * This is different from valueOf() comparison which might do normalization
+ */
+export function isStructurallyEqual(a: Selector, b: Selector): boolean {
+  // For pseudo-selectors, compare name and arguments first (before basic selector check)
+  if (isNode(a, N.PseudoSelector) && isNode(b, N.PseudoSelector)) {
+    if (a.value.name !== b.value.name) {
+      return false;
+    }
+
+    const aArg = a.value.arg;
+    const bArg = b.value.arg;
+
+    // Both have no args
+    if (!aArg && !bArg) {
+      return true;
+    }
+
+    // One has arg, other doesn't
+    if (!aArg || !bArg) {
+      return false;
+    }
+
+    // Both have args - compare them recursively
+    if (isSelector(aArg) && isSelector(bArg)) {
+      return isStructurallyEqual(aArg as Selector, bArg as Selector);
+    }
+
+    // Fallback to valueOf comparison for other arg types (non-selector nodes)
+    return aArg.valueOf() === bArg.valueOf();
+  }
+
+  // For basic selectors (div, .foo, #bar) and other simple selectors, use valueOf comparison
+  if (isNode(a, N.SimpleSelector) && isNode(b, N.SimpleSelector)) {
+    return a.valueOf() === b.valueOf();
+  }
+
+  // For other selector types, use valueOf as fallback
+  // This handles compound, complex, and selector list comparisons
+  if (isNode(a, N.CompoundSelector) || isNode(a, N.ComplexSelector) || isNode(a, N.SelectorList)) {
+    return a.valueOf() === b.valueOf();
+  }
+
+  // Default fallback
+  return false;
+}
+
+// ============================================================================
+// findExtendableLocations and dependencies (moved from find-extendable-locations.ts to break circular dependency)
+// ============================================================================
+
+/**
+ * Represents a location within a selector tree where a target can be extended
+ */
+export interface ExtendLocation {
+  /** Path to the extendable location within the selector tree */
+  path: Array<string | number>;
+  /** Index within a selector list if applicable */
+  targetIndex?: number;
+  /** The actual selector node that matched */
+  matchedNode: Selector;
+  /** Context about what type of extension this enables */
+  extensionType: 'replace' | 'append' | 'wrap';
+  /** The parent node containing the match (for reconstruction) */
+  parentNode?: Selector;
+  /** Whether this was a partial match (for compound selectors) */
+  isPartialMatch?: boolean;
+  /** Remainder selectors after partial match */
+  remainders?: Selector[];
+  /**
+   * When find is a contiguous subset of a compound target, [start, end) indices to wrap as one.
+   * Enables :is(.a.b, .q).c for target .a.b.c and find .a.b.
+   */
+  contiguousCompoundRange?: [number, number];
+  /**
+   * When find is a (possibly non-contiguous) subset of a compound target, indices in target that match find in order.
+   * Enables :is(.a.b, .q).c for target .a.c.b and find .a.b (indices [0, 2]).
+   */
+  compoundMatchIndices?: number[];
+  /**
+   * When find matches a segment of a complex target, [start, end) indices in target.value.
+   * Enables div + :is(.a.c.b > .y.x, .q) for target "div + .a.c.b > .y.x" and find ".a.b > .x".
+   */
+  complexMatchRange?: [number, number];
+  /** Semantic scope of the match */
+  matchScope?: MatchScope;
+}
+
+export type MatchScope = 'root' | 'selectorList' | 'isArgument';
+
+function inferMatchScope(path: Array<string | number>, matchedNode: Selector): MatchScope {
+  if (path.includes('arg')) {
+    return 'isArgument';
+  }
+  if (isNode(matchedNode, N.SelectorList)) {
+    return 'selectorList';
+  }
+  return 'root';
+}
+
+function withMatchScope(location: ExtendLocation): ExtendLocation {
+  if (location.matchScope) {
+    return location;
+  }
+  location.matchScope = inferMatchScope(location.path, location.matchedNode);
+  return location;
+}
+
+/**
+ * Result of searching for extendable locations
+ */
+export interface ExtendSearchResult {
+  locations: ExtendLocation[];
+  hasMatches: boolean;
+  /** True when the entire target selector is equivalent to find (whole match, not a segment). */
+  hasWholeMatch: boolean;
+  /** Performance metrics for debugging */
+  metrics?: {
+    fastRejections: number;
+    fastPathHits: number;
+    fullSearches: number;
+  };
+}
+
+// Performance optimization: Pre-allocated result cache
+const EXACT_MATCH_CACHE = new WeakMap<Selector, ExtendLocation[]>();
+// General search result cache: WeakMap<target, Map<find, ExtendSearchResult>>
+const SEARCH_RESULT_CACHE = new WeakMap<Selector, Map<Selector, ExtendSearchResult>>();
+const EMPTY_LOCATIONS: ExtendLocation[] = [];
+
+/**
+ * Enhanced selector matching with 7-layer optimization system from matchSelectors
+ * Recursively searches a selector tree to find all locations where a target selector appears
+ * This is designed specifically for extend use cases with maximum performance
+ *
+ * @param target - The selector tree to search within
+ * @param find - The selector pattern to find
+ * @returns ExtendSearchResult with all found locations and performance optimizations
+ */
+export function findExtendableLocations(
   target: Selector,
-  parent: Selector | undefined,
-  context: SelectorMatchContext
-): SelectorMatchState {
-  if (parent) {
-    return selectorMatchUncached(find, target, parent, context);
+  find: Selector
+): ExtendSearchResult {
+  // Check general search result cache first
+  let targetCache = SEARCH_RESULT_CACHE.get(target);
+  if (targetCache) {
+    const cached = targetCache.get(find);
+    if (cached) {
+      return cached;
+    }
+  } else {
+    targetCache = new Map<Selector, ExtendSearchResult>();
+    SEARCH_RESULT_CACHE.set(target, targetCache);
   }
 
-  let findCache = context.pairCache.get(find);
-  if (!findCache) {
-    findCache = new WeakMap<Selector, SelectorMatchState>();
-    context.pairCache.set(find, findCache);
+  const locations: ExtendLocation[] = [];
+  const metrics = { fastRejections: 0, fastPathHits: 0, fullSearches: 0 };
+
+  // OPTIMIZATION 1: Exact match cache for identical selectors
+  const targetValue = target.valueOf();
+  const findValue = find.valueOf();
+  if (targetValue === findValue) {
+    const cached = EXACT_MATCH_CACHE.get(target);
+    if (cached) {
+      const result = { locations: cached, hasMatches: cached.length > 0, hasWholeMatch: true, metrics };
+      targetCache.set(find, result);
+      return result;
+    }
+
+    // Cache the exact match result
+    const exactLocation: ExtendLocation = withMatchScope({
+      path: [],
+      matchedNode: target,
+      extensionType: 'replace'
+    });
+    EXACT_MATCH_CACHE.set(target, [exactLocation]);
+    const result = { locations: [exactLocation], hasMatches: true, hasWholeMatch: true, metrics };
+    targetCache.set(find, result);
+    return result;
   }
 
-  const cached = findCache.get(target);
-  if (cached) {
-    return cached;
+  // OPTIMIZATION 2: BitSet fast rejection - bail early for impossible matches
+  if (target._keyBits && find._keyBits && isDisjoint(target._keyBits, find._keyBits)) {
+    metrics.fastRejections++;
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
+    targetCache.set(find, result);
+    return result;
+  } else if (!target._keyBits && target.keySet && find.keySet
+    && target.keySet.isDisjointFrom(find.keySet)
+    && target.canFastReject && find.canFastReject) {
+    metrics.fastRejections++;
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
+    targetCache.set(find, result);
+    return result;
   }
 
-  const result = selectorMatchUncached(find, target, undefined, context);
-  findCache.set(target, result);
+  // OPTIMIZATION 3: RequiredKeyBits subset rejection for partial matching
+  if (find._requiredKeyBits && target._keyBits && !isSubsetOf(find._requiredKeyBits, target._keyBits)) {
+    metrics.fastRejections++;
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
+    targetCache.set(find, result);
+    return result;
+  } else if (!find._requiredKeyBits && find.canFastReject && target.keySet && find.keySet
+    && !find.keySet.isSubsetOf(target.keySet)) {
+    metrics.fastRejections++;
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
+    targetCache.set(find, result);
+    return result;
+  }
+
+  // OPTIMIZATION 4: Fast path for common selector patterns - runs first and skips slow path when successful
+  // Special case: Handle SelectorList in find parameter regardless of canFastReject
+  if (isNode(find, N.SelectorList)) {
+    // Check if target matches any item in the find list
+    for (let i = 0; i < find.value.length; i++) {
+      const listItem = find.value[i]!;
+      const result = findExtendableLocations(target, listItem);
+      if (result.hasMatches) {
+        targetCache.set(find, result);
+        return result;
+      }
+    }
+    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
+    targetCache.set(find, result);
+    return result;
+  }
+
+  if ((target._requiredKeyBits && find._requiredKeyBits) || (target.canFastReject && find.canFastReject)) {
+    const fastPathResult = tryFastPathExtendMatch(target, find, []);
+    if (fastPathResult && fastPathResult.length > 0) {
+      metrics.fastPathHits++;
+      const hasWholeMatch = fastPathResult.some(loc => loc.path.length === 0 && loc.matchedNode === target);
+      const result = { locations: fastPathResult, hasMatches: true, hasWholeMatch, metrics };
+      targetCache.set(find, result);
+      return result;
+    }
+  }
+
+  // Full recursive search with optimizations - only when fast path fails
+  metrics.fullSearches++;
+  searchWithinSelector(target, find, [], locations);
+
+  const hasWholeMatch = locations.some(loc => loc.path.length === 0 && loc.matchedNode === target);
+  const result = {
+    locations,
+    hasMatches: locations.length > 0,
+    hasWholeMatch,
+    metrics
+  };
+  targetCache.set(find, result);
   return result;
 }
 
 /**
- * Finds all occurrences of `find` inside `target`.
- *
- * Matching is ordered at the route level, unordered only inside a single
- * compound-like position, and branches only at `SelectorList` alternatives.
- *
- * When `parent` is provided, it acts like an implicit prefix context joined to
- * `target` by a descendant combinator. Parent traversal is attempted only when
- * a match reaches a left-side ampersand boundary with partial-but-incomplete
- * progress; matches that exist only inside the parent do not get added on
- * their own.
- *
- * Complex selector branches inside `:is(...)` or selector lists are treated as
- * alternate branch routes. Matching may succeed inside one branch, but the
- * outer route cannot continue leftward through that branch unless that branch
- * itself was consumed end-to-end.
- *
- * The matcher uses normalized `valueOf()` and selector key-set fast paths only
- * as cheap equality / rejection signals. They are not shape-preserving and
- * should not be used by callers to infer the structural rewrite shape of a
- * successful match.
+ * Whether a ruleset's selector matches an extend target. Encapsulates all extend matching
+ * semantics (keySet subset, valueOf early exit, partial vs exact). Extend-roots should
+ * only decide which rulesets are visible; they hand off to this to determine matches.
  */
-export function selectorMatch(
-  find: Selector,
+export function selectorMatchesExtendTarget(
+  selector: Selector,
   target: Selector,
-  parent?: Selector,
-  evalContext?: EvalContext
-): SelectorMatchState {
-  return selectorMatchInternal(find, target, parent, {
-    pairCache: new WeakMap(),
-    evalContext
+  partial: boolean
+): boolean {
+  if (target._keyBits && selector._keyBits) {
+    if (!isSubsetOf(target._keyBits, selector._keyBits)) {
+      return false;
+    }
+  } else {
+    const keySet = target.keySet instanceof Set ? target.keySet : (target.keySet ? new Set(target.keySet) : undefined);
+    if (keySet?.size && 'keySet' in selector && selector.keySet) {
+      for (const k of keySet) {
+        if (!selector.keySet.has(k as string)) {
+          return false;
+        }
+      }
+    }
+  }
+  const targetValue = target.valueOf();
+  if (typeof selector.valueOf === 'function' && selector.valueOf() === targetValue) {
+    return true;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    return (selector as SelectorList).value.some((item: Selector) => {
+      const comparison = selectorCompare(item, target);
+      return partial ? comparison.locations.length > 0 : comparison.hasWholeMatch;
+    });
+  }
+  const comparison = selectorCompare(selector, target);
+  return partial ? comparison.locations.length > 0 : comparison.hasWholeMatch;
+}
+
+/**
+ * OPTIMIZATION 4: Fast path extend matching for common patterns
+ * Handles the most frequent selector types in typical stylesheets with optimized logic
+ * Now comprehensive enough to skip slow path for most common cases
+ */
+function tryFastPathExtendMatch(
+  target: Selector,
+  find: Selector,
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  // Fast path 1: Exact match (most common case)
+  if (target.valueOf() === find.valueOf()) {
+    return [withMatchScope({
+      path: [...basePath],
+      matchedNode: target,
+      extensionType: determineExtensionType(target, basePath)
+    })];
+  }
+
+  // Fast path 2: Simple selector to simple selector (.foo === .foo)
+  if (isNode(target, N.SimpleSelector) && isNode(find, N.SimpleSelector)) {
+    // Handle pseudo-selectors with selector arguments using enhanced equivalence
+    if (isNode(target, N.PseudoSelector) && isNode(find, N.PseudoSelector)
+      && target.value.name === find.value.name
+      && target.value.arg && isSelector(target.value.arg)
+      && find.value.arg && isSelector(find.value.arg)) {
+      // Same pseudo-selector name with selector args - check if args are equivalent
+      if (areSelectorArgumentsEquivalent(target.value.arg as Selector, find.value.arg as Selector)) {
+        return [withMatchScope({
+          path: [...basePath],
+          matchedNode: target,
+          extensionType: determineExtensionType(target, basePath)
+        })];
+      }
+      return [];
+    }
+
+    if (target.valueOf() === find.valueOf()) {
+      return [withMatchScope({
+        path: [...basePath],
+        matchedNode: target,
+        extensionType: determineExtensionType(target, basePath)
+      })];
+    }
+    return [];
+  }
+
+  // Fast path 3: Compound selector containing simple target (.foo.bar contains .foo)
+  if (isNode(target, N.CompoundSelector) && isNode(find, N.SimpleSelector) && target.value.length <= 4) {
+    // Skip pseudo-selectors with Selector arguments
+    if (isNode(find, N.PseudoSelector) && find.value.arg && isSelector(find.value.arg)) {
+      return null;
+    }
+
+    const findVal = find.valueOf();
+    const locations: ExtendLocation[] = [];
+
+    for (let i = 0; i < target.value.length; i++) {
+      if (target.value[i]!.valueOf() === findVal) {
+        // Found exact match - this enables partial replacement
+        const remainderComponents = target.value.filter((_: any, idx: any) => idx !== i);
+        const remainders = remainderComponents.length === 0
+          ? []
+          : remainderComponents.length === 1
+            ? [remainderComponents[0]!]
+            : [new CompoundSelector(remainderComponents).inherit(target)];
+
+        locations.push(withMatchScope({
+          path: [...basePath, i],
+          matchedNode: target,
+          extensionType: determineExtensionType(target, basePath),
+          isPartialMatch: remainders.length > 0,
+          remainders
+        }));
+      }
+    }
+
+    return locations;
+  }
+
+  // Fast path 4: Small compound to compound matching (.a.b === .b.a)
+  if (isNode(target, N.CompoundSelector) && isNode(find, N.CompoundSelector)
+    && target.value.length <= 4 && find.value.length <= 4) {
+    return trySmallCompoundExtendMatch(target, find, basePath);
+  }
+
+  // Fast path 5: When find parameter is a selector list (legacy match-selector behavior)
+  // Handles matchSelectors(target=".a", find=".a,.b") → should match because .a is in the list
+  if (isNode(find, N.SelectorList)) {
+    // Check if target matches any item in the find list
+    for (let i = 0; i < find.value.length; i++) {
+      const listItem = find.value[i]!;
+      const result = tryFastPathExtendMatch(target, listItem, basePath);
+      if (result && result.length > 0) {
+        // Found a match with one of the list items
+        return result;
+      }
+    }
+    return []; // No matches found in list
+  }
+
+  // Fast path 6: Small selector list containing target
+  if (isNode(target, N.SelectorList) && target.value.length <= 3) {
+    const locations: ExtendLocation[] = [];
+    for (let i = 0; i < target.value.length; i++) {
+      const childResult = tryFastPathExtendMatch(target.value[i]!, find, [...basePath, i]);
+      if (childResult) {
+        locations.push(...childResult);
+      }
+    }
+    return locations.length > 0 ? locations : [];
+  }
+
+  // Fast path 7: Complex selector patterns with partial match support
+  if (isNode(target, N.ComplexSelector) && target.value.length <= 7) {
+    // First check for exact complex selector matches
+    if (isNode(find, N.ComplexSelector)) {
+      const eq = areComplexSelectorsEquivalent(target, find);
+      if (eq) {
+        return [withMatchScope({
+          path: [...basePath],
+          matchedNode: target,
+          extensionType: determineExtensionType(target, basePath)
+        })];
+      }
+    }
+
+    // Try partial complex matching
+    if (isNode(find, N.ComplexSelector)) {
+      const partialResult = tryPartialComplexMatch(target, find, basePath);
+      if (partialResult && partialResult.length > 0) {
+        return partialResult;
+      }
+    }
+
+    // Try backtracking match for complex :is() scenarios
+    if (isNode(find, N.ComplexSelector)) {
+      const backtrackResult = tryBacktrackingComplexMatch(target, find, basePath);
+      if (backtrackResult) {
+        return backtrackResult;
+      }
+
+      // Try sequential complex matching with partial compound support
+      const sequentialResult = trySequentialComplexMatch(target, find, basePath);
+      if (sequentialResult) {
+        return sequentialResult;
+      }
+    }
+
+    // Try individual component matching
+    const locations: ExtendLocation[] = [];
+    for (let i = 0; i < target.value.length; i++) {
+      const component = target.value[i];
+      if (component && !isNode(component, N.Combinator)) {
+        const childResult = tryFastPathExtendMatch(component, find, [...basePath, i]);
+        if (childResult) {
+          locations.push(...childResult);
+        }
+      }
+    }
+
+    // Post-process: when find matches one component of a multi-component complex selector,
+    // that is always a partial match (full mode should reject it). Mark ALL such component
+    // matches as partial, not just position 0.
+    if (locations.length > 0 && target.value.length > 1) {
+      for (const location of locations) {
+        const lastSeg = location.path[location.path.length - 1];
+        if (typeof lastSeg === 'number') {
+          // Match is inside a component of this complex selector
+          location.isPartialMatch = true;
+          if (lastSeg === 0) {
+            const remainingComponents = target.value.slice(1);
+            location.remainders = remainingComponents.length === 1 && !isNode(remainingComponents[0], N.Combinator)
+              ? [remainingComponents[0] as Selector]
+              : [new ComplexSelector(remainingComponents).inherit(target)];
+          }
+        }
+      }
+    }
+
+    return locations.length > 0 ? locations : null;
+  }
+
+  return null;
+}
+
+/**
+ * Tries to match partial complex selectors
+ */
+function tryPartialComplexMatch(
+  target: ComplexSelector,
+  find: ComplexSelector,
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  const targetComponents = target.value;
+  const findComponents = find.value;
+
+  if (findComponents.length > targetComponents.length) {
+    return null;
+  }
+
+  // Try to match find at different positions (allow compound superset: .a.c.b contains .a.b)
+  for (let startPos = 0; startPos <= targetComponents.length - findComponents.length; startPos++) {
+    let matches = true;
+    let hasCompoundPartialMatch = false;
+
+    for (let i = 0; i < findComponents.length; i++) {
+      const tComp = targetComponents[startPos + i];
+      const fComp = findComponents[i];
+
+      if (!tComp || !fComp) {
+        matches = false;
+        break;
+      }
+
+      if (isNode(tComp, N.Combinator) && isNode(fComp, N.Combinator)) {
+        if (tComp.value !== fComp.value) {
+          matches = false;
+          break;
+        }
+      } else if (!isNode(tComp, N.Combinator) && !isNode(fComp, N.Combinator)) {
+        let compMatch = componentsMatch(tComp as Selector, fComp as Selector);
+        // Compound superset: target compound can contain find compound as subsequence (.a.c.b contains .a.b)
+        if (!compMatch && isNode(tComp, N.CompoundSelector) && isNode(fComp, N.CompoundSelector)) {
+          compMatch = compoundContainsCompoundSubsequence(tComp, fComp);
+        }
+        // Simple in compound: .x in .y.x
+        if (!compMatch && isNode(tComp, N.CompoundSelector) && isNode(fComp, N.SimpleSelector)) {
+          compMatch = tComp.value.some((c: any) => c.valueOf() === fComp.valueOf());
+        }
+
+        if (compMatch && isNode(tComp, N.CompoundSelector) && isNode(fComp, N.SimpleSelector)) {
+          hasCompoundPartialMatch = true;
+        }
+        if (compMatch && isNode(tComp, N.CompoundSelector) && isNode(fComp, N.CompoundSelector) && tComp.value.length > fComp.value.length) {
+          hasCompoundPartialMatch = true;
+        }
+
+        if (!compMatch) {
+          matches = false;
+          break;
+        }
+      } else {
+        matches = false;
+        break;
+      }
+    }
+
+    if (matches) {
+      // Calculate remainders
+      const beforeComponents = targetComponents.slice(0, startPos);
+      const afterComponents = targetComponents.slice(startPos + findComponents.length);
+      const remainders: Selector[] = [];
+
+      if (beforeComponents.length > 0) {
+        remainders.push(new ComplexSelector(beforeComponents).inherit(target));
+      }
+      if (afterComponents.length > 0) {
+        remainders.push(new ComplexSelector(afterComponents).inherit(target));
+      }
+
+      // Mark as partial if we have remainders OR if there was a compound partial match
+      const isPartialMatch = remainders.length > 0 || hasCompoundPartialMatch;
+
+      const loc: ExtendLocation = {
+        path: [...basePath],
+        matchedNode: target,
+        extensionType: 'replace',
+        isPartialMatch,
+        remainders: remainders.length > 0 ? remainders : undefined
+      };
+      // Segment range for §3a: wrap full segment when match spans combinator
+      if (remainders.length > 0) {
+        loc.complexMatchRange = [startPos, startPos + findComponents.length];
+      }
+      return [withMatchScope(loc)];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Optimized compound selector matching for small compounds
+ */
+function trySmallCompoundExtendMatch(
+  target: CompoundSelector,
+  find: CompoundSelector,
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  // Check for exact equivalence (order-independent)
+  if (areCompoundSelectorsEquivalent(target, find)) {
+    return [withMatchScope({
+      path: [...basePath],
+      matchedNode: target,
+      extensionType: determineExtensionType(target, basePath)
+    })];
+  }
+
+  // Check for subset matching (find is subset of target)
+  if (find.value.length <= target.value.length) {
+    const isSubset = find.value.every((findComp: any) =>
+      target.value.some((targetComp: any) =>
+        compoundComponentMatches(findComp as Selector, targetComp as Selector)
+      )
+    );
+
+    if (isSubset) {
+      // Find contiguous slice [start, end) that matches find in order (for wrap :is(matched, extendWith).rest)
+      const n = find.value.length;
+      let contiguousStart: number | null = null;
+      for (let start = 0; start <= target.value.length - n; start++) {
+        let match = true;
+        for (let j = 0; j < n; j++) {
+          const tComp = target.value[start + j];
+          const fComp = find.value[j];
+          if (!tComp || !fComp) {
+            match = false;
+            break;
+          }
+          if (!compoundComponentMatches(fComp as Selector, tComp as Selector)) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          contiguousStart = start;
+          break;
+        }
+      }
+
+      // Calculate remainder after removing matched components
+      const remainderComponents = target.value.filter((targetComp: any) =>
+        !find.value.some((findComp: any) =>
+          compoundComponentMatches(findComp as Selector, targetComp as Selector)
+        )
+      );
+
+      const remainders = remainderComponents.length === 0
+        ? []
+        : remainderComponents.length === 1
+          ? [remainderComponents[0]!]
+          : [new CompoundSelector(remainderComponents).inherit(target)];
+
+      const loc: ExtendLocation = {
+        path: [...basePath],
+        matchedNode: target,
+        extensionType: determineExtensionType(target, basePath),
+        isPartialMatch: remainders.length > 0,
+        remainders
+      };
+      // When find is a contiguous slice, record range so we can wrap that slice as :is(find, extendWith)
+      if (contiguousStart !== null && remainders.length > 0) {
+        loc.contiguousCompoundRange = [contiguousStart, contiguousStart + n];
+        loc.matchedNode = new CompoundSelector(find.value.slice()).inherit(target) as Selector;
+        loc.extensionType = 'wrap';
+      } else if (remainders.length > 0) {
+        // Non-contiguous: find leftmost subsequence of target indices that matches find in order
+        const matchIndices: number[] = [];
+        let findIdx = 0;
+        for (let i = 0; i < target.value.length && findIdx < find.value.length; i++) {
+          const tComp = target.value[i]!;
+          const fComp = find.value[findIdx]!;
+          if (compoundComponentMatches(fComp as Selector, tComp as Selector)) {
+            matchIndices.push(i);
+            findIdx++;
+          }
+        }
+        if (matchIndices.length === find.value.length) {
+          loc.compoundMatchIndices = matchIndices;
+          loc.matchedNode = new CompoundSelector(find.value.slice()).inherit(target) as Selector;
+          loc.extensionType = 'wrap';
+        }
+      }
+      return [withMatchScope(loc)];
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Enhanced recursive search with :is() backtracking and optimization layers
+ * @param current - Current selector being examined
+ * @param target - Target selector to find
+ * @param currentPath - Current path in the selector tree
+ * @param locations - Array to collect found locations
+ */
+function searchWithinSelector(
+  current: Selector,
+  target: Selector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  // OPTIMIZATION 1: Check for exact match
+  if (current.valueOf() === target.valueOf()) {
+    locations.push(withMatchScope({
+      path: [...currentPath],
+      matchedNode: current,
+      extensionType: determineExtensionType(current, currentPath)
+    }));
+  }
+
+  // OPTIMIZATION 2: Enhanced recursive search with specialized handlers for each selector type
+  if (isNode(current, N.SelectorList)) {
+    searchWithinSelectorList(current, target, currentPath, locations);
+  } else if (isNode(current, N.CompoundSelector)) {
+    searchWithinCompoundSelector(current, target, currentPath, locations);
+  } else if (isNode(current, N.ComplexSelector)) {
+    searchWithinComplexSelector(current, target, currentPath, locations);
+  } else if (isNode(current, N.PseudoSelector)) {
+    // OPTIMIZATION 3: Special handling for :is() pseudo-selectors with backtracking
+    searchWithinPseudoSelector(current, target, currentPath, locations);
+  }
+  // SimpleSelector doesn't have nested content to search
+}
+
+/**
+ * Searches within a selector list
+ */
+function searchWithinSelectorList(
+  selectorList: SelectorList,
+  target: Selector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  selectorList.value.forEach((selector, index) => {
+    searchWithinSelector(selector, target, [...currentPath, index], locations);
   });
+}
+
+/**
+ * Enhanced compound selector search with partial matching support
+ */
+function searchWithinCompoundSelector(
+  compound: CompoundSelector,
+  target: Selector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  // Handle when target is a PseudoSelector - check for equivalent matches
+  if (isNode(target, N.PseudoSelector) && target.value.arg && isSelector(target.value.arg)) {
+    // Look for matching pseudo-selectors within the compound
+    compound.value.forEach((component, index) => {
+      if (isNode(component, N.PseudoSelector) && arePseudoSelectorsEquivalent(component, target)) {
+        locations.push(withMatchScope({
+          path: [...currentPath, index],
+          matchedNode: component,
+          extensionType: 'replace'
+        }));
+      }
+    });
+  }
+
+  // Standard recursive search through each component
+  compound.value.forEach((component, index) => {
+    searchWithinSelector(component, target, [...currentPath, index], locations);
+  });
+
+  // OPTIMIZATION 5: Check for partial matches within compound selectors
+  // This enables extending when target is a subset of the compound
+  if (isNode(target, N.SimpleSelector)) {
+    const targetVal = target.valueOf();
+
+    for (let i = 0; i < compound.value.length; i++) {
+      if (compound.value[i]!.valueOf() === targetVal) {
+        // Found a component that matches target - create partial match
+        // Use unique path with component index to distinguish duplicate components
+        const remainderComponents = compound.value.filter((_, idx) => idx !== i);
+        const remainders = remainderComponents.length === 0
+          ? []
+          : remainderComponents.length === 1
+            ? [remainderComponents[0]!]
+            : [new CompoundSelector(remainderComponents).inherit(compound)];
+
+        locations.push(withMatchScope({
+          path: [...currentPath, i],
+          matchedNode: compound.value[i]!,
+          extensionType: 'replace',
+          isPartialMatch: remainders.length > 0,
+          remainders
+        }));
+      }
+    }
+  }
+
+  // OPTIMIZATION 6: Compound-to-compound partial matching
+  if (isNode(target, N.CompoundSelector) && target.value.length <= compound.value.length) {
+    const isSubset = target.value.every(targetComp =>
+      compound.value.some(compComp =>
+        isNode(targetComp, N.PseudoSelector) && targetComp.value.arg && isSelector(targetComp.value.arg)
+          ? arePseudoSelectorsEquivalent(compComp, targetComp)
+          : compComp.valueOf() === targetComp.valueOf()
+      )
+    );
+
+    if (isSubset) {
+      // Calculate remainder after removing matched components
+      const remainderComponents = compound.value.filter(compComp =>
+        !target.value.some(targetComp =>
+          isNode(targetComp, N.PseudoSelector) && targetComp.value.arg && isSelector(targetComp.value.arg)
+            ? arePseudoSelectorsEquivalent(compComp, targetComp)
+            : compComp.valueOf() === targetComp.valueOf()
+        )
+      );
+
+      const remainders = remainderComponents.length === 0
+        ? []
+        : remainderComponents.length === 1
+          ? [remainderComponents[0]!]
+          : [new CompoundSelector(remainderComponents).inherit(compound)];
+
+      locations.push(withMatchScope({
+        path: [...currentPath],
+        matchedNode: target,
+        extensionType: 'replace',
+        isPartialMatch: remainders.length > 0,
+        remainders
+      }));
+    }
+  }
+}
+
+/**
+ * Enhanced complex selector search with combinator-aware optimizations
+ */
+function searchWithinComplexSelector(
+  complex: ComplexSelector,
+  target: Selector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  const initialLocationCount = locations.length;
+
+  // If we're searching for a ComplexSelector target, allow full structural equivalence (including `:is(...)`).
+  if (isNode(target, N.ComplexSelector)) {
+    const eq = areComplexSelectorsEquivalent(complex, target);
+    if (eq) {
+      locations.push(withMatchScope({
+        path: [...currentPath],
+        matchedNode: complex,
+        extensionType: determineExtensionType(complex, currentPath)
+      }));
+    }
+  }
+
+  complex.value.forEach((component, index) => {
+    // Skip combinators, only search selector components
+    if (!isNode(component, N.Combinator)) {
+      searchWithinSelector(component as Selector, target, [...currentPath, index], locations);
+    }
+  });
+
+  // Post-process: when find matches one component of a multi-component complex selector,
+  // that is always a partial match (full mode should reject it). Mark ALL such component
+  // matches as partial, not just position 0.
+  if (locations.length > initialLocationCount && complex.value.length > 1) {
+    for (let i = initialLocationCount; i < locations.length; i++) {
+      const location = locations[i]!;
+      const lastPathSegment = location.path[location.path.length - 1];
+
+      if (typeof lastPathSegment === 'number') {
+        // Match is inside a component of this complex selector
+        location.isPartialMatch = true;
+        if (lastPathSegment === 0) {
+          const remainingComponents = complex.value.slice(1);
+          if (remainingComponents.length === 1 && !isNode(remainingComponents[0], N.Combinator)) {
+            location.remainders = [remainingComponents[0] as Selector];
+          } else if (remainingComponents.length > 0) {
+            location.remainders = [new ComplexSelector(remainingComponents).inherit(complex)];
+          }
+        }
+      }
+    }
+  }
+
+  // OPTIMIZATION 8: Complex selector pattern matching
+  // Handle common patterns like descendant, child, sibling selectors efficiently
+  if (isNode(target, N.ComplexSelector)) {
+    // Check for structural matches within complex selector patterns
+    // This enables extending complex selectors that contain the target pattern
+    tryComplexSelectorPatternMatch(complex, target, currentPath, locations);
+
+    // Try backtracking match for :is() scenarios
+    const backtrackResult = tryBacktrackingComplexMatch(complex, target, currentPath);
+    if (backtrackResult) {
+      locations.push(...backtrackResult);
+    }
+  }
+}
+
+/**
+ * Attempts to find pattern matches within complex selectors
+ * Handles common CSS combinator patterns with optimized matching
+ */
+function tryComplexSelectorPatternMatch(
+  complex: ComplexSelector,
+  target: ComplexSelector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  // Enhanced pattern matching for cross-boundary matches
+  // Example: .a > .b should match within .a > .b.c
+
+  if (complex.value.length < target.value.length) {
+    return; // Complex selector must be at least as long as target
+  }
+
+  const targetComponents = target.value;
+  const complexComponents = complex.value;
+
+  // Try to match target pattern at different positions within complex selector
+  for (let startPos = 0; startPos <= complexComponents.length - targetComponents.length; startPos++) {
+    let isMatch = true;
+    const remainingComponents: any[] = [];
+
+    // Check if target matches at this position
+    for (let i = 0; i < targetComponents.length; i++) {
+      const targetComp = targetComponents[i];
+      const complexComp = complexComponents[startPos + i];
+
+      if (!targetComp || !complexComp) {
+        isMatch = false;
+        break;
+      }
+
+      if (isNode(targetComp, N.Combinator) && isNode(complexComp, N.Combinator)) {
+        // Both are combinators - must match exactly
+        if (targetComp.value !== complexComp.value) {
+          isMatch = false;
+          break;
+        }
+      } else if (isNode(targetComp, N.Combinator) || isNode(complexComp, N.Combinator)) {
+        // One is combinator, other is not - no match
+        isMatch = false;
+        break;
+      } else {
+        // Both are selector components
+        if (isNode(complexComp, N.CompoundSelector) && !isNode(targetComp, N.CompoundSelector)) {
+          // Complex component is compound, target is simple
+          // Check if target component appears within the compound
+          const foundInCompound = complexComp.value.some(comp =>
+            comp && componentsMatch(comp, targetComp as Selector)
+          );
+          if (foundInCompound) {
+            // Partial match - calculate remainder
+            const remainderComps = complexComp.value.filter(comp =>
+              comp && !componentsMatch(comp, targetComp as Selector)
+            );
+            if (remainderComps.length > 0) {
+              const remainder = remainderComps.length === 1
+                ? remainderComps[0]
+                : CompoundSelector.create(remainderComps).inherit(complexComp);
+              remainingComponents.push(remainder);
+            }
+          } else {
+            isMatch = false;
+            break;
+          }
+        } else if (!componentsMatch(targetComp as Selector, complexComp as Selector)) {
+          isMatch = false;
+          break;
+        }
+      }
+    }
+
+    if (isMatch) {
+      // Found a match! Add remaining components from complex selector
+      const postMatchComponents = complexComponents.slice(startPos + targetComponents.length);
+      remainingComponents.push(...postMatchComponents);
+
+      // Create remainder selector if there are remaining components
+      let remainders: any[] = [];
+      if (remainingComponents.length > 0) {
+        if (remainingComponents.length === 1 && !isNode(remainingComponents[0], N.Combinator)) {
+          remainders = [remainingComponents[0]];
+        } else if (remainingComponents.length > 1) {
+          remainders = [ComplexSelector.create(remainingComponents).inherit(complex)];
+        }
+      }
+
+      locations.push(withMatchScope({
+        path: [...currentPath],
+        matchedNode: target,
+        extensionType: determineExtensionType(complex, currentPath),
+        isPartialMatch: remainders.length > 0,
+        remainders: remainders.length > 0 ? remainders : undefined
+      }));
+
+      // Only find the first match to avoid duplicates
+      return;
+    }
+  }
+}
+
+/**
+ * Add backtracking support for complex :is() scenarios
+ * This handles cases like :is(.a > .b).d > .c matching .a > .b > .c
+ * IMPORTANT: This must preserve combinator sequences for correct matching
+ */
+function trySequentialComplexMatch(
+  target: ComplexSelector,  // what to search within
+  find: ComplexSelector,    // what to find
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  // Don't strip combinators - we need to match the exact sequence
+  const targetComponents = target.value;
+  const findComponents = find.value;
+
+  if (findComponents.length === 0 || targetComponents.length < findComponents.length) {
+    return null;
+  }
+
+  // Try to find a contiguous subsequence match that preserves combinator structure
+  for (let startIdx = 0; startIdx <= targetComponents.length - findComponents.length; startIdx++) {
+    let matches = true;
+
+    // Check if the subsequence starting at startIdx matches the find pattern
+    for (let i = 0; i < findComponents.length; i++) {
+      const targetComp = targetComponents[startIdx + i];
+      const findComp = findComponents[i];
+
+      if (!targetComp || !findComp) {
+        matches = false;
+        break;
+      }
+
+      // Both must be same type (combinator vs selector)
+      if (isNode(targetComp, N.Combinator) !== isNode(findComp, N.Combinator)) {
+        matches = false;
+        break;
+      }
+
+      // If both are combinators, they must match exactly
+      if (isNode(targetComp, N.Combinator) && isNode(findComp, N.Combinator)) {
+        if (targetComp.value !== findComp.value) {
+          matches = false;
+          break;
+        }
+      } else if (!isNode(targetComp, N.Combinator) && !isNode(findComp, N.Combinator)) {
+        // If both are selectors, use existing selector matching logic
+        // But also check for partial compound matching
+        let componentMatches = areSelectorArgumentsEquivalent(targetComp, findComp);
+
+        if (!componentMatches) {
+          // Check for partial compound matching: .b should match within .b.c
+          if (isNode(targetComp, N.CompoundSelector) && isNode(findComp, N.SimpleSelector)) {
+            componentMatches = targetComp.value.some(comp => comp.valueOf() === findComp.valueOf());
+          }
+        }
+
+        if (!componentMatches) {
+          matches = false;
+          break;
+        }
+      }
+    }
+
+    if (matches) {
+      // Calculate what remains before and after the match
+      const beforeComponents = targetComponents.slice(0, startIdx);
+      const afterComponents = targetComponents.slice(startIdx + findComponents.length);
+
+      const remainders: Selector[] = [];
+      if (beforeComponents.length > 0) {
+        remainders.push(new ComplexSelector(beforeComponents).inherit(target));
+      }
+      if (afterComponents.length > 0) {
+        remainders.push(new ComplexSelector(afterComponents).inherit(target));
+      }
+
+      // Check for compound-level remainders within the matched components
+      for (let i = 0; i < findComponents.length; i++) {
+        const targetComp = targetComponents[startIdx + i];
+        const findComp = findComponents[i];
+
+        if (!isNode(targetComp, N.Combinator) && !isNode(findComp, N.Combinator)) {
+          if (isNode(targetComp, N.CompoundSelector) && isNode(findComp, N.SimpleSelector)) {
+            // Check if there's a partial match leaving compound remainders
+            const matchingComponent = targetComp.value.find(comp => comp.valueOf() === findComp.valueOf());
+            if (matchingComponent) {
+              // Calculate remainder components within this compound
+              const compoundRemainders = targetComp.value.filter(comp => comp.valueOf() !== findComp.valueOf());
+              if (compoundRemainders.length > 0) {
+                if (compoundRemainders.length === 1) {
+                  remainders.push(compoundRemainders[0]!);
+                } else {
+                  remainders.push(new CompoundSelector(compoundRemainders).inherit(targetComp));
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const isPartialMatch = remainders.length > 0;
+
+      return [{
+        path: [...basePath],
+        matchedNode: find,
+        extensionType: determineExtensionType(target, basePath),
+        isPartialMatch,
+        remainders: remainders.length > 0 ? remainders : undefined
+      }];
+    }
+  }
+
+  return null;
+}
+
+function tryBacktrackingComplexMatch(
+  target: ComplexSelector,  // what to search within
+  find: ComplexSelector,    // what to find
+  basePath: Array<string | number>
+): ExtendLocation[] | null {
+  // Extract non-combinator components
+  const targetComponents = target.value.filter(c => !isNode(c, N.Combinator));
+  const findComponents = find.value.filter(c => !isNode(c, N.Combinator));
+
+  if (findComponents.length === 0) {
+    return null;
+  }
+
+  // Special case: Check if target has a compound with :is() that can expand to match find
+  for (let i = 0; i < targetComponents.length; i++) {
+    const comp = targetComponents[i];
+
+    if (isNode(comp, N.CompoundSelector)) {
+      // Look for :is() pseudo-selectors in the compound
+      const isPseudos = comp.value.filter(v =>
+        isNode(v, N.PseudoSelector) && v.value.name === ':is' && v.value.arg && isSelector(v.value.arg)
+      ) as PseudoSelector[];
+
+      for (const isPseudo of isPseudos) {
+        const isArg = isPseudo.value.arg as Selector;
+
+        // If :is() contains a complex selector
+        if (isNode(isArg, N.ComplexSelector)) {
+          // Get the :is() content components
+          const isArgComponents = isArg.value.filter(c => !isNode(c, N.Combinator));
+
+          // Try to match the find pattern
+          if (isArgComponents.length >= 2) {
+            // Get the last component from :is() (e.g., .b from .a > .b)
+            const lastIsComponent = isArgComponents[isArgComponents.length - 1]!;
+
+            // Get other components in the compound (e.g., .d)
+            const otherCompoundComponents = comp.value.filter(v => v !== isPseudo);
+
+            // Check if find starts with the :is() pattern (improved structural matching)
+            // Only check the prefix components, allowing structural compound matching for the last component
+            let matchesIsPattern = true;
+            for (let j = 0; j < isArgComponents.length - 1; j++) {
+              if (j >= findComponents.length
+                || !componentsMatch(isArgComponents[j]!, findComponents[j]!)) {
+                matchesIsPattern = false;
+                break;
+              }
+            }
+
+            if (matchesIsPattern) {
+              // Check if the last :is() component with compound additions matches the next target component
+              const compoundWithIsLast = otherCompoundComponents.length > 0
+                ? new CompoundSelector([lastIsComponent as SimpleSelector, ...otherCompoundComponents])
+                : lastIsComponent;
+
+              const nextTargetIdx = isArgComponents.length - 1;
+
+              // Special compound matching for backtracking: allow compound to match simple if simple is contained
+              let compoundMatches = false;
+              if (nextTargetIdx < findComponents.length) {
+                const findComp = findComponents[nextTargetIdx]!;
+                if (isNode(compoundWithIsLast, N.CompoundSelector) && isNode(findComp, N.SimpleSelector)) {
+                  // In improved structural semantics: compound matches simple if simple is contained
+                  const containsTarget = compoundWithIsLast.value.some(comp => comp.valueOf() === findComp.valueOf());
+                  if (containsTarget) {
+                    compoundMatches = true;
+                  }
+                } else {
+                  compoundMatches = componentsMatch(compoundWithIsLast, findComp);
+                }
+              }
+
+              if (compoundMatches) {
+                // Check if remaining selector components match remaining target
+                const targetRemaining = targetComponents.slice(i + 1);
+                const findRemaining = findComponents.slice(isArgComponents.length);
+
+                if (targetRemaining.length === findRemaining.length) {
+                  let allMatch = true;
+                  for (let k = 0; k < targetRemaining.length; k++) {
+                    if (!componentsMatch(targetRemaining[k]!, findRemaining[k]!)) {
+                      allMatch = false;
+                      break;
+                    }
+                  }
+
+                  if (allMatch) {
+                    // We have a match!
+                    const location: ExtendLocation = {
+                      path: [...basePath],
+                      matchedNode: target,
+                      extensionType: 'replace',
+                      isPartialMatch: true,
+                      remainders: [] // Calculate proper remainders if needed
+                    };
+                    return [withMatchScope(location)];
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Enhanced pseudo-selector search with :is() backtracking optimization
+ */
+function searchWithinPseudoSelector(
+  pseudo: PseudoSelector,
+  target: Selector,
+  currentPath: Array<string | number>,
+  locations: ExtendLocation[]
+): void {
+  const arg = pseudo.value.arg;
+  if (!arg || !isSelector(arg)) {
+    return;
+  }
+
+  const argSelector = arg as Selector;
+
+  // OPTIMIZATION 7: Special handling for :is() pseudo-selectors
+  // Implements sophisticated right-to-left backtracking algorithm from matchSelectors
+  if (pseudo.value.name === ':is') {
+    if (isNode(argSelector, N.SelectorList)) {
+      // Check if target matches any alternative in the :is() selector list
+      argSelector.value.forEach((alternative, altIndex) => {
+        const itemPath = [...currentPath, 'arg', altIndex];
+        // Direct structural match: use determineExtensionType so we get 'wrap' when inside a compound (not just 'append')
+        if (isStructurallyEqual(alternative, target)) {
+          locations.push(withMatchScope({
+            path: itemPath,
+            matchedNode: alternative,
+            extensionType: determineExtensionType(alternative, itemPath)
+          }));
+        }
+
+        // Recursive search within each alternative
+        searchWithinSelector(alternative, target, itemPath, locations);
+      });
+
+      // Additional optimization: Check if target could be added as new alternative
+      // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
+      const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(alt, target));
+      if (canExtendAsList) {
+        locations.push(withMatchScope({
+          path: [...currentPath, 'arg'],
+          matchedNode: argSelector,
+          extensionType: 'append', // Append new alternative to :is() list
+          isPartialMatch: false
+        }));
+      }
+    } else {
+      // Single argument in :is() - check for direct match
+      if (isStructurallyEqual(argSelector, target)) {
+        locations.push(withMatchScope({
+          path: [...currentPath, 'arg'],
+          matchedNode: argSelector,
+          extensionType: 'append', // Will convert single arg to SelectorList and append
+          isPartialMatch: false
+        }));
+        // Don't do recursive search since we found the direct match
+        return;
+      }
+
+      // Only do recursive search if no direct match found
+      searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+    }
+  } else {
+    // Standard recursive search for other pseudo-selectors
+    searchWithinSelector(argSelector, target, [...currentPath, 'arg'], locations);
+  }
+}
+
+/**
+ * Normalizes a selector to handle :is() equivalences
+ * This is the single source of truth for :is() expansion logic
+ *
+ * Examples:
+ * - :is(.a) -> .a
+ * - a :is(b, c) -> a b, a c (as SelectorList)
+ * - :is(.foo, .bar) -> .foo, .bar (as SelectorList)
+ */
+function normalizeSelector(selector: Selector): Selector {
+  if (isNode(selector, N.PseudoSelector) && selector.value.name === ':is' && selector.value.arg) {
+    const arg = selector.value.arg as Selector;
+
+    if (isNode(arg, N.SimpleSelector)) {
+      return arg;
+    }
+
+    if (isNode(arg, N.SelectorList)) {
+      return arg;
+    }
+
+    return arg;
+  }
+
+  if (isNode(selector, N.ComplexSelector)) {
+    const expanded = expandComplexSelectorWithIs(selector);
+    if (expanded.length > 1) {
+      return new SelectorList(expanded);
+    }
+    if (expanded.length === 1) {
+      return expanded[0]!;
+    }
+  }
+
+  if (isNode(selector, N.SelectorList)) {
+    const normalizedSelectors: Selector[] = [];
+
+    for (const sel of selector.value) {
+      const normalized = normalizeSelector(sel);
+      if (isNode(normalized, N.SelectorList)) {
+        normalizedSelectors.push(...normalized.value);
+      } else {
+        normalizedSelectors.push(normalized);
+      }
+    }
+
+    if (normalizedSelectors.length === 1) {
+      return normalizedSelectors[0]!;
+    }
+
+    return new SelectorList(normalizedSelectors);
+  }
+
+  return selector;
+}
+
+export function normalizeSelectorForExtend(selector: Selector): Selector {
+  return normalizeSelector(selector);
+}
+
+/**
+ * Legacy MatchResult interface for backward compatibility
+ */
+export interface MatchResult {
+  hasMatch: boolean;
+  hasFullMatch: boolean;
+  hasPartialMatch: boolean;
+  matched: Selector[];
+  remainders: Selector[];
+  ampersandInfo?: {
+    crossedBoundary: boolean;
+    ampersandNodes: any[];
+  };
+}
+
+/**
+ * Legacy matchSelectors function for backward compatibility
+ * Maps to the new findExtendableLocations API
+ */
+export function matchSelectors(target: Selector, find: Selector, partial = false): MatchResult {
+  const normalizedTarget = normalizeSelector(target);
+  const normalizedFind = normalizeSelector(find);
+
+  if (normalizedTarget.valueOf() === normalizedFind.valueOf()) {
+    return {
+      hasMatch: true,
+      hasFullMatch: true,
+      hasPartialMatch: false,
+      matched: [find],
+      remainders: []
+    };
+  }
+
+  const searchResult = findExtendableLocations(normalizedTarget, normalizedFind);
+
+  if (!searchResult.hasMatches) {
+    return {
+      hasMatch: false,
+      hasFullMatch: false,
+      hasPartialMatch: false,
+      matched: [],
+      remainders: []
+    };
+  }
+
+  const hasAnyPartialMatch = searchResult.locations.some((loc: ExtendLocation) => loc.isPartialMatch);
+  const hasAnyFullMatch = searchResult.locations.some((loc: ExtendLocation) => !loc.isPartialMatch);
+
+  const isPartialMatch = partial && (hasAnyPartialMatch || searchResult.locations.some((loc: ExtendLocation) => loc.remainders && loc.remainders.length > 0));
+
+  return {
+    hasMatch: true,
+    hasFullMatch: hasAnyFullMatch && !isPartialMatch,
+    hasPartialMatch: isPartialMatch,
+    matched: hasAnyFullMatch && !isPartialMatch ? [find] : [],
+    remainders: searchResult.locations[0]?.remainders || []
+  };
+}
+
+export function combineKeys(
+  a: Set<string> | string,
+  b: Set<string> | string
+): Set<string> {
+  if (a instanceof Set) {
+    if (b instanceof Set) {
+      return a.union(b);
+    } else {
+      return (new Set(a)).add(b);
+    }
+  } else {
+    if (b instanceof Set) {
+      return (new Set(b)).add(a);
+    } else {
+      return new Set([a, b]);
+    }
+  }
+}
+
+export interface SelectorComparisonResult {
+  isEquivalent: boolean;
+  hasWholeMatch: boolean;
+  hasPartialMatch: boolean;
+  locations: ExtendLocation[];
+}
+
+export function selectorCompare(
+  a: Selector,
+  b: Selector,
+  forwardSearch?: ExtendSearchResult,
+  backwardSearch?: ExtendSearchResult
+): SelectorComparisonResult {
+  const normalizedA = normalizeSelectorForExtend(a);
+  const normalizedB = normalizeSelectorForExtend(b);
+  if (isNode(normalizedA, N.SelectorList) && isNode(normalizedB, N.SelectorList)) {
+    const aValues = normalizedA.value;
+    const bValues = normalizedB.value;
+    // Use a Set for O(N) order-independent comparison instead of O(N log N) sort
+    const equivalent = aValues.length === bValues.length && (() => {
+      const aSet = new Set(aValues.map(item => normalizeSelectorForExtend(item as Selector).valueOf()));
+      return bValues.every(item => aSet.has(normalizeSelectorForExtend(item as Selector).valueOf()));
+    })();
+    if (equivalent) {
+      return {
+        isEquivalent: true,
+        hasWholeMatch: true,
+        hasPartialMatch: false,
+        locations: []
+      };
+    }
+  }
+  const forward = forwardSearch ?? findExtendableLocations(normalizedA, normalizedB);
+  const backward = backwardSearch ?? findExtendableLocations(normalizedB, normalizedA);
+  return {
+    isEquivalent: forward.hasWholeMatch && backward.hasWholeMatch,
+    hasWholeMatch: forward.hasWholeMatch,
+    hasPartialMatch: forward.hasMatches && !forward.hasWholeMatch,
+    locations: forward.locations
+  };
 }

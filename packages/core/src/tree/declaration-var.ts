@@ -4,7 +4,7 @@ import {
   type DeclarationOptions
 } from './declaration.js';
 import { Any, type AnyRole } from './any.js';
-import { defineType, F_VISIBLE, type OptionalLocation, type Node, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -26,21 +26,16 @@ export type VarDeclarationOptions = DeclarationOptions & {
  * @todo Support destructuring
  * e.g. `$(var1, var2): 1 2`
  */
-export interface VarDeclaration {
-  type: 'VarDeclaration';
-  shortType: 'vardecl';
-}
-
 export class VarDeclaration extends Declaration<VarDeclarationOptions> {
+  override allowRuleRoot = true;
+  override allowRoot = true;
   constructor(
     value: DeclarationValue,
     options?: VarDeclarationOptions,
-    location?: OptionalLocation,
+    location?: LocationInfo,
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
-    this.allowRoot = true;
-    this.allowRuleRoot = true;
     this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
@@ -56,10 +51,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
     // print `$name` (no `: <value>`).
-    if (this.options?.paramVar && this.get('value') instanceof Nil) {
+    if (this.options?.paramVar && this.value.value instanceof Nil) {
       w.add('$', this);
-      const normalizedName = String(this.get('name')).replace(/\s+$/, '');
-      w.add(normalizedName, this.get('name'));
+      const normalizedName = String(this.value.name).replace(/\s+$/, '');
+      w.add(normalizedName, this.value.name);
       return w.getSince(mark);
     }
 
@@ -78,7 +73,7 @@ defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 export const vardecl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: VarDeclarationOptions,
-  location?: OptionalLocation,
+  location?: LocationInfo,
   treeContext?: TreeContext
 ) => {
   let { name } = value;

@@ -1,10 +1,8 @@
 import type { Context } from '../context.js';
-import { defineType, F_STATIC, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { defineType, F_STATIC } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 
 export interface BasicSelector extends SimpleSelector<string> {
-  type: 'BasicSelector';
-  shortType: 'el';
   eval(context: Context): BasicSelector;
 }
 
@@ -14,18 +12,8 @@ export interface BasicSelector extends SimpleSelector<string> {
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  static override childKeys = null as null;
-
-  value!: string;
-
-  constructor(
-    value: string,
-    options?: NodeOptions,
-    location?: OptionalLocation,
-    treeContext?: TreeContext
-  ) {
-    super(value, options, location, treeContext);
-    this.value = value;
+  constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
+    super(...args);
     this.addFlag(F_STATIC);
   }
 
@@ -57,16 +45,16 @@ export class BasicSelector extends SimpleSelector<string> {
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   if (this.isClass) {
-  //     out.add(context.hashClass(this.data.value), this.location)
+  //     out.add(context.hashClass(this.value.value), this.location)
   //   } else {
-  //     out.add(this.data.value, this.location)
+  //     out.add(this.value.value, this.location)
   //   }
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.el(', loc)
-  //   this.data.toModule(context, out)
+  //   this.value.toModule(context, out)
   //   out.add(')')
   // }
 }

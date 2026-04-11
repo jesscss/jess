@@ -15,11 +15,6 @@ import type { Context } from '../context.js';
  * Can be used like Sass property nesting.
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
-export interface Collection {
-  type: 'Collection';
-  shortType: 'coll';
-}
-
 export class Collection extends Rules {
   override toTrimmedString(options?: PrintOptions) {
     return this.toBraced(options);
@@ -37,8 +32,9 @@ export class Collection extends Rules {
     if (this.preEvaluated) {
       return this;
     }
-    this.preEvaluated = true;
-    return this;
+    const node = this.maybeClone(context) as this;
+    node.preEvaluated = true;
+    return node;
   }
 }
 

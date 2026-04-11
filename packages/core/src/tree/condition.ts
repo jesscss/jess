@@ -1,6 +1,5 @@
-import type { Class } from 'type-fest';
 import { type Context } from '../context.js';
-import { F_NON_STATIC, F_VISIBLE, Node, defineType, type OptionalLocation, type TreeContext } from './node.js';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -20,65 +19,13 @@ export type ConditionOptions = {
   negate?: boolean;
 };
 
-export type ConditionChildData = {
-  left: Node;
-  operator: ConditionOperator | undefined;
-  right: Node | undefined;
-  negate: boolean;
-};
-
-export interface Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
-  type: 'Condition';
-  shortType: 'condition';
+export interface Condition extends Node<ConditionValue, ConditionOptions> {
   eval(context: Context): MaybePromise<Bool>;
 }
 
-export class Condition extends Node<ConditionValue, ConditionOptions, ConditionChildData> {
-  static override childKeys = ['left', 'right'] as const;
-
-  readonly left!: Node;
-  private readonly operator: ConditionOperator | undefined;
-  readonly right: Node | undefined;
-  private readonly negate: boolean;
-
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
-    const left = this.get('left', ctx);
-    const operator = this.get('operator', ctx);
-    const right = this.get('right', ctx);
-    const negate = this.get('negate', ctx);
-    const options = this._meta?.options;
-    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
-    const value: ConditionValue = operator !== undefined && right !== undefined
-      ? [deep ? cloneChild(left) : left, operator, deep ? cloneChild(right) : right]
-      : [deep ? cloneChild(left) : left];
-    let clonedOptions = options ? { ...options } : undefined;
-    if (negate) {
-      (clonedOptions ??= {}).negate = true;
-    } else if (clonedOptions) {
-      delete clonedOptions.negate;
-    }
-    const newNode = new (this.constructor as Class<this>)(
-      value,
-      clonedOptions,
-      this.location,
-      this.treeContext
-    );
-    newNode.inherit(this);
-    return newNode;
-  }
-
-  constructor(value: ConditionValue, options?: ConditionOptions, location?: OptionalLocation, treeContext?: TreeContext) {
+export class Condition extends Node<ConditionValue, ConditionOptions> {
+  constructor(value: ConditionValue, options?: ConditionOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    this.left = value[0];
-    this.operator = value[1];
-    this.right = value[2];
-    this.negate = !!options?.negate;
-    if (this.left instanceof Node) {
-      this.adopt(this.left);
-    }
-    if (this.right instanceof Node) {
-      this.adopt(this.right);
-    }
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -87,13 +34,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const context = options.context;
-    let left = this.get('left', context);
-    let op = this.get('operator', context);
-    let right = this.get('right', context);
-    const negated = this.get('negate', context);
-    const needsParens = Boolean(right || negated);
-    if (negated) {
+    let [left, op, right] = this.value;
+    const needsParens = Boolean(right || this.options?.negate);
+    if (this.options?.negate) {
       w.add('not ');
     }
     if (needsParens) {
@@ -121,12 +64,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
     return new Bool(negated);
   }
 
-  static getResult(a: Node, b: Node, op: ConditionOperator, context?: Context): boolean {
+  static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
     switch (op) {
       case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
       case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
       default:
-        switch (a.compare(b, context)) {
+        switch (a.compare(b)) {
           case -1:
             return op === '<' || op === '<=';
           case 0:
@@ -140,10 +83,8 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let left = this.get('left', context);
-    let op = this.get('operator', context);
-    let right = this.get('right', context);
-    let negated = this.get('negate', context);
+    let [left, op, right] = this.value;
+    let negated = !!this.options?.negate;
 
     return pipe(
       () => left.eval(context),
@@ -173,10 +114,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
           if (node.type !== 'Call') {
             return node;
           }
-          const rawCallName = (node as import('./call.js').Call).name;
-          const callName = String(typeof rawCallName === 'string'
-            ? rawCallName
-            : rawCallName?.valueOf?.() ?? '');
+          const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
           if (callName === 'default' || callName === '??') {
             return new Bool(Boolean(context.isDefault));
           }
@@ -184,11 +122,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions, ConditionC
         };
         a = normalizeDefaultCall(a);
         b = normalizeDefaultCall(b);
-        let result = Condition.getResult(a, b, op!, context);
+        let result = Condition.getResult(a, b, op!);
         return new Bool(negated ? !result : result);
       }
     );
   }
 }
-
 export const condition = defineType(Condition, 'Condition');

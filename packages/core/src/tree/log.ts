@@ -1,8 +1,8 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { logger } from '../logger.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
 
@@ -11,11 +11,7 @@ export type LogValue = {
   message: Node;
 };
 
-export type LogChildData = { level: LogLevel; message: Node };
-
-export interface Log extends Node<LogValue, NodeOptions, LogChildData> {
-  type: 'Log';
-  shortType: 'log';
+export interface Log extends Node<LogValue, NodeOptions> {
   eval(context: Context): MaybePromise<Nil>;
 }
 
@@ -23,30 +19,23 @@ export interface Log extends Node<LogValue, NodeOptions, LogChildData> {
  * A log node for diagnostic at-rules (@debug, @warn, @error).
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
-export class Log extends Node<LogValue, NodeOptions, LogChildData> {
-  static override childKeys = ['level', 'message'] as const;
-
-  level!: LogLevel;
-  message!: Node;
+export class Log extends Node<LogValue, NodeOptions> {
+  override allowRoot = true;
+  override allowRuleRoot = true;
 
   constructor(
     value: LogValue,
     options?: NodeOptions,
-    location?: OptionalLocation,
+    location?: LocationInfo,
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
-    this.level = value.level;
-    this.message = value.message;
-    if (this.message instanceof Node) {
-      this.adopt(this.message);
-    }
-    this.allowRoot = true;
-    this.allowRuleRoot = true;
+    // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
   }
 
   override toTrimmedString() {
+    // Log nodes serialize to empty string since they're not supported in Jess syntax
     return '';
   }
 
@@ -55,22 +44,25 @@ export class Log extends Node<LogValue, NodeOptions, LogChildData> {
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    const messageResult = this.message.eval(context);
+    // Evaluate the message expression
+    const messageResult = this.value.message.eval(context);
 
-    if (isThenable(messageResult)) {
+    // Handle async evaluation if needed
+    if (messageResult && typeof (messageResult as any).then === 'function') {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
         return new Nil();
       });
     }
 
+    // Synchronous evaluation
     this._logMessage(messageResult as Node);
     return new Nil();
   }
 
-  private _logMessage(msg: Node): void {
-    const messageStr = String(msg);
-    const level = this.level;
+  private _logMessage(message: Node): void {
+    const messageStr = String(message);
+    const { level } = this.value;
 
     switch (level) {
       case 'debug':

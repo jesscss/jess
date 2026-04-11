@@ -175,9 +175,6 @@ importers:
       chalk:
         specifier: ^5.2.0
         version: 5.6.2
-      chevrotain:
-        specifier: ^12.0.0
-        version: 12.0.0
       combinate:
         specifier: ^1.1.11
         version: 1.1.11
@@ -194,6 +191,9 @@ importers:
       '@types/lodash-es':
         specifier: ^4.17.8
         version: 4.17.12
+      chevrotain:
+        specifier: ^12.0.0
+        version: 12.0.0
       rollup-plugin-circular-dependencies:
         specifier: ~1.1.2
         version: 1.1.2(rollup@3.29.5)
@@ -2396,25 +2396,20 @@ packages:
     dependencies:
       '@chevrotain/gast': 12.0.0
       '@chevrotain/types': 12.0.0
-    dev: false
 
   /@chevrotain/gast@12.0.0:
     resolution: {integrity: sha512-1ne/m3XsIT8aEdrvT33so0GUC+wkctpUPK6zU9IlOyJLUbR0rg4G7ZiApiJbggpgPir9ERy3FRjT6T7lpgetnQ==}
     dependencies:
       '@chevrotain/types': 12.0.0
-    dev: false
 
   /@chevrotain/regexp-to-ast@12.0.0:
     resolution: {integrity: sha512-p+EW9MaJwgaHguhoqwOtx/FwuGr+DnNn857sXWOi/mClXIkPGl3rn7hGNWvo31HA3vyeQxjqe+H36yZJwYU8cA==}
-    dev: false
 
   /@chevrotain/types@12.0.0:
     resolution: {integrity: sha512-S+04vjFQKeuYw0/eW3U52LkAHQsB1ASxsPGsLPUyQgrZ2iNNibQrsidruDzjEX2JYfespXMG0eZmXlhA6z7nWA==}
-    dev: false
 
   /@chevrotain/utils@12.0.0:
     resolution: {integrity: sha512-lB59uJoaGIfOOL9knQqQRfhl9g7x8/wqFkp13zTdkRu1huG9kg6IJs1O8hqj9rs6h7orGxHJUKb+mX3rPbWGhA==}
-    dev: false
 
   /@clinic/bubbleprof@10.0.0:
     resolution: {integrity: sha512-7Y0uYO4cz7+Y1advV891uMJLXbZMIriLsV1IHSSVJxmf8tEFm8vogKi/GdYyi4CY0D5heuqOFze/WNrv+U3LRw==}
@@ -8401,7 +8396,6 @@ packages:
       '@chevrotain/regexp-to-ast': 12.0.0
       '@chevrotain/types': 12.0.0
       '@chevrotain/utils': 12.0.0
-    dev: false
 
   /chokidar@3.6.0:
     resolution: {integrity: sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw==}

@@ -11,10 +11,6 @@ export class BitSet<T = unknown> extends OriginalBitSet {
 
   override clone(): BitSet<T> {
     let set: any = new BitSet<T>();
-    /**
-     * Clone like the regular bitset does but preserve this as the constructor.
-     * Otherwise cloned objects won't preserve the library reference.
-     */
     set.data = (this as any).data.slice();
     set._ = (this as any)._;
     set._library = this._library;
@@ -42,9 +38,7 @@ export class BitSet<T = unknown> extends OriginalBitSet {
 
 export class BitSetLibrary<T = unknown> {
   private _bitset: BitSet<T>;
-  /** Value to Bitset position map */
   private _values = new Map<T, number>();
-  /** Bitset position to value map */
   private _positions: T[] = [];
 
   constructor(values?: T[]) {
@@ -62,7 +56,6 @@ export class BitSetLibrary<T = unknown> {
     return this._values.size;
   }
 
-  /** Returns position */
   add(value: T): number {
     let values = this._values;
     let pos = values.get(value);
@@ -80,7 +73,6 @@ export class BitSetLibrary<T = unknown> {
     return this._values.has(value);
   }
 
-  /** Get Bitset from an iterable of values */
   getBitset(values?: Iterable<T>): BitSet<T> {
     let bitset = this._bitset.clone();
     if (values) {
@@ -96,24 +88,11 @@ export class BitSetLibrary<T = unknown> {
     return this._positions[position];
   }
 
-  hasBit(bitset: BitSet<T>, value: T): boolean {
-    if (bitset._library !== this) {
-      throw new Error('Bitset must be from this library');
-    }
-    const pos = this._values.get(value);
-    return pos !== undefined ? Boolean(bitset.get(pos)) : false;
-  }
-
   forEachValue(bitset: BitSet<T>, fn: (value: T, position: number) => void): void {
-    if (bitset._library !== this) {
-      throw new Error('Bitset must be from this library');
-    }
-
     const data = (bitset as { data?: number[] }).data;
     if (!data) {
       return;
     }
-
     for (let wordIndex = 0; wordIndex < data.length; wordIndex++) {
       let word = data[wordIndex]! >>> 0;
       while (word !== 0) {
@@ -138,14 +117,8 @@ export class BitSetLibrary<T = unknown> {
   }
 }
 
-/**
- * All bits in a that are true must be true in b
-*/
+/** All bits in a that are true must be true in b */
 export function isSubsetOf(a: BitSet, b: BitSet): boolean {
-  if (a._library !== b._library) {
-    throw new Error('Bitsets must be from the same library');
-  }
-
   const aInternal = a as { data?: number[]; _?: number };
   const bInternal = b as { data?: number[]; _?: number };
   if (aInternal._ || bInternal._) {
@@ -163,7 +136,6 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
     if (!aWord) {
       continue;
     }
-
     const bWord = bData?.[i] ?? 0;
     if ((aWord & ~bWord) !== 0) {
       return false;
@@ -173,22 +145,17 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
   return true;
 }
 
-/** True when `a` and `b` share no set bits. */
+/** True when a and b share no set bits */
 export function isDisjoint(a: BitSet, b: BitSet): boolean {
-  if (a._library !== b._library) {
-    throw new Error('Bitsets must be from the same library');
-  }
   const intersection = a.and(b) as BitSet;
   const data = (intersection as { data?: number[] }).data;
   if (!data) {
     return true;
   }
-
   for (let i = 0; i < data.length; i++) {
     if (data[i]) {
       return false;
     }
   }
-
   return true;
 }

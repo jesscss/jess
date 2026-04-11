@@ -10,7 +10,7 @@ import { JsFunction } from '../js-function.js';
 import { JsObject } from '../js-object.js';
 import { Bool } from '../bool.js';
 import { isNode } from './is-node.js';
-import { isPlainObject } from './collections.js';
+import isPlainObject from 'lodash-es/isPlainObject.js';
 import { createRequire } from 'node:module';
 
 const { isArray } = Array;
@@ -44,7 +44,7 @@ function getNodeType(value: any): Node {
   if (typeof value === 'function') {
     // Hmm, the LLM added this, is it needed?
     // Preserve function options (e.g., params metadata from getFunctionFromMixins)
-    const options = (value as Function & { options?: Record<string, unknown> }).options;
+    const options = (value as any)?.options;
     return new JsFunction(value, options);
   }
   if (isPlainObject(value)) {
@@ -84,6 +84,9 @@ export function cast(value: any): Node {
    * If converting from a primitive, then
    * the value should be considered evaluated.
    */
-  // Cast from primitive — F_STATIC on Any/Num/etc prevents re-eval.
+  if (!isNode(value)) {
+    node.evaluated = true;
+    node.preEvaluated = true;
+  }
   return node;
 }

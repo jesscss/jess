@@ -35,18 +35,6 @@ export { tokenMatcher };
 
 export type TokenMap = Record<CssTokenType, TokenType>;
 
-type RuntimeLookaheadCacheState = {
-  _orFastMaps: Record<number, Record<number, number>>;
-  _orFastMapAltsRef: Record<number, unknown>;
-  _orGatedPrefixAlts: Record<number, number[]>;
-  _orCounterDeltas: Record<number, number>;
-  _orAltCounterStarts: Record<number, number[]>;
-  _orCommittable: Record<number, Record<number, boolean>>;
-  _orLookahead: Record<number, unknown>;
-  _orLookaheadLL1: Array<unknown>;
-  _prodLookahead: Record<number, () => boolean>;
-};
-
 // ── Import production rule implementations ──────────────────────────
 import * as productions from './productions/index.js';
 

@@ -1,5 +1,5 @@
 import {
-  type OptionalLocation,
+  type LocationInfo,
   type NodeOptions,
   type TreeContext,
   defineType,
@@ -9,19 +9,15 @@ import { Dimension } from './dimension.js';
 import { Color } from './color.js';
 import { type Context } from '../context.js';
 import { type Operator } from './util/calculate.js';
-import { isPlainObject } from './util/collections.js';
+import isPlainObject from 'lodash-es/isPlainObject.js';
 
 /**
  * A number. Named `Num` to avoid conflict with the built-in `Number` class.
  */
-export interface Num {
-  type: 'Num';
-  shortType: 'num';
-}
 export class Num extends Dimension {
   // Numbers are static and don't need evaluation
 
-  constructor(value: number | { number: number }, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
+  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(isPlainObject(value) ? value as { number: number } : { number: value as number }, options, location, treeContext);
   }
 
@@ -35,8 +31,8 @@ export class Num extends Dimension {
     const result = super.operate(b, op, context);
 
     // If the result is a Dimension and has an empty unit, convert it to a Num
-    if (result instanceof Dimension && !result.unit) {
-      return new Num(result.number).inherit(this);
+    if (result instanceof Dimension && !result.value.unit) {
+      return new Num(result.value.number).inherit(this);
     }
 
     // Otherwise, pass through the result as-is
@@ -49,6 +45,6 @@ defineType(Num, 'Num');
 export const num = (
   value: number,
   options?: NodeOptions,
-  location?: OptionalLocation,
+  location?: LocationInfo,
   treeContext?: TreeContext
 ) => new Num(value, options, location, treeContext);

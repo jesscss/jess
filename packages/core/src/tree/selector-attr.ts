@@ -1,10 +1,14 @@
-import type { Class } from 'type-fest';
-import { defineType, type OptionalLocation, Node, type NodeOptions } from './node.js';
+import { defineType, type LocationInfo, type Node } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
+import { compare } from './util/compare.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { Any } from './any.js';
+import { quoted } from './quoted.js';
+import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -17,114 +21,62 @@ export type AttributeSelectorValue = {
   mod?: string;
 };
 
-export type AttributeSelectorChildData = {
-  name: string | Node;
-  op: string | undefined;
-  value: Node | undefined;
-  mod: string | undefined;
-};
-
 /**
  * An attribute selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
  *   e.g. [id="foo"]
 */
-export interface AttributeSelector {
-  type: 'AttributeSelector';
-  shortType: 'attr';
-}
-
-export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, NodeOptions, AttributeSelectorChildData> {
-  static override childKeys = ['name', 'value'] as const;
-
-  name!: string | Node;
-  private op: string | undefined;
-  value: Node | undefined;
-  private mod: string | undefined;
-
-  override clone(deep?: boolean): this {
-    const newNode = new (this.constructor as Class<this>)(
-      {
-        name: deep && this.name instanceof Node ? this.name.clone(deep) : this.name,
-        op: this.op,
-        value: deep && this.value instanceof Node ? this.value.clone(deep) : this.value,
-        mod: this.mod
-      },
-      undefined,
-      this.location,
-      this.treeContext
-    );
-    newNode.inherit(this);
-    return newNode;
-  }
-
-  constructor(data: AttributeSelectorValue, options?: undefined, location?: OptionalLocation, treeContext?: TreeContext) {
-    super(data, options, location, treeContext);
-    this.name = data.name;
-    this.op = data.op;
-    this.value = data.value;
-    this.mod = data.mod;
-    if (this.name instanceof Node) {
-      this.adopt(this.name as Node);
-    }
-    if (this.value instanceof Node) {
-      this.adopt(this.value);
-    }
-  }
-
-  private _setName(name: string | Node, context?: Context): void {
-    if (name instanceof Node) {
-      this.adopt(name, context);
-    }
-    this.name = name;
-  }
-
-  private _setValue(value: Node | undefined, context?: Context): void {
-    if (value instanceof Node) {
-      this.adopt(value, context);
-    }
-    this.value = value;
-  }
-
+export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   override evalNode(context: Context): MaybePromise<this> {
-    const currentName = this.get('name', context);
-    const currentValue = this.get('value', context);
-    const maybeName = typeof currentName === 'string'
-      ? currentName
-      : currentName.eval(context);
-    const maybeValue = currentValue?.eval(context);
-    const finish = (name: string | Node, value: Node | undefined): this => {
-      const node = this.clone();
-
-      if (name !== currentName) {
-        node._setName(name, context);
+    return pipe(
+      () => {
+        return super.evalNode(context) as any;
+      },
+      () => {
+        const { value } = this.value;
+        // Handle Less interpolation that the parser may have left as a raw token in selectors:
+        //   [data=@{attr-data}]
+        // In Less semantics this should resolve to the variable value and be serialized quoted.
+        if (value instanceof Any && typeof value.value === 'string') {
+          const raw = value.value.trim();
+          const m = raw.match(/^@\{([^}]+)\}$/);
+          if (m) {
+            const key = m[1]!;
+            const rules = this.rulesParent;
+            if (rules) {
+              const found = rules.find('declaration', key, 'VarDeclaration');
+              const decl = Array.isArray(found) ? found[0] : found;
+              if (decl && isNode(decl, N.VarDeclaration)) {
+                const out = decl.value.value.eval(context);
+                if (isThenable(out)) {
+                  return (out as Promise<Node>).then((evaluated) => {
+                    this.set('value', quoted(String(evaluated.valueOf())), context.renderKey);
+                    this._valueOf = undefined;
+                    this._keySet = undefined;
+                    this._visibleKeySet = undefined;
+                    this._canFastReject = undefined;
+                    return this;
+                  });
+                }
+                this.set('value', quoted(String((out as Node).valueOf())), context.renderKey);
+                this._valueOf = undefined;
+                this._keySet = undefined;
+                this._visibleKeySet = undefined;
+                this._canFastReject = undefined;
+              }
+            }
+          }
+        }
+        return this;
       }
-      if (value !== currentValue) {
-        node._setValue(value, context);
-      }
-
-      return node;
-    };
-
-    if (isThenable(maybeName) || isThenable(maybeValue)) {
-      return Promise.all([
-        Promise.resolve(maybeName),
-        Promise.resolve(maybeValue)
-      ]).then(([name, value]) => finish(name, value));
-    }
-
-    return finish(maybeName as string | Node, maybeValue as Node | undefined);
+    );
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const context = options.context;
-    const name = this.get('name', context);
-    const value = this.get('value', context);
-    const op = this.get('op');
-    const mod = this.get('mod');
+    const { name, op, value, mod } = this.getValue(options.renderKey) as AttributeSelectorValue;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);
@@ -148,10 +100,8 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
   override valueOf() {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let name = this.name;
-      let op = this.op;
-      let value = this.value;
-      let mod = this.mod;
+      let { name, op, value, mod } = this.value;
+      /** Attributes are case-insensitive */
       let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {
         return `[${keyStr}]`;
@@ -167,6 +117,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue, No
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue,
   options?: undefined,
-  location?: OptionalLocation | 0,
+  location?: LocationInfo | 0,
   treeContext?: TreeContext
 ) => AttributeSelector;
