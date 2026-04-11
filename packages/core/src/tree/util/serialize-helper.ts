@@ -1,5 +1,5 @@
 import type { AtRule } from '../at-rule.js';
-import type { Ruleset } from '../ruleset.js';
+import { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, type Node } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
@@ -40,6 +40,14 @@ export function indent(depth: number): string {
 }
 
 function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
+  // The ruleset itself gets F_EXTENDED when an extend points at (or through)
+  // it, even in the self-extend case where the items themselves don't carry
+  // the flag (a self-extend adds nothing new). Check the ruleset first, then
+  // fall back to the item-level check for selectors where the ruleset flag
+  // hasn't propagated.
+  if (node.hasFlag(F_EXTENDED)) {
+    return true;
+  }
   const selector = node.value.selector;
   if (!selector || selector instanceof Nil) {
     return false;
@@ -72,7 +80,18 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
-    const parentComposed = options.composedSelectorStack?.at(-1);
+    const rawParentComposed = options.composedSelectorStack?.at(-1);
+    // In reference mode, strip non-extended items from a SelectorList parent
+    // before composing. This mirrors the filter applied at header render time
+    // for reference-imported rulesets — the visible compose parent is only
+    // the items that will actually appear in the output.
+    const parentComposed = (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && rawParentComposed
+    )
+      ? Ruleset.filterExtendedForReferenceCompose(rawParentComposed as Selector) ?? rawParentComposed
+      : rawParentComposed;
     const sel = rs.value.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
     if (isBareAmp && !parentComposed) {

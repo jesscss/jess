@@ -610,6 +610,61 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return SelectorList.create(kept).inherit(sel);
   }
 
+  /**
+   * Filter a compose-parent selector for reference-mode rendering. Reference
+   * imports hide non-extended selectors from output, so when we compose a
+   * child against a parent that came from a reference import, the compose
+   * parent should contain only the items that remain visible.
+   *
+   * Returns the filtered parent, or `undefined` if the original parent is
+   * already correct for use as-is (nothing to filter, no visibility flags
+   * present). Returns `undefined` rather than the original so callers can
+   * distinguish "filter was no-op" from "filter reduced the parent".
+   */
+  /**
+   * Filter a compose-parent selector for reference-mode rendering. Reference
+   * imports hide content not reached by an extend; when we compose a child
+   * against a parent SelectorList, any items that were ADDED by an extend
+   * (carrying F_EXTENDED without F_EXTEND_TARGET) shouldn't appear in the
+   * composed form — only items that existed in the original ruleset
+   * (matched: F_EXTEND_TARGET, or untouched: neither flag) should.
+   *
+   * Returns the filtered parent, or `undefined` when the filter is a no-op
+   * so callers can fall through to their own parent handling.
+   */
+  static filterExtendedForReferenceCompose(parent: Selector): Selector | undefined {
+    if (!isNode(parent, N.SelectorList)) {
+      return undefined;
+    }
+    const list = parent as SelectorList;
+    const hasAnyAdded = list.value.some(
+      item => item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
+    );
+    if (!hasAnyAdded) {
+      return undefined;
+    }
+    const seen = new Set<string>();
+    const kept: Selector[] = [];
+    for (const item of list.value) {
+      if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+        continue;
+      }
+      const key = item.valueOf();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      kept.push(item);
+    }
+    if (kept.length === 0 || kept.length === list.value.length) {
+      return undefined;
+    }
+    if (kept.length === 1) {
+      return kept[0]!;
+    }
+    return SelectorList.create(kept).inherit(parent) as Selector;
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const { selector } = this.getValue(options.renderKey) as RulesetValue;
@@ -634,10 +689,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       renderSelector = cached as typeof selector;
     }
+    // Header filter: drop non-extended items from the ruleset's own top-level
+    // selector in reference mode. This strips extend TARGETS (leaving just
+    // the items that were added by the extend), *except* when the ruleset's
+    // selector is a list whose items all carry extend flags — in that case
+    // the list is the combined post-extend form and we keep it whole.
+    const headerDisableTargetFilteringForTopLevelList = (
+      this.hasFlag(F_EXTENDED)
+      && !(renderSelector instanceof Nil)
+      && isNode(renderSelector as Selector, N.SelectorList)
+    );
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
       && !(renderSelector instanceof Nil)
+      && !headerDisableTargetFilteringForTopLevelList
       && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
     ) {
       renderSelector = Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector;
@@ -648,11 +714,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.invalidateSelectorValueCache();
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
-    const disableTargetFilteringForTopLevelList = (
-      this.hasFlag(F_EXTENDED)
-      && !(renderSelector instanceof Nil)
-      && isNode(renderSelector as Selector, N.SelectorList)
-    );
+    const disableTargetFilteringForTopLevelList = headerDisableTargetFilteringForTopLevelList;
     options.referenceFilterTargets = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true

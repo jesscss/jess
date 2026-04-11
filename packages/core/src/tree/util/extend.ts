@@ -346,8 +346,18 @@ function applyBatchedExtend(
       anyWholeMatch = true;
       const c = sItem.clone(true) as Selector;
       c.addFlag(F_EXTENDED);
-      originalItems.push(c);
+      // Parity with `createMatchedIs` in the non-batched extend path:
+      // the original matched item is both `F_EXTENDED` (it stays visible
+      // in extended output) AND `F_EXTEND_TARGET` (it *is* the target,
+      // distinguishing it from items added by this extend). The filter in
+      // `Ruleset.filterExtendedForReferenceCompose` uses this to drop
+      // extend-added items from compose parents in reference mode.
       const itemVal = sItem.valueOf();
+      const hasNonSelfExtend = extendWithList.some(ew => ew.valueOf() !== itemVal);
+      if (hasNonSelfExtend) {
+        c.addFlag(F_EXTEND_TARGET);
+      }
+      originalItems.push(c);
       for (const extendWith of extendWithList) {
         if (extendWith.valueOf() !== itemVal) {
           const ext = extendWith.clone(true) as Selector;

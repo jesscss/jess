@@ -650,13 +650,17 @@ export function processExtends(context: Context): void {
         if (isActivatedByVisibleExtend) {
           ruleset.addFlag(F_EXTENDED);
           ruleset.addFlag(F_VISIBLE);
+          // F_VISIBLE is the blanket marker that keeps all items visible in
+          // reference-mode output. F_EXTENDED is NOT a blanket marker — it's
+          // only set by extend-walk / extend.ts on items that were actually
+          // matched by an extend or newly added by one. Keeping the two
+          // concerns separate lets the reference-mode compose filter
+          // distinguish "original, untouched" from "added by extend".
           if (isNode(selector, N.SelectorList)) {
             for (const item of (selector as SelectorList).value) {
-              item.addFlag(F_EXTENDED);
               item.addFlag(F_VISIBLE);
             }
           } else {
-            selector.addFlag(F_EXTENDED);
             selector.addFlag(F_VISIBLE);
           }
         } else {

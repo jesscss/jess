@@ -533,9 +533,12 @@ function walkSelectorList(
       const extItems = extended.value as Selector[];
       const first = extItems[0]!;
       first.addFlag(F_EXTENDED);
-      if (partial) {
-        first.addFlag(F_EXTEND_TARGET);
-      }
+      // Parity with the non-batched extend path (extend.ts `wrapMatchInIs`),
+      // which always tags the matched item as `F_EXTEND_TARGET` regardless of
+      // partial. The flag marks "this was the target of an extend", which
+      // downstream filters (e.g. reference-mode compose filter) use to tell
+      // original-matched items apart from newly-added items.
+      first.addFlag(F_EXTEND_TARGET);
       originals.push(first);
       for (let j = 1; j < extItems.length; j++) {
         const ext = extItems[j]! as Selector;
@@ -897,12 +900,15 @@ function walkAlternativeTailAware(
 // Helpers
 // ─────────────────────────────────────────────────
 
-function makeList(original: Selector, extendWith: Selector, partial: boolean = false): Selector {
+function makeList(original: Selector, extendWith: Selector, _partial: boolean = false): Selector {
   const a = original.clone(true) as Selector;
   a.addFlag(F_EXTENDED);
-  if (partial) {
-    a.addFlag(F_EXTEND_TARGET);
-  }
+  // The original item *is* the extend target (it was matched). Tag it so
+  // downstream filters (reference-mode compose filter) can distinguish it
+  // from the newly-added items. Tagging is unconditional (same policy as
+  // `wrapInIs`) — the `partial` arg no longer affects the tag and is kept
+  // only for call-site compatibility.
+  a.addFlag(F_EXTEND_TARGET);
 
   const extendItems = extractIsArgs(extendWith);
   const items: Selector[] = [a];
