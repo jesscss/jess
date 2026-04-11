@@ -661,7 +661,16 @@ describe('Style import extend behavior', () => {
       ]);
 
       const css = (await node.eval(context)).toString();
+      // The extend result IS visible — reference imports hide their *own*
+      // inner content from output, but an extend's merged selector is the
+      // visible rendering of the extending ruleset (here `.child`), so the
+      // merged `.base, .child` form is emitted. Restored from `c9cb47e0`
+      // after being wrongly truncated in `cab83e95`.
       expect(css).toBeString(`
+        .base,
+        .child {
+          color: red;
+        }
         .child {
           color: blue;
         }

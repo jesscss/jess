@@ -186,14 +186,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
-    // De-duped imports mutate node options during markReferenceMode; use deep clone so
-    // repeated imports do not retroactively mutate previously emitted import trees.
-    // Keep explicit reference imports on shallow clone to preserve existing extend wiring.
-    const useDeepClone = Boolean(
-      type === 'import'
-      && (importOptions!.multiple === true || importOptions!._dedupe === true)
-    );
-    let out = (useDeepClone ? evaluatedRules.clone(true) : evaluatedRules.clone()) as Rules;
+    // Shallow clone the Rules wrapper. The children are shared with the
+    // canonical evaluated tree — per-render options (visibility, reference
+    // mode) are set on the wrapper below; downstream serialization propagates
+    // `referenceMode` via PrintOptions, so we don't need to mutate every
+    // child's `options.referenceMode`.
+    let out = evaluatedRules.clone() as Rules;
     // Import type: variables are visible and re-exported (not local)
     // Compose type: variables are visible to parent but not transitive by default (`local: true`)
     // Forward: not visible locally but *is* transitive (`local: false`)
@@ -206,26 +204,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
-    if (isReferenceMode) {
-      const markReferenceMode = (node: Node): void => {
-        const nodeOptions = node.options as { referenceMode?: boolean };
-        nodeOptions.referenceMode = true;
-        const maybeRulesValue = node.value as { rules?: Node } | undefined;
-        const rules = maybeRulesValue?.rules;
-        if (rules && isNode(rules, N.Rules)) {
-          markReferenceMode(rules);
-        }
-        const children = node.value;
-        if (Array.isArray(children)) {
-          for (const child of children) {
-            if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
-              markReferenceMode(child as Node);
-            }
-          }
-        }
-      };
-      markReferenceMode(out as unknown as Node);
-    }
     // Forwarded modules should never render output at this scope.
     if (isForward) {
       out.removeFlag(F_VISIBLE);
@@ -564,13 +542,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           context.extendRoots.popExtendRoot();
         }
 
-        if (evaluatedInImplicitReferenceMode) {
-          (rules.options as { referenceMode?: boolean }).referenceMode = false;
-        }
+        // NB: previously this block cleared `referenceMode` on both `rules`
+        // and the finalRules wrapper when `evaluatedInImplicitReferenceMode`
+        // was true. That was a workaround for the old `markReferenceMode`
+        // eval-time walk, which tagged every descendant node individually.
+        // With the walk gone, the wrapper's `options.referenceMode` is the
+        // only reference-mode signal downstream renders will see, so
+        // clearing it here defeats dedupe suppression entirely.
         let finalRules = node.getFinalRules(rules);
-        if (evaluatedInImplicitReferenceMode) {
-          (finalRules.options as { referenceMode?: boolean }).referenceMode = false;
-        }
         if (importOptions!.postlude && !isInlineImport) {
           finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
         }

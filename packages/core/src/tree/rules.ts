@@ -418,6 +418,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this._renderKey !== undefined) {
       options.renderKey = this._renderKey;
     }
+    // Propagate this Rules wrapper's own `referenceMode` into PrintOptions
+    // before emitting children. Without this, import wrappers (shallow-cloned
+    // from a shared evaluated tree) can't hide their content via reference
+    // mode — the flag lives on the wrapper's options but never reaches
+    // downstream serialize-helper checks for descendants pulled up by
+    // `flatRules` (which strips the nested Rules boundary).
+    if ((this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+      && options.referenceMode !== true) {
+      options.referenceMode = true;
+    }
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
