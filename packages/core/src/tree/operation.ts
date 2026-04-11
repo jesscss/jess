@@ -50,7 +50,7 @@ export class Operation extends Node<OperationValue> {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          n.value = [l, op, r];
+          n.set(null, [l, op, r], context.renderKey);
           return n;
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -67,7 +67,7 @@ export class Operation extends Node<OperationValue> {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Update the existing operation with evaluated nodes and mark as evaluated
-              n.value = [l, op, r];
+              n.set(null, [l, op, r], context.renderKey);
               n.evaluated = true;
               // Mark child nodes as evaluated too
               l.evaluated = true;
@@ -92,7 +92,7 @@ export class Operation extends Node<OperationValue> {
         out.post = right.post;
         return out;
       }
-      n.value = [l, op, r];
+      n.set(null, [l, op, r], context.renderKey);
       return n;
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

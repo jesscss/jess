@@ -61,11 +61,17 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this._canFastReject!;
   }
 
-  /** BitSet-based key properties for O(1) extend rejection */
+  /**
+   * BitSet-based key properties for O(1) extend rejection. These are
+   * public so that consumers (notably `selector-match-core`) can peek
+   * at "has this been computed?" without forcing the lazy computation
+   * via the `keyBits` getter. Computation has side effects (child walks)
+   * that callers in fast-reject paths want to avoid.
+   */
   keySetLibrary: BitSetLibrary<string> | undefined;
-  protected _keyBits: BitSet<string> | undefined;
-  protected _visibleKeyBits: BitSet<string> | undefined;
-  protected _requiredKeyBits: BitSet<string> | undefined;
+  _keyBits: BitSet<string> | undefined;
+  _visibleKeyBits: BitSet<string> | undefined;
+  _requiredKeyBits: BitSet<string> | undefined;
 
   get keyBits(): BitSet<string> {
     if (!this._keyBits) {

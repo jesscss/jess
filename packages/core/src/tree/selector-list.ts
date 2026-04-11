@@ -179,7 +179,7 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length !== value.length) {
-          list.value = flattened;
+          list.set(null, flattened, context.renderKey);
         }
         if (value.length === 1) {
           return value[0]!;

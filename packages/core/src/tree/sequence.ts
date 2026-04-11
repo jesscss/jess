@@ -154,7 +154,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         return node;
       },
       (node) => {
-        node.value = node.value.filter(n => n && !(n instanceof Nil));
+        node.set(null, node.value.filter(n => n && !(n instanceof Nil)), context.renderKey);
         if (node.value.length === 1 && !node.options.preserveWhitespace) {
           return node.value[0]!;
         }

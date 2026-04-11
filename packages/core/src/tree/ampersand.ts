@@ -151,6 +151,16 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   }
 
   /**
+   * Returns the raw stored container selector (without any `:is()` wrapping).
+   * Used by extend-walk to peek at the container parent for "within-ampersand"
+   * matching. Prefer `getResolvedSelector()` when you want the serialization
+   * view (SelectorList gets wrapped for implicit-& use).
+   */
+  getStoredSelector(): Selector | Nil | undefined {
+    return this._selectorContainer?.selector;
+  }
+
+  /**
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
@@ -341,7 +351,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
                 if (typeof s.value === 'string') {
-                  s.value += appendValue;
+                  s.set(null, s.value + appendValue, context.renderKey);
                   appended = true;
                   break;
                 }

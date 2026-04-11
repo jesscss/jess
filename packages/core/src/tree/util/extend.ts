@@ -631,6 +631,9 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           }
         }
       }
+      // @ts-expect-error direct mutation: in-place selector reshape in the
+      // non-eval `createProcessedSelector` helper (extend pipeline). No
+      // renderKey context, no fork to preserve.
       el.value = flattened;
       push(el);
     } else if (isNode(el, N.CompoundSelector)) {
@@ -640,6 +643,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       if (typeof compoundProcessed === 'string') {
         return compoundProcessed;
       }
+      // @ts-expect-error direct mutation: see extend short-term exception above
       el.value = compoundProcessed as Selector[];
       push(el);
     } else if (isNode(el, N.ComplexSelector)) {
@@ -649,12 +653,14 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         return complexProcessed;
       }
       let result = complexProcessed as Selector[];
+      // @ts-expect-error direct mutation: see extend short-term exception above
       el.value = result;
       let [first, second] = components;
       /** Remove invisibility on combinator if it's a generated */
       if (first?.type === 'Ampersand') {
         /** Implicit ampersand was kept for nested output (don't resolve to parent selector here). */
         if (first.hasFlag(F_IMPLICIT_AMPERSAND) && result[0] === first) {
+          // @ts-expect-error direct mutation: see extend short-term exception above
           el.value = result;
           // Fall through; no throw, no slice
         } else if (isNode(result[0], N.Selector)) {
@@ -664,8 +670,10 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         } else if (first.generated) {
           /** Silent removal if generated and no selector was resolved */
           if (second?.type === 'Combinator' && second.generated) {
+            // @ts-expect-error direct mutation: see extend short-term exception above
             el.value = result.slice(2);
           } else {
+            // @ts-expect-error direct mutation: see extend short-term exception above
             el.value = result.slice(1);
           }
         } else {

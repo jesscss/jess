@@ -250,9 +250,16 @@ export abstract class Node<
   /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
-   * rules list.
+   * rules list. Backed by `_requiredSemi`; exposed as a getter so
+   * subclasses (e.g. Declaration) can override with computed logic.
    */
   declare _requiredSemi: boolean | undefined;
+  get requiredSemi(): boolean | undefined {
+    return this._requiredSemi;
+  }
+  set requiredSemi(value: boolean | undefined) {
+    this._requiredSemi = value;
+  }
 
   /**
    * Track the original source when cloned / copied,
@@ -316,6 +323,30 @@ export abstract class Node<
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
 
+  /**
+   * The node's data.
+   *
+   * This is `readonly` to prevent accidental unforked mutation. The fork
+   * machinery (per-renderKey copies for mixin calls / `$for` iterations) is
+   * maintained by `set(key, value, renderKey)`, and direct writes that
+   * bypass it silently leak state across render contexts — the failure
+   * mode is that calls 2+ pick up call 1's evaluated values.
+   *
+   * Mutation paths, in order of preference:
+   *   1. `node.set(key, value, renderKey)` — fork-aware. Use this in all
+   *      eval-time code.
+   *   2. Direct assignment with an explicit `@ts-expect-error` escape:
+   *        // @ts-expect-error direct mutation: <why fork machinery is not needed here>
+   *        node.value = newValue;
+   *      Use this only when you know the caller is not inside a renderKey
+   *      context (parse time, in-place selector reshape helpers, etc.).
+   *      Every bypass must carry its justification inline.
+   *
+   * Short-term exception: `util/extend.ts` and friends still do extensive
+   * in-place selector reshaping and use the escape hatch liberally. That
+   * subtree is on the list to migrate; new code outside it should prefer
+   * option (1).
+   */
   readonly value: Data;
 
   // /**

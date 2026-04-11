@@ -138,7 +138,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         for (let i = 0; i < value.length - 1; i++) {
           (value[i] as any).post = undefined;
         }
-        sel.value = value;
+        sel.set(null, value, context.renderKey);
         return sel;
       }
     );

@@ -406,11 +406,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       const rs = child as Ruleset;
       if (rs.value === sharedValue) {
-        rs.value = {
+        (rs as Ruleset).set(null, {
           selector: rs.value.selector,
           rules: rs.value.rules,
           ...(rs.value.guard !== undefined && { guard: rs.value.guard })
-        };
+        });
       }
       Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
     }
@@ -856,6 +856,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
+    /**
+     * Local non-generic alias for `this.set` so we can write field-typed
+     * mutations (`'guard'`, `'selector'`, `'rules'`) without TS losing the
+     * key constraints to the class generic `T`.
+     */
+    const setOnRuleset = (key: 'guard' | 'selector' | 'rules', value: any) => {
+      (this as Ruleset).set(key as any, value, context.renderKey);
+    };
 
     // Store frames snapshot for collapseNesting serialization
     if (collapseNesting) {
@@ -887,10 +895,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
               if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
               }
               if (!guardPasses) {
-                this.set('guard', new Nil(), context.renderKey);
+                setOnRuleset('guard', new Nil());
                 return new Nil();
               }
-              this.set('guard', undefined, context.renderKey);
+              setOnRuleset('guard', undefined);
               return undefined;
             }
           );
@@ -910,20 +918,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // This allows rules to be output even when there's no selector context
           // We don't push frames because there's no selector context
           // Store Nil in selector so next step can detect this case
-          this.set('selector', selector, context.renderKey);
+          setOnRuleset('selector', selector);
           const evaluatedRules = this.value.rules.eval(context);
           if (isThenable(evaluatedRules)) {
             return (evaluatedRules as Promise<Rules>).then((rules) => {
-              this.set('rules', rules, context.renderKey);
+              setOnRuleset('rules', rules);
               return rules;
             });
           }
-          this.set('rules', evaluatedRules as Rules, context.renderKey);
+          setOnRuleset('rules', evaluatedRules as Rules);
           return evaluatedRules;
         }
         // Preserve the sourceNode from the current selector before replacing it
         const preservedSourceNode = this.value.selector?.sourceNode;
-        this.set('selector', selector, context.renderKey);
+        setOnRuleset('selector', selector);
         if (preservedSourceNode && this.value.selector) {
           this.value.selector.sourceNode = preservedSourceNode;
         }
@@ -958,7 +966,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return evaluatedRules;
         }
 
-        this.set('rules', evaluatedRules, context.renderKey);
+        setOnRuleset('rules', evaluatedRules);
         const rules = this.value.rules;
 
         if (rules.visibleRules().length === 0) {

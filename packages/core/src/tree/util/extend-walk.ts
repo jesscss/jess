@@ -1129,7 +1129,7 @@ function wouldMatchNode(
   // Ampersand = implicit parent. Match within the & means the parent carries the extend.
   if (isNode(node, N.Ampersand)) {
     const amp = node as Ampersand;
-    const storedSel = amp._selectorContainer?.selector;
+    const storedSel = amp.getStoredSelector();
     if (storedSel && !isNode(storedSel, N.Nil)) {
       const innerResult = wouldMatchNode(storedSel as Selector, spec, extendWith, partial, {
         isRoot: false,

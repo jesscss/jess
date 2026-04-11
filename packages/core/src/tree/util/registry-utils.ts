@@ -108,8 +108,8 @@ export abstract class Registry<
       rulesSet = rulesSet.filter((n) => {
         // Check RulesEntry visibility first, then fall back to the actual Rules node's visibility
         // Rules constructor sets defaults, so visibility should always be defined
-        const entryVisibility = n.rulesVisibility?.[filterType];
-        const nodeVisibility = n.node.options.rulesVisibility?.[filterType];
+        const entryVisibility = filterType ? n.rulesVisibility?.[filterType] : undefined;
+        const nodeVisibility = filterType ? n.node.options.rulesVisibility?.[filterType] : undefined;
         const visibility = entryVisibility ?? nodeVisibility;
 
         const isMixinOutput = n.node.options?.isMixinOutput === true;
@@ -182,8 +182,8 @@ export abstract class Registry<
           let result = r.node.find(findType, key, actualChildFilterType as any, newOpts);
           if (result) {
             // Check if this Rules has optional visibility (from RulesEntry or the actual Rules node)
-            const entryVisibility = r.rulesVisibility?.[filterType];
-            const nodeVisibility = r.node.options.rulesVisibility?.[filterType];
+            const entryVisibility = filterType ? r.rulesVisibility?.[filterType] : undefined;
+            const nodeVisibility = filterType ? r.node.options.rulesVisibility?.[filterType] : undefined;
             const isOptional = entryVisibility === 'optional' || nodeVisibility === 'optional';
             const optionalCandidates = options?.optionalCandidates;
 
@@ -1282,7 +1282,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // IMPORTANT: Walking UP the parent chain is always an "inside" lookup — the
           // search originates from a descendant of this scope, so private does NOT block.
           // Private only blocks _searchRulesChildren (outside looking in).
-          const currentRulesVisibility = rules.options.rulesVisibility?.[filterType] ?? '';
+          const currentRulesVisibility = (filterType ? rules.options.rulesVisibility?.[filterType] : undefined) ?? '';
           if (currentRulesVisibility === 'optional') {
             optionalCandidates.add(result);
           } else {

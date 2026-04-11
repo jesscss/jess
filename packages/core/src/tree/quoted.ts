@@ -71,7 +71,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
         return new Any(value as string);
       }
       let quoted = this.maybeClone(context);
-      quoted.value = value as any;
+      quoted.set(null, value as any, context.renderKey);
       return quoted;
     };
     if (value instanceof Node) {
