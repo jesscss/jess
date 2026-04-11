@@ -78,26 +78,29 @@ Keep commits small. Run full core tests after each step.
 
 ## Progress (dev-tree-swap, 2026-04-11)
 
-### Done
-- **Step 1**: `resetEvalStateDeep` deleted. Was dead code on the current baseline — `clone(true)` already produces clean initial state. Zero regressions. (commit `0478d210`)
-- **Step 2 (partial)**: Two of three `clone(true)` → `clone(false)` in `evalCall`. Ruleset-as-mixin path and detached-ruleset unlock path are now shallow-cloned. The third (parameterized mixin body) still needs deep clone until the renderKey fork path is working. (commit `ef872d57`)
+### Done — Steps 1–3
+- **Step 1** (`0478d210`): `resetEvalStateDeep` deleted. Was dead code on the current baseline.
+- **Step 2** (`ef872d57` + `eb917c7e`): All three `clone(true)` in `evalCall` → `clone(false)`. The body Rules wrapper is shallow-cloned; body children are shared across calls.
+- **Step 3** (`eb917c7e`): renderKey allocated per call, pushed onto `renderKeyStack` around the body eval, tagged on the result Rules. Net zero regressions (10 failing / 1047 passing, same baseline).
 
-### Blocked attempt on Step 3 (renderKey allocation)
-Tried wrapping `evaluateCandidateOutput` with `renderKeyStack.push(ruleCounter++)` / `pop()` around the body eval, while keeping `clone(true)`. Three regressions appeared:
-1. `at-rule.test.ts > media.less AST` — `'fallback' is not defined` thrown by a Reference inside the cloned body of `.mediaMixin` on its second call.
-2. `mixin.test.ts > should call a mixin that calls another mixin`.
-3. `mixin.test.ts > keeps param vars preferred over outer same-name vars`.
+### Five supporting changes the refactor uncovered (all in `eb917c7e`)
 
-All three involve a Reference failing to find its variable during an eval that should have it in scope.
+1. **`Node.getParent(renderKey)` fallback.** Was returning `undefined` when no fork entry existed, causing `registry-utils` scope walks to terminate early under a fresh renderKey. Now falls back to `this.parent`. Canonical nodes walked under a new renderKey still resolve their scope chain.
 
-Diagnostic: the `at-rule` failure logs showed `context.rulesContext` pointing at the inner body Rules (`Declaration(background), AtRule(@media)`), not at the outer params wrapper containing `fallback`. But `rulesContext` IS set to `outerRules ?? rules` at line 2450 before eval. Hypothesis:
-- Something deeper resets `context.rulesContext` to the inner body Rules during eval of the nested At Rule.
-- OR, the renderKey push doesn't cause this — it just exposes a lookup path that was already fragile but masked by the absence of a renderKey. (The needsReeval path in `evalStatic` writes `node.getValue(CANONICAL)` which may alter parent fork state.)
+2. **`Node.evalStatic` flag reset on `needsReeval`.** Every node-class `preEval` / `evalNode` override has an internal `if (!this.preEvaluated) return this;` gate. `evalStatic` passed `|| needsReeval` in its own check but that doesn't help once the class method short-circuits internally. Now `evalStatic` clears both flags before calling into the class when it decides a re-eval is needed.
 
-### Open questions before resuming
-1. Does **pushing a renderKey with `null`/no body change** cause any failures on its own? (isolate the push from the body eval semantics)
-2. Does `Rules.eval` write to `this.registry` (definition-level state) when called? Step 6 of the plan — audit first.
-3. Is there a simpler approach: instead of `renderKey` + fork machinery, **move** the params/body as opposed to sharing, so the fork machinery never has to kick in?
+3. **`Ruleset._composedSelectorByKey`.** The compose cache was a single scalar — call 1 composed `.a .mixinBody` and call 2 reused the cached `.a` value under `.b`'s scope. Now it's a `Map<renderKey, Selector>` with renderKey-aware get/set. A back-compat `_composedSelector` getter/setter operates on the canonical slot for extend-roots and serialize-helper callsites that haven't been converted.
 
-### Recommendation
-Step 3 is non-trivial and out of scope for this session. The `resetEvalStateDeep` deletion + shallow clones for the non-parameterized paths are net wins already committed. Resume Step 3 with Q1 as the first experiment.
+4. **`Rules.flatRulesWithKeys()`.** `flatRules` flattens nested Rules but drops `_renderKey` on the nested Rules it traverses. When a mixin-call-result Rules with `_renderKey = R1` contains a shared Declaration, `flatRules` returned the Declaration with no renderKey context, and serialization picked the wrong fork. The new method parallels the walk and returns a matching `renderKeys[]` array; `serializeRulesContainer` threads the per-leaf renderKey into `options.renderKey` for the leaf's `toTrimmedString`.
+
+5. **`AtRule.evalNode` prelude write via `.set()`.** Was directly assigning `node.value.prelude = out`. Paired with (2) this is the difference between cross-call prelude sharing and per-call forks.
+
+### Remaining clean-up
+- The `_composedSelector` back-compat shim in `Ruleset` can go away once the two extend-roots writes are converted to `setComposedSelector(selector, renderKey)`. Both sites (extend-roots.ts:696 and :855) write after extend mutation and currently target the canonical slot, which is correct for extend output — but revisit if extend interacts with multi-call output.
+- Other `node.value.X = y` direct mutation sites that should be `node.set('X', y, rk)` — should be systematically audited. Nothing in the current test suite regresses, but any new multi-call scenario may trip on them.
+
+### Success criteria status
+- [x] `resetEvalStateDeep` gone.
+- [x] `clone(true)` gone from all three mixin call sites in `evalCall`.
+- [x] Mixin tests pass. Recursion tests were baseline failures before and remain so.
+- [ ] Benchmark informational — not measured this session.
