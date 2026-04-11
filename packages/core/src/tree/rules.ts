@@ -2283,7 +2283,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
-        let rules = sourceRules.clone(true);
+        let rules = sourceRules.clone(false);
         /** Adopt for lookup, then adopt for sorting */
         candidate.parent!.adopt(rules);
         rules.sourceParent = sourceParent;
@@ -2307,7 +2307,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // not eagerly execute/flatten them.
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         const sourceRules = getRootSourceRules(candidate.value.rules);
-        let unlocked = sourceRules.clone(true);
+        let unlocked = sourceRules.clone(false);
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
