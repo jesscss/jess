@@ -75,3 +75,29 @@ Keep commits small. Run full core tests after each step.
 - `clone(true)` in `evalCall` gone (except genuine ruleset-as-mixin unlocking, if truly needed — prefer not).
 - Mixin tests pass. Recursion tests pass.
 - Benchmark informational: mixin-heavy fixtures get measurably faster.
+
+## Progress (dev-tree-swap, 2026-04-11)
+
+### Done
+- **Step 1**: `resetEvalStateDeep` deleted. Was dead code on the current baseline — `clone(true)` already produces clean initial state. Zero regressions. (commit `0478d210`)
+- **Step 2 (partial)**: Two of three `clone(true)` → `clone(false)` in `evalCall`. Ruleset-as-mixin path and detached-ruleset unlock path are now shallow-cloned. The third (parameterized mixin body) still needs deep clone until the renderKey fork path is working. (commit `ef872d57`)
+
+### Blocked attempt on Step 3 (renderKey allocation)
+Tried wrapping `evaluateCandidateOutput` with `renderKeyStack.push(ruleCounter++)` / `pop()` around the body eval, while keeping `clone(true)`. Three regressions appeared:
+1. `at-rule.test.ts > media.less AST` — `'fallback' is not defined` thrown by a Reference inside the cloned body of `.mediaMixin` on its second call.
+2. `mixin.test.ts > should call a mixin that calls another mixin`.
+3. `mixin.test.ts > keeps param vars preferred over outer same-name vars`.
+
+All three involve a Reference failing to find its variable during an eval that should have it in scope.
+
+Diagnostic: the `at-rule` failure logs showed `context.rulesContext` pointing at the inner body Rules (`Declaration(background), AtRule(@media)`), not at the outer params wrapper containing `fallback`. But `rulesContext` IS set to `outerRules ?? rules` at line 2450 before eval. Hypothesis:
+- Something deeper resets `context.rulesContext` to the inner body Rules during eval of the nested At Rule.
+- OR, the renderKey push doesn't cause this — it just exposes a lookup path that was already fragile but masked by the absence of a renderKey. (The needsReeval path in `evalStatic` writes `node.getValue(CANONICAL)` which may alter parent fork state.)
+
+### Open questions before resuming
+1. Does **pushing a renderKey with `null`/no body change** cause any failures on its own? (isolate the push from the body eval semantics)
+2. Does `Rules.eval` write to `this.registry` (definition-level state) when called? Step 6 of the plan — audit first.
+3. Is there a simpler approach: instead of `renderKey` + fork machinery, **move** the params/body as opposed to sharing, so the fork machinery never has to kick in?
+
+### Recommendation
+Step 3 is non-trivial and out of scope for this session. The `resetEvalStateDeep` deletion + shallow clones for the non-parameterized paths are net wins already committed. Resume Step 3 with Q1 as the first experiment.
