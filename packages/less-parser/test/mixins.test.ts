@@ -117,13 +117,17 @@ describe('lookupOrCall', () => {
           )
         value: 
           (Reference
-              type: 'property'
+              type: 'index'
             target: 
               (Reference
                   type: 'variable'
                 key: 'var'
               )
-            key: 'key'
+            key: 
+              (Quoted
+                  quote: '\''
+                'key'
+              )
           )
       `);
   });

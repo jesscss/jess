@@ -6,7 +6,6 @@ import { type IOrAlt } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 
 import {
-  type TreeContext,
   Node,
   Ampersand,
   Block,
@@ -54,13 +53,12 @@ import {
   Collection,
   type ComplexSelectorComponent,
   type Selector,
-  INTERPOLATION_PLACEHOLDER,
   type SimpleSelector,
   isNode,
   N,
   shouldOperateWithMathFrames
 } from '@jesscss/core';
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 import type { ExtendTarget, TokenMap } from '../lessRecursiveParser.js';
 import { all } from 'known-css-properties';
 
@@ -314,39 +312,6 @@ function isVariableLike($: P, T: TokenMap): boolean {
     || (isColon && $.preSkippedTokenMap.has(postToken.startOffset));
   return isVariable;
 }
-
-let interpolatedRegex = /([$@]){([^}]+)}/g;
-
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
-  location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
-
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
-  const replacements: Node[] = [];
-  let result: RegExpExecArray | null;
-  let source = name;
-  while (result = interpolatedRegex.exec(name)) {
-    const [match, propOrVar, value] = result;
-    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = createInterpolatedReference(propOrVar!, value!, location, context);
-    replacements.push(reference);
-  }
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-};
 
 const { isArray } = Array;
 
@@ -728,7 +693,7 @@ export function declaration(this: P, T: TokenMap) {
           let nameNode: Node;
           const nameValue = name.image;
           if (nameValue.includes('@') || nameValue.includes('$')) {
-            nameNode = getInterpolated(nameValue, $.getLocationInfo(name), $.context);
+            nameNode = getInterpolatedNode(nameValue, $.getLocationInfo(name), $.context);
           } else {
             nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
           }
@@ -777,7 +742,7 @@ export function declaration(this: P, T: TokenMap) {
             let nameNode: Node;
             const nameValue = name!.image;
             if (nameValue.includes('@') || nameValue.includes('$')) {
-              nameNode = getInterpolated(nameValue, $.getLocationInfo(name!), $.context);
+              nameNode = getInterpolatedNode(nameValue, $.getLocationInfo(name!), $.context);
             } else {
               nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context), true);
             }

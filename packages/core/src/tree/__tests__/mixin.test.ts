@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -630,6 +630,42 @@ describe('Mixin', () => {
       expect(css).toBeString(`
         .rule {
           background-color: cyan;
+        }
+      `);
+    });
+
+    it('should resolve mixin-ruleset lookups against interpolated selector names', async () => {
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [any('foo')]
+      }, { role: 'ident' });
+      const node = rules([
+        ruleset({
+          selector: interpolatedSelector(dynamicClass),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .foo {
+          color: red;
+        }
+        .out {
+          color: red;
         }
       `);
     });

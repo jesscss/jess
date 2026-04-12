@@ -1,9 +1,9 @@
 import { Interpolated, Quoted, Reference, INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
 
 // Pre-compiled regex for @{variable} interpolation - more efficient than creating new instances
-const INTERPOLATION_REGEX = /([$@]){([^}]+)}/g;
+const INTERPOLATION_REGEX = /([$@])\{([^}]+)\}/g;
 
-const createInterpolatedReference = (
+export const createInterpolatedReference = (
   prefix: string,
   varName: string,
   location?: any,
@@ -15,10 +15,29 @@ const createInterpolatedReference = (
     : varName;
   return new Reference(
     { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
+    { type: isProperty ? 'index' : 'variable', role: 'ident' },
     location,
     context
   );
+};
+
+export const getInterpolatedNode = (
+  name: string,
+  location?: any,
+  context?: any
+): Interpolated => {
+  const replacements: any[] = [];
+  let source = name;
+  let result;
+
+  INTERPOLATION_REGEX.lastIndex = 0;
+  while ((result = INTERPOLATION_REGEX.exec(name)) !== null) {
+    const [match, prefix, varName] = result;
+    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
+    replacements.push(createInterpolatedReference(prefix, varName, location, context));
+  }
+
+  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
 };
 
 /* Handle both @{variable} interpolation and @id-@num variable variables */
@@ -79,11 +98,11 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
   const nextPos = atPos !== -1 ? atPos : dollarPos;
   const start = name.slice(1, nextPos);
   const end = name.slice(nextPos);
-  const type: 'variable' | 'property' = end.startsWith('@') ? 'variable' : 'property';
+  const type: 'variable' | 'index' = end.startsWith('@') ? 'variable' : 'index';
   // For @id-@num variable variables, we need to create an Interpolated node
   const endResult = getInterpolatedOrString(end, location, context);
   if (typeof endResult === 'string') {
-    const endKey = type === 'property'
+    const endKey = type === 'index'
       ? new Quoted(endResult, { quote: '\'' }, location, context)
       : endResult;
     return new Interpolated({
@@ -106,7 +125,7 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
      */
     return new Interpolated({
       source: start + INTERPOLATION_PLACEHOLDER,
-      replacements: [endResult]
+      replacements: [type === 'index' ? new Quoted(endResult, { quote: '\'' }, location, context) : endResult]
     }, { role: 'ident' });
   }
 };

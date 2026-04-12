@@ -27,7 +27,7 @@ describe('getInterpolatedOrString', () => {
         if (replacement instanceof Reference) {
           expect(replacement.value.key).toBeInstanceOf(Quoted);
           expect((replacement.value.key as Quoted).value).toBe('key');
-          expect(replacement.options.type).toBe('property');
+          expect(replacement.options.type).toBe('index');
         }
       }
     });
@@ -42,7 +42,7 @@ describe('getInterpolatedOrString', () => {
         if (replacement instanceof Reference) {
           expect(replacement.value.key).toBeInstanceOf(Quoted);
           expect((replacement.value.key as Quoted).value).toBe('key');
-          expect(replacement.options.type).toBe('property');
+          expect(replacement.options.type).toBe('index');
         }
       }
     });
@@ -73,7 +73,7 @@ describe('getInterpolatedOrString', () => {
         if (replacement instanceof Reference) {
           expect(replacement.value.key).toBeInstanceOf(Quoted);
           expect((replacement.value.key as Quoted).value).toBe('property');
-          expect(replacement.options.type).toBe('property');
+          expect(replacement.options.type).toBe('index');
         }
       }
     });

@@ -4,7 +4,6 @@ import type { RuleContext, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
-  type TreeContext,
   type LocationInfo,
   type Operator,
   Node,
@@ -28,7 +27,7 @@ import {
   isNode,
   N
 } from '@jesscss/core';
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
@@ -73,24 +72,6 @@ function startsCustomValueToken($: P, T: TokenMap): boolean {
     || $.isType(T.Important)
     || $.isType(T.Unknown);
 }
-
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
-  location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
 
 // ── Production rules ──────────────────────────────────────────────────
 
@@ -644,13 +625,18 @@ export function varReference(this: P, T: TokenMap) {
               'property-in-unknown-value'
             );
             return new Reference(
-              { key: token.image.slice(1) },
-              { type: 'property', role: 'ident' },
+              { key: new Quoted(token.image.slice(1), { quote: '\'' }, $.getLocationInfo(token), $.context) },
+              { type: 'index', role: 'ident' },
               $.getLocationInfo(token),
               $.context
             );
           }
-          return new Reference(token.image.slice(1), { type: 'property' }, $.getLocationInfo(token), $.context);
+          return new Reference(
+            { key: new Quoted(token.image.slice(1), { quote: '\'' }, $.getLocationInfo(token), $.context) },
+            { type: 'index' },
+            $.getLocationInfo(token),
+            $.context
+          );
         }
       },
       {
@@ -660,8 +646,14 @@ export function varReference(this: P, T: TokenMap) {
             return;
           }
           const raw = token.image;
-          const type: 'variable' | 'property' = raw.startsWith('@') ? 'variable' : 'property';
-          const key = getInterpolatedOrString(raw);
+          const isPropertyLookup = raw.startsWith('$');
+          const type: 'variable' | 'index' = raw.startsWith('@') ? 'variable' : 'index';
+          const rawKey = getInterpolatedOrString(raw);
+          const key = isPropertyLookup
+            ? (typeof rawKey === 'string'
+                ? new Quoted(rawKey, { quote: '\'' }, $.getLocationInfo(token), $.context)
+                : new Quoted(rawKey, { quote: '\'' }, $.getLocationInfo(token), $.context))
+            : rawKey;
           if (ctx.inCustomPropertyValue && typeof key === 'string') {
             return new Reference({ key }, { type: 'variable', role: 'ident' }, $.getLocationInfo(token), $.context);
           }

@@ -4,7 +4,6 @@
 import type { RuleContext, ExtendTarget, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken, IOrAlt } from 'chevrotain';
 import {
-  type TreeContext,
   Node,
   Ampersand,
   Block,
@@ -37,55 +36,19 @@ import {
   type ComplexSelectorValue,
   type ComplexSelectorComponent,
   type Selector,
-  INTERPOLATION_PLACEHOLDER,
   type SimpleSelector,
   isNode,
   N,
   StyleImport
 } from '@jesscss/core';
 
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 import { all } from 'known-css-properties';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
-
-// ── Helper: interpolation regex and getInterpolated ──────────────────
-
-let interpolatedRegex = /([$@]){([^}]+)}/g;
-
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
-  location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
-
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
-  const replacements: Node[] = [];
-  let result: RegExpExecArray | null;
-  let source = name;
-  while (result = interpolatedRegex.exec(name)) {
-    const [match, propOrVar, value] = result;
-    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = createInterpolatedReference(propOrVar!, value!, location, context);
-    replacements.push(reference);
-  }
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-};
 
 export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
@@ -108,8 +71,7 @@ export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
         if ($.RECORDING_PHASE) {
           return;
         }
-        const match = interpolatedRegex.exec(token.image);
-        interpolatedRegex.lastIndex = 0;
+        const match = /([$@])\{([^}]+)\}/.exec(token.image);
         if (match && match[0] === token.image) {
           return createInterpolatedReference(
             match[1]!,
@@ -820,7 +782,7 @@ export function simpleSelector(this: P, T: TokenMap) {
               $.context
             );
           }
-          return getInterpolated(image, location, $.context);
+          return getInterpolatedNode(image, location, $.context);
         }
       },
       */
@@ -843,7 +805,7 @@ export function simpleSelector(this: P, T: TokenMap) {
       ) {
         // Create an InterpolatedSelector wrapper for interpolated selectors
         let nameValue = selector.image;
-        let interpolatedNode = getInterpolated(nameValue, $.getLocationInfo(selector), $.context);
+        let interpolatedNode = getInterpolatedNode(nameValue, $.getLocationInfo(selector), $.context);
 
         return new InterpolatedSelector(interpolatedNode, undefined, $.getLocationInfo(selector), $.context);
       }

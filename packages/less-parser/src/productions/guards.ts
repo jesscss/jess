@@ -4,7 +4,6 @@ import type { IToken } from 'chevrotain';
 import { NoViableAltException } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
-  type TreeContext,
   type LocationInfo,
   Node,
   Any,
@@ -23,10 +22,9 @@ import {
   StyleImport,
   type Url,
   isNode,
-  N,
-  INTERPOLATION_PLACEHOLDER
+  N
 } from '@jesscss/core';
-import { getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
@@ -34,40 +32,6 @@ type P = any;
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
   return (ctx?.parenFrames as boolean[] | undefined) ?? [];
 }
-
-const interpolatedRegex = /([$@])\{([^}]+)\}/g;
-
-const createInterpolatedReference = (
-  prefix: string,
-  value: string,
-  location: LocationInfo,
-  context: TreeContext
-): Reference => {
-  const isProperty = prefix === '$';
-  const key = isProperty
-    ? new Quoted(value, { quote: '\'' }, location, context)
-    : value;
-  return new Reference(
-    { key },
-    { type: isProperty ? 'property' : 'variable', role: 'ident' },
-    location,
-    context
-  );
-};
-
-const getInterpolated = (name: string, location: LocationInfo, context: TreeContext): Interpolated => {
-  const replacements: Node[] = [];
-  let result: RegExpExecArray | null;
-  let source = name;
-  interpolatedRegex.lastIndex = 0;
-  while (result = interpolatedRegex.exec(name)) {
-    const [match, propOrVar, value] = result;
-    source = source.replace(match, INTERPOLATION_PLACEHOLDER);
-    const reference = createInterpolatedReference(propOrVar!, value!, location, context);
-    replacements.push(reference);
-  }
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
-};
 
 function isDefaultGuardCall(node: Node | undefined): node is Call {
   if (!node || !isNode(node, N.Call)) {
@@ -495,7 +459,7 @@ export function mixinName(this: P, T: TokenMap) {
     let nameValue = name.image;
     let location = $.getLocationInfo(name);
     if (nameValue.includes('@') || nameValue.includes('$')) {
-      const interpolated = getInterpolated(nameValue, location, $.context);
+      const interpolated = getInterpolatedNode(nameValue, location, $.context);
       nameNode = interpolated;
       if (asReference) {
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
@@ -649,14 +613,19 @@ export function lookupOrCall(this: P, T: TokenMap) {
           const target = targetNode instanceof Call ? targetNode : targetNode instanceof Reference ? targetNode : undefined;
           if (keyToken) {
             let tokenStr = keyToken.image;
-            let type: 'variable' | 'property' = tokenStr.startsWith('@') ? 'variable' : 'property';
+            let type: 'variable' | 'index' = tokenStr.startsWith('@') ? 'variable' : 'index';
             if (keyToken.tokenType === T.NestedReference) {
-              let tokenStr = keyToken.image;
+              tokenStr = keyToken.image;
               if (!tokenStr.startsWith('$') && !tokenStr.startsWith('@')) {
                 tokenStr = '$' + tokenStr;
               }
             }
             let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
+            if (type === 'index') {
+              result = typeof result === 'string'
+                ? new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context)
+                : new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context);
+            }
 
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
             const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';

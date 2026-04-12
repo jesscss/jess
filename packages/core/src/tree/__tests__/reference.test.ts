@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -275,6 +275,43 @@ describe('reference', () => {
   });
 
   describe('nested references for mixin-ruleset lookups', () => {
+    it('should resolve quoted index property access on mixin-returned rules', async () => {
+      const node = rules([
+        mixin({
+          name: any('.mk-map'),
+          rules: rules([
+            decl({ name: 'text', value: any('white') }),
+            decl({ name: 'background', value: any('black') })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'p',
+              value: call({
+                name: ref({ key: '.mk-map' }, { type: 'mixin-ruleset' }),
+                args: list([])
+              })
+            }),
+            decl({
+              name: 'color',
+              value: ref({
+                target: ref({ key: 'p' }, { type: 'variable' }),
+                key: quoted('text')
+              }, { type: 'index' })
+            })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .output {
+          color: white;
+        }
+      `);
+    });
+
     it('should register and resolve escaped class selector via string key', async () => {
       const node = rules([
         ruleset({
