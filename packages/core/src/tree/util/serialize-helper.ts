@@ -1,6 +1,6 @@
 import type { AtRule } from '../at-rule.js';
 import { Ruleset } from '../ruleset.js';
-import { F_EXTENDED, type Node } from '../node.js';
+import { F_EXTENDED, type Node, type RenderKey } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -258,7 +258,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // in mixin call / $for output, this is the call's renderKey. Used to
     // read the matching fork when serializing shared body nodes.
     const entryRenderKey = rulesRenderKeys[idx];
-    const effectiveRenderKey = entryRenderKey ?? options.renderKey;
+    const effectiveRenderKey = (entryRenderKey ?? options.renderKey) as RenderKey | undefined;
     const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
     if (!n.visible && !n.fullRender) {
@@ -334,7 +334,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let idt = indent(options.depth + 1);
     /** Re-widen type after accumulated isNode narrowing above */
     const nn = n as Node;
-    const leafChildOptions = { ...options, depth: options.depth + 1, renderKey: effectiveRenderKey };
+    const leafChildOptions: FinalPrintOptions = { ...options, depth: options.depth + 1, renderKey: effectiveRenderKey };
     let pre = w.capture(() => nn.processPrePost('pre', undefined, leafChildOptions));
     /** normalize pre spacing */
     let out = isNode(nn, N.Declaration)

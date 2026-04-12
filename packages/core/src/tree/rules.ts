@@ -4,6 +4,7 @@ import {
   type NodeOptions,
   type LocationInfo,
   type TreeContext,
+  type RenderKey,
   F_STATIC,
   F_VISIBLE
 } from './node.js';
@@ -583,11 +584,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   flatRulesWithKeys(visibleOnly: boolean = false): {
     nodes: Node[];
-    renderKeys: Array<number | symbol | undefined>;
+    renderKeys: Array<RenderKey | undefined>;
   } {
     const nodes: Node[] = [];
-    const renderKeys: Array<number | symbol | undefined> = [];
-    const iterateRules = (rules: Rules, inheritedKey: number | symbol | undefined) => {
+    const renderKeys: Array<RenderKey | undefined> = [];
+    const iterateRules = (rules: Rules, inheritedKey: RenderKey | undefined) => {
       const effectiveKey = rules._renderKey ?? inheritedKey;
       for (let n of rules.value) {
         if (isNode(n, N.Rules)) {

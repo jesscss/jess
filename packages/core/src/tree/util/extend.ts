@@ -239,6 +239,7 @@ export interface ExtendInstruction {
   extendWith: Selector;
   partial: boolean;
   extendRoot?: Rules;
+  extendNode?: Node;
 }
 
 export function applyExtendsToSelector(
