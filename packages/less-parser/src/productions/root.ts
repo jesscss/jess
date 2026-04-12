@@ -58,7 +58,7 @@ import {
   N,
   shouldOperateWithMathFrames
 } from '@jesscss/core';
-import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
+import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString, normalizeMixinReferenceKey } from '../utils.js';
 import type { ExtendTarget, TokenMap } from '../lessRecursiveParser.js';
 import { all } from 'known-css-properties';
 
@@ -1432,17 +1432,14 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
     const createMixinCall = (location: LocationInfo) => {
       let leftNode!: Node;
 
-      // If selector is a CompoundSelector, ComplexSelector, or single BasicSelector (but not SelectorList),
-      // create a single Reference with the selector instance as the key instead of nested references.
-      // This handles cases like .foo.bar() or .foo > .bar() as a single call.
-      // Note: .foo().bar() still creates nested calls because .foo() is parsed separately.
       if (!isSelectorList && (
         selector instanceof CompoundSelector
-        || selector instanceof ComplexSelector
         || selector instanceof BasicSelector
+        || selector instanceof InterpolatedSelector
+        || selector instanceof ComplexSelector
       )) {
-        // Create a single Reference with the selector instance as the key
-        leftNode = new Reference({ key: selector }, { type: 'mixin-ruleset', role: 'name' }, undefined, $.context);
+        const { key, rawKey } = normalizeMixinReferenceKey(selector);
+        leftNode = new Reference({ key, rawKey }, { type: 'mixin-ruleset', role: 'name' }, undefined, $.context);
       } else {
         // For other cases (like SelectorList or when we need nested references),
         // iterate through selector nodes and create nested references

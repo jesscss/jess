@@ -474,6 +474,7 @@ export function mixinName(this: P, T: TokenMap) {
         // If target is a Reference with matching type, merge keys instead of nesting
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
           const existingKey = ctx.node.value.key;
+          const existingRawKey = ctx.node.value.rawKey;
           let mergedKeys: string[];
           if (Array.isArray(existingKey)) {
             mergedKeys = [...existingKey];
@@ -481,8 +482,18 @@ export function mixinName(this: P, T: TokenMap) {
             mergedKeys = [String(existingKey)];
           }
           mergedKeys.push(nameValue);
+          const rawPrefix = Array.isArray(existingRawKey)
+            ? existingRawKey.join(' > ')
+            : typeof existingRawKey === 'string'
+              ? existingRawKey
+              : Array.isArray(existingKey)
+                ? existingKey.join(' > ')
+                : String(existingKey);
           nameNode = new Reference(
-            { key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys },
+            {
+              key: mergedKeys.length === 1 ? mergedKeys[0]! : mergedKeys,
+              rawKey: `${rawPrefix} > ${nameValue}`
+            },
             { type: 'mixin-ruleset', role: 'name' },
             location,
             $.context

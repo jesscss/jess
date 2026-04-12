@@ -17,7 +17,8 @@ import {
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
   type Rules,
-  Node
+  Node,
+  atrule
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -1021,6 +1022,125 @@ describe('Style import', () => {
       const declaration = evald.at(1) as any;
       const resolved = await declaration.eval(context);
       expect(`${resolved}`).toBe('value: 42');
+    });
+
+    it('import-reference: reference-imported mixins remain callable', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-mixin.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.mixin-with-directives'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-mixin.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: '.mixin-with-directives' }, { type: 'mixin-ruleset' }),
+              args: list([any('some-name')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .out {
+          $name: some-name;
+          color: red;
+        }
+      `);
+    });
+
+    it('import-reference: directive-bearing reference-imported mixins remain callable', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-mixin-directives.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.mixin-with-directives'),
+          params: list([any('keyframeName', { role: 'property' })]),
+          rules: rules([
+            atrule({
+              name: any('@keyframes'),
+              prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
+              rules: rules([
+                decl({ name: any('property'), value: any('value') })
+              ])
+            }),
+            vardecl({
+              name: 'rules1',
+              value: rules([
+                decl({ name: any('property'), value: any('value') })
+              ])
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-mixin-directives.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: '.mixin-with-directives' }, { type: 'mixin-ruleset' }),
+              args: list([any('some-name')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toContain('@keyframes some-name');
+    });
+
+    it('import-reference: namespaced reference-imported rulesets remain callable as mixins', async () => {
+      const referencedPath = resolve(process.cwd(), 'simple-mixin.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: el('.mixin'),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('simple-mixin.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        }),
+        ruleset({
+          selector: el('#used-namespaced-mixin'),
+          rules: rules([
+            call({
+              name: ref({
+                target: ref({ key: '#Namespace' }, { type: 'mixin-ruleset' }),
+                key: '.mixin'
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #Namespace {
+          .mixin {
+            was: included;
+          }
+        }
+        #used-namespaced-mixin {
+          was: included;
+        }
+      `);
     });
 
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {

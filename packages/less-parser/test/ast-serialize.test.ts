@@ -136,7 +136,8 @@ describe('serializeTypes coverage', () => {
       (Call
         name: 
           (Reference [role=name]
-            key: 
+            key: '.mixin'
+            rawKey:
               (BasicSelector '.mixin')
           )
       )
@@ -150,7 +151,8 @@ describe('serializeTypes coverage', () => {
       (Call
         name: 
           (Reference [role=name]
-            key: 
+            key: '.mixin'
+            rawKey:
               (BasicSelector '.mixin')
           )
         args: 
@@ -743,6 +745,7 @@ test('namespace call - complex selector with parentheses', () => {
               (Reference [role=name]
                 key:
                   ['#namespace', '.scoped-mixin']
+                rawKey: '#namespace > .scoped-mixin'
               )
           )
       )
@@ -812,8 +815,10 @@ test('namespace reference with complex selector and accessor', () => {
               (Reference [role=name]
                 key:
                   ['#namespace', '.scoped-mixin']
+                rawKey: '#namespace > .scoped-mixin'
               )
-            key: 'property'
+            key: 
+              (Quoted 'property')
           )
       )
     `);
@@ -835,6 +840,7 @@ test('namespace call with accessor and parentheses', () => {
                   (Reference [role=name]
                     key:
                       ['#namespace', '.scoped-mixin']
+                    rawKey: '#namespace > .scoped-mixin'
                   )
                 key: 'ref'
               )

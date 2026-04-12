@@ -1,4 +1,12 @@
-import { Interpolated, Quoted, Reference, INTERPOLATION_PLACEHOLDER } from '@jesscss/core';
+import {
+  Interpolated,
+  Quoted,
+  Reference,
+  INTERPOLATION_PLACEHOLDER,
+  isNode,
+  N,
+  type Selector
+} from '@jesscss/core';
 
 // Pre-compiled regex for @{variable} interpolation - more efficient than creating new instances
 const INTERPOLATION_REGEX = /([$@])\{([^}]+)\}/g;
@@ -38,6 +46,35 @@ export const getInterpolatedNode = (
   }
 
   return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
+};
+
+export const normalizeMixinReferenceKey = (selector: Selector): { key: string | string[]; rawKey: Selector } => {
+  if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.InterpolatedSelector)) {
+    return { key: selector.valueOf(), rawKey: selector };
+  }
+
+  if (isNode(selector, N.ComplexSelector)) {
+    const path: string[] = [];
+    let canUsePath = true;
+
+    for (const node of selector.nodes()) {
+      if (isNode(node, N.BasicSelector | N.CompoundSelector | N.InterpolatedSelector)) {
+        path.push(node.valueOf());
+        continue;
+      }
+      if (isNode(node, N.Combinator) && (node.value === '>' || node.value === ' ')) {
+        continue;
+      }
+      canUsePath = false;
+      break;
+    }
+
+    if (canUsePath && path.length > 0) {
+      return { key: path, rawKey: selector };
+    }
+  }
+
+  return { key: selector.valueOf(), rawKey: selector };
 };
 
 /* Handle both @{variable} interpolation and @id-@num variable variables */

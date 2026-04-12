@@ -40,6 +40,39 @@ describe('CSS Nesting Collapse', () => {
     );
   });
 
+  it('preserves source order when declarations follow nested rules', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          decl({ name: 'color', value: spaced([el('red')]) }),
+          ruleset({
+            selector: sel([el('.child')]),
+            rules: rules([
+              decl({ name: 'background', value: spaced([el('blue')]) })
+            ])
+          }),
+          decl({ name: 'border', value: spaced([el('1px'), el('solid'), el('black')]) })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        color: red;
+      }
+      .parent .child {
+        background: blue;
+      }
+      .parent {
+        border: 1px solid black;
+      }`
+    );
+  });
+
   it('should collapse multiple nested levels', async () => {
     const node = rules([
       ruleset({

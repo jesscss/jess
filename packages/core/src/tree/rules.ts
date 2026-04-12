@@ -1449,9 +1449,52 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       const priorValue = prior.value.value.copy(true, freezeChildren);
       const nextValue = decl.value.value.copy(true, freezeChildren);
-      decl.value.value = assign === '&_:'
-        ? spaced([priorValue, nextValue])
-        : new List([priorValue, nextValue]);
+      const toMergedItems = (value: Node): Node[] => {
+        if (!isNode(value, N.List)) {
+          return [value];
+        }
+        const items = value.value.map(item => item.copy(true, freezeChildren));
+        while (items.length > 0) {
+          const first = items[0]!;
+          let firstIsEmptyString = false;
+          try {
+            firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
+          } catch {
+            firstIsEmptyString = false;
+          }
+          const isEmptyPlaceholder = (
+            isNode(first, N.Nil)
+            || (isNode(first, N.List) && first.value.length === 0)
+            || firstIsEmptyString
+          );
+          if (!isEmptyPlaceholder) {
+            break;
+          }
+          items.shift();
+        }
+        return items;
+      };
+      if (assign === '&_:') {
+        decl.value.value = spaced([priorValue, nextValue]);
+      } else {
+        const priorItems = toMergedItems(priorValue);
+        const nextItems = toMergedItems(nextValue);
+        if (priorItems.length > 0 && nextItems.length > 0) {
+          const lastPrior = priorItems[priorItems.length - 1]!;
+          const firstNext = nextItems[0]!;
+          let sameLeadingValue = false;
+          try {
+            sameLeadingValue = lastPrior.compare(firstNext) === 0 || String(lastPrior.valueOf()) === String(firstNext.valueOf());
+          } catch {
+            sameLeadingValue = false;
+          }
+          if (sameLeadingValue) {
+            nextItems.shift();
+          }
+        }
+        decl.value.value = new List([...priorItems, ...nextItems]);
+        normalizeMergedDeclarationValue(decl);
+      }
       if (!decl.value.important && prior.value.important) {
         decl.value.important = prior.value.important;
       }
@@ -1529,7 +1572,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       normalizeMergedDeclarationValue(node);
 
       const prior = lastVisibleByName.get(name);
-      if (prior && prior !== node && prior.parent !== node.parent) {
+      if (prior && prior !== node) {
         composeMergedValue(node, prior, assign);
       }
 

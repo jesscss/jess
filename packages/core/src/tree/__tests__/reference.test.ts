@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -570,6 +570,36 @@ describe('reference', () => {
           background: red;
         }
       `);
+    });
+
+    it('should resolve a mixin-ruleset call keyed by BasicSelector', async () => {
+      const node = rules([
+        mixin({
+          name: any('.mixin-with-directives'),
+          params: list([any('keyframeName', { role: 'property' })]),
+          rules: rules([
+            atrule({
+              name: any('@keyframes'),
+              prelude: ref({ key: 'keyframeName' }, { type: 'variable' }),
+              rules: rules([
+                decl({ name: 'property', value: any('value') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: el('.mixin-with-directives') }, { type: 'mixin-ruleset' }),
+              args: list([any('some-name')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toContain('@keyframes some-name');
     });
 
     it('should prefer compound ruleset over nested mixin lookup', async () => {

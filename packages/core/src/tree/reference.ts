@@ -39,6 +39,17 @@ import type { Color } from './color.js';
  */
 export type ReferenceValue = {
   target?: Reference | Call | undefined;
+  rawKey?:
+    string
+    | string[]
+    | Node
+    | Any
+    | number
+    | Num
+    | Quoted
+    | Selector
+    | Reference
+    | Interpolated;
   key:
     string
     | string[]
@@ -113,7 +124,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const w = options.writer!;
     const mark = w.mark();
     let { type = 'variable', resolution, fallbackValue, role } = this.options;
-    let { target, key } = this.value;
+    let { target, key, rawKey } = this.value;
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
         w.add(String(k), this);
@@ -125,6 +136,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(String(k));
       }
     };
+    const printableKey = rawKey ?? key;
     if (target) {
       target.toString(options);
     } else {
@@ -138,41 +150,41 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     switch (type) {
       case 'index':
         w.add('[');
-        emitKey(key);
+        emitKey(printableKey);
         w.add(']');
         break;
       case 'variable':
         if (target) {
           w.add('.$');
         }
-        emitKey(key);
+        emitKey(printableKey);
         break;
       case 'declaration':
         w.add('.');
-        emitKey(key);
+        emitKey(printableKey);
         break;
       case 'property':
         if (target) {
           w.add('[');
-          emitKey(key);
+          emitKey(printableKey);
           w.add(']');
         } else {
           w.add('.');
-          emitKey(key);
+          emitKey(printableKey);
         }
         break;
       case 'mixin':
         w.add(' > ');
-        emitKey(key);
+        emitKey(printableKey);
         break;
       case 'ruleset':
         w.add(' > *[');
-        emitKey(key);
+        emitKey(printableKey);
         w.add(']');
         break;
       case 'mixin-ruleset':
         w.add(' > *');
-        emitKey(key);
+        emitKey(printableKey);
         break;
     }
     if (fallbackValue === true) {
