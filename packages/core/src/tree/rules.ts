@@ -483,7 +483,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
       );
       if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
-        w.add('\n');
+        w.addSpacer('\n');
+      }
+    };
+    const closeRenderedFramesToBaseline = () => {
+      while (lastRenderedFrames.length > renderedFrameBaseline) {
+        const depthToClose = lastRenderedFrames.length - 1;
+        w.add(indent(depthToClose) + '}\n');
+        lastRenderedFrames.pop();
+        frameHeaders.pop();
       }
     };
     const markEmitted = (n: Node) => {
@@ -491,8 +499,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     };
-    const emitCaptured = (text: string, n: Node) => {
+    const emitCaptured = (text: string, n: Node, prefix?: string) => {
       emitBoundaryIfNeeded(n);
+      if (prefix) {
+        w.addSpacer(prefix);
+      }
       w.add(text, n);
       if (n.requiredSemi && n.options.semi !== false) {
         w.add(';', n);
@@ -506,14 +517,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       const isChildRules = n.type === 'Rules';
-      const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
+      const isLeafAtRule = n.type === 'AtRule' && !(n as AtRule).value.rules;
+      const isRulesetOrAtRule = n.type === 'Ruleset' || (n.type === 'AtRule' && !isLeafAtRule);
       // Add indentation only for simple nodes (declarations, etc.)
       // Ruleset and AtRule nodes indent themselves in renderOpening
-      if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
-        emitBoundaryIfNeeded(n);
-        w.add(space);
-      }
-
       // Emit directly to preserve source map segments
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
@@ -552,11 +559,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         markEmitted(n);
         continue;
       }
+      closeRenderedFramesToBaseline();
       let rule = w.capture(() => n.toTrimmedString(childOptions));
       if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
         continue;
       }
-      emitCaptured(rule, n);
+      const prefix = !isChildRules && !isRulesetOrAtRule && depth !== 0 ? space : undefined;
+      emitCaptured(rule, n, prefix);
     }
     while (lastRenderedFrames.length > renderedFrameBaseline) {
       const depthToClose = lastRenderedFrames.length - 1;

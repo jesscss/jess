@@ -20,8 +20,6 @@ describe('Rule', () => {
       foo {
         border: 1px solid black;
         color: #eee;
-      }
-      foo {
         border: 1px solid black;
         color: #eee;
       }

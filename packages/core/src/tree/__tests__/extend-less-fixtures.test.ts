@@ -470,8 +470,6 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }
 .button2 :hover {
   nested: white;
-}
-.button2 :hover {
   notnested: black;
 }
 .amp-test-h,

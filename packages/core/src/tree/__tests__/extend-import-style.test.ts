@@ -804,8 +804,6 @@ describe('Style import extend behavior', () => {
             .c {
               color: green;
             }
-          }
-          .visible {
             color: green;
             &:hover {
               color: green;

@@ -277,7 +277,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       continue;
     }
 
-    if (isNode(n, N.Ruleset | N.AtRule)) {
+    const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
+    if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
       const childOptions = getPrintOptions({
         ...options,
         referenceMode: inReferenceMode,
@@ -352,7 +353,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     }
 
     // if (isNode(n, N.Declaration)) {
-    let idt = indent(options.depth + 1);
+    const leafDepth = lastRenderedFrames.length;
+    leafChildOptions = {
+      ...leafChildOptions,
+      depth: leafDepth
+    };
+    let idt = indent(leafDepth);
     let pre = w.capture(() => nn.processPrePost('pre', undefined, leafChildOptions));
     /** normalize pre spacing */
     let out = isNode(nn, N.Declaration)
@@ -388,6 +394,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
        * provided depth, so do not prefix another `idt` here (that would double-indent).
        */
+      w.add(out, nn);
+    } else if (isLeafAtRule) {
       w.add(out, nn);
     } else {
       w.add(idt);

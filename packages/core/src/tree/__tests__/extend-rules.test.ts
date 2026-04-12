@@ -187,8 +187,6 @@ describe('Rules extend', () => {
       expect(css).toBeString(`
         .btn:hover {
           color: red;
-        }
-        .btn:hover {
           background: blue;
         }
       `);

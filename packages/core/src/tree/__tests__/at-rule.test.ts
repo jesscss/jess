@@ -235,6 +235,62 @@ describe('AtRule', () => {
     });
   });
 
+  describe('collapse nesting at-rule categories', () => {
+    it('keeps nested @starting-style in place when collapseNesting is true', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        ruleset({
+          selector: sel([el('[popover]:popover-open')]),
+          rules: rules([
+            decl({ name: 'opacity', value: num(1) }),
+            atrule({
+              name: any('@starting-style', { role: 'atkeyword' }),
+              rules: rules([
+                decl({ name: 'opacity', value: num(0) })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        [popover]:popover-open {
+          opacity: 1;
+          @starting-style {
+            opacity: 0;
+          }
+        }
+      `);
+    });
+
+    it('keeps leaf custom at-rules inside the current ruleset', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        ruleset({
+          selector: sel([el('.box')]),
+          rules: rules([
+            atrule({
+              name: any('@apply', { role: 'atkeyword' }),
+              prelude: any('h-64 w-64')
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .box {
+          @apply h-64 w-64;
+        }
+      `);
+    });
+  });
+
   describe('@media with mixins and parameters', () => {
     it('should handle mixin with nested @media using parameter', async () => {
       // Represents:

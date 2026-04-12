@@ -89,7 +89,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return this.hoistToRoot ?? opts.collapseNesting ?? false;
+    return this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -395,7 +395,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => {
         let { rules } = node.value;
         if (rules) {
-          if (context.opts.collapseNesting) {
+          if (context.opts.collapseNesting && node.isNestable()) {
             node.hoistToRoot = true;
           }
           // Push to frames before evaluating rules so we can use context.frames to find parent layers

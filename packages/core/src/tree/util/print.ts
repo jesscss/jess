@@ -44,6 +44,7 @@ export type FinalPrintOptions = PrintOptions & {
 
 export interface OutputWriter {
   add(text: string, origin?: unknown): void;
+  addSpacer(text: string): void;
   mark(): number;
   getSince(mark: number): string;
   captureWithMeta(fn: () => void): CapturedOutput;
@@ -190,6 +191,15 @@ export class OutputWriter implements OutputWriter {
     if (!originParam) {
       this._capturedSegments = null;
     }
+  }
+
+  addSpacer(text: string): void {
+    if (!text) {
+      return;
+    }
+    const pendingSegments = this._capturedSegments;
+    this.add(text);
+    this._capturedSegments = pendingSegments;
   }
 
   mark(): number {
