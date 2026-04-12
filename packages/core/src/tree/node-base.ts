@@ -1386,6 +1386,26 @@ export abstract class Node<
     return w.getSince(mark);
   }
 
+  render(context?: Context, options?: PrintOptions): string;
+  render(options?: PrintOptions): string;
+  render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    const options = context ? maybeOptions : contextOrOptions as PrintOptions | undefined;
+    return this.toTrimmedString({
+      ...options,
+      context: context ?? options?.context
+    });
+  }
+
   /**
    * The form of the node without pre/post comments and white-space
    *

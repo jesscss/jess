@@ -289,6 +289,251 @@ describe('AtRule', () => {
         }
       `);
     });
+
+    it('does not compose root-only @keyframes children with parent selector context', async () => {
+      context = new Context({ collapseNesting: true, bubbleRootAtRules: true });
+      const node = rules([
+        ruleset({
+          selector: sel([el('.onTop')]),
+          rules: rules([
+            atrule({
+              name: any('@keyframes', { role: 'atkeyword' }),
+              prelude: quoted(any('textscale')),
+              rules: rules([
+                ruleset({
+                  selector: sel([el('0%')]),
+                  rules: rules([
+                    decl({ name: 'font-size', value: dimension([1, 'em']) })
+                  ])
+                }),
+                ruleset({
+                  selector: sel([el('100%')]),
+                  rules: rules([
+                    decl({ name: 'font-size', value: dimension([2, 'em']) })
+                  ])
+                })
+              ])
+            }),
+            decl({ name: 'animation', value: quoted(any('textscale')) })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @keyframes "textscale" {
+          0% {
+            font-size: 1em;
+          }
+          100% {
+            font-size: 2em;
+          }
+        }
+        .onTop {
+          animation: "textscale";
+        }
+      `);
+    });
+
+    it('treats generated hoisted ampersand wrappers as transparent inside nested wrapper at-rules', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        atrule({
+          name: any('@supports', { role: 'atkeyword' }),
+          prelude: paren(decl({ name: 'property', value: any('value') })),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.outOfMedia'), co(' '), amp()]),
+              rules: rules([
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
+                  rules: rules([
+                    atrule({
+                      name: any('@supports', { role: 'atkeyword' }),
+                      prelude: paren(decl({ name: 'whatever', value: any('something') })),
+                      rules: rules([
+                        decl({ name: 'property', value: any('value') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @supports (property: value) {
+          @media (max-size: 2px) {
+            @supports (whatever: something) {
+              .outOfMedia {
+                property: value;
+              }
+            }
+          }
+        }
+      `);
+    });
+
+    it('does not merge adjacent root-only at-rules with identical headers', async () => {
+      const node = rules([
+        atrule({
+          name: any('@font-face', { role: 'atkeyword' }),
+          rules: rules([
+            decl({ name: 'font-family', value: quoted('One') })
+          ])
+        }),
+        atrule({
+          name: any('@font-face', { role: 'atkeyword' }),
+          rules: rules([
+            decl({ name: 'font-family', value: quoted('Two') })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @font-face {
+          font-family: "One";
+        }
+        @font-face {
+          font-family: "Two";
+        }
+      `);
+    });
+
+    it('does not merge adjacent wrapper at-rules from distinct sibling branches', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        ruleset({
+          selector: sel([el('.one')]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('screen', { role: 'keyword' })]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sel([el('.two')]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('screen', { role: 'keyword' })]),
+              rules: rules([
+                decl({ name: 'color', value: any('blue') })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @media screen {
+          .one {
+            color: red;
+          }
+        }
+        @media screen {
+          .two {
+            color: blue;
+          }
+        }
+      `);
+    });
+
+    it('does not merge identical wrapper stacks across at-rule and hoisted-ruleset sibling branches', async () => {
+      context.opts.collapseNesting = true;
+      const node = rules([
+        atrule({
+          name: any('@supports', { role: 'atkeyword' }),
+          prelude: paren(decl({ name: 'property', value: any('value') })),
+          rules: rules([
+            ruleset({
+              selector: sel([el('.outOfMedia'), co(' '), amp()]),
+              rules: rules([
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
+                  rules: rules([
+                    atrule({
+                      name: any('@supports', { role: 'atkeyword' }),
+                      prelude: paren(decl({ name: 'whatever', value: any('something') })),
+                      rules: rules([
+                        decl({ name: 'property', value: any('value') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sel([el('.onTop'), co(' '), amp()]),
+          rules: rules([
+            atrule({
+              name: any('@supports', { role: 'atkeyword' }),
+              prelude: paren(decl({ name: 'property', value: any('value') })),
+              rules: rules([
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
+                  rules: rules([
+                    atrule({
+                      name: any('@supports', { role: 'atkeyword' }),
+                      prelude: paren(decl({ name: 'whatever', value: any('something') })),
+                      rules: rules([
+                        decl({ name: 'property', value: any('value') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @supports (property: value) {
+          @media (max-size: 2px) {
+            @supports (whatever: something) {
+              .outOfMedia {
+                property: value;
+              }
+            }
+          }
+        }
+        @supports (property: value) {
+          @media (max-size: 2px) {
+            @supports (whatever: something) {
+              .onTop {
+                property: value;
+              }
+            }
+          }
+        }
+      `);
+    });
   });
 
   describe('@media with mixins and parameters', () => {

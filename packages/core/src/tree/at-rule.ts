@@ -5,7 +5,6 @@ import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-import { Ampersand } from './ampersand.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
@@ -248,6 +247,15 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
       const preludeOut = w.capture(() => prelude.toString(options));
+      if (!preludeOut.trim()) {
+        out += nameOut;
+        if (rules) {
+          out = normalizeIndent(out.replace(/\s+$/, '') + ' {', idt) + '\n';
+        } else {
+          out = normalizeIndent(out.replace(/\s+$/, '') + ';', idt);
+        }
+        return out;
+      }
       const preludeStartsWithSpace = /^\s/.test(preludeOut);
 
       out += nameOut;
@@ -272,10 +280,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     } else {
       out += nameOut;
       if (rules) {
-        if (!nameEndsWithSpace) {
-          out += ' ';
-        }
-        out = normalizeIndent(out + '{', idt) + '\n';
+        out = normalizeIndent(out.replace(/\s+$/, '') + ' {', idt) + '\n';
       } else {
         out = normalizeIndent(out + ';', idt);
       }
@@ -407,22 +412,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
           // This ensures parent layers are already on the stack when we look for them
           this._extractAndStoreLayerName(node, context);
-
-          // Wrap in Ruleset(&) when hoisted for nestable at-rules only. Do NOT wrap @keyframes,
-          // @font-face, or other at-rules in ROOT_ONLY_AT_RULES — their children must not get
-          // a wrapper so keyframe percentages (0%, 100%) etc. are not combined with parent selectors.
-          // Required for serialization: rulesets inside @media need this wrapper to output
-          // e.g. ".parent { font-size: 14px; }" inside @media.
-          if (node.isNestable() && !node.isRootOnly() && node.isHoisted(context.opts)) {
-            let existingRules = rules;
-            rules = Rules.create([
-              Ruleset.create({
-                selector: Ampersand.create(undefined),
-                rules: existingRules
-              }, { generated: true })
-            ]).inherit(existingRules);
-            node.adopt(rules);
-          }
 
           // Register extend root for nestable at-rules (including @layer).
           // Run preEval first so we push and later register the Rules that is actually evaluated

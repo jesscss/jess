@@ -217,6 +217,11 @@ const TEMPLATES = {
     summary: 'Duplicate selector',
     reason: 'Selector "${selector}" is defined multiple times.',
     fix: 'Consolidate rules or remove the duplicate.'
+  },
+  'selector/parentless-ampersand': {
+    summary: 'Parentless ampersand ignored',
+    reason: 'Selector "${selector}" uses "&" without an available parent selector in this context.',
+    fix: 'Move the selector under a real parent selector, or remove the stray "&".'
   }
 } satisfies Record<string, Template>;
 
@@ -611,6 +616,10 @@ export const WARN = {
 
   duplicateSelector(args: Common & { meta: { selector: string } }) {
     return makeJessError({ severity: 'warn', code: 'selector/duplicate', phase: 'extend', ...args });
+  },
+
+  parentlessAmpersand(args: Common & { meta: { selector: string } }) {
+    return makeJessError({ severity: 'warn', code: 'selector/parentless-ampersand', phase: 'eval', ...args });
   },
 
   extendNotFound(args: Common & { meta: { target: string } }) {

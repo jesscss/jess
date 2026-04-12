@@ -10,6 +10,7 @@ import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -390,6 +391,33 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      */
     if (!amp._selectorContainer && frame && frame.selector) {
       amp._selectorContainer = frame;
+    } else if (!amp._selectorContainer) {
+      const parentSelector = amp.parent;
+      const isBareWrapperAmp = (
+        isNode(parentSelector as any, N.Ampersand)
+        || (
+          isNode(parentSelector as any, N.ComplexSelector)
+          && (parentSelector as any).value?.length === 1
+          && isNode((parentSelector as any).value?.[0], N.Ampersand)
+        )
+        || (
+          isNode(parentSelector as any, N.CompoundSelector)
+          && (parentSelector as any).value?.length === 1
+          && isNode((parentSelector as any).value?.[0], N.Ampersand)
+        )
+      );
+      if (!isBareWrapperAmp) {
+        const file = amp.treeContext?.file;
+        const selectorText = String(amp.parent?.valueOf?.() ?? '&');
+        context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
+          ctx: file ? { file } : undefined,
+          filePath: file?.fullPath,
+          line: amp.location?.[1],
+          column: amp.location?.[2],
+          meta: { selector: selectorText }
+        })));
+      }
+      return new Nil();
     }
     return amp;
   }

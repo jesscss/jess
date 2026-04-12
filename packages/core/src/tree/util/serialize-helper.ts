@@ -58,6 +58,50 @@ function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
   return selector.hasFlag(F_EXTENDED);
 }
 
+function getHoistedRulesetCarrier(
+  node: AtRule | Ruleset,
+  options: FinalPrintOptions
+): { frame: Ruleset; selector: Selector } | undefined {
+  if (!isNode(node, N.AtRule)) {
+    return undefined;
+  }
+  const atRule = node as AtRule;
+  if (!atRule.isNestable() || atRule.isRootOnly() || !atRule.isHoisted(options)) {
+    return undefined;
+  }
+  const rulesetFrames = (atRule.frames ?? []).filter((frame) => isNode(frame, N.Ruleset)) as Ruleset[];
+  if (rulesetFrames.length === 0) {
+    return undefined;
+  }
+  const renderKey = options.renderKey;
+  const frame = rulesetFrames[rulesetFrames.length - 1]!;
+  let carriedSelector: Selector | undefined;
+  for (let i = 0; i < rulesetFrames.length; i++) {
+    const currentSelector = rulesetFrames[i]!.getValue(renderKey).selector;
+    if (!currentSelector || currentSelector instanceof Nil) {
+      continue;
+    }
+    const nextSelector = currentSelector as Selector;
+    carriedSelector = carriedSelector
+      ? Ruleset.composeSelector(nextSelector, carriedSelector)
+      : nextSelector;
+  }
+  return carriedSelector ? { frame, selector: carriedSelector } : undefined;
+}
+
+function getCarriedRulesetHeader(
+  carrier: { frame: Ruleset; selector: Selector },
+  options: FinalPrintOptions,
+  depth: number
+): string {
+  const selectorOut = options.writer.capture(() => carrier.selector.toString({
+    ...options,
+    collapseNesting: false,
+    composedSelectorStack: []
+  }));
+  return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
+}
+
 function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): string {
   const w = options.writer;
   let inFrames = options.inFrames;
@@ -69,6 +113,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
   let pushedComposed = false;
+  let savedComposedSelectorStack: Selector[] | undefined;
   // A bare `&` selector with no real parent on the stack is a generated
   // wrapper (e.g. synthetic `& { ... }` wrapping @media body when hoisted).
   // It must be fully transparent: don't compose, don't push, don't emit as a
@@ -107,6 +152,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         pushedComposed = true;
       }
     }
+  }
+  if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
+    savedComposedSelectorStack = options.composedSelectorStack;
+    options.composedSelectorStack = [];
   }
   // let header = node.getHeaderString(options);
 
@@ -314,17 +363,34 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
 
+    let leafFrames = inFrames;
+    const carriedRuleset = getHoistedRulesetCarrier(node, options);
+    if (carriedRuleset) {
+      leafFrames = [...inFrames, carriedRuleset.frame];
+    }
+
     let matches = -1;
     /** Close current frames if needed */
     for (let i = 0; i < lastRenderedFrames.length; i++) {
-      const currentFrame = inFrames[i];
+      const currentFrame = leafFrames[i];
       const priorHeader = frameHeaders[i];
       if (!currentFrame || priorHeader === undefined) {
         break;
       }
       options.depth = i;
-      const currentHeader = currentFrame.getHeaderString(options as FinalPrintOptions);
-      const sameHeader = currentHeader === priorHeader;
+      const currentHeader = (
+        carriedRuleset && i === leafFrames.length - 1 && currentFrame === carriedRuleset.frame
+      )
+        ? getCarriedRulesetHeader(carriedRuleset, options as FinalPrintOptions, i)
+        : currentFrame.getHeaderString(options as FinalPrintOptions);
+      const priorFrame = lastRenderedFrames[i];
+      const sameHeader = (
+        currentHeader === priorHeader
+        && (
+          !isNode(currentFrame, N.AtRule)
+          || currentFrame === priorFrame
+        )
+      );
       if (!sameHeader) {
         break;
       }
@@ -337,16 +403,24 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.depth = i;
     }
 
-    for (let i = matches + 1; i < inFrames.length; i++) {
+    for (let i = matches + 1; i < leafFrames.length; i++) {
       let s = frameHeaders[i];
-      let f = inFrames[i]!;
+      let f = leafFrames[i]!;
       lastRenderedFrames.push(f);
       options.depth = i;
       if (s === undefined) {
-        s = inFrames[i]!.getHeaderString(options as FinalPrintOptions);
+        s = (
+          carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+        )
+          ? getCarriedRulesetHeader(carriedRuleset, options as FinalPrintOptions, i)
+          : leafFrames[i]!.getHeaderString(options as FinalPrintOptions);
         frameHeaders[i] = s;
       } else if (s === '') {
-        s = inFrames[i]!.getHeaderString(options as FinalPrintOptions, true);
+        s = (
+          carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+        )
+          ? getCarriedRulesetHeader(carriedRuleset, options as FinalPrintOptions, i)
+          : leafFrames[i]!.getHeaderString(options as FinalPrintOptions, true);
         frameHeaders[i] = s;
       }
       w.add(s!);
@@ -440,6 +514,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   }
   if (pushedComposed) {
     options.composedSelectorStack!.pop();
+  }
+  if (savedComposedSelectorStack) {
+    options.composedSelectorStack = savedComposedSelectorStack;
   }
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;

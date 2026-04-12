@@ -645,8 +645,8 @@ export class MixinRegistry extends Registry<
             && ownSelector
             && !isNode(ownSelector, N.Nil)
           ) {
-            const ownKeySet = (ownSelector as Selector).visibleKeySet;
-            if (selectorKeySetSize(ownKeySet)) {
+              const ownKeySet = (ownSelector as Selector).visibleKeySet;
+              if (selectorKeySetSize(ownKeySet)) {
               const ownKeys = getOrderedSelectorKeys(ownSelector as Selector);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               if (selectorText.startsWith('&') && ownKeys.length > 1) {

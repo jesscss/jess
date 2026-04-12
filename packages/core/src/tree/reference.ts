@@ -100,6 +100,41 @@ function isInsideSelectorCapture(node: Node | undefined): boolean {
   return false;
 }
 
+function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
+  if (isNode(selector, N.BasicSelector) || selector.type === 'InterpolatedSelector') {
+    return selector.valueOf();
+  }
+
+  if (isNode(selector, N.CompoundSelector)) {
+    return (selector.value as Node[]).map(node => String(node.valueOf()));
+  }
+
+  if (isNode(selector, N.ComplexSelector)) {
+    const path: string[] = [];
+
+    for (const node of selector.value as Node[]) {
+      if (isNode(node, N.BasicSelector) || node.type === 'InterpolatedSelector') {
+        path.push(String(node.valueOf()));
+        continue;
+      }
+      if (isNode(node, N.CompoundSelector)) {
+        path.push(...(node.value as Node[]).map(child => String(child.valueOf())));
+        continue;
+      }
+      if (isNode(node, N.Combinator) && (node.value === '>' || node.value === ' ')) {
+        continue;
+      }
+      return selector.valueOf();
+    }
+
+    if (path.length > 0) {
+      return path;
+    }
+  }
+
+  return selector.valueOf();
+}
+
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
@@ -224,24 +259,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         if (isThenable(out)) {
           return out.then((k: any) => {
-            // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
             if (isNode(k, N.Selector)) {
-              const keyArray = k.keySetLibrary ? k.keySetLibrary.valuesOf(k.keySet) : [];
-              return [resolvedTarget, keyArray] as [any, string[]];
+              return [resolvedTarget, normalizeSelectorReferenceKey(k)] as [any, string | string[]];
             }
-            // If k is already an array, preserve it
             if (Array.isArray(k)) {
               return [resolvedTarget, k] as [any, string[]];
             }
             return [resolvedTarget, k.valueOf()] as [any, string];
           });
         }
-        // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
         if (isNode(out, N.Selector)) {
-          const keyArray = out.keySetLibrary ? out.keySetLibrary.valuesOf(out.keySet) : [];
-          return [resolvedTarget, keyArray] as [any, string[]];
+          return [resolvedTarget, normalizeSelectorReferenceKey(out)] as [any, string | string[]];
         }
-        // If key is already an array, preserve it
         if (Array.isArray(out)) {
           return [resolvedTarget, out] as [any, string[]];
         }

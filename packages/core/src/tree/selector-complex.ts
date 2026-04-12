@@ -1,10 +1,10 @@
 import { type Combinator } from './combinator.js';
-import { type Ampersand, Ampersand as AmpersandClass } from './ampersand.js';
+import { type Ampersand } from './ampersand.js';
 import {
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
-import { type Nil } from './nil.js';
+import { Nil, type Nil as NilType } from './nil.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -13,6 +13,7 @@ import type { CompoundSelector } from './selector-compound.js';
 
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { WARN, toDiagnostic } from '../jess-error.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -115,7 +116,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
-  override evalNode(context: Context): MaybePromise<Selector | Nil> {
+  override evalNode(context: Context): MaybePromise<Selector | NilType> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
@@ -140,7 +141,49 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector;
       },
       (selector) => {
-        const { value } = selector;
+        let { value } = selector;
+        const unresolvedAmpersands = value.filter((part) => {
+          return isNode(part, N.Ampersand) && !(part as Ampersand).getResolvedSelector();
+        }) as Ampersand[];
+        const hasOtherSelectorParts = value.some((part) => {
+          return !isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand);
+        });
+        if (hasOtherSelectorParts && unresolvedAmpersands.length > 0) {
+          for (const amp of unresolvedAmpersands) {
+            const file = amp.treeContext?.file;
+            const selectorText = String(selector.valueOf?.() ?? '&');
+            context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
+              ctx: file ? { file } : undefined,
+              filePath: file?.fullPath,
+              line: amp.location?.[1],
+              column: amp.location?.[2],
+              meta: { selector: selectorText }
+            })));
+          }
+        }
+        value = value.filter((part) => {
+          if (isNode(part, N.Nil)) {
+            return false;
+          }
+          if (hasOtherSelectorParts && isNode(part, N.Ampersand) && !(part as Ampersand).getResolvedSelector()) {
+            return false;
+          }
+          return true;
+        });
+        value = value.filter((part, i) => {
+          if (!isNode(part, N.Combinator)) {
+            return true;
+          }
+          const prev = value[i - 1];
+          const next = value[i + 1];
+          if (i === 0) {
+            return Boolean(next && !isNode(next, N.Combinator));
+          }
+          return Boolean(prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator));
+        });
+        if (value.length === 0) {
+          return new Nil().inherit(selector);
+        }
         if (value.length === 1) {
           const only = value[0]!.inherit(selector);
           if (selector.hoistToRoot) {
@@ -148,6 +191,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           }
           return only;
         }
+        selector.set(null, value, context.renderKey);
         return selector;
       }
     );

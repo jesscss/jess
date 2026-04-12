@@ -65,7 +65,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
-      out = out.replace(/\n\s*/g, ' ');
+      out = out.replace(/\n\s*/g, ' ').trim();
       if (!out.includes(',')) {
         w.add(out, arg);
         return w.getSince(mark);
@@ -81,7 +81,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       w.add('(');
       if (isNode(arg, N.SelectorList)) {
         let out = w.capture(() => arg.toString(options));
-        out = out.replace(/\n\s*/g, ' ');
+        out = out.replace(/\n\s*/g, ' ').trim();
         w.add(out, arg);
       } else {
         arg.toString(options);

@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -663,6 +663,44 @@ describe('reference', () => {
         }
         .out {
           b: 1;
+        }
+      `);
+    });
+
+    it('should resolve a mixin-ruleset call keyed by a complex selector while ignoring namespace separators', async () => {
+      const node = rules([
+        ruleset({
+          selector: sel([el('#foo-foo')]),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
+              rules: rules([
+                decl({ name: 'c', value: any('c') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #foo-foo {
+          > .bar.baz {
+            c: c;
+          }
+        }
+        .out {
+          c: c;
         }
       `);
     });
