@@ -58,10 +58,7 @@ function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
   return selector.hasFlag(F_EXTENDED);
 }
 
-/**
- * Handles flattening and serializing of at-rules and rulesets
- */
-export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): string {
+function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): string {
   const w = options.writer;
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
@@ -132,10 +129,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     return false;
   };
-  const parentIsMixinOutput = isInMixinOutputScope();
   const ownReferenceMode = Boolean(
     (node as any).options?.referenceMode === true
-    && !parentIsMixinOutput
   );
   const inReferenceMode = previousReferenceMode || ownReferenceMode;
   const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
@@ -160,8 +155,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
 
   const { nodes: rulesToRender, renderKeys: rulesRenderKeys } = rules.flatRulesWithKeys(true);
-  const declarationOutputCache = new Map<object, string>();
-  const skippedDuplicateDeclarations = new Set<object>();
+  const declarationOutputCache = new Map<number, string>();
+  const skippedDuplicateDeclarations = new Set<number>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
   const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
     const seen = new Set<any>();
@@ -211,7 +206,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       renderKey: entryRenderKey ?? options.renderKey
     });
     const declOut = node.toTrimmedString(declOptions);
-    declarationOutputCache.set(node, declOut);
+    declarationOutputCache.set(i, declOut);
     const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
     const declProp = node.value.name.valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
@@ -220,7 +215,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       seenDeclarationsByProp.set(declProp, seenValues);
     }
     if (seenValues.has(declKey)) {
-      skippedDuplicateDeclarations.add(node);
+      skippedDuplicateDeclarations.add(i);
     } else {
       seenValues.add(declKey);
     }
@@ -278,32 +273,58 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (inReferenceMode && !renderEnabled && !isContainer) {
       continue;
     }
-    if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(n)) {
+    if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
       continue;
     }
 
     if (isNode(n, N.Ruleset | N.AtRule)) {
-      const childOptions = {
+      const childOptions = getPrintOptions({
         ...options,
         referenceMode: inReferenceMode,
         referenceRenderEnabled: renderEnabled,
         renderKey: effectiveRenderKey
-      } as FinalPrintOptions;
-      const childOut = w.capture(() => n.toTrimmedString(childOptions));
-      if (!childOut) {
+      });
+      const childMark = w.mark();
+      const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, childOptions, false);
+      if (!w.getSince(childMark) && !childOut) {
         continue;
       }
-      w.add(childOut, n);
       continue;
+    }
+
+    /** Re-widen type after accumulated isNode narrowing above */
+    const nn = n as Node;
+    let leafChildOptions: FinalPrintOptions = { ...options, depth: options.depth + 1, renderKey: effectiveRenderKey };
+    if (isNode(nn, N.Rules)) {
+      const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+      const childReferenceMode = inReferenceMode || ownReferenceMode;
+      const enteringReferenceMode = !inReferenceMode && ownReferenceMode;
+      const childReferenceRenderEnabled = childReferenceMode
+        ? (enteringReferenceMode ? false : renderEnabled)
+        : true;
+      leafChildOptions = {
+        ...leafChildOptions,
+        referenceMode: childReferenceMode,
+        referenceRenderEnabled: childReferenceRenderEnabled
+      };
+      const previewOut = w.capture(() => nn.toTrimmedString(leafChildOptions));
+      if (!previewOut) {
+        continue;
+      }
     }
 
     let matches = -1;
     /** Close current frames if needed */
     for (let i = 0; i < lastRenderedFrames.length; i++) {
       const currentFrame = inFrames[i];
-      const priorFrame = lastRenderedFrames[i];
-      const sameValueOf = currentFrame?.valueOf() === priorFrame?.valueOf();
-      if (!sameValueOf) {
+      const priorHeader = frameHeaders[i];
+      if (!currentFrame || priorHeader === undefined) {
+        break;
+      }
+      options.depth = i;
+      const currentHeader = currentFrame.getHeaderString(options as FinalPrintOptions);
+      const sameHeader = currentHeader === priorHeader;
+      if (!sameHeader) {
         break;
       }
       matches = i;
@@ -332,13 +353,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     // if (isNode(n, N.Declaration)) {
     let idt = indent(options.depth + 1);
-    /** Re-widen type after accumulated isNode narrowing above */
-    const nn = n as Node;
-    const leafChildOptions: FinalPrintOptions = { ...options, depth: options.depth + 1, renderKey: effectiveRenderKey };
     let pre = w.capture(() => nn.processPrePost('pre', undefined, leafChildOptions));
     /** normalize pre spacing */
     let out = isNode(nn, N.Declaration)
-      ? (declarationOutputCache.get(nn) ?? w.capture(() => nn.toTrimmedString(leafChildOptions)))
+      ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(leafChildOptions)))
       : w.capture(() => nn.toTrimmedString(leafChildOptions));
     // Suppress pure-void Any nodes from generating blank output lines.
     if (
@@ -396,16 +414,21 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   }
   if (!isTransparentWrapper) {
     inFrames.pop();
-    frameHeaders.pop();
+    if (closeFramesOnExit) {
+      frameHeaders.pop();
+    }
   }
   if (prevTreeFrames) {
     treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
   }
-  let renderedLength = lastRenderedFrames.length;
-  if (treeFrames.length < renderedLength) {
-    w.add(indent(renderedLength - 1) + '}\n');
-    options.depth--;
-    lastRenderedFrames.pop();
+  if (closeFramesOnExit) {
+    let renderedLength = lastRenderedFrames.length;
+    while (treeFrames.length < renderedLength) {
+      w.add(indent(renderedLength - 1) + '}\n');
+      options.depth--;
+      lastRenderedFrames.pop();
+      renderedLength = lastRenderedFrames.length;
+    }
   }
   if (pushedComposed) {
     options.composedSelectorStack!.pop();
@@ -413,4 +436,22 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   options.referenceMode = previousReferenceMode;
   options.referenceRenderEnabled = previousReferenceRenderEnabled;
   return w.getSince(mark);
+}
+
+/**
+ * Handles flattening and serializing of at-rules and rulesets.
+ * This is the normal entrypoint: the container fully owns opening and closing
+ * its rendered frame stack.
+ */
+export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): string {
+  return serializeRulesContainerInternal(node, options, true);
+}
+
+/**
+ * Serialize a rules container as part of an already-linear parent body flow.
+ * Parent `Rules` owns final frame closure, so this leaves matching rendered
+ * frames open for subsequent sibling reconciliation.
+ */
+export function serializeRulesContainerInline(node: AtRule | Ruleset, options: FinalPrintOptions): string {
+  return serializeRulesContainerInternal(node, options, false);
 }

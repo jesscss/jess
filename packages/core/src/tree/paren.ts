@@ -17,6 +17,29 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
   return node instanceof Operation || node instanceof Expression;
 };
 
+const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | undefined => {
+  if (!node) {
+    return;
+  }
+  if (node.type === 'DefaultGuard') {
+    return new Bool(Boolean(context.isDefault));
+  }
+  if (node.type === 'Paren') {
+    return getDefaultGuardBool((node as { value?: Node }).value, context);
+  }
+  if (node.type !== 'Call') {
+    return;
+  }
+  const rawName = (node as any).value?.name;
+  const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
+  const refKey = rawName?.type === 'Reference'
+    ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
+    : '';
+  if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
+    return new Bool(Boolean(context.isDefault));
+  }
+};
+
 /**
  * An expression in parenthesis
  */
@@ -53,6 +76,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { value } = this;
     if (value) {
+      const guardBool = getDefaultGuardBool(value, context);
+      if (guardBool) {
+        return guardBool;
+      }
       let isOp = isOpOrExpression(value);
       if (isOp) {
         context.parenFrames.push(true);
@@ -62,6 +89,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         value = v;
         if (isOp) {
           context.parenFrames.pop();
+        }
+        const evaluatedGuardBool = getDefaultGuardBool(value, context);
+        if (evaluatedGuardBool) {
+          return evaluatedGuardBool;
         }
         if (this.options?.escaped && value instanceof Node) {
           return value;

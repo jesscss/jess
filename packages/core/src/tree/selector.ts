@@ -36,25 +36,36 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   keySetLibrary: BitSetLibrary<string> | undefined;
 
   protected _requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
-    const { keySetLibrary, sourceNode } = this;
+    const { keySetLibrary, sourceNode, parent } = this;
     const sourceLibrary = (
       sourceNode !== this
       && (sourceNode as Selector).isSelector
     )
       ? (sourceNode as Selector).keySetLibrary
       : undefined;
+    const parentLibrary = (
+      parent !== this
+      && (parent as Selector | undefined)?.isSelector
+    )
+      ? (parent as Selector).keySetLibrary
+      : undefined;
     const treeContext = this.treeContext as
       | { selectorBits?: BitSetLibrary<string>; opts?: { selectorBits?: BitSetLibrary<string> } }
       | undefined;
     const library = keySetLibrary
+      ?? parentLibrary
       ?? sourceLibrary
       ?? context?.selectorBits
       ?? treeContext?.selectorBits
       ?? treeContext?.opts?.selectorBits;
     if (library) {
+      this.keySetLibrary ??= library;
       return library;
     }
-    throw new Error('Selector keySet library not found');
+    const selectorText = String(this.valueOf?.() ?? '');
+    const parentType = (parent as { type?: string } | undefined)?.type ?? 'none';
+    const sourceType = (sourceNode as { type?: string } | undefined)?.type ?? 'none';
+    throw new Error(`Selector keySet library not found (${this.type}: ${selectorText}; parent=${parentType}; source=${sourceType})`);
   }
 
   override inherit(node?: Node | undefined): this {

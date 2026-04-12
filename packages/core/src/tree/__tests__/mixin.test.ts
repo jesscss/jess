@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -666,6 +666,163 @@ describe('Mixin', () => {
         }
         .out {
           color: red;
+        }
+      `);
+    });
+
+    it('should resolve nested mixin-ruleset lookups for local ampersand descendant keys', async () => {
+      const root = rules([
+        ruleset({
+          selector: sel([el('.b'), co(' '), el('.bb')]),
+          rules: rules([
+            ruleset({
+              selector: sel([
+                compound([amp(), el('.foo-xxx')]),
+                co(' '),
+                compound([el('.yyy-foo'), el('#foo')])
+              ]),
+              rules: rules([
+                ruleset({
+                  selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
+                  rules: rules([
+                    decl({ name: 'b', value: any('1') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-b'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .b .bb {
+          &.foo-xxx .yyy-foo#foo {
+            & .foo.bbb {
+              b: 1;
+            }
+          }
+        }
+        mi-test-b {
+          b: 1;
+        }
+      `);
+    });
+
+    it('preserves collapse output for complex parent ampersands and nested array-path ruleset mixin calls', async () => {
+      const root = rules([
+        ruleset({
+          selector: sel([el('.b'), co(' '), el('.bb')]),
+          rules: rules([
+            ruleset({
+              selector: sel([
+                compound([amp(), el('.foo-xxx')]),
+                co(' '),
+                compound([el('.yyy-foo'), el('#foo')])
+              ]),
+              rules: rules([
+                ruleset({
+                  selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
+                  rules: rules([
+                    decl({ name: 'b', value: any('1') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('#foo-foo'),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), el('.bar')]),
+              rules: rules([
+                ruleset({
+                  selector: sel([el('.baz')]),
+                  rules: rules([
+                    decl({ name: 'c', value: any('c') })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-b'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-c'),
+          rules: rules([
+            ruleset({
+              selector: sel([amp('-1')]),
+              rules: rules([
+                call({
+                  name: ref({ key: '#foo-foo' }, { type: 'mixin-ruleset' })
+                })
+              ])
+            }),
+            ruleset({
+              selector: sel([amp('-2')]),
+              rules: rules([
+                call({
+                  name: ref({ key: ['#foo-foo', '.bar'] }, { type: 'mixin-ruleset' })
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-c-3'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#foo-foo', '.bar', '.baz'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toBeString(`
+        .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
+          b: 1;
+        }
+        #foo-foo > .bar .baz {
+          c: c;
+        }
+        mi-test-b {
+          b: 1;
+        }
+        mi-test-c-1 > .bar .baz {
+          c: c;
+        }
+        mi-test-c-2 .baz {
+          c: c;
+        }
+        mi-test-c-3 {
+          c: c;
         }
       `);
     });

@@ -324,12 +324,19 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           this.options.type === 'variable'
           && this.parent?.type === 'Interpolated';
         const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
+          const sourceParamParent = paramParent?.sourceNode as Node | undefined;
           let cursor: Node | undefined = activeRules;
           while (cursor) {
-            if (cursor === paramParent) {
+            const sourceCursor = cursor.sourceNode as Node | undefined;
+            if (
+              cursor === paramParent
+              || cursor === sourceParamParent
+              || sourceCursor === paramParent
+              || (sourceCursor && sourceParamParent && sourceCursor === sourceParamParent)
+            ) {
               return true;
             }
-            cursor = cursor.parent;
+            cursor = cursor.parent ?? cursor.sourceParent;
           }
           return false;
         };

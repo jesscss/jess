@@ -1355,7 +1355,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
-        if (node instanceof Any && node.role === 'name') {
+        if (isNode(node, N.Any) && node.options.role === 'name') {
           // Create a new Any node with role 'property' for the name
           const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location, $.context);
           args.set(i, new VarDeclaration({
@@ -1378,7 +1378,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
-        if (node instanceof Any && node.role === 'name') {
+        if (isNode(node, N.Any) && node.options.role === 'name') {
           args.set(i, new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context));
         } else if (node instanceof Rest) {
           const restValue = node.value;

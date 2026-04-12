@@ -85,10 +85,32 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override evalNode(context: Context): MaybePromise<Bool> {
     let [left, op, right] = this.value;
     let negated = !!this.options?.negate;
+    const normalizeDefaultCall = (node: Node): Node => {
+      if (node.type === 'DefaultGuard') {
+        return new Bool(Boolean(context.isDefault));
+      }
+      if (node.type === 'Paren') {
+        const inner = (node as { value?: Node }).value;
+        return inner ? normalizeDefaultCall(inner) : node;
+      }
+      if (node.type !== 'Call') {
+        return node;
+      }
+      const rawName = (node as any).value?.name;
+      const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
+      const refKey = rawName?.type === 'Reference'
+        ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
+        : '';
+      if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
+        return new Bool(Boolean(context.isDefault));
+      }
+      return node;
+    };
 
     return pipe(
       () => left.eval(context),
       (a) => {
+        a = normalizeDefaultCall(a);
         if (!right) {
           // Defer unary coercion to the final stage to avoid double-negation.
           return a;
@@ -110,16 +132,6 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
           const unary = Condition.getBool(a, negated);
           return unary;
         }
-        const normalizeDefaultCall = (node: Node): Node => {
-          if (node.type !== 'Call') {
-            return node;
-          }
-          const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
-          if (callName === 'default' || callName === '??') {
-            return new Bool(Boolean(context.isDefault));
-          }
-          return node;
-        };
         a = normalizeDefaultCall(a);
         b = normalizeDefaultCall(b);
         let result = Condition.getResult(a, b, op!);

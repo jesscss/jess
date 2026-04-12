@@ -183,11 +183,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ? ((child as ComplexSelector).value.slice() as ComplexSelectorComponent[])
       : [child as unknown as ComplexSelectorComponent];
 
-    return attachSelectorBitLibrary(ComplexSelector.create([
-      ...leading,
-      Combinator.create(' '),
-      ...trailing
-    ]).inherit(child), library);
+    const childStartsWithCombinator = trailing.length > 0 && isNode(trailing[0]!, N.Combinator);
+    const merged = childStartsWithCombinator
+      ? [...leading, ...trailing]
+      : [...leading, Combinator.create(' '), ...trailing];
+
+    return attachSelectorBitLibrary(ComplexSelector.create(merged).inherit(child), library);
   }
 
   /**
@@ -345,7 +346,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           newParts.push(parent as unknown as ComplexSelectorComponent);
         }
       } else if (!isNode(part, N.Combinator) && (part as Node).hasFlag(F_AMPERSAND)) {
-        const sub = Ruleset._substituteAmpersand(part as unknown as Selector, parent, true);
+        const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
+        const allowSmartSpliceInPlace = i === 0 && !rightTight;
+        const sub = Ruleset._substituteAmpersand(
+          part as unknown as Selector,
+          parent,
+          !allowSmartSpliceInPlace
+        );
         if (isNode(sub, N.ComplexSelector)) {
           // Flatten a complex sub into this complex's components.
           newParts.push(...((sub as ComplexSelector).value as ComplexSelectorComponent[]));
@@ -596,20 +603,34 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
     if (!isNode(sel, N.SelectorList)) {
-      return (sel.hasFlag(F_EXTENDED) && !sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
+      return (sel.hasFlag(F_EXTENDED) || sel.hasFlag(F_EXTEND_TARGET)) ? sel : new Nil();
     }
     const seen = new Set<string>();
     const kept: Selector[] = [];
+    let sawAddedSelector = false;
     for (const item of (sel as SelectorList).value) {
-      if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
-        continue;
+      if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+        sawAddedSelector = true;
+        const key = item.valueOf();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        kept.push(item.copy(true) as Selector);
       }
-      const key = item.valueOf();
-      if (seen.has(key)) {
-        continue;
+    }
+    if (!sawAddedSelector) {
+      for (const item of (sel as SelectorList).value) {
+        if (!item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+          continue;
+        }
+        const key = item.valueOf();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        kept.push(item.copy(true) as Selector);
       }
-      seen.add(key);
-      kept.push(item.copy(true) as Selector);
     }
     if (kept.length === 0) {
       return new Nil();
@@ -633,11 +654,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   /**
    * Filter a compose-parent selector for reference-mode rendering. Reference
-   * imports hide content not reached by an extend; when we compose a child
-   * against a parent SelectorList, any items that were ADDED by an extend
-   * (carrying F_EXTENDED without F_EXTEND_TARGET) shouldn't appear in the
-   * composed form — only items that existed in the original ruleset
-   * (matched: F_EXTEND_TARGET, or untouched: neither flag) should.
+   * imports hide content not reached by an extend; when a reference-imported
+   * parent gains visible selector items via extend, nested descendants should
+   * compose against those visible items rather than the hidden original targets.
    *
    * Returns the filtered parent, or `undefined` when the filter is a no-op
    * so callers can fall through to their own parent handling.
@@ -656,7 +675,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const seen = new Set<string>();
     const kept: Selector[] = [];
     for (const item of list.value) {
-      if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+      if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
         continue;
       }
       const key = item.valueOf();
@@ -699,21 +718,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
       renderSelector = cached as typeof selector;
     }
-    // Header filter: drop non-extended items from the ruleset's own top-level
-    // selector in reference mode. This strips extend TARGETS (leaving just
-    // the items that were added by the extend), *except* when the ruleset's
-    // selector is a list whose items all carry extend flags — in that case
-    // the list is the combined post-extend form and we keep it whole.
-    const headerDisableTargetFilteringForTopLevelList = (
-      this.hasFlag(F_EXTENDED)
-      && !(renderSelector instanceof Nil)
-      && isNode(renderSelector as Selector, N.SelectorList)
-    );
+    // Header filter: in reference mode, top-level selector output should
+    // reflect the selectors that were actually unlocked. When an extend adds
+    // visible selectors, we emit those; for self-extends with no added items,
+    // we fall back to the touched original selector.
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
       && !(renderSelector instanceof Nil)
-      && !headerDisableTargetFilteringForTopLevelList
       && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
     ) {
       renderSelector = Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector;
@@ -724,11 +736,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       this.invalidateSelectorValueCache();
     }
     const prevReferenceFilterTargets = options.referenceFilterTargets === true;
-    const disableTargetFilteringForTopLevelList = headerDisableTargetFilteringForTopLevelList;
     options.referenceFilterTargets = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
-      && !disableTargetFilteringForTopLevelList
     );
     Ruleset.ensureSelectorVisible(renderSelector);
     const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
@@ -782,10 +792,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if ('keySetLibrary' in selector && !(selector instanceof Nil)) {
         (selector as Selector).keySetLibrary ??= selectorBits;
       }
+      const ownSelector = !(selector instanceof Nil)
+        ? ((selector as Selector).copy(true) as Selector)
+        : selector;
+      if ('keySetLibrary' in ownSelector && !(ownSelector instanceof Nil)) {
+        (ownSelector as Selector).keySetLibrary ??= selectorBits;
+      }
       if (node.options) {
-        (node.options as RulesetOptions).ownSelector = selector;
+        (node.options as RulesetOptions).ownSelector = ownSelector;
       } else {
-        node.options = { ownSelector: selector } as RulesetOptions;
+        node.options = { ownSelector } as RulesetOptions;
       }
       /* getImplicitSelector removed — selector stays as-authored.
        * Composed form (with parent context) computed on-demand during:

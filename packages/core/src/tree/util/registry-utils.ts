@@ -51,6 +51,42 @@ function selectorKeySetSize(keySet: SelectorKeySet | undefined): number {
   return keySet._library?.valuesOf(keySet).length ?? 0;
 }
 
+function getOrderedSelectorKeys(selector: Selector | Nil | undefined): string[] {
+  if (!selector || isNode(selector, N.Nil)) {
+    return [];
+  }
+  const keys: string[] = [];
+  let foundBasic = false;
+  const visit = (node: Selector | Nil | undefined) => {
+    if (!node || isNode(node, N.Nil)) {
+      return;
+    }
+    if (!foundBasic && isNode(node, N.Ampersand)) {
+      return;
+    }
+    if (isNode(node, N.Combinator)) {
+      return;
+    }
+    if (isNode(node, N.BasicSelector)) {
+      const value = String(node.valueOf?.() ?? node.value ?? '');
+      if (!value || value.startsWith('*') || value.startsWith(':')) {
+        return;
+      }
+      keys.push(value);
+      foundBasic = true;
+      return;
+    }
+    const { value } = node as unknown as { value?: unknown };
+    if (isArray(value)) {
+      for (const child of value) {
+        visit(child as Selector | Nil | undefined);
+      }
+    }
+  };
+  visit(selector);
+  return keys;
+}
+
 export type DeclarationFindOptions = {
   filter?: (n: Node) => boolean;
   candidates?: Set<Node>;
@@ -551,47 +587,53 @@ export class MixinRegistry extends Registry<
         // Fall back to source selector only when evaluated keys are empty.
         const sourceSelector = selector.sourceNode as Selector | undefined;
         const selectorToIndex = (
-          selectorKeySetSize(selector.visibleKeySet)
+          getOrderedSelectorKeys(selector).length > 0
             ? selector
-            : (selectorKeySetSize(sourceSelector?.visibleKeySet) ? sourceSelector : selector)
+            : (getOrderedSelectorKeys(sourceSelector).length > 0 ? sourceSelector : selector)
         ) as Selector;
         let keySetToUse: SelectorKeySet | string[] | undefined;
+        let orderedKeysToUse: string[] | undefined;
         if (isNode(selectorToIndex, N.SelectorList)) {
           /** Selector list's selectors are individually registered */
           for (const sel of selectorToIndex.value) {
-            this._indexSelectorStart(mixin, sel.visibleKeySet);
+            const orderedKeys = getOrderedSelectorKeys(sel);
+            if (orderedKeys.length > 0) {
+              this._indexSelectorStart(mixin, orderedKeys);
+            }
           }
           keySetToUse = undefined; // already indexed above
         } else {
-          keySetToUse = selectorToIndex.visibleKeySet;
+          orderedKeysToUse = getOrderedSelectorKeys(selectorToIndex);
+          keySetToUse = orderedKeysToUse.length > 0
+            ? orderedKeysToUse
+            : selectorToIndex.visibleKeySet;
         }
         // Normalize nested `&...` selectors to local keys when possible.
         // Evaluated key sets can include inherited parent keys (e.g. [".b",".bb",".foo-xxx",...]),
         // but recursive lookup descends with local remainder keys (e.g. [".foo-xxx", ...]).
         if (
           keySetToUse
-          && getSelectorKeyValues(keySetToUse).length > 0
+          && ((orderedKeysToUse?.length ?? 0) > 0 || getSelectorKeyValues(keySetToUse).length > 0)
           && ownSelector
           && !isNode(ownSelector, N.Nil)
         ) {
           const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
-          const ownKeys = getSelectorKeyValues((ownSelector as Selector).visibleKeySet);
+          const evaluatedKeys = orderedKeysToUse ?? getSelectorKeyValues(keySetToUse);
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).value.selector
             : undefined;
           const parentKeys = (
             parentSelector && !isNode(parentSelector, N.Nil)
-              ? getSelectorKeyValues(parentSelector.visibleKeySet)
+              ? getOrderedSelectorKeys(parentSelector)
               : []
           );
           if (
             parentKeys.length > 0
-            && ownKeys.length > parentKeys.length
-            && parentKeys.every((k, i) => ownKeys[i] === k)
+            && evaluatedKeys.length > parentKeys.length
+            && parentKeys.every((k, i) => evaluatedKeys[i] === k)
           ) {
-            keySetToUse = ownKeys.slice(parentKeys.length);
-          } else if (ownKeys.length > 1 && ownSelectorText.trimStart().startsWith('&')) {
-            keySetToUse = ownKeys.slice(1);
+            keySetToUse = evaluatedKeys.slice(parentKeys.length);
+            orderedKeysToUse = keySetToUse;
           }
         }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
@@ -605,16 +647,17 @@ export class MixinRegistry extends Registry<
           ) {
             const ownKeySet = (ownSelector as Selector).visibleKeySet;
             if (selectorKeySetSize(ownKeySet)) {
-              const ownKeys = getSelectorKeyValues(ownKeySet);
+              const ownKeys = getOrderedSelectorKeys(ownSelector as Selector);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               if (selectorText.startsWith('&') && ownKeys.length > 1) {
                 keySetToUse = ownKeys.slice(1);
               } else {
-                keySetToUse = ownKeySet;
+                keySetToUse = ownKeys;
               }
+              orderedKeysToUse = keySetToUse as string[];
             }
           }
-          this._indexSelectorStart(mixin, keySetToUse);
+          this._indexSelectorStart(mixin, orderedKeysToUse ?? keySetToUse);
         }
       } else {
         this._indexSelectorStart(mixin, mixin.keySet);
@@ -650,22 +693,18 @@ export class MixinRegistry extends Registry<
       if (isNode(selector, N.SelectorList)) {
         // For selector lists, check if any selector matches
         return selector.value.some((sel) => {
-          const selKeys = getSelectorKeyValues(sel.keySet).filter(key =>
-            typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':')
-          );
+          const selKeys = getOrderedSelectorKeys(sel);
           if (selKeys.length === 0) {
             return false;
           }
           return this._checkKeysSubsequence(selKeys, keys);
         });
       }
-      const keyValues = getSelectorKeyValues(selector.keySet);
+      const keyValues = getOrderedSelectorKeys(selector);
       if (keyValues.length === 0) {
         return false;
       }
-      indexableKeys = keyValues.filter((key) => {
-        return typeof key === 'string' && !key.startsWith('*') && !key.startsWith(':');
-      });
+      indexableKeys = keyValues;
     } else {
       const keyValues = getSelectorKeyValues(value.keySet);
       if (keyValues.length === 0) {

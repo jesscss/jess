@@ -65,8 +65,12 @@ export const normalizeMixinReferenceKey = (selector: Selector): { key: string | 
     let canUsePath = true;
 
     for (const node of selector.value) {
-      if (isNode(node, N.BasicSelector | N.CompoundSelector | N.InterpolatedSelector)) {
+      if (isNode(node, N.BasicSelector | N.InterpolatedSelector)) {
         path.push(node.valueOf());
+        continue;
+      }
+      if (isNode(node, N.CompoundSelector)) {
+        path.push(...node.value.map(child => child.valueOf()));
         continue;
       }
       if (isNode(node, N.Combinator) && (node.value === '>' || node.value === ' ')) {

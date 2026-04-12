@@ -179,4 +179,21 @@ describe('lookupOrCall', () => {
           )
       `);
   });
+
+  it('should flatten compound segments in complex mixin reference paths', () => {
+    const { errors, tree } = parse('#foo-foo > .bar.baz()', 'mixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Call
+          markImportant: false
+        name: 
+          (Reference [role=name]
+              type: 'mixin-ruleset'
+              role: 'name'
+            key:
+              ['#foo-foo', '.bar', '.baz']
+            rawKey: 
+              (ComplexSelector
+      `);
+  });
 });

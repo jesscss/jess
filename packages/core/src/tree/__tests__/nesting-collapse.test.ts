@@ -73,6 +73,33 @@ describe('CSS Nesting Collapse', () => {
     );
   });
 
+  it('coalesces adjacent identical headers during serialization', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('.same')]),
+        rules: rules([
+          decl({ name: 'case', value: spaced([el('2')]) })
+        ])
+      }),
+      ruleset({
+        selector: sel([el('.same')]),
+        rules: rules([
+          decl({ name: 'case', value: spaced([el('3')]) })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      .same {
+        case: 2;
+        case: 3;
+      }`
+    );
+  });
+
   it('should collapse multiple nested levels', async () => {
     const node = rules([
       ruleset({
@@ -260,6 +287,85 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent-modifier.child {
         background: blue;
+      }`
+    );
+  });
+
+  it('does not insert an extra descendant combinator before relative child selectors', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('#foo-foo')]),
+        rules: rules([
+          ruleset({
+            selector: sel([co('>'), el('.bar')]),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.baz')]),
+                rules: rules([
+                  decl({ name: 'c', value: spaced([el('c')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      #foo-foo > .bar .baz {
+        c: c;
+      }`
+    );
+  });
+
+  it('keeps sibling nested ampersand frames distinct when they only emit nested descendants', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('mi-test-c')]),
+        rules: rules([
+          ruleset({
+            selector: sel([amp('-1')]),
+            rules: rules([
+              ruleset({
+                selector: sel([co('>'), el('.bar')]),
+                rules: rules([
+                  ruleset({
+                    selector: sel([el('.baz')]),
+                    rules: rules([
+                      decl({ name: 'c', value: spaced([el('c')]) })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: sel([amp('-2')]),
+            rules: rules([
+              ruleset({
+                selector: sel([el('.baz')]),
+                rules: rules([
+                  decl({ name: 'c', value: spaced([el('c')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true });
+
+    expect(css).toBeString(`
+      mi-test-c-1 > .bar .baz {
+        c: c;
+      }
+      mi-test-c-2 .baz {
+        c: c;
       }`
     );
   });

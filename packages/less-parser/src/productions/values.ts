@@ -809,6 +809,14 @@ export function functionCall(this: P, T: TokenMap) {
             newArgsData[1] = quotedUnit;
             args = new List(newArgsData, args.options, $.getLocationFromNodes(newArgsData), $.context);
           }
+          if (ctx.detachedRulesetUsage === 'default-param' && nameValue === 'default') {
+            return new Call(
+              { name: 'default', args },
+              undefined,
+              location,
+              $.context
+            );
+          }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), $.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */
           const modernSyntax = isModernColorCall(nameValue, args);

@@ -840,7 +840,14 @@ export function mixinArg(this: P, T: TokenMap) {
       if ($.RECORDING_PHASE) {
         return;
       }
-      return new Any(name.image.slice(1), { role: 'name' }, $.endRule(), $.context);
+      const location = $.endRule();
+      if (ctx.isDefinition) {
+        return new VarDeclaration({
+          name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+          value: new Nil(undefined, undefined, location, $.context)
+        }, { paramVar: true }, location, $.context);
+      }
+      return new Any(name.image.slice(1), { role: 'name' }, location, $.context);
     }
 
     if ($.isType(T.Ellipsis)) {

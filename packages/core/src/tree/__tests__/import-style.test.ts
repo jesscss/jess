@@ -1132,11 +1132,6 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
-        #Namespace {
-          .mixin {
-            was: included;
-          }
-        }
         #used-namespaced-mixin {
           was: included;
         }
@@ -1173,11 +1168,6 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
-        #Namespace {
-          .mixin {
-            was: included;
-          }
-        }
         #used-namespaced-mixin {
           was: included;
         }

@@ -29,8 +29,9 @@ import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
 import { List } from './list.js';
-import { indent, normalizeIndent } from './util/serialize-helper.js';
+import { indent, normalizeIndent, serializeRulesContainerInline } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
+import type { AtRule } from './at-rule.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -259,6 +260,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const w = options.writer!;
     const depth = options.depth!;
     const mark = w.mark();
+    const previousReferenceMode = options.referenceMode === true;
+    const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
+    const ownReferenceMode = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+    if (ownReferenceMode && !previousReferenceMode) {
+      options.referenceMode = true;
+      options.referenceRenderEnabled = false;
+    }
 
     const ctx = options.context;
     const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
@@ -342,9 +350,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
       const result = w.getSince(mark).trimEnd();
+      options.referenceMode = previousReferenceMode;
+      options.referenceRenderEnabled = previousReferenceRenderEnabled;
       // Ensure exactly one trailing newline (only if there's content)
       return result ? result + '\n' : '';
     }
+    options.referenceMode = previousReferenceMode;
+    options.referenceRenderEnabled = previousReferenceRenderEnabled;
     return w.getSince(mark);
   }
 
@@ -416,6 +428,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const depth = options.depth ?? 0;
     const space = indent(depth);
     const { value } = this;
+    const lastRenderedFrames = options.lastRenderedFrames!;
+    const frameHeaders = options.frameHeaders!;
+    const renderedFrameBaseline = lastRenderedFrames.length;
     if (this._renderKey !== undefined) {
       options.renderKey = this._renderKey;
     }
@@ -457,26 +472,32 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let emittedCount = 0;
     let lastEmittedType: string | undefined;
     let lastEmittedWasInlineSourceRules = false;
-    const isInMixinOutputScope = (node: Node): boolean => {
-      const seen = new Set<Node>();
-      const queue: Node[] = [node];
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        if (seen.has(current)) {
-          continue;
-        }
-        seen.add(current);
-        if ((current.options as any)?.isMixinOutput === true) {
-          return true;
-        }
-        if (current.parent) {
-          queue.push(current.parent);
-        }
-        if (current.sourceParent && isNode(current.sourceParent)) {
-          queue.push(current.sourceParent);
-        }
+    const emitBoundaryIfNeeded = (n: Node) => {
+      if (emittedCount === 0) {
+        return;
       }
-      return false;
+      const currentBuffer = w.getSince(0);
+      const bufferEndsWithNewline = currentBuffer.endsWith('\n');
+      const needsInlineBoundarySpacing = (
+        (lastEmittedType === 'Any' && n.type !== 'Any')
+        || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+      );
+      if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
+        w.add('\n');
+      }
+    };
+    const markEmitted = (n: Node) => {
+      emittedCount++;
+      lastEmittedType = n.type;
+      lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
+    };
+    const emitCaptured = (text: string, n: Node) => {
+      emitBoundaryIfNeeded(n);
+      w.add(text, n);
+      if (n.requiredSemi && n.options.semi !== false) {
+        w.add(';', n);
+      }
+      markEmitted(n);
     };
     for (let idx = 0; idx < items.length; idx++) {
       const n = items[idx]!;
@@ -484,42 +505,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (referenceMode && !referenceRenderEnabled && !isContainer) {
         continue;
       }
-      if (emittedCount > 0) {
-        // Check actual buffer state - not just previous captured output
-        // Frame closing in serializeRulesContainer adds newlines that aren't in the capture
-        const currentBuffer = w.getSince(0);
-        const bufferEndsWithNewline = currentBuffer.endsWith('\n');
-        const needsInlineBoundarySpacing = (
-          (lastEmittedType === 'Any' && n.type !== 'Any')
-          || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
-        );
-        if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
-          w.add('\n');
-        }
-      }
       const isChildRules = n.type === 'Rules';
       const isRulesetOrAtRule = n.type === 'Ruleset' || n.type === 'AtRule';
       // Add indentation only for simple nodes (declarations, etc.)
       // Ruleset and AtRule nodes indent themselves in renderOpening
       if (!isChildRules && !isRulesetOrAtRule && depth !== 0) {
+        emitBoundaryIfNeeded(n);
         w.add(space);
       }
 
       // Emit directly to preserve source map segments
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
-      let childOptions = isChildRules
-        ? { ...options, depth }
-        : { ...options, depth };
+      let childOptions = {
+        ...options,
+        depth,
+        referenceMode,
+        referenceRenderEnabled
+      };
       if (isChildRules) {
-        const inMixinOutputScope = isInMixinOutputScope(n);
-        const sourceIsCall = (
-          (n.sourceParent as any)?.type === 'Call'
-          || (n.sourceNode as any)?.sourceParent?.type === 'Call'
-        );
         const ownReferenceMode = (
           (n.options as any)?.referenceMode === true
-          && (!inMixinOutputScope || !sourceIsCall)
         );
         const childReferenceMode = referenceMode || ownReferenceMode;
         const enteringReferenceMode = !referenceMode && ownReferenceMode;
@@ -532,17 +538,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           referenceRenderEnabled: childReferenceRenderEnabled
         };
       }
+      if (isRulesetOrAtRule) {
+        emitBoundaryIfNeeded(n);
+        const mark = w.mark();
+        const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(childOptions));
+        const emitted = w.getSince(mark);
+        if (!emitted && !rule) {
+          continue;
+        }
+        if (!emitted && rule) {
+          w.add(rule, n);
+        }
+        markEmitted(n);
+        continue;
+      }
       let rule = w.capture(() => n.toTrimmedString(childOptions));
       if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
         continue;
       }
-      w.add(rule, n); // Pass node as origin to preserve location info
-      if (n.requiredSemi && n.options.semi !== false) {
-        w.add(';', n);
-      }
-      emittedCount++;
-      lastEmittedType = n.type;
-      lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
+      emitCaptured(rule, n);
+    }
+    while (lastRenderedFrames.length > renderedFrameBaseline) {
+      const depthToClose = lastRenderedFrames.length - 1;
+      w.add(indent(depthToClose) + '}\n');
+      lastRenderedFrames.pop();
+      frameHeaders.pop();
     }
   }
 
@@ -592,6 +612,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const effectiveKey = rules._renderKey ?? inheritedKey;
       for (let n of rules.value) {
         if (isNode(n, N.Rules)) {
+          if ((n.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
+            if (!visibleOnly || n.visible || n.fullRender) {
+              nodes.push(n);
+              renderKeys.push(effectiveKey);
+            }
+            continue;
+          }
           iterateRules(n as Rules, effectiveKey);
           continue;
         }
@@ -2223,6 +2250,12 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * and create variable declarations for each parameter.
      */
     let outputRules: Rules[] = [];
+    const debugDefaultGuard = process.env.DEBUG_DEFAULT_GUARD === '1';
+    const debugCaller = (): string => {
+      const callerName = caller?.value?.name;
+      const raw = callerName?.valueOf?.() ?? callerName ?? caller?.type ?? '<unknown>';
+      return String(raw);
+    };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
     const originatesFromReferenceImport = (node: Node): boolean => {
       const queue: any[] = [node, node.sourceNode, node.sourceParent];
@@ -2392,7 +2425,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
-        let rules = sourceRules.clone(false);
+        let rules = sourceRules.clone(true);
+        const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         // Allocate a renderKey per ruleset-as-mixin call so shared body
         // children (the nested Rulesets like `.bar`) get per-call forks for
         // their composed selectors. Without this, the cached selector from
@@ -2401,7 +2435,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const renderKey = thisContext.ruleCounter++;
         rules._renderKey = renderKey;
         /** Adopt for lookup, then adopt for sorting */
-        candidate.parent!.adopt(rules);
+        callParent.adopt(rules);
         rules.sourceParent = sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
@@ -2413,7 +2447,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           thisContext.rulesContext = originalContext;
         }
         rules._renderKey = renderKey;
-        candidate.parent!.adopt(rules);
+        callParent.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
@@ -2442,7 +2476,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(false);
+      rules = rules.clone(true);
       // During mixin evaluation, local declarations must be directly visible in the current scope
       // so they properly shadow outer params/variables while the body executes.
       rules.options.rulesVisibility ??= {};
@@ -2590,6 +2624,16 @@ export class MixinCollection extends Node<MixinEntry[]> {
             const passWhenDefaultFalse = await evalWithDefault(false);
             const passWhenDefaultTrue = await evalWithDefault(true);
             thisContext.isDefault = originalIsDefault;
+            if (debugDefaultGuard) {
+              console.log('[default-guard:candidate]', JSON.stringify({
+                caller: debugCaller(),
+                candidate: candidate.value.name?.valueOf?.() ?? '<anon>',
+                guard: candidate.value.guard?.valueOf?.() ?? candidate.value.guard?.toString?.() ?? '',
+                params: candidate.value.params?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
+                passWhenDefaultFalse,
+                passWhenDefaultTrue
+              }));
+            }
             if (passWhenDefaultFalse || passWhenDefaultTrue) {
               passes = true;
               if (passWhenDefaultFalse && passWhenDefaultTrue) {
@@ -2652,6 +2696,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
 
       const defaultResult = hasDefNoneCandidate ? DEF_FALSE : DEF_TRUE;
+      if (debugDefaultGuard) {
+        console.log('[default-guard:resolution]', JSON.stringify({
+          caller: debugCaller(),
+          hasDefNoneCandidate,
+          defTrueCount,
+          defFalseCount,
+          defaultResult
+        }));
+      }
       if (!hasDefNoneCandidate && (defTrueCount + defFalseCount) > 1) {
         throw new ReferenceError('Ambiguous use of default() while matching mixins.');
       }
