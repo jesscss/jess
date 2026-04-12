@@ -7,7 +7,7 @@ const e = defineFunction(
   'e',
   function(value: Node): Node | string {
     if (value instanceof Quoted) {
-      return value.get('value');
+      return value.value;
     }
     return value;
   },

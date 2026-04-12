@@ -11,7 +11,7 @@ import { defineFunction, Quoted } from '@jesscss/core';
 const toLowerCase = defineFunction(
   'to-lower-case',
   function(string: Quoted): Quoted {
-    const value = String(typeof string.get('value') === 'string' ? string.get('value') : string.valueOf());
+    const value = String(typeof string.value === 'string' ? string.value : string.valueOf());
     const lowerValue = value.toLowerCase();
     return new Quoted(lowerValue, string.options);
   },

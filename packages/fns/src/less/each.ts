@@ -7,8 +7,6 @@ import {
   Any,
   VarDeclaration,
   defineFunction,
-  setParent,
-  setSourceParent,
   type FunctionThis
 } from '@jesscss/core';
 
@@ -34,23 +32,19 @@ const each = defineFunction(
   'each',
   async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
     const context = this?.context;
-    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.get('rules');
+    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
     // Re-anchor the callback body to the current invocation scope instead of the
     // parser's detached arg-list ancestry.
-    const mixinRules = rawMixinRules.createShallowBodyWrapper(context);
+    const mixinRules = rawMixinRules.clone();
     if (context) {
-      setParent(mixinRules, context.rulesContext ?? rawMixinRules.parent, context);
-      setSourceParent(
-        mixinRules,
-        this.caller ?? context.rulesContext ?? rawMixinRules.sourceParent,
-        context
-      );
+      Object.defineProperty(mixinRules, 'parent', { value: context.rulesContext ?? rawMixinRules.parent });
+      mixinRules.sourceParent = this.caller ?? context.rulesContext ?? rawMixinRules.sourceParent;
     }
     let keys = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
-      let params = mixin.get('params');
+      const { params } = mixin.value;
       if (params) {
-        let paramList = params.get('value');
+        let paramList = params.value;
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();
@@ -67,8 +61,8 @@ const each = defineFunction(
       value: new Nil()
     }, { paramVar: true }));
     return new For({
-      vars,
-      iterable: list,
+      pattern: { kind: 'tuple', values: vars as [VarDeclaration, ...VarDeclaration[]] },
+      iterable: { kind: 'node', value: list },
       rules: mixinRules
     });
   },

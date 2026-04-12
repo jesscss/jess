@@ -12,10 +12,10 @@ const percentage = defineFunction(
   'percentage',
   function(number: Dimension): Dimension {
     // Sass requires the number to be unitless
-    if (number.unit) {
+    const { number: value, unit } = number.value;
+    if (unit) {
       throw new Error('$number: Expected unitless number, got number with unit');
     }
-    const value = number.number;
     return new Dimension({ number: value * 100, unit: '%' });
   },
   {

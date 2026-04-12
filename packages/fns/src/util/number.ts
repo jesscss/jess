@@ -8,11 +8,11 @@ export function clamp(val: number) {
 
 export function getNumber(n: Node | number, ignoreUnit = false) {
   if (n instanceof Dimension) {
-    let unit = n.unit;
+    const { number, unit } = n.value;
     if (unit === '%') {
-      return n.number / 100;
+      return number / 100;
     } else if (!unit || ignoreUnit) {
-      return n.number;
+      return number;
     }
     throw new Error('color functions take numbers as parameters');
   } else if (n.constructor === Number) {

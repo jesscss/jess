@@ -12,7 +12,7 @@ export default defineFunction(
   'darken',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {
     const [h, s, l] = color._hsl;
-    let adjustAmount = amount.number / 100;
+    let adjustAmount = amount.value.number / 100;
 
     if (method?.valueOf() === 'relative') {
       adjustAmount = l * adjustAmount;

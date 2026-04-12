@@ -15,7 +15,7 @@ function unwrapCalcChannelExpression(node: Node): Node {
   if (!(node instanceof Call)) {
     return node;
   }
-  const name = node.get('name');
+  const { name } = node.value;
   const isCalc = (
     (typeof name === 'string' && name.toLowerCase() === 'calc')
     || (name instanceof Any && typeof name.value === 'string' && name.value.toLowerCase() === 'calc')
@@ -23,9 +23,9 @@ function unwrapCalcChannelExpression(node: Node): Node {
   if (!isCalc) {
     return node;
   }
-  const args = node.get('args');
-  const value = args?.get('value');
-  return value?.[0] ?? node;
+  const { args } = node.value;
+  const items = args?.value;
+  return items?.[0] ?? node;
 }
 
 /**
@@ -40,30 +40,31 @@ export function parseRelativeColorSyntax(rawArgs: List): {
   channels: Node[];
   alpha?: Node;
 } | null {
-  if (!rawArgs || !rawArgs.get('value') || rawArgs.get('value').length === 0) {
+  if (!rawArgs || !rawArgs.value || rawArgs.value.length === 0) {
     return null;
   }
 
-  const firstArg = rawArgs.get('value')[0];
+  const firstArg = rawArgs.value[0];
 
   // Check if first argument is a Sequence starting with "from"
-  if (firstArg instanceof Sequence && firstArg.get('value') && firstArg.get('value').length > 0) {
-    const firstItem = firstArg.get('value')[0];
+  if (firstArg instanceof Sequence && firstArg.value && firstArg.value.length > 0) {
+    const seqValues = firstArg.value;
+    const firstItem = seqValues[0];
 
     // Check if first item is "from" keyword
     if (firstItem instanceof Any && firstItem.value.toLowerCase() === 'from') {
       // This is relative color syntax
-      if (firstArg.get('value').length < 2) {
+      if (seqValues.length < 2) {
         throw new Error('Relative color syntax requires an origin color after "from"');
       }
 
-      const originColor = firstArg.get('value')[1]!;
-      const channels = firstArg.get('value').slice(2) || [];
+      const originColor = seqValues[1]!;
+      const channels = seqValues.slice(2) || [];
 
       // Check if there's an alpha value separated by / (rawArgs.value[1] when sep is '/')
       let alpha: Node | undefined;
-      if (rawArgs.get('value').length > 1 && rawArgs.options?.sep === '/') {
-        alpha = rawArgs.get('value')[1];
+      if (rawArgs.value.length > 1 && rawArgs.options?.sep === '/') {
+        alpha = rawArgs.value[1];
       }
 
       return {
@@ -144,16 +145,17 @@ function substituteChannelVariables(
     }
   }
 
-  // If it's a Call node (like calc()), recursively substitute in its arguments
-  if (node instanceof Call && node.get('args')) {
+  // If it's a Call node (like calc()), substitute channel variables and evaluate
+  if (node instanceof Call) {
     const cloned = node.clone();
     // Recursively substitute in arguments
-    const clonedArgs = cloned.get('args');
+    const { args: clonedArgs } = cloned.value;
     if (clonedArgs) {
-      const substitutedArgs = node.get('args')!.get('value').map((arg: Node) =>
+      const { args: origArgs } = node.value;
+      const substitutedArgs = origArgs!.value.map((arg: Node) =>
         substituteChannelVariables(arg, channelValues, format)
       );
-      clonedArgs.setData(substitutedArgs);
+      clonedArgs.set(null, substitutedArgs);
     }
     return cloned;
   }
@@ -161,19 +163,19 @@ function substituteChannelVariables(
   // If it's an Operation, recursively substitute in its operands
   if (node instanceof Operation) {
     const cloned = node.clone();
-    const left = node.get('left');
-    const op = node.get('operator');
-    const right = node.get('right');
-    cloned.setData('left', substituteChannelVariables(left, channelValues, format));
-    cloned.setData('right', substituteChannelVariables(right, channelValues, format));
-    Reflect.set(cloned, 'operator', op as Operator);
+    const [left, op, right] = node.value;
+    cloned.set(null, [
+      substituteChannelVariables(left, channelValues, format),
+      op,
+      substituteChannelVariables(right, channelValues, format)
+    ]);
     return cloned;
   }
 
   // If it's a Sequence or List, recursively substitute in its values
   if ('value' in node && Array.isArray((node as any).value)) {
     const cloned = node.clone();
-    cloned.setData((node as any).value.map((item: Node) =>
+    cloned.set(null, (node as any).value.map((item: Node) =>
       substituteChannelVariables(item, channelValues, format)
     ));
     return cloned;
@@ -221,7 +223,7 @@ export async function evaluateRGBChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const value = evaluated.number;
+      const { number: value } = evaluated.value;
       // Clamp to 0-255 range for RGB
       return Math.max(0, Math.min(255, value));
     }
@@ -232,7 +234,7 @@ export async function evaluateRGBChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    return Math.max(0, Math.min(255, evaluated.number));
+    return Math.max(0, Math.min(255, evaluated.value.number));
   }
 
   throw new Error(`Channel reference must be an identifier or evaluate to a Dimension, got ${channel.type}`);
@@ -293,8 +295,7 @@ export async function evaluateHSLChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const value = evaluated.number;
-      const unit = evaluated.unit;
+      const { number: value, unit } = evaluated.value;
 
       // Handle different units for hue (deg, turn, rad, grad)
       if (unit === 'deg' || unit === '' || unit === undefined) {
@@ -321,8 +322,7 @@ export async function evaluateHSLChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    const value = evaluated.number;
-    const unit = evaluated.unit;
+    const { number: value, unit } = evaluated.value;
 
     // Handle percentage units for s/l
     if (unit === '%') {

@@ -31,7 +31,7 @@ const get = defineFunction(
     const findDeclaration = (map: Collection, keyStr: string): Declaration | null => {
       for (const node of map.value) {
         if (isNode(node, N.Declaration)) {
-          const nodeKey = String(node.get('name').valueOf());
+          const nodeKey = String(node.value.name.valueOf());
           if (nodeKey === keyStr) {
             return node;
           }
@@ -52,7 +52,7 @@ const get = defineFunction(
       }
 
       // Get the value and check if it's a Collection (nested map)
-      const value = decl.get('value');
+      const value = decl.value.value;
       if (!isNode(value, N.Collection)) {
         return new Nil();
       }
@@ -69,7 +69,7 @@ const get = defineFunction(
       return new Nil();
     }
 
-    return decl.get('value');
+    return decl.value.value;
   },
   {
     params: [
