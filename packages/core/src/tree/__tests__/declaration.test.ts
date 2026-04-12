@@ -66,6 +66,37 @@ describe('Declaration', () => {
       background: red, foo;
     `);
   });
+
+  it('resolves merged declaration lookups from a nested child ruleset in source order', async () => {
+    const node = rules([
+      rules([
+        decl({
+          name: any('background-color'),
+          value: any('red'),
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo'),
+        }, { assign: '+:' }),
+        rules([
+          decl({
+            name: any('background'),
+            value: ref({ key: 'background-color' }, { type: 'declaration' })
+          })
+        ])
+      ])
+    ]);
+
+    const parent = node.value[0]!;
+    const child = parent.value[2]!;
+    child.parent = parent;
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      background-color: red, foo;
+      background: red, foo;
+    `);
+  });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })
   //   rule.toModule(context, out)

@@ -49,15 +49,22 @@ export const getInterpolatedNode = (
 };
 
 export const normalizeMixinReferenceKey = (selector: Selector): { key: string | string[]; rawKey: Selector } => {
-  if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.InterpolatedSelector)) {
+  if (isNode(selector, N.BasicSelector | N.InterpolatedSelector)) {
     return { key: selector.valueOf(), rawKey: selector };
+  }
+
+  if (isNode(selector, N.CompoundSelector)) {
+    return {
+      key: selector.value.map(node => node.valueOf()),
+      rawKey: selector
+    };
   }
 
   if (isNode(selector, N.ComplexSelector)) {
     const path: string[] = [];
     let canUsePath = true;
 
-    for (const node of selector.nodes()) {
+    for (const node of selector.value) {
       if (isNode(node, N.BasicSelector | N.CompoundSelector | N.InterpolatedSelector)) {
         path.push(node.valueOf());
         continue;

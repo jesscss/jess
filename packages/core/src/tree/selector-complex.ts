@@ -54,6 +54,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let requiredKeySet = library.getBitset();
     for (const component of value) {
       if (isNode(component, N.Combinator)) {
+        component.keySetLibrary ??= library;
         keySet = keySet.or(component.keySet);
         requiredKeySet = requiredKeySet.or(component.requiredKeySet);
         continue;

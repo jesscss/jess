@@ -1450,28 +1450,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const priorValue = prior.value.value.copy(true, freezeChildren);
       const nextValue = decl.value.value.copy(true, freezeChildren);
       const toMergedItems = (value: Node): Node[] => {
-        if (!isNode(value, N.List)) {
-          return [value];
-        }
-        const items = value.value.map(item => item.copy(true, freezeChildren));
-        while (items.length > 0) {
-          const first = items[0]!;
-          let firstIsEmptyString = false;
+        const items: Node[] = [];
+        const collect = (node: Node): void => {
+          if (isNode(node, N.List)) {
+            for (const item of node.value) {
+              collect(item.copy(true, freezeChildren));
+            }
+            return;
+          }
+          let isEmptyString = false;
           try {
-            firstIsEmptyString = String(first?.valueOf?.() ?? '') === '';
+            isEmptyString = String(node?.valueOf?.() ?? '') === '';
           } catch {
-            firstIsEmptyString = false;
+            isEmptyString = false;
           }
           const isEmptyPlaceholder = (
-            isNode(first, N.Nil)
-            || (isNode(first, N.List) && first.value.length === 0)
-            || firstIsEmptyString
+            isNode(node, N.Nil)
+            || isEmptyString
           );
           if (!isEmptyPlaceholder) {
-            break;
+            items.push(node);
           }
-          items.shift();
-        }
+        };
+        collect(value);
         return items;
       };
       if (assign === '&_:') {

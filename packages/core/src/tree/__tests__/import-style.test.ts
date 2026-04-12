@@ -1143,6 +1143,47 @@ describe('Style import', () => {
       `);
     });
 
+    it('import-reference: namespaced reference-imported rulesets remain callable via array-path keys', async () => {
+      const referencedPath = resolve(process.cwd(), 'simple-mixin-array.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: el('.mixin'),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('simple-mixin-array.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        }),
+        ruleset({
+          selector: el('#used-namespaced-mixin'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#Namespace', '.mixin'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        #Namespace {
+          .mixin {
+            was: included;
+          }
+        }
+        #used-namespaced-mixin {
+          was: included;
+        }
+      `);
+    });
+
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
       const remoteContext = new Context({}, [{
         name: 'remote-map',

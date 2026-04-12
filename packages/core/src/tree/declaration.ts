@@ -277,29 +277,32 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (!isListMergedAssign || !isNode(node.value.value, N.List)) {
             return;
           }
-          const listValue = node.value.value.value;
-          if (listValue.length === 0) {
-            return;
-          }
-          const first = listValue[0]!;
-          const isEmptyPlaceholder = (
-            isNode(first, N.Nil)
-            || (isNode(first, N.List) && first.value.length === 0)
-            || String(first.valueOf?.() ?? '') === ''
-          );
-          if (!isEmptyPlaceholder) {
-            return;
-          }
-          const rest = listValue.slice(1);
-          if (rest.length === 0) {
+          const mergedItems: Node[] = [];
+          const collect = (child: Node): void => {
+            if (isNode(child, N.List)) {
+              for (const item of child.value) {
+                collect(item);
+              }
+              return;
+            }
+            const isEmptyPlaceholder = (
+              isNode(child, N.Nil)
+              || String(child.valueOf?.() ?? '') === ''
+            );
+            if (!isEmptyPlaceholder) {
+              mergedItems.push(child);
+            }
+          };
+          collect(node.value.value);
+          if (mergedItems.length === 0) {
             setVal(new Nil());
             return;
           }
-          if (rest.length === 1) {
-            setVal(rest[0]!.copy(true));
+          if (mergedItems.length === 1) {
+            setVal(mergedItems[0]!.copy(true));
             return;
           }
-          setVal(new List(rest.map(item => item.copy(true))));
+          setVal(new List(mergedItems.map(item => item.copy(true))));
         };
         /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
         if (node.type === 'VarDeclaration') {

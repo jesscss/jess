@@ -129,6 +129,32 @@ describe('reference', () => {
       `);
     });
 
+    it('should resolve merged property lookups via quoted index inside a nested child scope', async () => {
+      let node = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' }),
+        rules([
+          decl({
+            name: any('background'),
+            value: ref({ key: quoted('background-color') }, { type: 'index' })
+          })
+        ])
+      ]);
+      const child = node.value[2]!;
+      child.parent = node;
+      let evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        background-color: red, foo;
+        background: red, foo;
+      `);
+    });
+
     it('should treat keyword index as variable lookup', async () => {
       let node = rules([
         vardecl({
@@ -600,6 +626,45 @@ describe('reference', () => {
 
       const evald = await node.eval(context);
       expect(`${evald}`).toContain('@keyframes some-name');
+    });
+
+    it('should resolve a mixin-ruleset call keyed by a compound selector path array', async () => {
+      const node = rules([
+        ruleset({
+          selector: compound([
+            el('.b'),
+            el('.bb'),
+            el('.foo-xxx'),
+            el('.yyy-foo'),
+            el('#foo'),
+            el('.foo'),
+            el('.bbb')
+          ]),
+          rules: rules([
+            decl({ name: 'b', value: any('1') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
+          b: 1;
+        }
+        .out {
+          b: 1;
+        }
+      `);
     });
 
     it('should prefer compound ruleset over nested mixin lookup', async () => {

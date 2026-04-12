@@ -19,6 +19,8 @@ import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
+import { List } from './list.js';
+import { Nil } from './nil.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -562,6 +564,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           context.searchScope.add(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).value.important;
           const declValue = (returnVal as Declaration).value.value;
+          const normalizedAssign = isNode(returnVal, N.Declaration)
+            ? returnVal.options?.normalizedFromAssign
+            : undefined;
+          const isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
           // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
           // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
           const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';
@@ -583,6 +589,32 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
               let out = evald.copy(true, freezeChildren).inherit(evald);
+              if (isMergedAssign && isNode(out, N.List)) {
+                const mergedItems: Node[] = [];
+                const collect = (child: Node): void => {
+                  if (isNode(child, N.List)) {
+                    for (const item of child.value) {
+                      collect(item as Node);
+                    }
+                    return;
+                  }
+                  const isEmptyPlaceholder = (
+                    isNode(child, N.Nil)
+                    || String(child.valueOf?.() ?? '') === ''
+                  );
+                  if (!isEmptyPlaceholder) {
+                    mergedItems.push(child.copy(true, freezeChildren));
+                  }
+                };
+                collect(out);
+                if (mergedItems.length === 0) {
+                  out = new Nil();
+                } else if (mergedItems.length === 1) {
+                  out = mergedItems[0]!;
+                } else {
+                  out = new List(mergedItems) as unknown as typeof out;
+                }
+              }
               out.frozen = true;
               out.pre = this.pre;
               out.post = this.post;
