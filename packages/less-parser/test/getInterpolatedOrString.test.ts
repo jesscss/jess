@@ -7,11 +7,11 @@ describe('getInterpolatedOrString', () => {
       const result = getInterpolatedOrString('@@key');
       expect(typeof result).not.toBe('string');
       if (result instanceof Interpolated) {
-        expect(result.source).not.toContain('@');
-        expect(result.replacements.length).toBe(1);
-        const replacement = result.replacements[0];
+        expect(result.value.source).not.toContain('@');
+        expect(result.value.replacements.length).toBe(1);
+        const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBe('key');
+          expect(replacement.value.key).toBe('key');
           expect(replacement.options.type).toBe('variable');
         }
       }
@@ -21,12 +21,12 @@ describe('getInterpolatedOrString', () => {
       const result = getInterpolatedOrString('@$key');
       expect(typeof result).not.toBe('string');
       if (result instanceof Interpolated) {
-        expect(result.source).not.toContain('@');
-        expect(result.replacements.length).toBe(1);
-        const replacement = result.replacements[0];
+        expect(result.value.source).not.toContain('@');
+        expect(result.value.replacements.length).toBe(1);
+        const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBeInstanceOf(Quoted);
-          expect((replacement.key as Quoted).value).toBe('key');
+          expect(replacement.value.key).toBeInstanceOf(Quoted);
+          expect((replacement.value.key as Quoted).value).toBe('key');
           expect(replacement.options.type).toBe('property');
         }
       }
@@ -36,12 +36,12 @@ describe('getInterpolatedOrString', () => {
       const result = getInterpolatedOrString('$$key');
       expect(typeof result).not.toBe('string');
       if (result instanceof Interpolated) {
-        expect(result.source).not.toContain('$');
-        expect(result.replacements.length).toBe(1);
-        const replacement = result.replacements[0];
+        expect(result.value.source).not.toContain('$');
+        expect(result.value.replacements.length).toBe(1);
+        const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBeInstanceOf(Quoted);
-          expect((replacement.key as Quoted).value).toBe('key');
+          expect(replacement.value.key).toBeInstanceOf(Quoted);
+          expect((replacement.value.key as Quoted).value).toBe('key');
           expect(replacement.options.type).toBe('property');
         }
       }
@@ -53,11 +53,11 @@ describe('getInterpolatedOrString', () => {
       const result = getInterpolatedOrString('@{variable}');
       expect(typeof result).not.toBe('string');
       if (result instanceof Interpolated) {
-        expect(result.source).not.toContain('@');
-        expect(result.replacements.length).toBe(1);
-        const replacement = result.replacements[0];
+        expect(result.value.source).not.toContain('@');
+        expect(result.value.replacements.length).toBe(1);
+        const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBe('variable');
+          expect(replacement.value.key).toBe('variable');
           expect(replacement.options.type).toBe('variable');
         }
       }
@@ -67,12 +67,12 @@ describe('getInterpolatedOrString', () => {
       const result = getInterpolatedOrString('${property}');
       expect(typeof result).not.toBe('string');
       if (result instanceof Interpolated) {
-        expect(result.source).not.toContain('$');
-        expect(result.replacements.length).toBe(1);
-        const replacement = result.replacements[0];
+        expect(result.value.source).not.toContain('$');
+        expect(result.value.replacements.length).toBe(1);
+        const replacement = result.value.replacements[0];
         if (replacement instanceof Reference) {
-          expect(replacement.key).toBeInstanceOf(Quoted);
-          expect((replacement.key as Quoted).value).toBe('property');
+          expect(replacement.value.key).toBeInstanceOf(Quoted);
+          expect((replacement.value.key as Quoted).value).toBe('property');
           expect(replacement.options.type).toBe('property');
         }
       }

@@ -56,7 +56,7 @@ export type ReferenceOptions = {
   /**
    * What kind of lookup are we doing?
    */
-  type?: 'index' | 'declaration' | 'variable' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
+  type?: 'index' | 'declaration' | 'property' | 'variable' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   /**
    * Resolution strategy:
    * - 'scope': Search in scope (Less-style, default)
@@ -150,6 +150,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       case 'declaration':
         w.add('.');
         emitKey(key);
+        break;
+      case 'property':
+        if (target) {
+          w.add('[');
+          emitKey(key);
+          w.add(']');
+        } else {
+          w.add('.');
+          emitKey(key);
+        }
         break;
       case 'mixin':
         w.add(' > ');
@@ -405,10 +415,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 }
               }
               break;
+            case 'property':
             case 'variable':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                const declarationType = type === 'property' ? 'Declaration' : 'VarDeclaration';
+                const found = targetRules.find('declaration', `${keyStr}`, declarationType, opts);
                 if (found !== undefined) {
                   return found;
                 }

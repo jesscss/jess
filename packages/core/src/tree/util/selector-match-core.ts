@@ -6,6 +6,7 @@ import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
+import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { isSubsetOf, isDisjoint } from './bitset.js';
@@ -730,15 +731,13 @@ export function findExtendableLocations(
     return result;
   }
 
-  if (canFastReject) {
-    const fastPathResult = tryFastPathExtendMatch(target, find, []);
-    if (fastPathResult && fastPathResult.length > 0) {
-      metrics.fastPathHits++;
-      const hasWholeMatch = fastPathResult.some(loc => loc.path.length === 0 && loc.matchedNode === target);
-      const result = { locations: fastPathResult, hasMatches: true, hasWholeMatch, metrics };
-      targetCache.set(find, result);
-      return result;
-    }
+  const fastPathResult = tryFastPathExtendMatch(target, find, []);
+  if (fastPathResult && fastPathResult.length > 0) {
+    metrics.fastPathHits++;
+    const hasWholeMatch = fastPathResult.some(loc => loc.path.length === 0 && loc.matchedNode === target);
+    const result = { locations: fastPathResult, hasMatches: true, hasWholeMatch, metrics };
+    targetCache.set(find, result);
+    return result;
   }
 
   // Full recursive search with optimizations - only when fast path fails
@@ -1888,6 +1887,36 @@ export function matchSelectors(target: Selector, find: Selector, partial = false
     hasPartialMatch: isPartialMatch,
     matched: hasAnyFullMatch && !isPartialMatch ? [find] : [],
     remainders: searchResult.locations[0]?.remainders || []
+  };
+}
+
+export function selectorMatch(
+  find: Selector,
+  target: Selector,
+  partial = false,
+  context?: Context
+): {
+    fullMatch: boolean;
+    partialMatch: boolean;
+    matched: Selector[];
+    remainders: Selector[];
+  } {
+  if (context && find.compare(target, context) === 0) {
+    return {
+      fullMatch: true,
+      partialMatch: false,
+      matched: [target],
+      remainders: []
+    };
+  }
+  const comparison = selectorCompare(find, target);
+  return {
+    fullMatch: comparison.hasWholeMatch,
+    partialMatch: partial
+      ? comparison.hasWholeMatch || comparison.hasPartialMatch
+      : comparison.hasPartialMatch,
+    matched: comparison.hasWholeMatch ? [target] : [],
+    remainders: []
   };
 }
 

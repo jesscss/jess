@@ -123,7 +123,7 @@ function guardContainsDefaultCall(node: Node | undefined): boolean {
         return true;
       }
       if (callName instanceof Reference) {
-        const key = callName.key;
+        const key = callName.value.key;
         const keyStr = String(
           (typeof key === 'object' && key !== null && 'valueOf' in key)
             ? key.valueOf()
@@ -160,7 +160,7 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
     return true;
   }
   if (callName instanceof Reference) {
-    const key = callName.key;
+    const key = callName.value.key;
     const keyStr = String(
       (typeof key === 'object' && key !== null && 'valueOf' in key)
         ? key.valueOf()
@@ -190,9 +190,7 @@ export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContex
 
   // Math expressions: only wrap if this operation would actually be performed.
   if (isNode(node, N.Operation)) {
-    const left = node.left;
-    const op = node.get('operator');
-    const right = node.right;
+    const [left, op, right] = node.value;
     const mathMode = this.mathMode ?? 'parens-division';
     const shouldOperate = shouldOperateWithMathFrames(
       {
@@ -366,8 +364,7 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.target;
-    let flag = ext.get('flag') ?? 1; // ExtendFlag.Exact = 1
+    const { target, flag = 1 } = ext.value; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -412,7 +409,7 @@ export function stylesheet(this: P, T: TokenMap) {
     if (charset && isNode(root, N.Rules)) {
       let charsetLoc = $.getLocationInfo(charset);
       let rootLoc = root.location;
-      root.setData([new Any(charset.image, { role: 'charset' }, charsetLoc, context!), ...root.value]);
+      root.set(null, [new Any(charset.image, { role: 'charset' }, charsetLoc, context!), ...root.value]);
       rootLoc[0] = charsetLoc[0];
       rootLoc[1] = charsetLoc[1];
       rootLoc[2] = charsetLoc[2];
@@ -1226,9 +1223,9 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
         /** For extends inside rulesets (not bubbled), selector should be undefined
          * so it defaults to ampersand and resolves to the ruleset's selector */
           for (let e of extend) {
-            e.setData('selector', undefined);
+            e.set('selector', undefined);
           }
-          rules.setData([...extend, ...rules.value]);
+          rules.set(null, [...extend, ...rules.value]);
           ctx.extendNodes = undefined;
         } else {
           const selectorList = selector instanceof SelectorList ? selector : undefined;
@@ -1253,8 +1250,8 @@ export function qualifiedRuleBody(this: P, T: TokenMap) {
             // All extends have same target and flag - can be inside ruleset
               let extendNodes = finalExtends[0]!;
               let finalExtend = isArray(extendNodes) ? extendNodes[0]! : extendNodes;
-              finalExtend.setData('selector', undefined);
-              rules.setData([finalExtend, ...rules.value]);
+              finalExtend.set('selector', undefined);
+              rules.set(null, [finalExtend, ...rules.value]);
               ctx.extendNodes = undefined;
             } else {
             // Multiple extend groups (different targets/flags) - bubble up
@@ -1343,8 +1340,9 @@ export function qualifiedRule(this: P, T: TokenMap) {
       // Set the Extend nodes' selector to the ruleset's selector (not &)
       // This allows the extends to work correctly when evaluated in the wrapper Rules context
       for (const extendNode of ctx.extendNodes) {
-        if (extendNode.selector === undefined || extendNode.selector instanceof Ampersand) {
-          extendNode.setData('selector', selector);
+        const { selector: extendSelector } = extendNode.value;
+        if (extendSelector === undefined || extendSelector instanceof Ampersand) {
+          extendNode.set('selector', selector);
         }
       }
       /** Prepend a rules block */
@@ -1395,7 +1393,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
         if (node instanceof Any && node.role === 'name') {
           // Create a new Any node with role 'property' for the name
           const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location, $.context);
-          args.setData(i, new VarDeclaration({
+          args.set(i, new VarDeclaration({
             name: nameNode,
             value: new Nil(undefined, undefined, location, $.context)
           }, { paramVar: true }, location, $.context));
@@ -1416,11 +1414,11 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
         if (node instanceof Any && node.role === 'name') {
-          args.setData(i, new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context));
+          args.set(i, new Reference({ key: node.valueOf() }, { type: 'variable' }, location, $.context));
         } else if (node instanceof Rest) {
-          const restValue = node.get('value');
+          const restValue = node.value;
           if (typeof restValue === 'string') {
-            args.setData(i, new Rest(new Reference({ key: restValue }, { type: 'variable' }, location, $.context), undefined, location, $.context));
+            args.set(i, new Rest(new Reference({ key: restValue }, { type: 'variable' }, location, $.context), undefined, location, $.context));
           }
         }
       }
@@ -1620,8 +1618,9 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
             // Set the Extend nodes' selector to the ruleset's selector (not &)
             // This allows the extends to work correctly when evaluated in the wrapper Rules context
             for (const extendNode of ctx.extendNodes) {
-              if (extendNode.selector === undefined || extendNode.selector instanceof Ampersand) {
-                extendNode.setData('selector', selector);
+              const { selector: extendSelector } = extendNode.value;
+              if (extendSelector === undefined || extendSelector instanceof Ampersand) {
+                extendNode.set('selector', selector);
               }
             }
             rule = new Rules([

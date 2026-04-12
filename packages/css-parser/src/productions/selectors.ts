@@ -41,7 +41,7 @@ export function stylesheet(this: C, T: TokenMap): StylesheetRule {
         let loc = $.getLocationInfo(charset);
         let rootLoc = root.location;
         let rules = root.value;
-        root.setData([new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
+        root.set(null, [new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
         rootLoc[0] = loc[0];
         rootLoc[1] = loc[1];
         rootLoc[2] = loc[2];

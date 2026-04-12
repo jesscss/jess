@@ -36,50 +36,19 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   keySetLibrary: BitSetLibrary<string> | undefined;
 
   protected _requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
-    const { parent, sourceNode } = this;
-    let parentLibrary: BitSetLibrary<string> | undefined;
-    let currentParent = parent;
-    while (currentParent && !parentLibrary) {
-      if ((currentParent as Selector).isSelector) {
-        const selectorParent = currentParent as Selector;
-        parentLibrary = selectorParent.keySetLibrary;
-        if (!parentLibrary) {
-          try {
-            parentLibrary = selectorParent._requireKeySetLibrary(context);
-          } catch {
-            parentLibrary = undefined;
-          }
-        }
-      }
-      currentParent = currentParent.parent;
-    }
-    let childLibrary: BitSetLibrary<string> | undefined;
-    const { value } = this as Record<string, unknown>;
-    if (isArray(value)) {
-      for (const item of value) {
-        if ((item as Selector | undefined)?.isSelector) {
-          childLibrary = (item as Selector).keySetLibrary;
-          if (childLibrary) {
-            break;
-          }
-        }
-      }
-    } else if (value && typeof value === 'object') {
-      const arg = (value as { arg?: unknown }).arg;
-      if ((arg as Selector | undefined)?.isSelector) {
-        childLibrary = (arg as Selector).keySetLibrary;
-      }
-    }
+    const { keySetLibrary, sourceNode } = this;
+    const sourceLibrary = (
+      sourceNode !== this
+      && (sourceNode as Selector).isSelector
+    )
+      ? (sourceNode as Selector).keySetLibrary
+      : undefined;
     const treeContext = this.treeContext as
       | { selectorBits?: BitSetLibrary<string>; opts?: { selectorBits?: BitSetLibrary<string> } }
       | undefined;
-    const library = this.keySetLibrary
-      ?? parentLibrary
-      ?? childLibrary
+    const library = keySetLibrary
+      ?? sourceLibrary
       ?? context?.selectorBits
-      ?? ((sourceNode !== this && (sourceNode as Selector).isSelector)
-        ? (sourceNode as Selector).keySetLibrary
-        : undefined)
       ?? treeContext?.selectorBits
       ?? treeContext?.opts?.selectorBits;
     if (library) {
@@ -89,6 +58,9 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   }
 
   override inherit(node?: Node | undefined): this {
+    if (!node) {
+      return this;
+    }
     const inherited = super.inherit(node);
     if (node && (node as Selector).isSelector) {
       inherited.keySetLibrary ??= (node as Selector).keySetLibrary;
@@ -97,13 +69,13 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     if (isArray(value)) {
       for (const item of value) {
         if ((item as Selector | undefined)?.isSelector) {
-          (item as Selector).parent = inherited;
+          inherited.adopt(item as Selector);
         }
       }
     } else if (value && typeof value === 'object') {
       const arg = (value as { arg?: unknown }).arg;
       if ((arg as Selector | undefined)?.isSelector) {
-        (arg as Selector).parent = inherited;
+        inherited.adopt(arg as Selector);
       }
     }
     return inherited;

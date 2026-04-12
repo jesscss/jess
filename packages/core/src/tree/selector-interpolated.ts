@@ -1,9 +1,9 @@
 import type { Context } from '../context.js';
 import { defineType } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
   eval(context: Context): MaybePromise<Selector>;
@@ -27,7 +27,13 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    return this.value.evalToSelector(context);
+    const { selectorBits } = context;
+    this.keySetLibrary ??= selectorBits;
+    const out = this.value.evalToSelector(context);
+    if (isThenable(out)) {
+      return (out as Promise<Selector>).then((selector) => attachSelectorBitLibrary(selector, selectorBits));
+    }
+    return attachSelectorBitLibrary(out as Selector, selectorBits);
   }
 
   override valueOf(): string {

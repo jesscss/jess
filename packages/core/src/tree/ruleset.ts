@@ -747,6 +747,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       // Index should already be assigned by parent Rules
       node.sourceNode ??= this;
       let { selector, rules, guard } = node.value;
+      const { selectorBits } = context;
       // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
       // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
       // (like Less `@base`) become inaccessible.
@@ -778,6 +779,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
       const parentSelector = parentRuleset?.selector;
       // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
+      if ('keySetLibrary' in selector && !(selector instanceof Nil)) {
+        (selector as Selector).keySetLibrary ??= selectorBits;
+      }
       if (node.options) {
         (node.options as RulesetOptions).ownSelector = selector;
       } else {
@@ -808,7 +812,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           // lazy `keySet` getter fires during extend matching, it produces
           // real BitSets instead of undefined.
           if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
-            (sel as Selector).keySetLibrary ??= context.selectorBits;
+            (sel as Selector).keySetLibrary ??= selectorBits;
           }
           // Register to extend root's registry for extend lookups
           const extendRoot = context.extendRoots.getCurrentExtendRoot();

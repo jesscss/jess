@@ -57,11 +57,11 @@ describe('serializeTypes coverage', () => {
       selector: 
         (AttributeSelector
           name: 'foo'
-          value:
+          op: '='
+          value: 
             (Quoted
               (Any [role=any] 'bar')
             )
-          op: '='
           mod: 'i'
         )
     `);

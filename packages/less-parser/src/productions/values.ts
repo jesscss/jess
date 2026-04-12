@@ -565,7 +565,7 @@ export function ifFunction(this: P, T: TokenMap) {
     } else {
       isCssBranch = false;
       let node: Node = firstNode;
-      const parenValue = node instanceof Paren ? node.get('value') : undefined;
+      const parenValue = node instanceof Paren ? node.value : undefined;
       const condNode = parenValue instanceof Node ? parenValue : node;
       args = new List([condNode]);
 
@@ -617,7 +617,7 @@ export function booleanFunction(this: P, T: TokenMap) {
     $.CONSUME(T.RParen);
 
     let location = $.endRule();
-    const argValue = arg instanceof Paren ? arg.get('value') : undefined;
+    const argValue = arg instanceof Paren ? arg.value : undefined;
     const conditionNode = argValue instanceof Node ? argValue : arg;
     const exprNode = new Expression(conditionNode, { parens: true }, location, $.context);
     return exprNode;

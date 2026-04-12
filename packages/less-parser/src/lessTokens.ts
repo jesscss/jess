@@ -10,7 +10,8 @@ import {
   type CssTokenType,
   SKIPPED_LABEL
 } from '@jesscss/css-parser';
-import { AMPERSAND_TEMPLATE_CONTENTS_REGEX } from '@jesscss/core';
+
+const AMPERSAND_TEMPLATE_CONTENTS_REGEX = /(?:[.#-]|\d)(?:[.#\w\u0080-\uffff-]|&)*|(?:[.#\w\u0080-\uffff-]|&)*&(?:[.#\w\u0080-\uffff-]|&)*/;
 
 type IMerges = Partial<Record<CssTokenType, RawTokenConfig>>;
 

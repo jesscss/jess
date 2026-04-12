@@ -9,8 +9,12 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
     const { tree, errors } = parser.parse('@container (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
-    const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
+    const prelude = atRule.value.prelude;
+    const queryNode = prelude?.type === 'Sequence'
+      ? prelude.value[0]
+      : Array.isArray(prelude?.value)
+        ? prelude.value[0]
+        : prelude;
     expect(queryNode.type).toBe('Paren');
     expect(queryNode.value.type).toBe('QueryCondition');
     expect(queryNode.value.value.length).toBe(3);
@@ -23,7 +27,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
+    const prelude = atRule.value.prelude;
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     if (queryNode) {
       expect(queryNode.type).toBe('Paren');
@@ -71,7 +75,7 @@ describe('@container and @media query roles and QueryCondition parsing', () => {
     const { tree, errors } = parser.parse('@media (width > 400px) and (height > 300px) { .card {} }');
     expect(errors.length).toBe(0);
     const atRule = tree.value[0] as any;
-    const prelude = atRule.prelude;
+    const prelude = atRule.value.prelude;
     const queryNode = Array.isArray(prelude?.value) ? prelude.value[0] : prelude;
     // With multiple conditions, there should be an outer QueryCondition
     if (queryNode && queryNode.type === 'QueryCondition') {

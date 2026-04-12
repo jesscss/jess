@@ -83,7 +83,7 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
     return true;
   }
   if (callName instanceof Reference) {
-    const key = callName.key;
+    const key = callName.value.key;
     const keyStr = String(
       (typeof key === 'object' && key !== null && 'valueOf' in key)
         ? key.valueOf()
@@ -509,7 +509,7 @@ export function mixinName(this: P, T: TokenMap) {
       if (asReference) {
         // If target is a Reference with matching type, merge keys instead of nesting
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-          const existingKey = ctx.node.key;
+          const existingKey = ctx.node.value.key;
           let mergedKeys: string[];
           if (Array.isArray(existingKey)) {
             mergedKeys = [...existingKey];
@@ -661,7 +661,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
             const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
             if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
-              const existingKey = target.key;
+              const existingKey = target.value.key;
               let mergedKeys: string[];
               if (Array.isArray(existingKey)) {
                 mergedKeys = [...existingKey];
@@ -730,7 +730,7 @@ export function mixinArgList(this: P, T: TokenMap) {
         if (head instanceof VarDeclaration) {
           const nodes = [head.value, ...rest];
           hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-          head.setData('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
+          head.set('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
           semiNodes.push(head);
         } else {
           hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);

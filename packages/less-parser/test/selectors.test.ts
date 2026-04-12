@@ -1,5 +1,5 @@
 import { Parser } from '../src/index.js';
-import { Ampersand, Nil, serializeTypes, TreeContext } from '@jesscss/core';
+import { Ampersand, serializeTypes, TreeContext } from '@jesscss/core';
 
 const parser = new Parser();
 
@@ -159,7 +159,7 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
       const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
       expect(amp).toBeDefined();
-      expect(amp?.template).toBeInstanceOf(Nil);
+      expect(amp?.value.appendValue).toBe('');
     });
 
     it('should parse &(nil) as an explicit nil parent template', () => {
@@ -168,7 +168,7 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
       const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
       expect(amp).toBeDefined();
-      expect(amp?.template).toBeInstanceOf(Nil);
+      expect(amp?.value.appendValue).toBe('');
     });
 
     it('should parse pseudo selector', () => {

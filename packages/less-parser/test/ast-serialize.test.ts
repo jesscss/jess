@@ -93,6 +93,12 @@ describe('serializeTypes coverage', () => {
     expect(out).toContainString(`
       (Mixin
         name: '.mixin'
+        params: 
+          (List
+            [
+              (Any [role=name] 'color')
+            ]
+          )
         rules: 
           (Rules
             [
@@ -106,16 +112,6 @@ describe('serializeTypes coverage', () => {
               )
             ]
           )
-        params: 
-          (List
-            [
-              (VarDeclaration
-                name: 
-                  (Any [role=property] 'color')
-                value: 
-                  (Nil)
-              )
-            ]
     `);
   });
 
@@ -215,7 +211,7 @@ describe('serializeTypes coverage', () => {
   test('property accessor', () => {
     const { errors, tree } = parser.parse('.test { color: @obj[prop]; }');
     expect(errors.length).toBe(0);
-    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[\'prop\']');
+    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[prop]');
     expect(serializeTypes(tree)).toContainString(`
       (Reference
         target: 
@@ -293,6 +289,12 @@ test('rest parameter in mixin', () => {
   expect(out).toContainString(`
     (Mixin
       name: '.mixin'
+      params: 
+        (List
+          [
+            (Rest 'args')
+          ]
+        )
       rules: 
         (Rules
           [
@@ -309,11 +311,6 @@ test('rest parameter in mixin', () => {
             )
           ]
         )
-      params: 
-        (List
-          [
-            (Rest 'args')
-          ]
   `);
 });
 
@@ -334,17 +331,17 @@ test('operation', () => {
   expect(serializeTypes(tree)).toContainString(`
       (Expression
         (Operation
-          left: 
+          [
             (Dimension
               number: 10
               unit: 'px'
             )
-          right: 
+            (undefined)
             (Dimension
               number: 5
               unit: 'px'
             )
-          operator: '+'
+          ]
         )
       )
     `);

@@ -254,8 +254,7 @@ function groupExtendsByTargetAndFlag(
   const groups = new Map<string, Extend | Extend[]>();
 
   for (const ext of extendNodes) {
-    let target = ext.target;
-    let flag = ext.get('flag') ?? 1; // ExtendFlag.Exact = 1
+    const { target, flag = 1 } = ext.value; // ExtendFlag.Exact = 1
     // Create a key from target valueOf() and flag
     const key = `${target.valueOf()}|${flag}`;
 
@@ -297,11 +296,11 @@ function mergeExtends(
      * selector lists with different flags are not merged.
      */
     if (thisFlag === currentFlag) {
-      let target = currentNode.target;
+      const { target } = currentNode.value;
       if (!(target instanceof SelectorList)) {
-        currentNode.setData('target', new SelectorList([target, ext.target], undefined, location, context));
+        currentNode.set('target', new SelectorList([target, ext.target], undefined, location, context));
       } else {
-        target.setData([...target.value, ext.target]);
+        target.set(null, [...target.value, ext.target]);
       }
     } else {
       if (!extendNodes || !extendNodes.includes(currentNode)) {
@@ -376,16 +375,16 @@ export function relativeSelector(this: P, T: TokenMap) {
           let combinator = new Combinator(coImage, undefined, $.getLocationInfo(co), $.context);
           let targetNode =
             node instanceof Extend
-              ? node.selector
+              ? node.value.selector
               : node;
           if (targetNode instanceof ComplexSelector) {
-            targetNode.setData([combinator, ...targetNode.value]);
+            targetNode.set(null, [combinator, ...targetNode.value]);
             targetNode._location = $.getLocationFromNodes(targetNode.value);
           } else {
             let nodes = [combinator, targetNode as ComplexSelectorComponent];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
-              node.setData('selector', complex);
+              node.set('selector', complex);
               let location = node.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -744,7 +743,7 @@ export function simpleSelector(this: P, T: TokenMap) {
         ALT: () => {
           let amp = $.CONSUME(T.Ampersand);
           const value = getAmpersandTemplateValue(amp.image);
-          return new Ampersand({ template: value }, undefined, $.getLocationInfo(amp), $.context);
+          return new Ampersand({ appendValue: value }, undefined, $.getLocationInfo(amp), $.context);
         }
       },
       {
@@ -779,12 +778,12 @@ export function simpleSelector(this: P, T: TokenMap) {
           $.CONSUME(T.AmpersandTemplateEnd);
           const location = $.endRule();
           const value = parts.join('');
-          const template: string | Nil = sawQuoted && value === ''
-            ? new Nil()
+          const appendValue = sawQuoted && value === ''
+            ? ''
             : value === 'nil'
-              ? new Nil()
+              ? ''
               : value;
-          return new Ampersand({ template }, undefined, location, $.context);
+          return new Ampersand({ appendValue }, undefined, location, $.context);
         }
       },
       { ALT: () => $.CONSUME(T.InterpolatedIdent) },
@@ -836,7 +835,7 @@ export function simpleSelector(this: P, T: TokenMap) {
     if ($.isToken(selector)) {
       if (selector.tokenType.name === 'Ampersand') {
         const value = getAmpersandTemplateValue(selector.image);
-        return new Ampersand({ template: value }, undefined, $.getLocationInfo(selector), $.context);
+        return new Ampersand({ appendValue: value }, undefined, $.getLocationInfo(selector), $.context);
       }
       if (
         selector.tokenType.name === 'InterpolatedSelector'
@@ -912,8 +911,11 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
         }
 
         const validPropertyCount = properties.filter((decl) => {
-          const name = decl.name;
-          const propName = typeof name === 'string' ? name : name.valueOf();
+          const { name } = decl.value;
+          const propName = typeof name === 'string' ? name : name?.valueOf();
+          if (!propName) {
+            return false;
+          }
           // Skip custom properties (--*)
           if (propName.startsWith('--')) {
             return true; // Custom properties are always valid
