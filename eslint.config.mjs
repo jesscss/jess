@@ -144,6 +144,19 @@ export default tseslint.config([
         selector: 'default',
         format: ['camelCase', 'PascalCase', 'UPPER_CASE', 'snake_case'],
         leadingUnderscore: 'allow'
+      },
+      // Destructured bindings may mirror underscored object keys (`const { _x } = o`).
+      {
+        selector: 'variable',
+        modifiers: ['destructured'],
+        leadingUnderscore: 'allow',
+        format: ['camelCase', 'UPPER_CASE', 'PascalCase', 'snake_case']
+      },
+      {
+        selector: 'parameter',
+        modifiers: ['destructured'],
+        leadingUnderscore: 'allow',
+        format: ['camelCase', 'UPPER_CASE', 'PascalCase', 'snake_case']
       }, {
         selector: 'variableLike',
         format: ['camelCase', 'UPPER_CASE', 'PascalCase', 'snake_case']

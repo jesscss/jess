@@ -115,10 +115,21 @@ export class BitSetLibrary<T = unknown> {
     });
     return values;
   }
+
+  hasBit(bitset: BitSet<T>, value: T): boolean {
+    const pos = this._values.get(value);
+    if (pos === undefined) {
+      return false;
+    }
+    return bitset.get(pos) === 1;
+  }
 }
 
 /** All bits in a that are true must be true in b */
 export function isSubsetOf(a: BitSet, b: BitSet): boolean {
+  if (a._library !== b._library) {
+    throw new Error('Bitsets must be from the same library');
+  }
   const aInternal = a as { data?: number[]; _?: number };
   const bInternal = b as { data?: number[]; _?: number };
   if (aInternal._ || bInternal._) {
@@ -147,6 +158,9 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
 
 /** True when a and b share no set bits */
 export function isDisjoint(a: BitSet, b: BitSet): boolean {
+  if (a._library !== b._library) {
+    throw new Error('Bitsets must be from the same library');
+  }
   const intersection = a.and(b) as BitSet;
   const data = (intersection as { data?: number[] }).data;
   if (!data) {

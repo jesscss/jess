@@ -6,13 +6,9 @@ import { SimpleSelector } from './selector-simple.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-
-function isSelectorNode(value: Node | undefined): value is Selector {
-  return !!value && typeof value === 'object' && (value as any).isSelector === true;
-}
 
 export type PseudoSelectorValue = {
   /**
@@ -30,70 +26,35 @@ export type PseudoSelectorValue = {
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  override get keySet(): Set<string> {
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
+  override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
+      return;
     }
-    return this._keySet!;
-  }
-
-  protected override _computeKeySetAndFastReject(): void {
     const { name, arg } = this.value;
-
-    // Check if this is a pseudo-selector that contains selectors
-    const hasSelectorListArg = isNode(arg, N.SelectorList);
-    const hasSelectorArg = isSelectorNode(arg);
-
-    if (hasSelectorArg || hasSelectorListArg) {
-      if (hasSelectorListArg) {
-        // SelectorList argument - union all selector keySets
-        let combinedKeySet = new Set<string>();
-        let combinedVisibleKeySet = new Set<string>();
-        for (const selector of arg.value) {
-          combinedKeySet = combinedKeySet.union(selector.keySet);
-          combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
-        }
-        // Trust the SelectorList's canFastReject (should be false for alternatives)
-        this._keySet = combinedKeySet;
-        this._visibleKeySet = combinedVisibleKeySet;
-        this._canFastReject = arg.canFastReject;
-      } else if (hasSelectorArg) {
-        // Single Selector argument - use its keySet
+    const library = this._requireKeySetLibrary();
+    if (isNode(arg, N.Selector)) {
+      arg.keySetLibrary ??= library;
+      if (name === ':is') {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
-        // Trust the selector's canFastReject
-        this._canFastReject = arg.canFastReject;
+        if (isNode(arg, N.SelectorList)) {
+          this._requiredKeySet = library.getBitset();
+        } else {
+          this._requiredKeySet = arg.requiredKeySet;
+        }
+      } else {
+        let pos = library.add(name);
+        let keySet = this._keySet = arg.keySet.clone();
+        let visibleKeySet = this._visibleKeySet = arg.visibleKeySet.clone();
+        keySet.set(pos, 1);
+        visibleKeySet.set(pos, 1);
+        this._requiredKeySet = arg.requiredKeySet.clone();
+        this._requiredKeySet.set(pos, 1);
       }
     } else {
-      // For other pseudo-selectors (like :hover, :focus), use valueOf
-      this._keySet = new Set([this.valueOf()]);
+      this._keySet = library.getBitset([this.valueOf()]);
       this._visibleKeySet = this._keySet;
-      // Other pseudo-selectors are safe for fast rejection
-      this._canFastReject = true;
-    }
-
-    if (this.keySetLibrary) {
-      const lib = this.keySetLibrary;
-      if (hasSelectorListArg) {
-        let keyBits = lib.getBitset();
-        let visibleBits = lib.getBitset();
-        for (const selector of arg.value) {
-          keyBits = keyBits.or(selector.keyBits);
-          visibleBits = visibleBits.or(selector.visibleKeyBits);
-        }
-        this._keyBits = keyBits;
-        this._visibleKeyBits = visibleBits;
-        this._requiredKeyBits = lib.getBitset();
-      } else if (hasSelectorArg) {
-        this._keyBits = arg.keyBits;
-        this._visibleKeyBits = arg.visibleKeyBits;
-        this._requiredKeyBits = arg.requiredKeyBits;
-      } else {
-        const bits = lib.getBitset([this.valueOf()]);
-        this._keyBits = bits;
-        this._visibleKeyBits = bits;
-        this._requiredKeyBits = bits;
-      }
+      this._requiredKeySet = this._keySet;
     }
   }
 
@@ -198,6 +159,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
+    attachSelectorBitLibrary(this, context.selectorBits);
     const currentArg = this.value.arg;
     const node = this;
     if (!currentArg) {

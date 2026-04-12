@@ -4,7 +4,7 @@ import {
   F_EXTEND_TARGET
 } from './node.js';
 import { type Context } from '../context.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -14,22 +14,24 @@ import { selectorCompare } from './util/compare.js';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    for (const selector of this.value) {
-      for (const key of selector.keySet) {
-        combinedKeySet.add(key);
-      }
-      for (const key of selector.visibleKeySet) {
-        combinedVisibleKeySet.add(key);
-      }
+  protected override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
+      return;
     }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    // SelectorLists represent alternatives - can't use fast rejection
-    this._canFastReject = false;
+    const library = this._requireKeySetLibrary();
+    const { value } = this;
+    let keySet = library.getBitset();
+    let visibleKeySet = library.getBitset();
+    for (const selector of value) {
+      selector.keySetLibrary ??= library;
+      keySet = keySet.or(selector.keySet);
+      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
+    }
+    this._keySet = keySet;
+    this._visibleKeySet = visibleKeySet;
+    // SelectorLists represent alternatives - requiredKeySet is empty
+    // (any branch could match, so no single key is "required")
+    this._requiredKeySet = library.getBitset();
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -123,6 +125,7 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
+    attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
         const list = this;

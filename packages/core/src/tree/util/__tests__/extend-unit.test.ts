@@ -163,8 +163,8 @@ describe('createProcessedSelector', () => {
 // findChainedExtends
 // ─────────────────────────────────────────────────
 describe('findChainedExtends', () => {
-  it('returns empty when extended is not a SelectorList', () => {
-    const extended = el('.a');
+  it('returns empty when the result introduces no new selector subtree', () => {
+    const extended = el('.base');
     const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
       [el('.a'), el('.x'), false, null, null]
     ];
@@ -200,6 +200,22 @@ describe('findChainedExtends', () => {
     const result = findChainedExtends(extended, allExtends, el('.base'), el('.src1'), original);
     // .existing was in original → not chained. Only .child could chain but nothing targets it.
     expect(result).toHaveLength(0);
+  });
+
+  it('finds chained extends from newly introduced nested selector subtrees', () => {
+    const extended = compound([
+      is(sellist([el('.g'), compound([el('.i'), el('.j')])])) as unknown as Selector,
+      el('.h')
+    ]) as unknown as Selector;
+    const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
+      [el('.g'), compound([el('.i'), el('.j')]) as unknown as Selector, true, null, null],
+      [el('.i'), el('.k'), true, null, null]
+    ];
+
+    const result = findChainedExtends(extended, allExtends, el('.g'), compound([el('.i'), el('.j')]) as unknown as Selector, compound([el('.g'), el('.h')]) as unknown as Selector);
+    expect(result).toHaveLength(1);
+    expect(result[0]![0].valueOf()).toBe('.i');
+    expect(result[0]![1].valueOf()).toBe('.k');
   });
 });
 

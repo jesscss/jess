@@ -54,7 +54,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                     this._valueOf = undefined;
                     this._keySet = undefined;
                     this._visibleKeySet = undefined;
-                    this._canFastReject = undefined;
+                    this._requiredKeySet = undefined;
                     return this;
                   });
                 }
@@ -62,7 +62,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                 this._valueOf = undefined;
                 this._keySet = undefined;
                 this._visibleKeySet = undefined;
-                this._canFastReject = undefined;
+                this._requiredKeySet = undefined;
               }
             }
           }

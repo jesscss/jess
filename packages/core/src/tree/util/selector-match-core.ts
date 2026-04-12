@@ -9,6 +9,10 @@ import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { isSubsetOf, isDisjoint } from './bitset.js';
+
+function shareKeySetLibrary(a: Selector, b: Selector): boolean {
+  return !!a.keySetLibrary && a.keySetLibrary === b.keySetLibrary;
+}
 /**
  * Helper functions for extend operations that eliminate genuine code duplication
  * These preserve all original logic while extracting commonly repeated patterns
@@ -691,15 +695,10 @@ export function findExtendableLocations(
     return result;
   }
 
+  const canFastReject = shareKeySetLibrary(target, find);
+
   // OPTIMIZATION 2: BitSet fast rejection - bail early for impossible matches
-  if (target._keyBits && find._keyBits && isDisjoint(target._keyBits, find._keyBits)) {
-    metrics.fastRejections++;
-    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
-    return result;
-  } else if (!target._keyBits && target.keySet && find.keySet
-    && target.keySet.isDisjointFrom(find.keySet)
-    && target.canFastReject && find.canFastReject) {
+  if (canFastReject && isDisjoint(target.keySet, find.keySet)) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
@@ -707,13 +706,7 @@ export function findExtendableLocations(
   }
 
   // OPTIMIZATION 3: RequiredKeyBits subset rejection for partial matching
-  if (find._requiredKeyBits && target._keyBits && !isSubsetOf(find._requiredKeyBits, target._keyBits)) {
-    metrics.fastRejections++;
-    const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
-    return result;
-  } else if (!find._requiredKeyBits && find.canFastReject && target.keySet && find.keySet
-    && !find.keySet.isSubsetOf(target.keySet)) {
+  if (canFastReject && !isSubsetOf(find.requiredKeySet, target.keySet)) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
     targetCache.set(find, result);
@@ -737,7 +730,7 @@ export function findExtendableLocations(
     return result;
   }
 
-  if ((target._requiredKeyBits && find._requiredKeyBits) || (target.canFastReject && find.canFastReject)) {
+  if (canFastReject) {
     const fastPathResult = tryFastPathExtendMatch(target, find, []);
     if (fastPathResult && fastPathResult.length > 0) {
       metrics.fastPathHits++;
@@ -773,19 +766,8 @@ export function selectorMatchesExtendTarget(
   target: Selector,
   partial: boolean
 ): boolean {
-  if (target._keyBits && selector._keyBits) {
-    if (!isSubsetOf(target._keyBits, selector._keyBits)) {
-      return false;
-    }
-  } else {
-    const keySet = target.keySet instanceof Set ? target.keySet : (target.keySet ? new Set(target.keySet) : undefined);
-    if (keySet?.size && 'keySet' in selector && selector.keySet) {
-      for (const k of keySet) {
-        if (!selector.keySet.has(k as string)) {
-          return false;
-        }
-      }
-    }
+  if (shareKeySetLibrary(selector, target) && !isSubsetOf(target.requiredKeySet, selector.keySet)) {
+    return false;
   }
   const targetValue = target.valueOf();
   if (typeof selector.valueOf === 'function' && selector.valueOf() === targetValue) {

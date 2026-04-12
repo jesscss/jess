@@ -4,7 +4,7 @@ import type { Context } from '../context.js';
 import { Nil } from './nil.js';
 import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
-import type { Selector } from './selector.js';
+import { attachSelectorBitLibrary, type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -130,13 +130,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    *   to avoid distribution; simple/compound/complex parents splice inline.
    */
   static composeSelector(child: Selector, parent: Selector): Selector {
+    const library = child.keySetLibrary ?? parent.keySetLibrary;
     // Child is a parent-replacement: its `&` has already been fully resolved
     // against the parent context (e.g. `.a, .b { &-1 { ... } }` →
     // `.a-1, .b-1`). The selector already contains the parent; composing
     // further would re-prepend it. Signaled by `hoistToRoot` on the selector,
     // set by `Ampersand.evalNode` when substituting a bare `&` or `&-X`.
     if (child.hoistToRoot === true) {
-      return child;
+      return attachSelectorBitLibrary(child, library);
     }
     // Child is a SelectorList: compose each item independently. Each item
     // carries its own explicit-vs-implicit & semantics.
@@ -154,23 +155,24 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         }
       }
       if (out.length === 1) {
-        return out[0]!;
+        return attachSelectorBitLibrary(out[0]!, library);
       }
-      return SelectorList.create(out).inherit(child);
+      return attachSelectorBitLibrary(SelectorList.create(out).inherit(child), library);
     }
 
     const childHasAmp = child.hasFlag(F_AMPERSAND)
       || (child.sourceNode ?? child).hasFlag(F_AMPERSAND);
 
     if (childHasAmp) {
-      return Ruleset._substituteAmpersand(child, parent);
+      return attachSelectorBitLibrary(Ruleset._substituteAmpersand(child, parent), library);
     }
 
     // Implicit descendant compose: `parent child`.
-    return Ruleset._prependParent(parent, child);
+    return attachSelectorBitLibrary(Ruleset._prependParent(parent, child), library);
   }
 
   private static _prependParent(parent: Selector, child: Selector): Selector {
+    const library = child.keySetLibrary ?? parent.keySetLibrary;
     const leading: ComplexSelectorComponent[] = isNode(parent, N.ComplexSelector)
       ? ((parent as ComplexSelector).value.slice() as ComplexSelectorComponent[])
       : isNode(parent, N.SelectorList)
@@ -181,11 +183,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ? ((child as ComplexSelector).value.slice() as ComplexSelectorComponent[])
       : [child as unknown as ComplexSelectorComponent];
 
-    return ComplexSelector.create([
+    return attachSelectorBitLibrary(ComplexSelector.create([
       ...leading,
       Combinator.create(' '),
       ...trailing
-    ]).inherit(child);
+    ]).inherit(child), library);
   }
 
   /**
@@ -199,9 +201,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * the parent chain.
    */
   private static _substituteAmpersand(child: Selector, parent: Selector, insideComplex = false): Selector {
+    const library = child.keySetLibrary ?? parent.keySetLibrary;
     // Bare `&` — substitute raw. `&` is in "whole position": no wrapping.
     if (isNode(child, N.Ampersand)) {
-      return parent;
+      return attachSelectorBitLibrary(parent, library);
     }
 
     // SelectorList — delegate back to composeSelector so per-item semantics apply.
@@ -210,21 +213,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     if (isNode(child, N.CompoundSelector)) {
-      return Ruleset._substituteAmpInCompound(child as CompoundSelector, parent, insideComplex);
+      return attachSelectorBitLibrary(
+        Ruleset._substituteAmpInCompound(child as CompoundSelector, parent, insideComplex),
+        library
+      );
     }
 
     if (isNode(child, N.ComplexSelector)) {
-      return Ruleset._substituteAmpInComplex(child as ComplexSelector, parent);
+      return attachSelectorBitLibrary(Ruleset._substituteAmpInComplex(child as ComplexSelector, parent), library);
     }
 
     if (isNode(child, N.PseudoSelector)) {
-      return Ruleset._substituteAmpInPseudo(child as PseudoSelector, parent);
+      return attachSelectorBitLibrary(Ruleset._substituteAmpInPseudo(child as PseudoSelector, parent), library);
     }
 
-    return child;
+    return attachSelectorBitLibrary(child, library);
   }
 
   private static _substituteAmpInCompound(compound: CompoundSelector, parent: Selector, insideComplex = false): Selector {
+    const library = compound.keySetLibrary ?? parent.keySetLibrary;
     const components = compound.value as SimpleSelector[];
 
     // Count direct `&` components and find the position of the first one.
@@ -253,9 +260,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           : [parent as unknown as SimpleSelector];
         const merged = [...parentComponents, ...suffix];
         if (merged.length === 1) {
-          return merged[0] as unknown as Selector;
+          return attachSelectorBitLibrary(merged[0] as unknown as Selector, library);
         }
-        return CompoundSelector.create(merged).inherit(compound);
+        return attachSelectorBitLibrary(CompoundSelector.create(merged).inherit(compound), library);
       }
       // ComplexSelector parent — attach the suffix to the parent's last
       // non-combinator part, returning a new complex.
@@ -278,7 +285,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             ? (merged[0] as ComplexSelectorComponent)
             : (CompoundSelector.create(merged) as ComplexSelectorComponent);
         }
-        return ComplexSelector.create(parentParts).inherit(compound);
+        return attachSelectorBitLibrary(ComplexSelector.create(parentParts).inherit(compound), library);
       }
       // SelectorList parent falls through to the general path below.
     }
@@ -308,12 +315,13 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
     }
     if (newComponents.length === 1) {
-      return newComponents[0] as unknown as Selector;
+      return attachSelectorBitLibrary(newComponents[0] as unknown as Selector, library);
     }
-    return CompoundSelector.create(newComponents).inherit(compound);
+    return attachSelectorBitLibrary(CompoundSelector.create(newComponents).inherit(compound), library);
   }
 
   private static _substituteAmpInComplex(complex: ComplexSelector, parent: Selector): Selector {
+    const library = complex.keySetLibrary ?? parent.keySetLibrary;
     const parts = complex.value;
     const newParts: ComplexSelectorComponent[] = [];
     for (let i = 0; i < parts.length; i++) {
@@ -348,13 +356,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         newParts.push(part);
       }
     }
-    return ComplexSelector.create(newParts).inherit(complex);
+    return attachSelectorBitLibrary(ComplexSelector.create(newParts).inherit(complex), library);
   }
 
   private static _substituteAmpInPseudo(pseudo: PseudoSelector, parent: Selector): Selector {
+    const library = pseudo.keySetLibrary ?? parent.keySetLibrary;
     const arg = pseudo.value.arg as Selector | undefined;
     if (!arg) {
-      return pseudo;
+      return attachSelectorBitLibrary(pseudo, library);
     }
     // Pseudo arg is a full selector slot, so its content is effectively in
     // "whole position" w.r.t. the enclosing pseudo. Recurse without any
@@ -367,7 +376,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (pseudo.generated) {
       newPseudo.generated = true;
     }
-    return newPseudo.inherit(pseudo) as unknown as Selector;
+    return attachSelectorBitLibrary(newPseudo.inherit(pseudo) as unknown as Selector, library);
   }
 
   private static _isTightCombinatorAt(parts: ComplexSelectorComponent[], idx: number): boolean {
@@ -383,9 +392,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private static _wrapIs(selector: Selector): PseudoSelector {
+    const library = selector.keySetLibrary;
     const is = PseudoSelector.create({ name: ':is', arg: selector });
     is.generated = true;
-    return is;
+    return attachSelectorBitLibrary(is, library);
   }
 
   static ensureDescendantRulesetsHaveOwnValue(
@@ -790,6 +800,15 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           node.value.selector = sel as Selector | Nil;
           if (sel.hoistToRoot) {
             node.hoistToRoot = true;
+          }
+          // Wire up the BitSet library on the evaluated selector so that
+          // extend fast-rejection via keySet/requiredKeySet works. The
+          // library is shared across all selectors in a compilation via
+          // context.selectorBits; assigning it here ensures that when the
+          // lazy `keySet` getter fires during extend matching, it produces
+          // real BitSets instead of undefined.
+          if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
+            (sel as Selector).keySetLibrary ??= context.selectorBits;
           }
           // Register to extend root's registry for extend lookups
           const extendRoot = context.extendRoots.getCurrentExtendRoot();

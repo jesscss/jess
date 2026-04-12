@@ -202,7 +202,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return out.then((k: any) => {
             // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
             if (isNode(k, N.Selector)) {
-              const keyArray = Array.from(k.keySet);
+              const keyArray = k.keySetLibrary ? k.keySetLibrary.valuesOf(k.keySet) : [];
               return [resolvedTarget, keyArray] as [any, string[]];
             }
             // If k is already an array, preserve it
@@ -214,7 +214,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
         if (isNode(out, N.Selector)) {
-          const keyArray = Array.from(out.keySet);
+          const keyArray = out.keySetLibrary ? out.keySetLibrary.valuesOf(out.keySet) : [];
           return [resolvedTarget, keyArray] as [any, string[]];
         }
         // If key is already an array, preserve it

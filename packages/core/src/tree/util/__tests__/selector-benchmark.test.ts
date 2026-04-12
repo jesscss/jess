@@ -69,34 +69,18 @@ function findExtendableLocationsNoKeySetRejection(target: Selector, find: Select
  * Version that bypasses OPTIMIZATION 4: Fast path matching
  */
 function findExtendableLocationsNoFastPath(target: Selector, find: Selector): ExtendSearchResult {
-  // Temporarily override canFastReject to disable fast path
-  const originalTargetCanFastReject = Object.getOwnPropertyDescriptor(target, 'canFastReject');
-  const originalFindCanFastReject = Object.getOwnPropertyDescriptor(find, 'canFastReject');
+  // Temporarily clear keySetLibrary to disable fast path optimizations
+  const originalTargetLibrary = target.keySetLibrary;
+  const originalFindLibrary = find.keySetLibrary;
 
   try {
-    // Force canFastReject to false to bypass fast path optimizations
-    Object.defineProperty(target, 'canFastReject', {
-      get: () => false,
-      configurable: true
-    });
-    Object.defineProperty(find, 'canFastReject', {
-      get: () => false,
-      configurable: true
-    });
+    target.keySetLibrary = undefined;
+    find.keySetLibrary = undefined;
 
     return findExtendableLocations(target, find);
   } finally {
-    // Restore original canFastReject descriptors
-    if (originalTargetCanFastReject) {
-      Object.defineProperty(target, 'canFastReject', originalTargetCanFastReject);
-    } else {
-      delete (target as any).canFastReject;
-    }
-    if (originalFindCanFastReject) {
-      Object.defineProperty(find, 'canFastReject', originalFindCanFastReject);
-    } else {
-      delete (find as any).canFastReject;
-    }
+    target.keySetLibrary = originalTargetLibrary;
+    find.keySetLibrary = originalFindLibrary;
   }
 }
 

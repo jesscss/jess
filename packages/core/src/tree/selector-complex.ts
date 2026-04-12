@@ -1,15 +1,13 @@
 import { type Combinator } from './combinator.js';
 import { type Ampersand, Ampersand as AmpersandClass } from './ampersand.js';
 import {
-  defineType,
-  F_VISIBLE,
-  F_IMPLICIT_AMPERSAND
+  defineType
 } from './node.js';
 import type { Context } from '../context.js';
 import { type Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
@@ -45,65 +43,30 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
 
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    let canFastReject = true;
-
-    for (const component of this.value) {
-      // Skip combinators - they don't contribute keys
+  protected override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
+      return;
+    }
+    const library = this._requireKeySetLibrary();
+    const { value } = this;
+    let keySet = library.getBitset();
+    let visibleKeySet = library.getBitset();
+    let requiredKeySet = library.getBitset();
+    for (const component of value) {
       if (isNode(component, N.Combinator)) {
+        keySet = keySet.or(component.keySet);
+        requiredKeySet = requiredKeySet.or(component.requiredKeySet);
         continue;
       }
-
-      // Get keys from selector components
       const selector = component as Selector;
-      const selectorKeySet = selector.keySet;
-      if (selectorKeySet instanceof Set) {
-        combinedKeySet = combinedKeySet.union(selectorKeySet);
-      }
-
-      // Only add to visibleKeySet if the component is visible AND not an implicit ampersand
-      // Implicit ampersands should be excluded from visibleKeySet for indexing purposes,
-      // regardless of visibility (they're added by getImplicitSelector, not written by user)
-      if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        const selectorVisibleKeySet = selector.visibleKeySet;
-        if (selectorVisibleKeySet instanceof Set) {
-          combinedVisibleKeySet = combinedVisibleKeySet.union(selectorVisibleKeySet);
-        }
-      }
-      // If component is invisible (like an implicit ampersand), its visibleKeySet should be empty anyway
-
-      // If any selector component can't fast reject, this complex selector can't either
-      if (!selector.canFastReject) {
-        canFastReject = false;
-      }
+      selector.keySetLibrary ??= library;
+      keySet = keySet.or(selector.keySet);
+      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
+      requiredKeySet = requiredKeySet.or(selector.requiredKeySet);
     }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    this._canFastReject = canFastReject;
-
-    if (this.keySetLibrary) {
-      const lib = this.keySetLibrary;
-      let keyBits = lib.getBitset();
-      let visibleBits = lib.getBitset();
-      let requiredBits = lib.getBitset();
-      for (const component of this.value) {
-        if (isNode(component, N.Combinator)) {
-          continue;
-        }
-        const selector = component as Selector;
-        keyBits = keyBits.or(selector.keyBits);
-        if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
-          visibleBits = visibleBits.or(selector.visibleKeyBits);
-        }
-        requiredBits = requiredBits.or(selector.requiredKeyBits);
-      }
-      this._keyBits = keyBits;
-      this._visibleKeyBits = visibleBits;
-      this._requiredKeyBits = requiredBits;
-    }
+    this._keySet = keySet;
+    this._visibleKeySet = visibleKeySet;
+    this._requiredKeySet = requiredKeySet;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -152,6 +115,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
   override evalNode(context: Context): MaybePromise<Selector | Nil> {
+    attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
         const selector = this;

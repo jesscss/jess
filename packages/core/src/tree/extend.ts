@@ -1,6 +1,6 @@
 import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND } from './node.js';
 import { type Context } from '../context.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
@@ -86,6 +86,8 @@ export class Extend extends Node<ExtendValue> {
 
   override evalNode(context: Context): MaybePromise<Nil> {
     let { selector, target, flag } = this.value;
+    const { selectorBits } = context;
+    attachSelectorBitLibrary(target, selectorBits);
 
     const currentFrame = context.rulesetFrames.at(-1);
 
@@ -144,16 +146,16 @@ export class Extend extends Node<ExtendValue> {
               && !(parentSel instanceof Nil)
               && isNode(parentSel, N.SelectorList)
             ) {
-              const parentIs = PseudoSelector.create({
+              const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
                 name: ':is',
                 arg: (parentSel as Selector).copy(true)
-              });
+              }), selectorBits);
               parentIs.generated = true;
-              resolvedSel = ComplexSelector.create([
+              resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
                 parentIs,
                 Combinator.create(' '),
                 ownSel.copy(true)
-              ]) as unknown as Selector;
+              ]) as unknown as Selector, selectorBits);
               usedParentListComposition = true;
             }
           }
@@ -166,11 +168,11 @@ export class Extend extends Node<ExtendValue> {
               if (isNode(currentFrame, N.Ruleset)) {
                 const parentSel = (currentFrame as Ruleset).value?.selector;
                 if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
-                  resolvedSel = ComplexSelector.create([
+                  resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
                     (parentSel as Selector).copy(true),
                     Combinator.create(' '),
                     resolvedSel.copy(true)
-                  ]) as unknown as Selector;
+                  ]) as unknown as Selector, selectorBits);
                 }
               }
             }
@@ -178,6 +180,7 @@ export class Extend extends Node<ExtendValue> {
         }
         const beforeMaterialize = resolvedSel.valueOf();
         resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
+        attachSelectorBitLibrary(resolvedSel, selectorBits);
         const rs = currentFrame as Ruleset;
         const docOrder = getDocumentOrderForExtend(rs, context);
         const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
@@ -223,16 +226,16 @@ export class Extend extends Node<ExtendValue> {
           && !(parentSel instanceof Nil)
           && isNode(parentSel, N.SelectorList)
         ) {
-          const parentIs = PseudoSelector.create({
+          const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
             name: ':is',
             arg: (parentSel as Selector).copy(true)
-          });
+          }), selectorBits);
           parentIs.generated = true;
-          resolvedSel = ComplexSelector.create([
+          resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             parentIs,
             Combinator.create(' '),
             ownSel.copy(true)
-          ]) as unknown as Selector;
+          ]) as unknown as Selector, selectorBits);
           usedParentListComposition = true;
         }
       }
@@ -245,11 +248,11 @@ export class Extend extends Node<ExtendValue> {
           if (isNode(currentFrame, N.Ruleset)) {
             const parentSel = (currentFrame as Ruleset).value?.selector;
             if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
-              resolvedSel = ComplexSelector.create([
+              resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
                 (parentSel as Selector).copy(true),
                 Combinator.create(' '),
                 resolvedSel.copy(true)
-              ]) as unknown as Selector;
+              ]) as unknown as Selector, selectorBits);
             }
           }
         }
@@ -257,6 +260,7 @@ export class Extend extends Node<ExtendValue> {
     }
     const beforeMaterialize = resolvedSel.valueOf();
     resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
+    attachSelectorBitLibrary(resolvedSel, selectorBits);
     const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame as Ruleset : undefined;
     const docOrder = getDocumentOrderForExtend(rs, context);
     const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
@@ -274,6 +278,7 @@ function materializeImplicitAmpersands(
   selector: Selector,
   includeNonListImplicit: boolean
 ): Selector {
+  const library = selector.keySetLibrary;
   const materialize = (node: Selector): Selector => {
     if (isNode(node, N.Ampersand)) {
       const amp = node as Ampersand;
@@ -285,10 +290,10 @@ function materializeImplicitAmpersands(
           && !(resolved instanceof Nil)
           && (includeNonListImplicit || isNode(resolved, N.SelectorList))
         ) {
-          return materialize(resolved.copy(true) as Selector);
+          return materialize(attachSelectorBitLibrary(resolved.copy(true) as Selector, library));
         }
       }
-      return node.copy(true) as Selector;
+      return attachSelectorBitLibrary(node.copy(true) as Selector, library);
     }
 
     if (isNode(node, N.ComplexSelector)) {
@@ -305,7 +310,7 @@ function materializeImplicitAmpersands(
               && !(resolved instanceof Nil)
               && (includeNonListImplicit || isNode(resolved, N.SelectorList))
             ) {
-              const repl = materialize(resolved.copy(true) as Selector);
+              const repl = materialize(attachSelectorBitLibrary(resolved.copy(true) as Selector, library));
               if (isNode(repl, N.ComplexSelector)) {
                 parts.push(...((repl as ComplexSelector).value as unknown as Selector[]).map(x => x.copy(true) as Selector));
               } else {
@@ -318,20 +323,20 @@ function materializeImplicitAmpersands(
         const repl = materialize(part);
         parts.push(repl);
       }
-      return ComplexSelector.create(parts as any).inherit(node) as Selector;
+      return attachSelectorBitLibrary(ComplexSelector.create(parts as any).inherit(node) as Selector, library);
     }
 
     const value = (node as Selector & { value?: Selector[] }).value;
     if (Array.isArray(value)) {
-      const cloned = node.copy(true) as Selector & { value?: Selector[] };
+      const cloned = attachSelectorBitLibrary(node.copy(true) as Selector & { value?: Selector[] }, library);
       cloned.value = value.map(item => materialize(item as Selector));
       return cloned as Selector;
     }
 
-    return node.copy(true) as Selector;
+    return attachSelectorBitLibrary(node.copy(true) as Selector, library);
   };
 
-  return materialize(selector);
+  return attachSelectorBitLibrary(materialize(selector), library);
 }
 
 /** Document order for extend: prefer parse location startOffset (source order), else assigned map, else push order (length). */

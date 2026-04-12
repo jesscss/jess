@@ -3,7 +3,7 @@ import {
 } from './node.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
-import { Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 
 import { isNode } from './util/is-node.js';
@@ -19,37 +19,24 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 /** Anything other than type (element) or universal, which must come first */
 const nonElementRegex = /^[.#:[]/;
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    let canFastReject = true;
-
-    for (const selector of this.value) {
-      combinedKeySet = combinedKeySet.union(selector.keySet);
-      combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
-      if (!selector.canFastReject) {
-        canFastReject = false;
-      }
+  protected override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
+      return;
     }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    this._canFastReject = canFastReject;
-
-    if (this.keySetLibrary) {
-      const lib = this.keySetLibrary;
-      let keyBits = lib.getBitset();
-      let visibleBits = lib.getBitset();
-      let requiredBits = lib.getBitset();
-      for (const selector of this.value) {
-        keyBits = keyBits.or(selector.keyBits);
-        visibleBits = visibleBits.or(selector.visibleKeyBits);
-        requiredBits = requiredBits.or(selector.requiredKeyBits);
-      }
-      this._keyBits = keyBits;
-      this._visibleKeyBits = visibleBits;
-      this._requiredKeyBits = requiredBits;
+    const library = this._requireKeySetLibrary();
+    const { value } = this;
+    let keySet = library.getBitset();
+    let visibleKeySet = library.getBitset();
+    let requiredKeySet = library.getBitset();
+    for (const selector of value) {
+      selector.keySetLibrary ??= library;
+      keySet = keySet.or(selector.keySet);
+      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
+      requiredKeySet = requiredKeySet.or(selector.requiredKeySet);
     }
+    this._keySet = keySet;
+    this._visibleKeySet = visibleKeySet;
+    this._requiredKeySet = requiredKeySet;
   }
 
   override valueOf() {
@@ -96,6 +83,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
+    attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
         const sel = this;

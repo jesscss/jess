@@ -10,7 +10,6 @@ import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { F_VISIBLE } from './node.js';
 export type AmpersandValue = {
   /**
    * The only value that may exist is an anonymous value
@@ -103,51 +102,49 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.addFlag(F_AMPERSAND);
   }
 
-  override get keySet() {
+  override computeKeySets(): void {
+    let library = this.keySetLibrary;
+    if (!library) {
+      library = this._requireKeySetLibrary();
+    }
     const stored = this._storedSelector;
     const current = this._selectorContainer?.selector;
+    /** Ampersands don't participate to the visible key set */
+    if (!this._visibleKeySet) {
+      this._visibleKeySet = library.getBitset();
+    }
+    if (!this._requiredKeySet) {
+      this._requiredKeySet = library.getBitset();
+    }
     if (!current || isNode(current, N.Nil)) {
-      return new Set(['&']);
-    }
-    let keySet = this._keySet;
-    if (!keySet || stored !== current) {
-      this._computeKeySetAndFastReject();
-      return this._keySet!;
-    }
-    return keySet;
-  }
-
-  /** The keys of an ampersand are the keys of the selector it contains */
-  protected override _computeKeySetAndFastReject(): void {
-    const selector = this._selectorContainer?.selector;
-    if (selector && 'keySet' in selector) {
-      this._keySet = selector.keySet;
-      // For visibleKeySet, if this ampersand has a selector value, it's an implicit ampersand
-      // (added by getImplicitSelector). For indexing purposes, we want to exclude implicit ampersands
-      // regardless of visibility, so always set visibleKeySet to empty when there's a selector value
-      if (this.hasFlag(F_VISIBLE) && !selector) {
-        // Only include visibleKeySet if visible AND no selector value (explicit ampersand)
-        this._visibleKeySet = new Set();
-      } else {
-        // Implicit ampersand (has selector value) or invisible - exclude from visibleKeySet
-        this._visibleKeySet = new Set();
+      if (!this._keySet) {
+        this._keySet = library.getBitset();
       }
-      this._canFastReject = selector.canFastReject;
       return;
     }
-    this._keySet = new Set(['&']);
-    this._visibleKeySet = new Set();
-
-    if (this.keySetLibrary) {
-      const lib = this.keySetLibrary;
-      if (selector && 'keyBits' in selector) {
-        this._keyBits = (selector as unknown as Selector).keyBits;
-      } else {
-        this._keyBits = lib.getBitset(['&']);
-      }
-      this._visibleKeyBits = lib.getBitset();
-      this._requiredKeyBits = lib.getBitset();
+    if ((current as Selector).isSelector && !(current as Selector).keySetLibrary) {
+      (current as Selector).keySetLibrary = library;
     }
+    if (!this._keySet || stored !== current) {
+      this._keySet = current.keySet;
+    }
+  }
+
+  override getKeySet(context?: Context) {
+    if (!context) {
+      return this.keySet;
+    }
+
+    const current = this._selectorContainer?.selector;
+    if (!current || isNode(current, N.Nil)) {
+      const library = this.keySetLibrary;
+      if (!library) {
+        return this._requireKeySetLibrary().getBitset();
+      }
+      return library.getBitset();
+    }
+
+    return current.getKeySet(context);
   }
 
   /**
@@ -250,6 +247,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
+    this.keySetLibrary = context.selectorBits;
     const { appendValue } = this.value;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
