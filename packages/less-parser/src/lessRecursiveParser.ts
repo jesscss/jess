@@ -211,57 +211,6 @@ export class LessRecursiveParser extends CssRecursiveParser {
     return super.processValueToken(token, ctx);
   }
 
-  override shouldTryQualifiedRuleInDeclarationList(): boolean {
-    const {
-      Ident,
-      Assign,
-      Colon,
-      LCurly,
-      Comma,
-      LSquare,
-      NthPseudoClass,
-      SelectorPseudoClass,
-      FunctionStart
-    } = this.T;
-
-    const isSelectorLikeContinuation = (offset: number): boolean => {
-      const tok = this.LA(offset);
-      return (
-        tokenMatcher(tok, LCurly)
-        || tokenMatcher(tok, Comma)
-        || tokenMatcher(tok, this.T.Combinator)
-        || tokenMatcher(tok, LSquare)
-        || tokenMatcher(tok, Colon)
-        || tokenMatcher(tok, NthPseudoClass)
-        || tokenMatcher(tok, SelectorPseudoClass)
-      );
-    };
-
-    if (!this.isTypeAt(1, Ident)) {
-      return true;
-    }
-    if (!this.isTypeAt(2, Assign)) {
-      return true;
-    }
-    if (this.hasWS(2)) {
-      return false;
-    }
-
-    const tt3 = this.LA(3).tokenType;
-    if (
-      tt3 === Colon
-      || tt3 === NthPseudoClass
-      || tt3 === SelectorPseudoClass
-      || tokenMatcher(this.LA(3), FunctionStart)
-    ) {
-      return true;
-    }
-    if (!tokenMatcher(this.LA(3), Ident)) {
-      return false;
-    }
-    return isSelectorLikeContinuation(4);
-  }
-
   warnDeprecation(message: string, token?: IToken, deprecationId?: string): void {
     this.warnings.push({ message, token, deprecation: deprecationId });
   }

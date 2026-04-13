@@ -61,6 +61,40 @@ describe('Operations', () => {
       expect(css).toContain('width: 20px / 2');
       expect(css).toContain('height: 30px / 3');
     });
+
+    it('treats obvious font shorthand slash values as separators even in math: always mode', async () => {
+      const alwaysCompiler = new Compiler({
+        compile: {
+          mathMode: 'always',
+          plugins: [lessPlugin()]
+        }
+      });
+
+      const css = await alwaysCompiler.renderString(`
+        .test {
+          font: normal small/20px 'Trebuchet MS', Verdana, sans-serif;
+        }
+      `, { language: 'less' });
+
+      expect(css).toContain(`font: normal small / 20px 'Trebuchet MS', Verdana, sans-serif`);
+    });
+
+    it('still evaluates color-keyword division in math: always mode', async () => {
+      const alwaysCompiler = new Compiler({
+        compile: {
+          mathMode: 'always',
+          plugins: [lessPlugin()]
+        }
+      });
+
+      const css = await alwaysCompiler.renderString(`
+        .test {
+          color: red / 2;
+        }
+      `, { language: 'less' });
+
+      expect(css).toContain('color: #800000');
+    });
   });
 
   describe('Operations with Variables', () => {

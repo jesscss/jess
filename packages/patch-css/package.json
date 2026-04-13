@@ -1,5 +1,6 @@
 {
   "name": "@jesscss/patch-css",
+  "type": "module",
   "version": "2.0.0-alpha.5",
   "publishConfig": {
     "access": "public"
@@ -10,7 +11,7 @@
     "dist": "rollup -c",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -p tsconfig.build.json && pnpm dist",
+    "compile": "tsdown --tsconfig tsconfig.build.json && pnpm dist",
     "dev": "tsc -p tsconfig.build.json -w",
     "serve": "lite-server --baseDir=\"test\"",
     "test:tofix": "pnpm dist && jest",
@@ -18,7 +19,22 @@
     "lint:TOFIX": "eslint '**/*.{js,ts}'"
   },
   "description": "Attach stylesheets given an id",
-  "main": "lib/index",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "source": "./src/index.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "dist"
+  ],
   "author": "Matthew Dean",
   "license": "MIT"
 }

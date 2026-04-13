@@ -310,37 +310,18 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
    * 1. Non-Ident start => selector-like, allow immediately.
    * 2. Ident + no Colon => selector-like, allow immediately.
    * 3. Ident + Colon + whitespace after colon => declaration, reject.
-   * 4. Otherwise (ident:no-space) => use the next one or two tokens to detect
-   *    selector intent without scanning to the terminating delimiter.
+   * 4. Ident + Colon + no-space + selector-like token => selector, allow.
+   * 5. Ident + Colon + no-space + Ident => scan forward for `{` before `;`/`}`.
    */
   shouldTryQualifiedRuleInDeclarationList(): boolean {
     const {
       Ident,
       Assign,
       Colon,
-      LCurly,
-      Comma,
-      Gt,
-      Plus,
-      Tilde,
-      Column,
-      Pipe,
-      LSquare,
       NthPseudoClass,
-      SelectorPseudoClass
+      SelectorPseudoClass,
+      FunctionStart
     } = this.T;
-    const isSelectorLikeContinuation = (offset: number): boolean => {
-      const tok = this.LA(offset);
-      return (
-        this.matchToken(tok, LCurly)
-        || this.matchToken(tok, Comma)
-        || this.matchToken(tok, this.T.Combinator)
-        || this.matchToken(tok, LSquare)
-        || this.matchToken(tok, Colon)
-        || this.matchToken(tok, NthPseudoClass)
-        || this.matchToken(tok, SelectorPseudoClass)
-      );
-    };
     if (!this.isTypeAt(1, Ident)) {
       return true;
     }
@@ -355,13 +336,14 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       tt3 === Colon
       || tt3 === NthPseudoClass
       || tt3 === SelectorPseudoClass
+      || this.matchToken(this.LA(3), FunctionStart)
     ) {
       return true;
     }
     if (!this.matchToken(this.LA(3), Ident)) {
       return false;
     }
-    return isSelectorLikeContinuation(4);
+    return this.hasLCurlyAhead();
   }
 
   /**

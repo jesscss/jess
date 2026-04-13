@@ -6,18 +6,15 @@
   },
   "version": "2.0.0-alpha.5",
   "description": "The Jess Core Library",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "import": "./lib/index.js",
+      "require": "./lib/index.cjs",
       "types": "./lib/index.d.ts",
       "source": "./src/index.ts"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "source": "./src/*.ts"
     },
     "./package.json": "./package.json"
   },
@@ -41,9 +38,10 @@
   "scripts": {
     "ci": "pnpm build && pnpm test -- --run",
     "prepublishOnly": "pnpm build && pnpm test -- --run",
-    "build": "pnpm compile",
+    "build": "pnpm clean && pnpm compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "visualize": "vite build",
-    "compile": "tsc -p tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest",
     "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",

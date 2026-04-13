@@ -13,6 +13,21 @@ export function createSingleEntryConfig(overrides: UserConfig = {}): UserConfig 
     deps: {
       onlyBundle: false
     },
+    outputOptions(options, format) {
+      const nextOptions = {
+        ...options,
+        codeSplitting: false
+      };
+
+      if (format === 'cjs') {
+        return {
+          ...nextOptions,
+          exports: 'named'
+        };
+      }
+
+      return nextOptions;
+    },
     ...overrides
   };
 }

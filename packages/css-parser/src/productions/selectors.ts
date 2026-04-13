@@ -1,6 +1,5 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
-import { tokenMatcher } from '../cssRecursiveParser.js';
 import type { IToken, IOrAlt } from '@chevrotain/types';
 import {
   Node, Any, BasicSelector, Ampersand, CompoundSelector, ComplexSelector,
@@ -738,44 +737,7 @@ export function selectorList(this: C, T: TokenMap) {
 
 export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
   const $ = this;
-  const shouldTryQualifiedRule = () => {
-    const isSelectorLikeContinuation = (offset: number) => {
-      const tok = $.LA(offset);
-      return (
-        tokenMatcher(tok, T.LCurly)
-        || tokenMatcher(tok, T.Comma)
-        || tokenMatcher(tok, T.Combinator)
-        || tokenMatcher(tok, T.LSquare)
-        || tokenMatcher(tok, T.Colon)
-        || tokenMatcher(tok, T.NthPseudoClass)
-        || tokenMatcher(tok, T.SelectorPseudoClass)
-      );
-    };
-    if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
-      return $.shouldTryQualifiedRuleInDeclarationList();
-    }
-    if (!$.isTypeAt(1, T.Ident)) {
-      return true;
-    }
-    if (!$.isTypeAt(2, T.Assign)) {
-      return true;
-    }
-    if ($.hasWS(2)) {
-      return false;
-    }
-    const tt3 = $.LA(3).tokenType;
-    if (
-      tt3 === T.Colon
-      || tt3 === T.NthPseudoClass
-      || tt3 === T.SelectorPseudoClass
-    ) {
-      return true;
-    }
-    if (!tokenMatcher($.LA(3), T.Ident)) {
-      return false;
-    }
-    return isSelectorLikeContinuation(4);
-  };
+  const shouldTryQualifiedRule = () => $.shouldTryQualifiedRuleInDeclarationList();
   /** * Declarations ***/
   // https://www.w3.org/TR/css-syntax-3/#declaration-list-diagram
   // declarationList

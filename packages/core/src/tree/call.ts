@@ -7,21 +7,11 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { MixinCollection, type Rules } from './rules.js';
+import { MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
-let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
-
-// Lazy getter for Rules to break circular dependency:
-// rules.ts → cast.ts → color.ts → call.ts → rules.ts
-async function getRules() {
-  if (!rulesCtorPromise) {
-    rulesCtorPromise = import('./rules.js').then(({ Rules }) => Rules);
-  }
-  return rulesCtorPromise;
-}
 
 export type CallValue = {
   /**
@@ -204,7 +194,6 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      const Rules = await getRules();
       let rules = Rules.create(n.value, n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined

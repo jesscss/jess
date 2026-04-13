@@ -71,8 +71,10 @@ export class LessPlugin extends AbstractPlugin {
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
     this.collapseNesting = opts.collapseNesting ?? false;
 
-    // Pass options to parser (including leakyRules, defaulting to true)
-    this.parser = new Parser();
+    this.parser = new Parser({
+      mathMode: this.mathMode,
+      leakyRules: this.leakyRules
+    });
   }
 
   private _registerFunctions(tree: Rules) {

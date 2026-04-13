@@ -27,6 +27,7 @@ export default defineConfig({
     },
     // Ensure environment variables are passed to test processes
     environment: 'node',
+    disableConsoleIntercept: true,
     testTimeout: 30_000,
     reporters: [['tree', { summary: true }]],
     // Enable globals for describe, test, etc.

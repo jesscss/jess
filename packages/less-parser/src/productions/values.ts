@@ -52,6 +52,69 @@ function withCalcFrame(ctx: RuleContext | undefined, delta: number): RuleContext
   return { ...(ctx ?? {}), calcFrames };
 }
 
+function slashDivisionEnabled($: P, ctx: RuleContext | undefined): boolean {
+  const inParens = getParenFrames(ctx).at(-1) ?? false;
+  const mathMode = $.mathMode ?? 'parens-division';
+  return mathMode === 'always' || inParens;
+}
+
+function isDivisionLikeNode(node: Node | undefined): boolean {
+  if (!node) {
+    return false;
+  }
+  if (
+    isNode(node, N.Color)
+    || isNode(node, N.Dimension)
+    || isNode(node, N.Num)
+    || isNode(node, N.Reference)
+    || isNode(node, N.Call)
+    || isNode(node, N.Operation)
+    || isNode(node, N.Negative)
+    || isNode(node, N.Expression)
+  ) {
+    return true;
+  }
+  if (isNode(node, N.Paren) || isNode(node, N.Expression)) {
+    return isDivisionLikeNode(node.value as Node | undefined);
+  }
+  return false;
+}
+
+function isSlashListContinuationToken($: P, T: TokenMap): boolean {
+  const next = $.LA(1);
+  return !(
+    next.tokenType?.name === 'EOF'
+    || $.matchToken(next, T.Comma)
+    || $.matchToken(next, T.Semi)
+    || $.matchToken(next, T.RCurly)
+    || $.matchToken(next, T.RParen)
+    || $.matchToken(next, T.RSquare)
+    || $.matchToken(next, T.Important)
+    || $.matchToken(next, T.Plus)
+    || $.matchToken(next, T.Minus)
+    || $.matchToken(next, T.Star)
+    || $.matchToken(next, T.Slash)
+    || $.matchToken(next, T.Percent)
+  );
+}
+
+function shouldParseSlashDivision($: P, T: TokenMap, ctx: RuleContext | undefined, left: Node, right: Node): boolean {
+  const enabled = slashDivisionEnabled($, ctx);
+  const leftLike = isDivisionLikeNode(left);
+  const rightLike = isDivisionLikeNode(right);
+  const continuation = isSlashListContinuationToken($, T);
+  if (!enabled) {
+    return false;
+  }
+  if (!leftLike || !rightLike) {
+    return false;
+  }
+  if (continuation) {
+    return false;
+  }
+  return true;
+}
+
 function startsCustomValueToken($: P, T: TokenMap): boolean {
   return $.isType(T.LParen)
     || $.isType(T.FunctionStart)
@@ -220,11 +283,21 @@ export function expressionProduct(this: P, T: TokenMap) {
         );
       }
       let right: Node = $.SUBRULE2($.expressionValue, { ARGS: [ctx] });
+      const location = $.getLocationFromNodes([left, right]);
+
+      if (op.image === '/' && !shouldParseSlashDivision($, T, ctx, left, right)) {
+        if (isNode(left, N.List) && left.options?.sep === '/') {
+          left = new List([...left.value, $.wrap(right, true)], { sep: '/' }, location, $.context);
+        } else {
+          left = new List([$.wrap(left, true), $.wrap(right, true)], { sep: '/' }, location, $.context);
+        }
+        continue;
+      }
 
       const operation = new Operation(
         [$.wrap(left, true), op!.image as Operator, $.wrap(right)],
         undefined,
-        $.getLocationFromNodes([left, right]),
+        location,
         $.context
       );
       left = operation;

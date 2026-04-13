@@ -1,3 +1,4 @@
+import { serializeTypes } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
@@ -77,5 +78,30 @@ describe('valueSequence', () => {
   it('should parse single value (not sequence)', () => {
     const { errors } = parse('color: red', 'declaration');
     expect(errors.length).toBe(0);
+  });
+
+  it('treats obvious non-division slash values as slash lists', () => {
+    const { tree, errors } = parse(
+      `font: normal small/20px 'Trebuchet MS', Verdana, sans-serif`,
+      'declaration'
+    );
+
+    expect(errors.length).toBe(0);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain("sep: '/'");
+    expect(serialized).toContain("'small'");
+    expect(serialized).toContain('(Dimension');
+    expect(serialized).toContain("unit: 'px'");
+  });
+
+  it('allows color-keyword slash values to remain division-like in math: always mode', () => {
+    const alwaysParser = new Parser({ mathMode: 'always' });
+    const { tree, errors } = alwaysParser.parse('color: red/2', 'declaration');
+
+    expect(errors.length).toBe(0);
+    const serialized = serializeTypes(tree, { showOptions: true });
+    expect(serialized).toContain('(Operation');
+    expect(serialized).toContain("node: 'red'");
+    expect(serialized).toContain('(Num 2)');
   });
 });

@@ -1,6 +1,8 @@
 {
   "name": "@jesscss/scss-parser",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "",
   "version": "2.0.0-alpha.1",
   "main": "lib/index.cjs",
@@ -28,7 +30,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",

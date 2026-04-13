@@ -30,7 +30,7 @@
     "prepublishOnly": "npm run build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "tsdown --tsconfig tsconfig.build.json",
     "test": "vitest --run --passWithNoTests",
     "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",

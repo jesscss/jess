@@ -394,45 +394,6 @@ export function stylesheet(this: P, T: TokenMap) {
 export function main(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    const shouldTryQualifiedRuleInDeclarationList = () => {
-      const isSelectorLikeContinuation = (offset: number) => {
-        const tok = $.LA(offset);
-        return (
-          $.matchToken(tok, T.LCurly)
-          || $.matchToken(tok, T.Comma)
-          || $.matchToken(tok, T.Combinator)
-          || $.matchToken(tok, T.LSquare)
-          || $.matchToken(tok, T.Colon)
-          || $.matchToken(tok, T.NthPseudoClass)
-          || $.matchToken(tok, T.SelectorPseudoClass)
-        );
-      };
-      if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
-        return $.shouldTryQualifiedRuleInDeclarationList();
-      }
-      if (!$.isTypeAt(1, T.Ident)) {
-        return true;
-      }
-      if (!$.isTypeAt(2, T.Assign)) {
-        return true;
-      }
-      if ($.hasWS(2)) {
-        return false;
-      }
-      const tt3 = $.LA(3).tokenType;
-      if (
-        tt3 === T.Colon
-        || tt3 === T.NthPseudoClass
-        || tt3 === T.SelectorPseudoClass
-        || $.matchToken($.LA(3), T.FunctionStart)
-      ) {
-        return true;
-      }
-      if (!$.matchToken($.LA(3), T.Ident)) {
-        return false;
-      }
-      return isSelectorLikeContinuation(4);
-    };
     const isMixinOrQualifiedStart = () => {
       const next = $.LA(1).tokenType;
       return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
@@ -444,7 +405,7 @@ export function main(this: P, T: TokenMap) {
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
       && !isAtRuleStart()
-      && shouldTryQualifiedRuleInDeclarationList();
+      && $.shouldTryQualifiedRuleInDeclarationList();
 
     const ruleAlt = (ctx: RuleContext = {}): Alt => {
       let isVariable = isVariableLike($, T);
@@ -563,45 +524,6 @@ export function main(this: P, T: TokenMap) {
 export function declarationList(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
-    const shouldTryQualifiedRuleInDeclarationList = () => {
-      const isSelectorLikeContinuation = (offset: number) => {
-        const tok = $.LA(offset);
-        return (
-          $.matchToken(tok, T.LCurly)
-          || $.matchToken(tok, T.Comma)
-          || $.matchToken(tok, T.Combinator)
-          || $.matchToken(tok, T.LSquare)
-          || $.matchToken(tok, T.Colon)
-          || $.matchToken(tok, T.NthPseudoClass)
-          || $.matchToken(tok, T.SelectorPseudoClass)
-        );
-      };
-      if (typeof $.shouldTryQualifiedRuleInDeclarationList === 'function') {
-        return $.shouldTryQualifiedRuleInDeclarationList();
-      }
-      if (!$.isTypeAt(1, T.Ident)) {
-        return true;
-      }
-      if (!$.isTypeAt(2, T.Assign)) {
-        return true;
-      }
-      if ($.hasWS(2)) {
-        return false;
-      }
-      const tt3 = $.LA(3).tokenType;
-      if (
-        tt3 === T.Colon
-        || tt3 === T.NthPseudoClass
-        || tt3 === T.SelectorPseudoClass
-        || $.matchToken($.LA(3), T.FunctionStart)
-      ) {
-        return true;
-      }
-      if (!$.matchToken($.LA(3), T.Ident)) {
-        return false;
-      }
-      return isSelectorLikeContinuation(4);
-    };
     const isMixinOrQualifiedStart = () => {
       const next = $.LA(1).tokenType;
       return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
@@ -613,7 +535,7 @@ export function declarationList(this: P, T: TokenMap) {
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
       && !isAtRuleStart()
-      && shouldTryQualifiedRuleInDeclarationList();
+      && $.shouldTryQualifiedRuleInDeclarationList();
 
     const ruleAlt = (ctx: RuleContext = {}): Alt => {
       const isVariable = isVariableLike($, T);
