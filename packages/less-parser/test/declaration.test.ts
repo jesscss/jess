@@ -1,4 +1,5 @@
 import { Parser } from '../src/index.js';
+import { isNode, N } from '@jesscss/core';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -27,6 +28,24 @@ describe('declaration', () => {
   it('should parse custom property declaration with generic function value', () => {
     const { errors } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
     expect(errors.length).toBe(0);
+  });
+
+  it('normalizes Less property merge "+:" to the list-merge assign form', () => {
+    const { errors, tree } = parse('src+: url(foo)', 'declaration');
+    expect(errors.length).toBe(0);
+    if (!tree || !isNode(tree, N.Declaration)) {
+      throw new Error('Expected declaration node');
+    }
+    expect(tree.options.assign).toBe('+,:');
+  });
+
+  it('normalizes Less property merge "+_:" to the sequence-merge assign form', () => {
+    const { errors, tree } = parse('src+_: format("woff")', 'declaration');
+    expect(errors.length).toBe(0);
+    if (!tree || !isNode(tree, N.Declaration)) {
+      throw new Error('Expected declaration node');
+    }
+    expect(tree.options.assign).toBe('+_:');
   });
 });
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import {
   style,
@@ -966,6 +967,27 @@ describe('Style import', () => {
       expect(`${resolvedFromInterpolatedImport}`).toBe('$interpolationResolved: ok');
     });
 
+    it('import-interpolation: reclassifies interpolated .css imports as literal CSS @import', async () => {
+      const interpolatedPath = new Interpolated({
+        source: `${INTERPOLATION_PLACEHOLDER}${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [any('file'), any('.css')]
+      }, { role: 'ident' });
+
+      const node = rules([
+        style({ path: quoted(interpolatedPath) }, { type: 'import', importOptions: { optional: false } }),
+        ruleset({
+          selector: sellist([sel([el('.after')])]),
+          rules: rules([decl({ name: any('color'), value: any('red') })])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ context });
+      expect(css).toContain('@import "file.css";');
+      expect(css).toContain('.after {');
+      expect(css.indexOf('@import "file.css";')).toBeLessThan(css.indexOf('.after {'));
+    });
+
     it('import-module: context can resolve bare module-like specifiers', async () => {
       const moduleContext = new Context();
       moduleContext.treeContext = {
@@ -1020,6 +1042,27 @@ describe('Style import', () => {
       ]);
       const evald = await node.eval(context);
       const declaration = evald.at(1) as any;
+      const resolved = await declaration.eval(context);
+      expect(`${resolved}`).toBe('value: 42');
+    });
+
+    it('import-reference: reference-imported vars remain readable inside later nested rulesets', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-nested.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        vardecl({ name: 'fromRef', value: any('42') })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference-nested.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: sellist([sel([el('.test')])]),
+          rules: rules([
+            decl({ name: any('value'), value: ref('fromRef', { type: 'variable' }) })
+          ])
+        })
+      ]);
+      const evald = await node.eval(context);
+      const rulesetNode = evald.at(1) as any;
+      const declaration = rulesetNode.value.rules.at(0);
       const resolved = await declaration.eval(context);
       expect(`${resolved}`).toBe('value: 42');
     });
@@ -1198,6 +1241,39 @@ describe('Style import', () => {
       const result = await (remoteContext as any)._getPath('https://cdn.jsdelivr.net/npm/lodash-es/lodash.js');
       expect(typeof result.resolvedPath).toBe('string');
       expect(result.resolvedPath.length).toBeGreaterThan(0);
+    });
+
+    it('import-remote: reference remote imports remain engine imports instead of becoming literal CSS imports', async () => {
+      const remotePath = resolve(process.cwd(), 'remote-media.less');
+      const remoteUrl = 'https://cdn.jsdelivr.net/npm/example/remote-media.less';
+      const remoteContext = new Context({}, [{
+        name: 'remote-map',
+        supportedExtensions: ['.less'],
+        resolve(filePath: string | string[], currentDir: string) {
+          const paths = Array.isArray(filePath) ? filePath : [filePath];
+          void currentDir;
+          return paths.map(candidate => candidate === remoteUrl ? remotePath : candidate);
+        },
+        locate(pathCandidates: string[]) {
+          return pathCandidates.find(candidate => candidate === remotePath) ?? null;
+        }
+      }]);
+      remoteContext.treeContext = {
+        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
+      } as any;
+      remoteContext.sourceTrees.set(remotePath, rules([
+        vardecl({ name: 'fromRemote', value: any('42') })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any(remoteUrl)) }, { type: 'import', importOptions: { reference: true } }),
+        decl({ name: any('value'), value: ref('fromRemote', { type: 'variable' }) })
+      ]);
+
+      const evald = await node.eval(remoteContext);
+      const declaration = evald.at(1) as any;
+      const resolved = await declaration.eval(remoteContext);
+      expect(`${resolved}`).toBe('value: 42');
     });
 
     it('import.less: optional missing imports do not throw and produce empty rules', async () => {

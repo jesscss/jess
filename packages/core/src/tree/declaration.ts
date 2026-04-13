@@ -85,7 +85,7 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override allowRuleRoot = true;
 
-  private formatNonCustomValue(valOut: string, options: PrintOptions) {
+  private formatNonCustomValue(valOut: string, _options: PrintOptions) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -232,14 +232,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         switch (assign) {
           case AssignmentType.MergeList:
           case AssignmentType.MergeSequence: {
+            const isLessMergeAssign = (assignValue: string): boolean => (
+              assignValue === AssignmentType.MergeList
+              || assignValue === AssignmentType.MergeSequence
+              || assignValue === '+,:'
+              || assignValue === '+_:'
+            );
             const ref = new Reference({ key }, {
               type,
               fallbackValue: new Nil(),
               resolution: 'linear',
               // Assignment normalization clears `assign` to Default, so matching by
               // assignment flag prevents later merge iterations from seeing prior values.
+              // For Less-style property merges, any prior merge node participates in the chain,
+              // but plain declarations do not.
               // Exclude only the current node to avoid self-reference.
-              filter: n => n !== node
+              filter: n => (
+                n !== node
+                && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
+              )
             });
             /**
              * @note - It's up to Sequence and List to handle
@@ -313,9 +324,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           return applyAssignmentNormalization(key);
         });
       }
-      const key = maybeKey as Any<'property'>;
-      setName(key);
-      return applyAssignmentNormalization(key);
+      setName(maybeKey);
+      return applyAssignmentNormalization(maybeKey);
     }
     return applyAssignmentNormalization(name);
   }
@@ -393,7 +403,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               setVal(newValue);
               normalizeMergedLeadingPlaceholder();
               if (context.hasImportantSource && !node.value.important) {
-                node.set('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, rk);
+                node.set('important', any('!important', { role: 'flag' }), rk);
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
@@ -403,12 +413,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           context.inCustom = false;
           if (maybeNewValue instanceof Nil) {
-            return (value as Nil).inherit(node);
+            return maybeNewValue.inherit(node);
           }
           setVal(maybeNewValue as Node);
           normalizeMergedLeadingPlaceholder();
           if (context.hasImportantSource && !node.value.important) {
-            node.set('important', Any.create('!important', { role: 'flag' }) as Any<'flag'>, rk);
+            node.set('important', any('!important', { role: 'flag' }), rk);
           }
           if (context.hasImportantSource) {
             context.popImportantSource();
@@ -461,5 +471,5 @@ export const decl = (
 ) => {
   let { name } = value;
   value.name = typeof name === 'string' ? new Any(name, { role: 'property' }) : name;
-  return new Declaration(value as DeclarationValue, options, location, treeContext);
+  return new Declaration(value, options, location, treeContext);
 };

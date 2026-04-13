@@ -669,6 +669,16 @@ export function declarationList(this: P, T: TokenMap) {
 export function declaration(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const normalizeLessAssignToken = (assign: IToken): IToken => {
+      if (assign.tokenType === T.PlusAssign) {
+        return { ...assign, image: '+,:' };
+      }
+      if (assign.tokenType === T.UnderscoreAssign) {
+        return { ...assign, image: '+_:' };
+      }
+      return assign;
+    };
+
     const customPropertyAlt = (consumeName: () => IToken, occurrence: 2 | 3) => ({
       ALT: () => {
         let nodes: Node[] | undefined;
@@ -676,9 +686,10 @@ export function declaration(this: P, T: TokenMap) {
           nodes = [];
         }
         const name = consumeName();
-        const assign = occurrence === 2
+        const rawAssign = occurrence === 2
           ? $.CONSUME2(T.Assign)
           : $.CONSUME3(T.Assign);
+        const assign = normalizeLessAssignToken(rawAssign);
         $.startRule();
         while (startsCustomValue($, T)) {
           const val = occurrence === 2
@@ -718,7 +729,7 @@ export function declaration(this: P, T: TokenMap) {
               ALT: () => name = $.CONSUME(T.LegacyPropIdent)
             }
           ]);
-          const assign = $.CONSUME(T.Assign);
+          const assign = normalizeLessAssignToken($.CONSUME(T.Assign));
           let value: Node | undefined;
           if ($.looseMode) {
             $.OPTION2({
@@ -1352,7 +1363,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       for (let i = 0; i < args.value.length; i++) {
         const node = args.value[i]!;
-        const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
+        const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
         if (isNode(node, N.Any) && node.options.role === 'name') {
@@ -1375,7 +1386,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
       for (let i = 0; i < args.value.length; i++) {
         const node = args.value[i]!;
-        const location = node.location && node.location.length > 0 ? node.location as LocationInfo : undefined;
+        const location = Array.isArray(node.location) && node.location.length > 0 ? node.location : undefined;
 
         // If it's an Any node with role: 'name', convert it to Reference for mixin call arguments
         if (isNode(node, N.Any) && node.options.role === 'name') {
@@ -1503,7 +1514,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: selector.valueOf() as unknown as Any<'name'>, params: args, rules, guard },
+                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules, guard },
                     hasDefault ? { hasDefault: true } : undefined,
                     $.endRule(),
                     $.context

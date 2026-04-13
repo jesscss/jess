@@ -1,22 +1,13 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, Any, Collection, Declaration, Dimension, type Plugin, type Visitor, type Node, F_VISIBLE } from '@jesscss/core';
+import { AbstractPlugin, Any, Declaration, Dimension, type Plugin, type Visitor, type Node, F_VISIBLE, REMOVE } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { getJessNodeFromProxy } from './transform/proxy.js';
 import type { LessVisitor } from './types.js';
 import { filterPlugins } from './plugin-utils.js';
 import { LessVisitor as LessVisitorClass, LessPluginManager, LessTreeConstructors, createLessMock } from './less-compat-structures.js';
 import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
-
-/** Global key set by @jesscss/plugin-js when loaded. @plugin scripts require plugin-js (Deno) to be present. */
-const JESS_PLUGIN_JS_GLOBAL = '__JESS_PLUGIN_JS_AVAILABLE__';
-
-function assertPluginJsPresent(): void {
-  if (typeof globalThis === 'undefined' || !(globalThis as Record<string, unknown>)[JESS_PLUGIN_JS_GLOBAL]) {
-    throw new Error('@plugin script execution requires @jesscss/plugin-js (scripts must be run via Deno). Install @jesscss/plugin-js.');
-  }
-}
 
 const isThenable = (v: any): v is PromiseLike<any> =>
   !!v && (typeof v === 'object' || typeof v === 'function') && typeof (v as any).then === 'function';
@@ -301,7 +292,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         get(target, prop) {
           // First check if it's a method on the registry
           if (prop in target) {
-            return target[prop as keyof typeof target];
+            return Reflect.get(target, prop);
           }
 
           // Handle Less.js tree constructors that plugins might access
@@ -368,7 +359,7 @@ export class LessCompatPlugin extends AbstractPlugin {
       return new Proxy(registry, {
         get(target, prop) {
           if (prop in target) {
-            return target[prop as keyof typeof target];
+            return Reflect.get(target, prop);
           }
           if (typeof prop === 'string' && /^[A-Z]/.test(prop)) {
             if (LessTreeConstructors[prop]) {
@@ -627,7 +618,7 @@ export class LessCompatPlugin extends AbstractPlugin {
     const processedPluginDirectives = new WeakSet<object>();
 
     // Create a visitor object that implements the Visitor interface
-    const visitor: Visitor = {
+    const visitor = {
       // Handle @plugin at-rules - these should be processed early (like Less.js preEval)
       // In Less.js, @plugin is processed in preEval phase before the tree is evaluated
       // This ensures plugins loaded via @plugin have their visitors available for subsequent nodes
@@ -636,7 +627,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         // In Less.js, @plugin syntax is: @plugin "plugin-name";
         // Handle both AtRule (modern) and Directive (v2) node types
         if (node && (node.type === 'AtRule' || node.type === 'Directive')) {
-          const atRuleName = node.name;
+          const atRuleName = node.name ?? node.value?.name;
           let nameValue: string | undefined;
 
           // Extract name value (could be string or node)
@@ -644,8 +635,11 @@ export class LessCompatPlugin extends AbstractPlugin {
             nameValue = atRuleName;
           } else if (atRuleName?.value) {
             nameValue = atRuleName.value;
-          } else if (atRuleName?.type === 'Any' && atRuleName.value) {
-            nameValue = atRuleName.value;
+          } else if (typeof atRuleName?.valueOf === 'function') {
+            const value = atRuleName.valueOf();
+            if (typeof value === 'string') {
+              nameValue = value;
+            }
           }
 
           // Check if this is a @plugin directive
@@ -664,7 +658,7 @@ export class LessCompatPlugin extends AbstractPlugin {
             // Extract plugin path/name and options from prelude
             // Handle both AtRule (value.prelude) and Directive (value.value) structures
             // Less.js syntax: @plugin (options) "path"
-            const prelude = node.prelude || node.value;
+            const prelude = node.prelude ?? node.value?.prelude ?? node.value;
             let pluginPath: string | undefined;
             let pluginOptions: string | undefined;
 
@@ -714,6 +708,12 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   }
                 }
+                if (typeof node.valueOf === 'function') {
+                  const val = node.valueOf();
+                  if (typeof val === 'string') {
+                    return val.trim();
+                  }
+                }
                 return undefined;
               };
 
@@ -729,8 +729,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                 // Look for Quoted or Url (the path) and any preceding options
                 for (let i = 0; i < prelude.value.length; i++) {
                   const item = prelude.value[i];
-                  if (item && (item.type === 'Quoted' || item.type === 'Url')) {
-                    pluginPath = extractStringValue(item);
+                  const extracted = extractStringValue(item);
+                  if (item && extracted !== undefined) {
+                    pluginPath = extracted;
                     // Check if there's an options node before this (e.g., in parentheses)
                     if (i > 0) {
                       const prevItem = prelude.value[i - 1];
@@ -757,8 +758,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                 const values = Array.isArray(prelude.value) ? prelude.value : [prelude.value];
                 for (let i = 0; i < values.length; i++) {
                   const item = values[i];
-                  if (item && (item.type === 'Quoted' || item.type === 'Url')) {
-                    pluginPath = extractStringValue(item);
+                  const extracted = extractStringValue(item);
+                  if (item && extracted !== undefined) {
+                    pluginPath = extracted;
                     // Check for options before the path
                     if (i > 0) {
                       const prevItem = values[i - 1];
@@ -779,8 +781,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                 const items = Array.isArray(prelude.value) ? prelude.value : [prelude.value];
                 for (let i = 0; i < items.length; i++) {
                   const item = items[i];
-                  if (item && (item.type === 'Quoted' || item.type === 'Url')) {
-                    pluginPath = extractStringValue(item);
+                  const extracted = extractStringValue(item);
+                  if (item && extracted !== undefined) {
+                    pluginPath = extracted;
                     // Check for options before the path
                     if (i > 0) {
                       const prevItem = items[i - 1];
@@ -1010,7 +1013,7 @@ export class LessCompatPlugin extends AbstractPlugin {
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
-          const atRuleResult = visitor.atRule(node as import('@jesscss/core').AtRule, undefined);
+          const atRuleResult = visitor.atRule(node, undefined);
           // Use the result if atRule() returned a different node (and it's not a symbol)
           if (atRuleResult && typeof atRuleResult !== 'symbol' && atRuleResult !== node) {
             node = atRuleResult;
@@ -1090,7 +1093,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 // If result is undefined, a replacing visitor wants to remove this node
                 // (Non-replacing visitors can't return undefined - Less.js ignores their return value)
                 if (result === undefined) {
-                  return undefined as unknown as Node;
+                  return REMOVE;
                 }
 
                 // Get next visitor - if new visitors were added during this iteration,
@@ -1118,7 +1121,7 @@ export class LessCompatPlugin extends AbstractPlugin {
           // The WeakSet will be garbage collected when the visitor is done
         }
       }
-    } as Visitor;
+    } satisfies Visitor;
 
     return visitor;
   }

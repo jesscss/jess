@@ -11,7 +11,8 @@ import type { Ruleset } from './ruleset.js';
 import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
-import type { Sequence } from './sequence.js';
+import { Sequence } from './sequence.js';
+import { Nil } from './nil.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -137,6 +138,71 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  private isPlainCssImport(finalPath: string): boolean {
+    const { importOptions } = this.options;
+    if (
+      importOptions?.inline === true
+      || importOptions?.type === 'less'
+      || importOptions?.reference === true
+      || importOptions?.multiple === true
+      || importOptions?.optional === true
+    ) {
+      return false;
+    }
+    const lower = finalPath.toLowerCase();
+    if (/\.css([?#].*)?$/.test(lower)) {
+      return true;
+    }
+    return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('//');
+  }
+
+  private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
+    const preludeNodes: Node[] = [pathNode];
+    const postlude = this.options.importOptions?.postlude;
+    if (postlude) {
+      const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List)
+        ? postlude.value
+        : [postlude];
+      preludeNodes.push(...postludeNodes);
+    }
+    const prelude = preludeNodes.length === 1
+      ? preludeNodes[0]
+      : new Sequence(preludeNodes, undefined, undefined, this.treeContext);
+
+    const location = this.location && this.location.length === 6 ? this.location : undefined;
+    return new AtRule({
+      name: new Any('@import', { role: 'atkeyword' }),
+      prelude
+    }, undefined, location, this.treeContext);
+  }
+
+  private queueCssImport(context: Context, importRule: AtRule): void {
+    if (context.inReferenceImportScope) {
+      return;
+    }
+    const topImports = (context.topImports ??= []);
+    const nodeLoc = importRule.location?.join(':') ?? '';
+    const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
+    const alreadyQueued = topImports.some((queuedNode) => {
+      if (!isNode(queuedNode, N.AtRule)) {
+        return false;
+      }
+      const queued = queuedNode as AtRule;
+      return (
+        queued === importRule
+        || queued.sourceNode === importRule.sourceNode
+        || queued.sourceNode === importRule
+        || (
+          (queued.location?.join(':') ?? '') === nodeLoc
+          && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
+        )
+      );
+    });
+    if (!alreadyQueued) {
+      topImports.push(importRule);
+    }
+  }
+
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
@@ -261,7 +327,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
      * work.
      */
 
-    const finalize = async (finalPath: string) => {
+    const finalize = async (finalPath: string, evaluatedPathNode: Quoted | Url) => {
       const previousTreeContext = context.treeContext;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
@@ -284,6 +350,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         pushedImportScope = true;
       }
       try {
+        if (this.isPlainCssImport(finalPath)) {
+          const importRule = this.createCssImportAtRule(evaluatedPathNode);
+          importRule.sourceNode = this;
+          this.queueCssImport(context, importRule);
+          return Rules.create([new Nil()]);
+        }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
         let resolvedPath: string;
@@ -597,15 +669,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       }
     };
     if (isThenable(maybePath)) {
-      return (maybePath as Promise<Quoted | Url>).then(async (p) => {
+      return maybePath.then(async (p) => {
         const finalPath = p.valueOf();
         context.depth = originalDepth;
-        return finalize(finalPath);
+        return finalize(finalPath, p);
       });
     }
     const finalPath = maybePath.valueOf();
     context.depth = originalDepth;
-    return finalize(finalPath as string);
+    return finalize(finalPath, maybePath);
   }
 
   /**
@@ -618,7 +690,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     let wrapped: Node = sourceNode;
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? (postlude as Sequence).value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
@@ -658,7 +730,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence | N.List) ? (postlude as Sequence).value : [postlude];
+    const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;

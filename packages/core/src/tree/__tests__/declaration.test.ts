@@ -1,4 +1,4 @@
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension } from '..';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -30,11 +30,11 @@ describe('Declaration', () => {
     const node = rules([
       decl({
         name: any('background-color'),
-        value: any('red'),
+        value: any('red')
       }, { assign: '+:' }),
       decl({
         name: any('background-color'),
-        value: any('foo'),
+        value: any('foo')
       }, { assign: '+:' })
     ]);
 
@@ -48,11 +48,11 @@ describe('Declaration', () => {
     const node = rules([
       decl({
         name: any('background-color'),
-        value: any('red'),
+        value: any('red')
       }, { assign: '+:' }),
       decl({
         name: any('background-color'),
-        value: any('foo'),
+        value: any('foo')
       }, { assign: '+:' }),
       decl({
         name: any('background'),
@@ -72,11 +72,11 @@ describe('Declaration', () => {
       rules([
         decl({
           name: any('background-color'),
-          value: any('red'),
+          value: any('red')
         }, { assign: '+:' }),
         decl({
           name: any('background-color'),
-          value: any('foo'),
+          value: any('foo')
         }, { assign: '+:' }),
         rules([
           decl({
@@ -95,6 +95,33 @@ describe('Declaration', () => {
     expect(`${evald}`).toBeString(`
       background-color: red, foo;
       background: red, foo;
+    `);
+  });
+
+  it('does not pull a prior plain declaration into Less-style property merge chains', async () => {
+    const node = rules([
+      decl({
+        name: any('src'),
+        value: any('base')
+      }),
+      decl({
+        name: any('src'),
+        value: any('one')
+      }, { assign: AssignmentType.MergeList }),
+      decl({
+        name: any('src'),
+        value: any('two')
+      }, { assign: AssignmentType.MergeSequence }),
+      decl({
+        name: any('src'),
+        value: any('three')
+      }, { assign: AssignmentType.MergeList })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      src: base;
+      src: one two, three;
     `);
   });
 
@@ -126,10 +153,10 @@ describe('Declaration', () => {
           atrule({
             name: any('@starting-style', { role: 'atkeyword' }),
             rules: rules([
-              decl({ name: any('padding'), value: any('10px') }, { assign: '&_:' as any }),
-              decl({ name: any('padding'), value: any('8px') }, { assign: '&_:' as any }),
-              decl({ name: any('padding'), value: any('6px') }, { assign: '&_:' as any }),
-              decl({ name: any('padding'), value: any('4px') }, { assign: '&_:' as any })
+              decl({ name: any('padding'), value: any('10px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: any('padding'), value: any('8px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: any('padding'), value: any('6px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: any('padding'), value: any('4px') }, { assign: AssignmentType.MergeSequence })
             ])
           })
         ])
@@ -173,7 +200,7 @@ describe('Declaration', () => {
                   ])
                 },
                 rules: rules([
-                  decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: '&_:' as any })
+                  decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: AssignmentType.MergeSequence })
                 ])
               })
             ])
@@ -223,7 +250,7 @@ describe('Declaration', () => {
                   decl({
                     name: any('padding'),
                     value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
-                  }, { assign: '&_:' as any })
+                  }, { assign: AssignmentType.MergeSequence })
                 ])
               })
             ])

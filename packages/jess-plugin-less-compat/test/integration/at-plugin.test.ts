@@ -8,12 +8,15 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
+import { isNode, N } from '@jesscss/core';
 import { lessCompatPlugin } from '../../src/index.js';
 import type { Visitor } from '@jesscss/core';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
 function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
-  if (!visitor) return undefined;
+  if (!visitor) {
+    return undefined;
+  }
   if (Array.isArray(visitor)) {
     // If array, use the first visitor (or create a composite if needed)
     // For now, just use the first one
@@ -64,6 +67,7 @@ describe('@plugin directive processing', () => {
     // we provide them via pluginRegistry
     const plugin = lessCompatPlugin({
       pluginRegistry: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         'test-plugin': testPlugin
       }
     });
@@ -81,6 +85,87 @@ describe('@plugin directive processing', () => {
 
     // Note: In a real implementation, @plugin would load the plugin dynamically
     // For this test, we're verifying the structure supports @plugin processing
+  });
+
+  it('should process raw Jess AtRule nodes in preEval visitor mode', () => {
+    const source = `@plugin "test-plugin"; .test { color: red; }`;
+
+    const { tree } = parser.parse(source);
+    if (!tree) {
+      throw new Error('Failed to parse');
+    }
+
+    let pluginInstalled = false;
+    const testPlugin = {
+      install() {
+        pluginInstalled = true;
+      }
+    };
+
+    const plugin = lessCompatPlugin({
+      pluginRegistry: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        'test-plugin': testPlugin
+      }
+    });
+
+    plugin.setCurrentFilePath('/tmp/test.less');
+    plugin.setContext({ root: tree });
+
+    const visitor = normalizeVisitor(plugin.preEvalVisitor);
+    if (!visitor?.atRule) {
+      throw new Error('Plugin should expose an atRule preEval visitor');
+    }
+
+    const pluginDirective = tree.at(0);
+    if (!pluginDirective || !isNode(pluginDirective, N.AtRule)) {
+      throw new Error('Expected parsed @plugin directive');
+    }
+    const result = visitor.atRule(pluginDirective);
+
+    expect(result).toBe(pluginDirective);
+    expect(pluginInstalled).toBe(true);
+    expect(Reflect.get(pluginDirective, 'visible')).toBe(false);
+  });
+
+  it('should process raw Jess @plugin directives after a leading comment', () => {
+    const source = `/** comment */\n@plugin "test-plugin";\n.test { color: red; }`;
+
+    const { tree } = parser.parse(source);
+    if (!tree) {
+      throw new Error('Failed to parse');
+    }
+
+    let pluginInstalled = false;
+    const testPlugin = {
+      install() {
+        pluginInstalled = true;
+      }
+    };
+
+    const plugin = lessCompatPlugin({
+      pluginRegistry: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
+        'test-plugin': testPlugin
+      }
+    });
+
+    plugin.setCurrentFilePath('/tmp/test.less');
+    plugin.setContext({ root: tree });
+
+    const visitor = normalizeVisitor(plugin.preEvalVisitor);
+    if (!visitor?.visit) {
+      throw new Error('Plugin should expose a visit preEval visitor');
+    }
+
+    tree.accept(visitor);
+
+    const pluginDirective = tree.at(1);
+    if (!pluginDirective || !isNode(pluginDirective, N.AtRule)) {
+      throw new Error('Expected parsed @plugin directive');
+    }
+    expect(pluginInstalled).toBe(true);
+    expect(Reflect.get(pluginDirective, 'visible')).toBe(false);
   });
 
   it('should process @plugin before other nodes (preEval behavior)', () => {
