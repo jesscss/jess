@@ -137,9 +137,12 @@ export function resolveFrameCell(
 ): BindingEntry | undefined {
   let f = frame;
   while (f) {
-    // 1. Live slots (mixin params — populated in a later slice)
-    // const live = f.liveSlotsByName.get(name);
-    // if (live) return { cell: live, sourceNode: live.sourceNode as VarDeclaration };
+    // 1. Live slots (mixin params)
+    const live = f.liveSlotsByName.get(name);
+    if (live) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return { cell: live, sourceNode: live.sourceNode as unknown as VarDeclaration };
+    }
 
     // 2. Static contextual bucket — last entry wins
     const bucket = f.declarationBucketsByName.get(name);

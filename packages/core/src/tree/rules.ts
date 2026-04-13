@@ -32,7 +32,7 @@ import { List } from './list.js';
 import { indent, normalizeIndent, serializeRulesContainerInline } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
-import { type ScopeFrame, buildScopeFrame } from './scope-frame.js';
+import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -2820,6 +2820,31 @@ export class MixinCollection extends Node<MixinEntry[]> {
             readonly: binding.readonly,
             sourceNode: binding.sourceNode
           });
+        }
+        // Slice 8: wire ScopeFrame on the wrapper scope so the call-site frame
+        // chain is available for resolveFrameCell.  The frame's parent points at
+        // the call-site scope (not the mixin's definition site), giving correct
+        // contextual resolution once the frame chain becomes the primary path.
+        {
+          const callSiteRules = thisContext.rulesContext;
+          const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
+            ? (callSiteRules as Rules).getScopeFrame()
+            : undefined;
+          const liveSlots = new Map<string, BindingCell>();
+          for (const binding of paramBindings) {
+            liveSlots.set(binding.name, {
+              value: binding.value,
+              sourceNode: binding.sourceNode as Node | undefined,
+              readonly: binding.readonly
+            });
+          }
+          outerRules.scopeFrame = {
+            parent: parentFrame,
+            liveSlotsByName: liveSlots,
+            declarationBucketsByName: new Map(),
+            pendingDynamicDecls: [],
+            rulesNode: outerRules
+          };
         }
         const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
         if (shouldDefineArguments) {

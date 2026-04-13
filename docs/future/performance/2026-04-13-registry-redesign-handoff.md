@@ -12,7 +12,7 @@ Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit doc
 - [x] Slice 5 — `varsByName` fast map on `Rules`; lexical variable lookup bypasses declaration registry
 - [x] Slice 6 — `ScopeFrame` introduced alongside registry; `buildScopeFrame` / `resolveFrameCell` in `scope-frame.ts`
 - [x] Slice 7 — `mixinsByName` fast map on `Rules`; static-named mixin lookup bypasses `MixinRegistry.find`
-- [ ] Slice 8 — Route mixin invocation through render model; build frame chain at call time; stop cloning mixin bodies
+- [x] Slice 8 — Wire `ScopeFrame` parent chain at mixin call time; `outerRules.scopeFrame.liveSlotsByName` carries params; `resolveFrameCell` finds them via frame chain with call-site parent
 - [ ] Slice 9 — Delete fork/renderKey system (no remaining callers)
 - [ ] Slice 10 — Delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
 
@@ -333,13 +333,14 @@ The remaining smell:
 - `resolution: 'linear'` still exists in `reference.ts` and should eventually be
   deleted (it was a mis-named attempt at call-time contextual lookup) — Slice 10
 
-The next code slice (Slice 8):
+The next code slice (Slice 9):
 
-1. Wire `ScopeFrame` parent chain at mixin call time (call-site lexical chain,
-   not definition-site `.parent` chain).
-2. Route mixin body evaluation through the live frame rather than the cloned
-   wrapper `Rules`.
-3. Remove the `mixin.copy()` / fork path for static-named mixins.
+1. Route actual variable lookup through the frame chain (`resolveFrameCell`)
+   instead of `runtimeVarBindings` + `findVarDeclarationFast` separately.
+2. Once frame chain is the primary lookup path, remove `runtimeVarBindings`
+   from `Rules`.
+3. Remove the fork/renderKey system — no remaining callers once the frame chain
+   is live.
 4. Keep verifying with:
 
    ```sh

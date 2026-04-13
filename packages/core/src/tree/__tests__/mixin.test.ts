@@ -643,6 +643,67 @@ describe('Mixin', () => {
       }
     });
 
+    it('ScopeFrame parent chain (slice 8): wrapper scope frame carries call-site parent and live param slots', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      // Intercept setRuntimeVarBinding to capture the outerRules wrapper created
+      // during mixin invocation so we can inspect its ScopeFrame.
+      const originalSet = RulesClass.prototype.setRuntimeVarBinding;
+      let capturedWrapper: InstanceType<typeof RulesClass> | undefined;
+      RulesClass.prototype.setRuntimeVarBinding = function(
+        name: string,
+        ...rest: Parameters<typeof originalSet extends (n: string, ...a: infer P) => any ? (n: string, ...a: P) => any : never>
+      ) {
+        // Capture the first wrapper that receives a param named 'color'
+        if (name === 'color') {
+          capturedWrapper = this;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        return (originalSet as unknown as (...a: unknown[]) => void).call(this, name, ...rest);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.parameterized'),
+          params: list([any('color', { role: 'property' })]),
+          rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({
+              name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })])
+          })
+        ]);
+        context.root = root;
+        await root.eval(context);
+
+        // The wrapper Rules created for the mixin call must have a ScopeFrame
+        // with the 'color' param in liveSlotsByName.
+        expect(capturedWrapper).toBeDefined();
+        const frame = capturedWrapper!.scopeFrame;
+        expect(frame).toBeDefined();
+        expect(frame!.liveSlotsByName.has('color')).toBe(true);
+        expect(`${frame!.liveSlotsByName.get('color')!.value}`).toBe('red');
+
+        // resolveFrameCell must find the param via the frame.
+        const entry = resolveFrameCell('color', frame!);
+        expect(entry).toBeDefined();
+        expect(`${entry!.cell.value}`).toBe('red');
+
+        // The frame's parent is the call-site scope's frame (not undefined).
+        expect(frame!.parent).toBeDefined();
+      } finally {
+        RulesClass.prototype.setRuntimeVarBinding = originalSet;
+      }
+    });
+
     it('should call a mixin with a guard condition', async () => {
       // Create a mixin with a guard: .my-mixin(@color) when (@color = red) { color: @color; }
       const mixinDef = mixin({
