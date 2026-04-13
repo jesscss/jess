@@ -101,6 +101,14 @@ no AST traversal. Straightforward to test in isolation.
 #### Checklist
 
 - [ ] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
+  - **`@compose`**: flags are per-file, set at that file's own index time — each file is a
+    closed rendering unit; children cannot affect parents at all (parents pass state *down*
+    to children only via `mutable: true`); flat/segmented decision is independent per file
+  - **`@import`**: flags must be propagated transitively up the import graph after the full
+    graph is resolved; any file in the graph having an extend forces the combined root into
+    segmented mode; the only static optimization available is the transitive flag itself —
+    deeper static analysis is not tractable (selector matching is undecidable under
+    interpolation); per-file caching requires migrating to `@compose`
 - [ ] Design `Segment` / `RulesetBlock` / `HoistBlock` / `MergeSlot` / `ExtendRecord` types
 - [ ] Implement flat-mode `RenderBuffer` (common case: no extends, no reference imports — pure `string[]`, no segment allocation, no post-step)
 - [ ] Implement segmented-mode `RenderBuffer` (has extends or reference imports)
