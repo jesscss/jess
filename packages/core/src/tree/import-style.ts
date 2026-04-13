@@ -138,6 +138,13 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  private toImportPathNode(node: Node): Quoted | Url {
+    if (isNode(node, N.Quoted) || node instanceof Url) {
+      return node;
+    }
+    throw new Error('Import path must evaluate to a quoted string or url() node.');
+  }
+
   private isPlainCssImport(finalPath: string): boolean {
     const { importOptions } = this.options;
     if (
@@ -670,14 +677,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
     if (isThenable(maybePath)) {
       return maybePath.then(async (p) => {
-        const finalPath = p.valueOf();
+        const finalPath = String(p.valueOf());
         context.depth = originalDepth;
-        return finalize(finalPath, p);
+        return finalize(finalPath, this.toImportPathNode(p));
       });
     }
-    const finalPath = maybePath.valueOf();
+    const finalPath = String(maybePath.valueOf());
     context.depth = originalDepth;
-    return finalize(finalPath, maybePath);
+    return finalize(finalPath, this.toImportPathNode(maybePath));
   }
 
   /**

@@ -9,7 +9,7 @@ import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
 import type { Context, TreeContext } from '../context.js';
 import { Interpolated } from './interpolated.js';
-import { Any, type AnyRole } from './any.js';
+import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
 import { spaced } from './sequence.js';
@@ -463,13 +463,24 @@ export type DeclarationParams = ConstructorParameters<typeof Declaration>;
 
 defineType<DeclarationValue>(Declaration, 'Declaration', 'decl');
 
+function isDeclarationValue(
+  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> }
+): value is DeclarationValue {
+  return typeof value.name !== 'string';
+}
+
 export const decl = (
-  value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
+  value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
   location?: LocationInfo,
   treeContext?: TreeContext
 ) => {
-  let { name } = value;
-  value.name = typeof name === 'string' ? new Any(name, { role: 'property' }) : name;
+  if (!isDeclarationValue(value)) {
+    return new Declaration({
+      name: any(value.name, { role: 'property' }),
+      value: value.value,
+      important: value.important
+    }, options, location, treeContext);
+  }
   return new Declaration(value, options, location, treeContext);
 };
