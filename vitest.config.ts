@@ -27,7 +27,10 @@ export default defineConfig({
     },
     // Ensure environment variables are passed to test processes
     environment: 'node',
-    disableConsoleIntercept: true,
+    onConsoleLog(log, type) {
+      process[type === 'stderr' ? 'stderr' : 'stdout'].write(log + '\n')
+      return false
+    },
     testTimeout: 30_000,
     reporters: [['tree', { summary: true }]],
     // Enable globals for describe, test, etc.
