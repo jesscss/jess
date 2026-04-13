@@ -304,6 +304,108 @@ buffer write (function arguments, guard conditions, key resolution in dynamic
 declarations). The caller decides what to do with the result; any intermediate
 nodes are then garbage-collected — never stored on any AST node.
 
+---
+
+### Materialization Boundaries
+
+Most of the render pass is a streaming write — nodes resolve references and
+append strings to the output buffer without producing intermediate values.
+But some evaluation sites need a **materialized node** (a concrete typed value
+like `Color`, `Dimension`, or `Quoted`) rather than just a buffer write. These
+are called **materialization boundaries**, and they all go through `resolve`.
+
+#### Function call arguments
+
+The most common materialization boundary. CSS built-in functions (`darken`,
+`mix`, `lighten`, arithmetic operators) are implemented as code that receives
+typed Node instances and computes a result:
+
+```
+// Less source: darken(@color, 10%)
+render(expr[darken(@color, 10%)], ctx):
+  args = [
+    resolve(Reference('color'), ctx),  // → Color(blue)   — must be a Color, not a Reference
+    resolve(Dimension(10, '%'), ctx)    // → Dimension(10, '%')
+  ]
+  result = builtins.darken(args[0], args[1])  // → Color(darker-blue)
+  ctx.outputBuffer.append(result.toTrimmedString())
+```
+
+A built-in cannot receive a `Reference` node — it needs the actual `Color`.
+`resolve` materializes the reference before crossing the function boundary.
+
+User-defined Less functions (defined with `.fn()` or Jess `@function`) go
+through the same path: args are materialized before the function body runs.
+
+#### Guard evaluation
+
+Mixin guards (`when (@size > 10px)`) need comparable materialized values:
+
+```
+// evaluating whether to include a candidate mixin
+guardPasses = evaluate(guard, ctx):
+  lhs = resolve(Reference('size'), ctx)   // → Dimension(12, 'px')
+  rhs = resolve(Dimension(10, 'px'), ctx) // → Dimension(10, 'px')
+  return lhs.value > rhs.value            // true
+```
+
+The comparison is between concrete values. A Reference in the guard
+expression must be resolved before the comparison can happen.
+
+#### Selector interpolation
+
+Interpolated identifiers inside selectors (`@{prefix}-item`) need the
+prefix resolved to a string before the selector can be assembled:
+
+```
+render(InterpolatedIdent[@{prefix}-item], ctx):
+  prefix = resolve(Reference('prefix'), ctx)  // → Any('nav')
+  ctx.outputBuffer.append(prefix.valueOf() + '-item')
+  // → 'nav-item'
+```
+
+The composed selector cannot be formed without materializing `@prefix` first.
+
+#### Dynamic declaration key resolution
+
+As described in the binding modes section: when a declaration name is an
+interpolation (`@{prefix}-color: red`) or variable variable (`@@varName: blue`),
+the key must be resolved before the entry can be placed in a bucket.
+
+```
+resolvedKey = resolve(decl.name, ctx)  // → string: 'nav-color'
+insertIntoBucket(frame, resolvedKey, decl)
+```
+
+#### Operator expressions
+
+Arithmetic and string operations (`@a + @b`, `@base * 2`) resolve their
+operands before computing:
+
+```
+render(expr[@a + @b], ctx):
+  lhs = resolve(Reference('a'), ctx)  // → Dimension(10, 'px')
+  rhs = resolve(Reference('b'), ctx)  // → Dimension(5, 'px')
+  result = lhs.operate(rhs, '+')      // → Dimension(15, 'px')
+  ctx.outputBuffer.append(result.toTrimmedString())
+```
+
+#### What stays a stream write (no materialization)
+
+The vast majority of nodes do **not** require materialization:
+
+- A `Reference` directly in a declaration value (`color: @brand`) → `render`
+  resolves the cell and appends the string in one step
+- A nested ruleset (`.inner { ... }`) → `render` composes the selector and
+  recurses, never building an intermediate value
+- A plain literal anywhere → `node.toTrimmedString()` appended directly
+
+The rule: **if only the string representation is needed, stream-write via
+`render`. If the code needs to inspect, compare, compute with, or pass the
+value to an external function, materialize via `resolve`.**
+
+---
+
 ### Declaration nodes (background: @color)
 
 ```
