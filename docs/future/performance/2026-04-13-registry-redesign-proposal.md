@@ -243,15 +243,65 @@ type ScopeFrame = {
 
 ### OutputBuffer
 
-A flat accumulator. Could be a `string[]` joined at the end, or a rope-like
-structure for large outputs.
+A typed segment accumulator. Most nodes push strings directly. Selector-bearing
+nodes and merge-accumulating declarations push structured segments that are
+finalized in a cheap post-step after the full render pass.
 
 ```ts
+type Segment = string | RulesetBlock | MergeSlot
+
+interface RulesetBlock {
+  selector: SelectorSet   // live reference — not yet stringified
+  body: Segment[]         // recursively nested body segments
+  isReference: boolean    // from @import (reference) — suppress unless activated by extend
+  extendRoot: ExtendRoot  // which root this ruleset is reachable from (baked in at push time)
+}
+
+interface MergeSlot {
+  property: string        // +: and +_: — collects all same-property decls in scope
+  segments: Segment[]
+}
+
 type OutputBuffer = {
-  append(s: string): void;
-  toString(): string;
+  push(s: Segment): void;
+  toString(): string;     // runs the post-step, then joins
 };
 ```
+
+#### Extend side table
+
+Collected in parallel during the render pass — not a separate pre-pass:
+
+```ts
+interface ExtendRecord {
+  targetSelector: SelectorSet   // what is being targeted
+  extendRoot: ExtendRoot        // which root the :extend() lives in
+  sourceBlock: RulesetBlock     // the block whose selector gets augmented
+}
+```
+
+#### Post-step (pure function, no AST access)
+
+`(Segment[], ExtendRecord[]) → string`
+
+For each `RulesetBlock`:
+
+1. **Selector match** — walk-and-consume / `selector-match-core` against
+   `ExtendRecord.targetSelector`. Same algorithm as today, but operating on
+   already-resolved `SelectorSet` objects rather than live AST nodes.
+2. **Root visibility** — `record.extendRoot` can reach `block.extendRoot`.
+   Same predicate as `extend-roots.ts`, but purely over two `ExtendRoot` values
+   that were baked in at buffer-push time — no AST traversal at match time.
+3. **Reference visibility** — `block.isReference` suppresses output unless
+   the block matched steps 1+2.
+
+This design handles all three constraints uniformly:
+- Regular extends (selector augmentation)
+- `@import (reference)` visibility (only surface if extended)
+- Extend roots (only match across compatible roots)
+
+`@media` bubbling is a natural extension: a `HoistBlock` segment type causes
+the ruleset to be emitted at the enclosing at-rule level rather than inline.
 
 ---
 
@@ -425,18 +475,32 @@ appends it directly. The declaration node itself stores nothing.
 ```
 render(ruleset, ctx):
   composedSelector = compose(ctx.selectorContext, ruleset.selector)
-  ctx.outputBuffer.append(composedSelector.toTrimmedString() + ' {')
-  childCtx = ctx.withSelector(composedSelector)
+  block = RulesetBlock {
+    selector: composedSelector,
+    body: [],
+    isReference: ctx.isReference,
+    extendRoot: ctx.extendRoot
+  }
+  ctx.outputBuffer.push(block)
+  childCtx = ctx.withSelector(composedSelector).withBodyBuffer(block.body)
   for child in ruleset.rules.value:
     render(child, childCtx)
-  ctx.outputBuffer.append('}')
+  // block.body is now fully populated; will be finalized in the post-step
 ```
 
 The composed selector is computed from `ctx.selectorContext` (the call-site
-selector prefix) combined with the ruleset's own selector. It is used for this
-invocation's output and then discarded. The ruleset node does not get a
-composed selector stored on it. A second invocation from a different call site
-computes a different composition against the same ruleset template.
+selector prefix) combined with the ruleset's own selector. Rather than
+immediately stringifying it, it is stored in a `RulesetBlock` segment so the
+post-step can apply extend augmentation, test reference visibility, and check
+root compatibility before producing the final string.
+
+Any `:extend()` declarations encountered while rendering the ruleset body are
+collected into `ctx.extendSideTable` alongside their `extendRoot` — no separate
+pre-pass is needed.
+
+A second invocation from a different call site pushes a fresh `RulesetBlock`
+with a different composed selector and a fresh body buffer — the ruleset
+template node is never mutated.
 
 ---
 
@@ -1158,19 +1222,60 @@ current `processPrePost()` sandwich is.
 
 [docs/future/pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
 
-Pre-eval elimination is a separate later slice. It proposes evaluating nodes in
-source order rather than separating a pre-eval phase (priority ordering,
-declaration collection) from a later eval phase.
+Pre-eval elimination collapses the current two-phase eval+serialize into a single
+buffered render pass. The frame chain (Track 1) and direct instance fields (Track 2)
+are prerequisites — once nodes are pure read-only templates and all lookup goes
+through the frame chain, the render pass can be a straightforward source-order walk.
 
-The render model here is the prerequisite for that work:
+### Why a flat string buffer is not enough
 
-- Once nodes are pure templates with no stored results, evaluation order becomes
-  a question of "in what order do we call `render`?" rather than "in what order
-  do we mutate the node tree?"
-- Source-order render is natural — walk `Rules.value` in order, render each child
-- The frame chain naturally builds up in source order as declarations are emitted
+Extends, `@import (reference)`, extend roots, and `@media` bubbling all require
+knowledge that is not yet available when the node is first encountered in a
+left-to-right render walk:
 
-That work belongs to a later slice. This proposal does not require it.
+- **Extends / reference visibility**: a later `:extend()` can activate a ruleset
+  encountered earlier, or expose a reference-imported ruleset that is otherwise
+  suppressed.
+- **Extend roots**: an extend can only target rulesets reachable from the same
+  root — reachability must be checked against all extend declarations, not just
+  those already seen.
+- **`@media` bubbling**: a `@media` block encountered inside a mixin body must
+  hoist to the top level and wrap the call-site selector context around its
+  content. Currently the `@media` node captures frames during eval and walks up
+  the parent chain during serialization — the same deferred-finalization pattern.
+
+### The buffered render model
+
+Instead of a flat `string[]`, the output buffer holds typed segments:
+
+```
+Segment = string | RulesetBlock | MergeSlot | HoistBlock
+```
+
+Most nodes push strings directly — literals, declarations, at-rules with no
+bubbling. Selector-bearing nodes push a `RulesetBlock` whose body is a nested
+`Segment[]`. `@media` and similar at-rules that need to bubble push a
+`HoistBlock` which carries the call-site selector context baked in at push time
+(rather than reaching back up the parent chain during serialization).
+
+Extends and reference-import state are collected into a side table during the
+render pass. No separate pre-pass is needed — the side table grows as the walk
+proceeds left-to-right.
+
+### Post-step
+
+After the render pass, a pure function `finalize(Segment[], ExtendRecord[]) →
+string` resolves the segment tree:
+
+1. For each `RulesetBlock`: test selector match, root visibility, and reference
+   activation against the extend side table. Apply augmentation or suppress.
+2. For each `HoistBlock`: emit at the correct level with the baked-in selector
+   wrapper applied.
+3. For each `MergeSlot`: combine accumulated same-property declarations.
+4. Concatenate all resolved segments to the final string.
+
+No AST access during the post-step — everything needed is in segment metadata
+that was baked in at render time.
 
 ---
 
@@ -1186,24 +1291,36 @@ narrow verifiable slices, each one removing a specific wrong pattern.
   declaration registry.
 - Slice 5: `varsByName` fast map on `Rules` for direct contextual variable
   lookup, bypassing the registry machinery for the hot path.
+- Slice 6: `ScopeFrame` introduced alongside the registry. `buildScopeFrame` /
+  `resolveFrameCell` in `scope-frame.ts`. Populated in parallel for verification.
+- Slice 7: `mixinsByName` fast map on `Rules`. Static-named mixin lookup
+  bypasses `MixinRegistry.find`.
+- Slice 8: `ScopeFrame` parent chain wired at mixin call time. `liveSlotsByName`
+  carries params. `resolveFrameCell` finds them via the call-site frame chain.
+- Slice 9: `liveSlotsByName` frame-chain walk is the primary mixin param lookup
+  path in `performLookup`. `runtimeVarBindings` kept as fallback. Only
+  `liveSlotsByName` walked (not `declarationBucketsByName`) to preserve Less
+  definition-site semantics for lexical vars.
 
 **Next slices:**
 
-- **Slice 6:** Introduce `ScopeFrame` alongside the current registry system.
-  Populate it incrementally. Add assertions comparing frame state with registry
-  state. No behavior change yet.
+- **Slice 10:** Remove `runtimeVarBindings` from `Rules` once confirmed all
+  param lookups go through `liveSlotsByName`. Remove the fork/renderKey system.
+  Delete `resolution: 'linear'`. Delete the generic `DeclarationRegistry` hot
+  path. Clean up.
 
-- **Slice 7:** Route ordinary variable lookup through the frame chain. Keep
-  a guarded fallback to the current registry path for correctness during
-  development.
+- **Track 2:** Node shape — direct instance fields on each node class, removing
+  the `value = Proxy(...)` pattern.
 
-- **Slice 8:** Route mixin invocation through the render model. Build the frame
-  chain at call time. Stop cloning mixin bodies.
+- **Track 3:** Less-compat adapter layer — explicit adapter classes replacing
+  the transparent `Proxy` shim.
 
-- **Slice 9:** Delete the fork/renderKey system. It has no remaining callers.
+- **Track 4:** Whitespace/trivia token proposal — `FormattingMap` replaces
+  `pre`/`post` fields; static declaration names become plain `string`.
 
-- **Slice 10:** Delete `resolution: 'linear'`. Delete the generic
-  `DeclarationRegistry` hot path. Clean up.
+- **Track 5:** Buffered render pass — typed `Segment[]` buffer with post-step
+  for extend finalization, reference visibility, and `@media` bubbling.
+  See "Relationship to Pre-Eval Elimination" above.
 
 Each slice keeps `pnpm --filter @jesscss/core test` green and keeps the focused
 mixin proof test green.
