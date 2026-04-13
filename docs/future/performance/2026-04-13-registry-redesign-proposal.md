@@ -243,12 +243,43 @@ type ScopeFrame = {
 
 ### OutputBuffer
 
-A typed segment accumulator. Most nodes push strings directly. Selector-bearing
-nodes and merge-accumulating declarations push structured segments that are
-finalized in a cheap post-step after the full render pass.
+#### The zero-extend fast path
+
+In practice, most stylesheets have few or zero extends and no `@import
+(reference)`. Allocating typed segment objects for every ruleset would add
+overhead on exactly the workloads where it buys nothing.
+
+The solution: **flag-gated buffer mode**. During `_indexRules` — which already
+walks every node — set flags on the root `Rules`:
 
 ```ts
-type Segment = string | RulesetBlock | MergeSlot
+_hasExtends: boolean        // any Extend node found during indexing
+_hasReferenceImports: boolean  // any @import (reference) resolved into this root
+```
+
+At render startup, choose the buffer mode once:
+
+```ts
+type RenderBuffer =
+  | { kind: 'flat';      parts: string[] }      // common case — no extends, no reference imports
+  | { kind: 'segmented'; segments: Segment[] }  // has extends or reference imports
+```
+
+In **flat mode** the ruleset render takes a direct branch: compose selector,
+append `selector {`, render body inline, append `}`. No `RulesetBlock`
+allocation, no post-step. This is the hot path for the overwhelming majority of
+real-world stylesheets.
+
+In **segmented mode** the ruleset render pushes a `RulesetBlock` as described
+below. The post-step runs after the walk.
+
+The flag check is a single branch at render startup. `_indexRules` already pays
+the traversal cost; the flag is free.
+
+#### Segment types (segmented mode only)
+
+```ts
+type Segment = string | RulesetBlock | MergeSlot | HoistBlock
 
 interface RulesetBlock {
   selector: SelectorSet   // live reference — not yet stringified
@@ -257,18 +288,21 @@ interface RulesetBlock {
   extendRoot: ExtendRoot  // which root this ruleset is reachable from (baked in at push time)
 }
 
+interface HoistBlock {
+  // @media bubbling: at-rule content that must appear at the root level,
+  // wrapping the call-site selector context captured at render time.
+  atRule: string          // e.g. '@media (max-width: 768px)'
+  selectorContext: SelectorSet | undefined
+  body: Segment[]
+}
+
 interface MergeSlot {
   property: string        // +: and +_: — collects all same-property decls in scope
   segments: Segment[]
 }
-
-type OutputBuffer = {
-  push(s: Segment): void;
-  toString(): string;     // runs the post-step, then joins
-};
 ```
 
-#### Extend side table
+#### Extend side table (segmented mode only)
 
 Collected in parallel during the render pass — not a separate pre-pass:
 
@@ -291,17 +325,22 @@ For each `RulesetBlock`:
    already-resolved `SelectorSet` objects rather than live AST nodes.
 2. **Root visibility** — `record.extendRoot` can reach `block.extendRoot`.
    Same predicate as `extend-roots.ts`, but purely over two `ExtendRoot` values
-   that were baked in at buffer-push time — no AST traversal at match time.
+   baked in at push time — no AST traversal at match time.
 3. **Reference visibility** — `block.isReference` suppresses output unless
-   the block matched steps 1+2.
+   matched by steps 1+2.
 
-This design handles all three constraints uniformly:
+For each `HoistBlock`: emit at root level with `selectorContext` wrapped around
+the body — the same output as the current parent-chain traversal during
+`toTrimmedString`, but with the context captured at render time rather than
+reconstructed at serialization time.
+
+For each `MergeSlot`: combine accumulated same-property declarations.
+
+This design handles all constraints uniformly:
 - Regular extends (selector augmentation)
 - `@import (reference)` visibility (only surface if extended)
 - Extend roots (only match across compatible roots)
-
-`@media` bubbling is a natural extension: a `HoistBlock` segment type causes
-the ruleset to be emitted at the enclosing at-rule level rather than inline.
+- `@media` bubbling (hoist to root level with call-site context)
 
 ---
 
@@ -1261,6 +1300,15 @@ bubbling. Selector-bearing nodes push a `RulesetBlock` whose body is a nested
 Extends and reference-import state are collected into a side table during the
 render pass. No separate pre-pass is needed — the side table grows as the walk
 proceeds left-to-right.
+
+#### Zero-cost for the common case
+
+Most stylesheets have few or zero extends. To avoid segment allocation overhead
+in those cases, `_indexRules` sets `_hasExtends` and `_hasReferenceImports`
+flags on the root `Rules` node. At render startup, the buffer mode is chosen
+once: **flat mode** (direct string writes, no `RulesetBlock` allocation, no
+post-step) when neither flag is set, **segmented mode** otherwise. See
+`OutputBuffer` in the Runtime Model section for the full design.
 
 ### Post-step
 
