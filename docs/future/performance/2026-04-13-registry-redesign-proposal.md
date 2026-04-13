@@ -894,7 +894,20 @@ just not the runtime scope chain. Scope is what the frame chain is for.
 | Two-pass eval + serialize | One-pass buffered render (flat mode for zero-extend case) |
 
 `FunctionRegistry` is not in this list — it is a plugin API for registering JS
-functions and serves a different purpose. It stays.
+functions, not an evaluation lookup registry. It stays, but its current
+per-`Rules` chain design can be made much cheaper:
+
+**Current shape**: one `FunctionRegistry` per `Rules` node; looking up a
+function walks an n-hop parent chain until it reaches the root.
+
+**Target shape**: one global `FunctionRegistry` for built-ins and plugin
+functions; a local per-scope `FunctionRegistry` only when a scope registers
+additional functions (rare). The local registry falls through to the global in a
+single hop — O(1) for the common case (no local functions), O(2) when local
+functions exist. API: a single `getLocalFunctionRegistry()` / `registerFunction()`
+on `Rules` that creates the local registry on demand and links it to the global.
+Callers always resolve against the local-most registry and pay at most one
+fallthrough to the global.
 
 ---
 
