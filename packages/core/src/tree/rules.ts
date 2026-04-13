@@ -43,6 +43,20 @@ export const enum Priority {
 }
 export type RulesVisibility = 'public' | 'optional' | 'private';
 
+export interface RuntimeVarBinding {
+  kind: 'runtime-var-binding';
+  value: Node;
+  readonly?: boolean;
+  sourceNode?: Node;
+}
+
+type RuntimeVarBindingRecord = {
+  name: string;
+  value: Node;
+  readonly?: boolean;
+  sourceNode?: Node;
+};
+
 export type RulesOptions = {
   /**
    * - public   = all members are considered in lookup algorithms
@@ -140,6 +154,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
+  runtimeVarBindings: Map<string, RuntimeVarBinding> | undefined;
+  /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
+  varsByName: Map<string, VarDeclaration[]> | undefined;
 
   rulesIndexed = 0;
   _indexing = false;
@@ -150,6 +167,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this._indexing = true;
     try {
+      // Initialize varsByName so the fast-path can distinguish
+      // "indexed (no vars)" from "not yet indexed" (undefined).
+      this.varsByName ??= new Map();
       let value = this.value;
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
@@ -187,8 +207,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules.rulesIndexed = 0;
     newRules._indexing = false;
     newRules._rulesSet = undefined;
+    newRules.runtimeVarBindings = undefined;
+    newRules.varsByName = undefined;
 
     return newRules;
+  }
+
+  setRuntimeVarBinding(name: string, binding: Omit<RuntimeVarBinding, 'kind'>): RuntimeVarBinding {
+    const runtimeBinding: RuntimeVarBinding = {
+      kind: 'runtime-var-binding',
+      ...binding
+    };
+    (this.runtimeVarBindings ??= new Map()).set(name, runtimeBinding);
+    return runtimeBinding;
+  }
+
+  findRuntimeVarBinding(name: string): RuntimeVarBinding | undefined {
+    let cursor: Node | undefined = this;
+    const visited = new Set<Rules>();
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        const scope = cursor as Rules;
+        if (visited.has(scope)) {
+          break;
+        }
+        visited.add(scope);
+        const binding = scope.runtimeVarBindings?.get(name);
+        if (binding) {
+          return binding;
+        }
+      }
+      cursor = cursor.parent ?? cursor.sourceParent;
+    }
+    return undefined;
   }
 
   /**
@@ -200,11 +251,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ) {
     let registry = this[`${type}Registry`];
     if (!registry) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
       let RegistryClass = Registries[`${className}Registry`];
       registry = new RegistryClass(this);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (this as any)[`${type}Registry`] = registry;
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const result = (registry as any).add(node);
     return result;
   }
@@ -222,13 +276,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
        * just to find. But the find methods have complex logic for searching parent
        * and children rules / registries.
        */
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
       let RegistryClass = Registries[`${className}Registry`];
       registry = new RegistryClass(this);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (this as any)[`${type}Registry`] = registry;
     }
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
+    } else {
+      // Even when no re-indexing is needed (empty or fully indexed), ensure
+      // varsByName is defined so the fast-path can distinguish this scope
+      // from one that has never been accessed via getRegistry at all.
+      this.varsByName ??= new Map();
     }
     return registry;
   }
@@ -249,6 +310,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options: Registries.FindOptions = {}
   ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     let registry = this.getRegistry(type);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return (registry as any).find(keys, filterType, options);
   }
 
@@ -461,11 +523,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.type !== 'Rules') {
         return false;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const rulesNode = node as Rules;
       if (rulesNode.value.length !== 1) {
         return false;
       }
       const only = rulesNode.value[0]!;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return only.type === 'Any' && (only.options as any)?.role === 'any';
     };
 
@@ -517,6 +581,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       const isChildRules = n.type === 'Rules';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const isLeafAtRule = n.type === 'AtRule' && !(n as AtRule).value.rules;
       const isRulesetOrAtRule = n.type === 'Ruleset' || (n.type === 'AtRule' && !isLeafAtRule);
       // Add indentation only for simple nodes (declarations, etc.)
@@ -532,6 +597,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       if (isChildRules) {
         const ownReferenceMode = (
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           (n.options as any)?.referenceMode === true
         );
         const childReferenceMode = referenceMode || ownReferenceMode;
@@ -548,6 +614,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isRulesetOrAtRule) {
         emitBoundaryIfNeeded(n);
         const mark = w.mark();
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(childOptions));
         const emitted = w.getSince(mark);
         if (!emitted && !rule) {
@@ -679,6 +746,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
     };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     iterateRules(this as unknown as Rules);
     return Object.fromEntries(output);
   }
@@ -738,6 +806,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
         // node.type is 'VarDeclaration' or 'Declaration', use it directly as filterType
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         let result = this.find('declaration', key, node.type as 'VarDeclaration' | 'Declaration', opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
@@ -745,6 +814,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
 
           // Find the Rules node that contains the found declaration
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           let foundRules: Rules | undefined = result.parent as Rules;
 
           if (!foundRules) {
@@ -779,6 +849,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       this.register('declaration', node);
+      if (isNode(node, N.VarDeclaration)) {
+        const name = (node as VarDeclaration).value.name.valueOf();
+        const map = (this.varsByName ??= new Map());
+        let arr = map.get(name);
+        if (!arr) {
+          map.set(name, arr = []);
+        }
+        arr.push(node as VarDeclaration);
+      }
     } else if (isNode(node, N.Ruleset)) {
       // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
@@ -816,6 +895,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
       const isNestableAtRuleBody =
         parentAtRule
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         && nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
       const first = rules.value?.[0];
       const isWrapper =
@@ -904,6 +984,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         rules.value[index] = (node as Any).preEval(context);
         return;
       }
@@ -951,6 +1032,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (saved.root !== undefined) {
           context.root = saved.root;
         }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return rules as this;
       }
       // Multi-pass resolution of dynamic nodes
@@ -1001,6 +1083,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._isStatic(name);
     }
     if (node.type === 'StyleImport') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const path = (node as any).value.path;
       return this._isStatic(path);
     }
@@ -1083,6 +1166,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (saved.root !== undefined) {
         context.root = saved.root;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return rules as this;
     };
 
@@ -1237,6 +1321,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.root = saved.root;
       }
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return rules as this;
   }
 
@@ -1258,6 +1343,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
     // and we don't want to lose leakyRules and other settings
     // IMPORTANT: Check _treeContext (private field) not treeContext (getter that lazily creates)
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const rulesTreeContext = (rules as any)._treeContext as TreeContext | undefined;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
       context.allRoots.push(rules);
@@ -1280,6 +1366,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         map.set(node as Ruleset, counter.value);
         counter.value++;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const innerRules = (node as Node & { value?: { rules?: unknown } }).value?.rules;
       if (innerRules && isNode(innerRules, N.Rules)) {
         this._assignDocumentOrderDepthFirst(innerRules as Rules, map, counter);
@@ -1298,14 +1385,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // value is a detached ruleset containing mixin definitions). This avoids changing evaluation
       // order for regular detached rulesets like `@ruleset()` used for property blocks.
       if (priority === Priority.None && rules.treeContext?.leakyRules === true && isNode(rule, N.Expression)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const inner = (rule as any).value;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         if (isNode(inner, N.Call) && isNode((inner as any).value?.name, N.Reference)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const ref = (inner as any).value.name;
           const refType = String(ref?.options?.type ?? '');
           if (refType === 'variable') {
             const raw = ref.value?.key;
             const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
             // Only if variable exists and its value is a detached ruleset Mixin with nested Mixin definitions.
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             const decl = rules.find('declaration', keyStr, 'VarDeclaration') as any;
             const val = decl?.value?.value;
             const hasNestedMixinDefinitions =
@@ -1382,6 +1473,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Path resolution is cheap (no cloning). Content evaluation errors
           // (after cloning the import tree) are never retried — each retry
           // would re-clone the entire tree, causing memory blowup.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const isPathError = error instanceof Error && (error as any)._isPathResolutionError;
           if (!isPathError) {
             throw error;
@@ -1806,6 +1898,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     context.rulesEvalStack.push(this.sourceNode as Rules);
     const restoreContextOnError = () => {
       context.rulesContext = saved.rulesContext;
@@ -1821,6 +1914,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           context.extendRoots.popExtendRoot();
         }
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === (this.sourceNode as Rules)) {
         context.rulesEvalStack.pop();
       }
@@ -1828,6 +1922,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     let pipeResult: MaybePromise<this>;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       pipeResult = pipe(
         () => {
           this._setupContextForRules(context, this);
@@ -2103,6 +2198,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!isNode(node, N.List | N.Sequence)) {
         return;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const items = node.value as Node[];
       if (items.length > 0) {
         items[0]!.pre = 0;
@@ -2113,9 +2209,20 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
       }
     };
+    const cloneBoundValue = (value: Node): Node => {
+      const boundValue = value.copy(true, freezeChildren);
+      boundValue.frozen = true;
+      normalizeBoundLeadingItemWhitespace(boundValue);
+      return boundValue;
+    };
+    const resolvedParamBindings = new WeakMap<Mixin, {
+      bindings: RuntimeVarBindingRecord[];
+      signature: List<Node> | undefined;
+    }>();
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
@@ -2125,12 +2232,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
         mixinCandidates.push(mixin);
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        let params = (mixin as Mixin).value.params!.copy(true);
-        const hasRestParamOriginal = (mixin as Mixin).value.params!.value.some(p => p.type === 'Rest');
-        const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : params.length;
-        let positions = params.length;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const originalParams = (mixin as Mixin).value.params!;
+        const bindingRecordsByIndex = new Map<number, RuntimeVarBindingRecord>();
+        const signatureNodes: Array<Node | undefined> = new Array(originalParams.length);
+        const hasRestParamOriginal = originalParams.value.some(p => p.type === 'Rest');
+        const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : originalParams.length;
+        let positions = originalParams.length;
         let requiredPositions = 0;
-        for (let param of params.value) {
+        for (let param of originalParams.value) {
           if (isNode(param, N.VarDeclaration)) {
             if (param.value.value instanceof Nil) {
               requiredPositions++;
@@ -2150,9 +2260,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
             continue;
           }
           let param: Node | undefined;
+          let paramIndex = -1;
           let argValue: Node;
           if (isNode(arg, N.VarDeclaration)) {
-            param = params.value.find(
+            paramIndex = originalParams.value.findIndex(
               (p) => {
                 if (isNode(p, N.VarDeclaration)) {
                   return p.value.name.valueOf() === arg.value.name.valueOf();
@@ -2163,14 +2274,16 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 return false;
               }
             );
-            if (param) {
+            if (paramIndex >= 0) {
+              param = originalParams.value[paramIndex];
               argValue = arg.value.value;
             } else {
               match = false;
               break;
             }
           } else {
-            param = params.value[i];
+            paramIndex = i;
+            param = originalParams.value[paramIndex];
             if (!param) {
               match = false;
               break;
@@ -2182,20 +2295,22 @@ export class MixinCollection extends Node<MixinEntry[]> {
             break;
           }
           if (isNode(param, N.VarDeclaration)) {
-            const boundValue = argValue.copy(true, freezeChildren);
-            boundValue.frozen = true;
-            normalizeBoundLeadingItemWhitespace(boundValue);
-            param.value.value = boundValue;
+            const boundValue = cloneBoundValue(argValue);
+            bindingRecordsByIndex.set(paramIndex, {
+              name: param.value.name.valueOf(),
+              value: boundValue,
+              readonly: param.options.readonly,
+              sourceNode: param
+            });
+            signatureNodes[paramIndex] = boundValue;
           } else if (isNode(param, N.Any) && param.options.role === 'property') {
-            // Convert Any with role: 'property' to VarDeclaration for registration
-            const boundValue = argValue.copy(true, freezeChildren);
-            boundValue.frozen = true;
-            normalizeBoundLeadingItemWhitespace(boundValue);
-            const varDecl = new VarDeclaration({
-              name: param as Any<'property'>,
-              value: boundValue
-            }, { paramVar: true });
-            params.value[i] = varDecl;
+            const boundValue = cloneBoundValue(argValue);
+            bindingRecordsByIndex.set(paramIndex, {
+              name: param.valueOf(),
+              value: boundValue,
+              sourceNode: param
+            });
+            signatureNodes[paramIndex] = boundValue;
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
             const rest = nodeArgs.slice(argPos).map((restArg) => {
@@ -2203,13 +2318,16 @@ export class MixinCollection extends Node<MixinEntry[]> {
               cloned.frozen = true;
               return cloned;
             });
-            /** Create a new variable with the rest name */
-            params.value[i] = new VarDeclaration({
-              name: new Any(param.value ? `${param.value}` : `rest${i}`, { role: 'property' }) as Any<'property'>,
-              value: new Sequence(rest)
+            const restValue = new Sequence(rest);
+            const restName = param.value ? `${param.value}` : `rest${i}`;
+            bindingRecordsByIndex.set(paramIndex, {
+              name: restName,
+              value: restValue
             });
+            signatureNodes[paramIndex] = restValue;
             /** Check a pattern-matching node */
           } else {
+            signatureNodes[paramIndex] = argValue;
             if (param.compare(argValue) !== 0) {
               /** This mixin is not a match */
               match = false;
@@ -2230,16 +2348,48 @@ export class MixinCollection extends Node<MixinEntry[]> {
           /** This mixin is not a match */
           continue;
         }
-        if (nodeArgs.length > 1 && params.value.length === 1 && requiredPositions === 1) {
+        if (nodeArgs.length > 1 && originalParams.value.length === 1 && requiredPositions === 1) {
           // Less should not match single required-parameter overloads against extra positional args.
           continue;
         }
         if (match) {
-          /** Make a shallow copy to attach our resolved params (w/ args) */
-          let originalMixin = mixin;
-          mixin = mixin.copy();
-          originalMixin.parent!.adopt(mixin);
-          (mixin as Mixin).value.params = params;
+          for (let i = 0; i < positions; i++) {
+            const param = originalParams.value[i]!;
+            if (signatureNodes[i]) {
+              continue;
+            }
+            if (isNode(param, N.VarDeclaration)) {
+              const defaultValue = cloneBoundValue(param.value.value);
+              bindingRecordsByIndex.set(i, {
+                name: param.value.name.valueOf(),
+                value: defaultValue,
+                readonly: param.options.readonly,
+                sourceNode: param
+              });
+              signatureNodes[i] = defaultValue;
+            } else if (param.type === 'Rest') {
+              const restName = param.value ? `${param.value}` : `rest${i}`;
+              const restValue = thisContext.treeContext?.file
+                ? new Sequence([])
+                : new Any(restName, { role: 'property' });
+              bindingRecordsByIndex.set(i, {
+                name: restName,
+                value: restValue
+              });
+              signatureNodes[i] = restValue;
+            }
+          }
+          const signature = new List(
+            signatureNodes.filter((node): node is Node => Boolean(node)),
+            { sep: ';' }
+          );
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          resolvedParamBindings.set(mixin as Mixin, {
+            bindings: [...bindingRecordsByIndex.entries()]
+              .sort((a, b) => a[0] - b[0])
+              .map(([, binding]) => binding),
+            signature
+          });
           mixinCandidates.push(mixin);
         }
       }
@@ -2260,6 +2410,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return true;
       }
       if (node.type === 'Call') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
         if (callName === 'default' || callName === '??') {
           return true;
@@ -2275,6 +2426,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return false;
       }
       if (value && typeof value === 'object') {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const record = value as Record<string, unknown>;
         for (const item of Object.values(record)) {
           if (isNode(item) && guardContainsDefault(item)) {
@@ -2306,12 +2458,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
     };
     evalCandidates = mixinCandidates
       .filter((candidate) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const inStack = thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const blockedByFailedGuardAncestor = hasFailedGuardAncestor(candidate as unknown as Node);
         return !inStack && !blockedByFailedGuardAncestor;
       })
       .map<MixinEntry>(
         (candidate) => {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(candidate.value.guard as unknown as Node | undefined);
           if (hasDefaultGuard) {
             candidate.options ??= {};
@@ -2381,17 +2536,22 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (originatesFromReferenceImport(node)) {
         return;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if ((node.options as any)?.referenceMode === true) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (node.options as any).referenceMode = false;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const nestedRules = (node as any).value?.rules;
       if (nestedRules && isNode(nestedRules, N.Rules)) {
         clearReferenceModeForMixinOutput(nestedRules as Node);
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const children = (node as any).value;
       if (Array.isArray(children)) {
         for (const child of children) {
           if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             clearReferenceModeForMixinOutput(child as Node);
           }
         }
@@ -2480,11 +2640,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(newRules as unknown as Node);
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
         // This allows other candidates to still match
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
           // Skip this candidate - recursion detected
           return;
@@ -2539,6 +2701,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark output Rules as mixin output - accessible only when lookup has a target
         rules.options.isMixinOutput = restrictMixinOutputLookup;
         rules.options.referenceMode = false;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(rules as unknown as Node);
         outputRules.push(rules);
         continue;
@@ -2554,6 +2717,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
         unlocked.options.referenceMode = false;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(unlocked as unknown as Node);
         unlocked.index = candidate.index;
         outputRules.push(unlocked);
@@ -2578,8 +2742,12 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let outerRules: Rules | undefined;
 
       /** Now we need to add our parameters, if any */
-      let params = candidate.value.params;
-      if (params) {
+      const resolvedBindingInfo = isNode(candidate, N.Mixin)
+        ? resolvedParamBindings.get(candidate as Mixin)
+        : undefined;
+      let params = resolvedBindingInfo?.signature;
+      const paramBindings = resolvedBindingInfo?.bindings ?? [];
+      if (candidate.value.params || paramBindings.length > 0) {
         outerRules = Rules.create([], {
           rulesVisibility: {
             Ruleset: 'public',
@@ -2591,77 +2759,26 @@ export class MixinCollection extends Node<MixinEntry[]> {
         (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
         outerRules.sourceParent = sourceParent;
         outerRules.index = candidate.index;
-
-        for (let i = 0; i < params.value.length; i++) {
-          let param = params.value[i]!;
-          if (param.type === 'Rest') {
-            // Rest parameters need to be converted to VarDeclaration for registration
-            // Auto-generate a name if Rest doesn't have one (Less allows unnamed rest params)
-            let restName: string;
-            if (typeof param.value === 'string') {
-              restName = param.value;
-            } else {
-              // Auto-generate name: "rest", "rest1", "rest2", etc. based on position
-              // Check if there are other rest params to avoid conflicts
-              let restCount = 0;
-              for (let j = 0; j < i; j++) {
-                const p = params.value[j]!;
-                if (p.type === 'Rest') {
-                  restCount++;
-                }
-              }
-              restName = restCount === 0 ? 'rest' : `rest${restCount + 1}`;
-            }
-
-            // Convert Rest to VarDeclaration so it can be registered and referenced.
-            // If matching did not populate a node value, default to an empty sequence
-            // (not a literal name/Nil), so @tail... behaves as "no remaining args".
-            const restValue = isNode(param.value)
-              ? param.value
-              : (
-                  thisContext.treeContext?.file
-                    ? new Sequence([])
-                    : new Any(restName, { role: 'property' })
-                );
-            const restVarDecl = new VarDeclaration({
-              name: new Any(restName, { role: 'property' }),
-              value: restValue
-            }, { paramVar: true });
-
-            // Replace Rest with VarDeclaration in params
-            params.value[i] = restVarDecl;
-            param = restVarDecl;
+        for (const binding of paramBindings) {
+          if (isNode(binding.sourceNode, N.VarDeclaration)) {
+            binding.sourceNode.options ??= {};
+            binding.sourceNode.options.paramVar = true;
+            binding.sourceNode.removeFlag(F_VISIBLE);
           }
-
-          if (isNode(param, N.VarDeclaration)) {
-            // Assign negative indices so they're conceptually "before" the rules and found first
-            if (param.index === undefined) {
-              // Use negative indices starting from -1, -2, etc. so they sort before regular rules
-              param.index = -(i + 1);
-            }
-            // Mark as parameter var so it can be stripped from mixin output after evaluation.
-            param.options ??= {};
-            param.options.paramVar = true;
-            // Keep parameter vars lookupable but hidden in normal output.
-            // They still render in tests that set Node.fullRender=true.
-            param.removeFlag(F_VISIBLE);
-            outerRules.push(param);
-          }
-          // Note: Any with role: 'property' should have been converted to VarDeclaration during matching
-          // If we see one here, it's an error - params should all be VarDeclaration by now
+          outerRules.setRuntimeVarBinding(binding.name, {
+            value: binding.value,
+            readonly: binding.readonly,
+            sourceNode: binding.sourceNode
+          });
         }
         const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
         if (shouldDefineArguments) {
           const argumentsArgs: Node[] = [];
-          const argumentsDecl = new VarDeclaration({
-            name: new Any('arguments', { role: 'property' }),
-            value: new Sequence(argumentsArgs)
-          }, { readonly: true, paramVar: true });
-          argumentsDecl.removeFlag(F_VISIBLE);
-          outerRules.push(argumentsDecl);
-          const paramValues = params?.value
-            .filter((p): p is VarDeclaration => isNode(p, N.VarDeclaration))
-            .map(p => p.value.value);
+          outerRules.setRuntimeVarBinding('arguments', {
+            value: new Sequence(argumentsArgs),
+            readonly: true
+          });
+          const paramValues = paramBindings.map(binding => binding.value);
           const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
           for (const argNode of argumentNodes) {
             // If a Rest param collected args into a Sequence, spread its items
@@ -2827,6 +2944,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // Ensure single output rule is marked as mixin output
       output.options.isMixinOutput = restrictMixinOutputLookup;
       output.options.referenceMode = false;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       clearReferenceModeForMixinOutput(output as unknown as Node);
     } else {
       /**

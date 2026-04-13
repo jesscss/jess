@@ -13,7 +13,7 @@ import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
-import type { MixinEntry, Rules } from './rules.js';
+import type { MixinEntry, Rules, RuntimeVarBinding } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
@@ -87,6 +87,71 @@ export type ReferenceOptions = {
   filter?: (node: Node) => boolean;
   role?: AnyRole;
 };
+
+const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
+  value !== null
+  && typeof value === 'object'
+  && 'kind' in value
+  && value.kind === 'runtime-var-binding'
+);
+
+/**
+ * Fast parent-chain walk for ordinary VarDeclaration lookup.
+ *
+ * Bypasses the full declaration-registry machinery (Set creation, indexPendingItems,
+ * Set→Array conversion, sort, _searchRulesChildren) for the dominant hot case:
+ * lexical variables looked up from nested scopes.
+ *
+ * Invariant: `varsByName === undefined` means the scope has not yet been indexed
+ * by `_indexRules`. `varsByName` is initialized to an empty Map at the start of
+ * `_indexRules` so that "indexed with no vars" is distinguishable from "not indexed".
+ *
+ * When `varsByName` is undefined the fast path bails immediately (returns undefined),
+ * causing the caller to fall back to the full declaration registry which will trigger
+ * indexing and warm up `varsByName` for all visited scopes. Subsequent lookups then
+ * use the fast path for the entire chain.
+ *
+ * Rules: last entry in varsByName wins (Less "last definition wins" semantics).
+ * Only valid when ignoreCurrentScopeStart + ignoreParentScopeStart are both true
+ * (which is exactly what reference.ts sets for type === 'variable').
+ */
+function findVarDeclarationFast(
+  startRules: Rules,
+  name: string,
+  filter: (n: Node) => boolean
+): Node | undefined {
+  let cursor: Node | undefined = startRules;
+  let first = true;
+  while (cursor) {
+    if (isNode(cursor, N.Rules)) {
+      const scope = cursor as Rules;
+      if (!first) {
+        // Stop at non-classic-import boundaries (same as DeclarationRegistry.find)
+        const sn = scope.sourceNode;
+        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          break;
+        }
+      }
+      first = false;
+      if (!scope.varsByName) {
+        // Scope not yet indexed — bail so the full registry path runs and warms it up
+        return undefined;
+      }
+      const candidates = scope.varsByName.get(name);
+      if (candidates) {
+        for (let i = candidates.length - 1; i >= 0; i--) {
+          const candidate = candidates[i]!;
+          if (filter(candidate)) {
+            return candidate;
+          }
+        }
+      }
+      // No match at this scope; continue up the chain
+    }
+    cursor = cursor.parent ?? cursor.sourceParent;
+  }
+  return undefined;
+}
 const { isArray } = Array;
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
@@ -269,6 +334,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     const result = pipe(
       () => {
         if (isThenable(resolvedTarget)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           return (resolvedTarget as Promise<any>).then(result => result);
         }
         return resolvedTarget;
@@ -286,8 +352,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return [resolvedTarget, normalizeSelectorReferenceKey(k)] as [any, string | string[]];
             }
             if (Array.isArray(k)) {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
               return [resolvedTarget, k] as [any, string[]];
             }
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             return [resolvedTarget, k.valueOf()] as [any, string];
           });
         }
@@ -295,9 +363,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           return [resolvedTarget, normalizeSelectorReferenceKey(out)] as [any, string | string[]];
         }
         if (Array.isArray(out)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           return [resolvedTarget, out] as [any, string[]];
         }
         const normalizedKey = isNode(out) ? out.valueOf() : out;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return [resolvedTarget, normalizedKey] as [any, string];
       },
       ([resolvedTarget, valueKey]) => {
@@ -355,19 +425,24 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * We accumulate the new key and use registry lookup to verify the compound match
          */
         if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const mixinResult = (resolvedTarget as Ruleset).value.rules.eval(context);
           if (isThenable(mixinResult)) {
             return (mixinResult as Promise<Rules>).then((rules) => {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
               rules.inherit((resolvedTarget as Ruleset).value.rules);
               return [rules, valueKey] as [Node, string | string[]];
             });
           } else {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             mixinResult.inherit((resolvedTarget as Ruleset).value.rules);
             resolvedTarget = mixinResult as Rules;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             return [resolvedTarget, valueKey] as [Node, string | string[]];
           }
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return [resolvedTarget, valueKey] as [Node, string | string[]];
       },
       ([resolvedTarget, valueKey]) => {
@@ -455,6 +530,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 if (isNode(targetRules, N.Rules)) {
                   return targetRules.at(valueKey);
                 } else if (isNode(targetRules, N.JsArray)) {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                   return atIndex((targetRules as any).value, valueKey);
                 }
               } else {
@@ -463,6 +539,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   const indexFilterType = isNode(this.value.key, N.Quoted) ? 'Declaration' as const : 'VarDeclaration' as const;
                   return targetRules.find('declaration', `${keyStr}`, indexFilterType, opts);
                 } else if (isNode(targetRules, N.JsObject)) {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                   return (targetRules as any).value[keyStr];
                 }
               }
@@ -471,6 +548,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'variable':
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
+                if (type === 'variable') {
+                  const runtimeBinding = targetRules.findRuntimeVarBinding(`${keyStr}`);
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+                  if (runtimeBinding && !context.searchScope.has(runtimeBinding.sourceNode as Node)) {
+                    return runtimeBinding;
+                  }
+                  // Fast path: walk varsByName maps directly, skipping declaration-registry
+                  // machinery. Uses the same .parent ?? .sourceParent traversal as
+                  // findRuntimeVarBinding, which is proven correct under active renderKeys.
+                  {
+                    const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter);
+                    if (fast !== undefined) {
+                      return fast;
+                    }
+                  }
+                }
                 const declarationType = type === 'property' ? 'Declaration' : 'VarDeclaration';
                 const found = targetRules.find('declaration', `${keyStr}`, declarationType, opts);
                 if (found !== undefined) {
@@ -597,9 +690,34 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
           return out;
         }
+        if (isRuntimeVarBinding(returnVal)) {
+          const bindingSource = returnVal.sourceNode;
+          if (bindingSource) {
+            context.searchScope.add(bindingSource);
+          }
+          return pipe(
+            () => {
+              returnVal.value.frozen = true;
+              return returnVal.value.eval(context);
+            },
+            (evald) => {
+              if (bindingSource) {
+                context.searchScope.delete(bindingSource);
+              }
+              const out = evald.copy(true, freezeChildren).inherit(evald);
+              out.frozen = true;
+              out.pre = this.pre;
+              out.post = this.post;
+              out.sourceParent = this;
+              return out;
+            }
+          );
+        }
         if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           context.searchScope.add(returnVal as Node);
           const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).value.important;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const declValue = (returnVal as Declaration).value.value;
           const normalizedAssign = isNode(returnVal, N.Declaration)
             ? returnVal.options?.normalizedFromAssign
@@ -622,6 +740,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return declValue.eval(context);
             },
             (evald) => {
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
               context.searchScope.delete(returnVal as Node);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
@@ -649,6 +768,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 } else if (mergedItems.length === 1) {
                   out = mergedItems[0]!;
                 } else {
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                   out = new List(mergedItems) as unknown as typeof out;
                 }
               }
@@ -666,6 +786,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               return cast(undefined);
             }
           }
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           return new MixinCollection(returnVal as MixinEntry[]);
         }
         const result = cast(returnVal);

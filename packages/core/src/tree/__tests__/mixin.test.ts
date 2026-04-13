@@ -1,5 +1,5 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp } from '../index.js';
-import { Context } from '../../context.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, Rules as RulesClass } from '../index.js';
+import { Context, TreeContext } from '../../context.js';
 
 let context: Context;
 
@@ -170,7 +170,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
           color: blue;
         }
       `);
@@ -215,11 +214,9 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
-          $color: red;
           color: red;
         }
         .test2 {
-          $color: blue;
           color: blue;
         }
       `);
@@ -347,9 +344,9 @@ describe('Mixin', () => {
       const evald = await root.eval(context);
       const css = evald.toString();
 
-      expect(css).toContain("default: top level;");
-      expect(css).toContain("scope: top level;");
-      expect(css).toContain("sub-scope-only: inside;");
+      expect(css).toContain('default: top level;');
+      expect(css).toContain('scope: top level;');
+      expect(css).toContain('sub-scope-only: inside;');
     });
 
     it('should call a mixin with multiple parameters', async () => {
@@ -385,8 +382,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $size: 16px;
           color: blue;
           font-size: 16px;
         }
@@ -421,6 +416,131 @@ describe('Mixin', () => {
       context.root = root;
 
       await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
+    });
+
+    it('resolves param/default/rest/@arguments bindings without declaration lookup', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration' && typeof key === 'string' && ['color', 'size', 'rest', 'arguments'].includes(key)) {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.my-mixin'),
+          params: list([
+            any('color', { role: 'property' }),
+            vardecl({ name: 'size', value: any('16px') }, { paramVar: true }),
+            rest('rest')
+          ]),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
+            decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) }),
+            decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+          ])
+        });
+
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+              args: list([any('blue'), any('1px'), any('2px'), any('3px')])
+            })
+          ])
+        });
+
+        const root = rules([mixinDef, testRuleset]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = evald.toString();
+
+        expect(css).toBeString(`
+          .test {
+            color: blue;
+            font-size: 1px;
+            padding: 2px 3px;
+            margin: blue 1px 2px 3px;
+          }
+        `);
+        expect(declarationHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('resolves lexical variable bindings without declaration-registry lookup', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'declaration' && typeof key === 'string' && key === 'base-color') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        // Lexical global: @base-color defined once at root, referenced inside mixin body
+        const mixinDef = mixin({
+          name: any('.my-mixin'),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
+            decl({ name: 'outline-color', value: ref({ key: 'base-color' }, { type: 'variable' }) })
+          ])
+        });
+
+        const root = rules([
+          vardecl({ name: 'base-color', value: any('steelblue') }),
+          mixinDef,
+          ruleset({
+            selector: el('.test'),
+            rules: rules([
+              call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = evald.toString();
+
+        expect(css).toBeString(`
+          .test {
+            color: steelblue;
+            border-color: steelblue;
+            outline-color: steelblue;
+          }
+        `);
+        // After the first lookup warms up varsByName, subsequent lookups for
+        // the same lexical variable bypass DeclarationRegistry.find entirely.
+        // The first lookup may trigger one full-registry call to index the scope;
+        // subsequent lookups (2nd and 3rd) must hit 0.
+        expect(declarationHits.length).toBeLessThanOrEqual(1);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
     });
 
     it('should call a mixin with a guard condition', async () => {
@@ -470,7 +590,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
-          $color: red;
           color: red;
         }
       `);
@@ -521,8 +640,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $color: blue;
-          $color: blue;
           color: blue;
         }
       `);
@@ -619,8 +736,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
         }
       `);
@@ -988,8 +1103,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: rest;
           padding: rest;
         }
       `);
@@ -1027,8 +1140,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px;
           margin: 20px;
         }
       `);
@@ -1066,8 +1177,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px 40px;
           padding: 20px 30px 40px;
         }
       `);
@@ -1106,9 +1215,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $b: 20px;
-          $rest: 30px 40px;
           margin: 30px 40px;
         }
       `);
@@ -1147,8 +1253,6 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
-          $a: 10px;
-          $rest: 20px 30px;
           margin: 20px 30px;
           padding: 20px 30px;
         }
@@ -1210,16 +1314,10 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test1 {
-          $a: 10px;
-          $b: 20px;
           color: red;
-          $a: 10px;
-          $rest: 20px;
           color: blue;
         }
         .test2 {
-          $a: 10px;
-          $rest: 20px 30px;
           color: blue;
         }
       `);
