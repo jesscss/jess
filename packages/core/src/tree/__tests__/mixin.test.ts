@@ -704,6 +704,58 @@ describe('Mixin', () => {
       }
     });
 
+    it('frame live slots (slice 9): mixin param lookup goes via frame chain, not runtimeVarBindings', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = RulesClass.prototype.findRuntimeVarBinding;
+      const rtvbHits: string[] = [];
+      RulesClass.prototype.findRuntimeVarBinding = function(name: string) {
+        if (name === 'color') {
+          rtvbHits.push(name);
+        }
+        return originalFind.call(this, name);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.colored'),
+          params: list([any('color', { role: 'property' })]),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: 'border-color', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({
+              name: ref({ key: '.colored' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })])
+          })
+        ]);
+        context.root = root;
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: red;
+            border-color: red;
+          }
+        `);
+
+        // Both @color references in the body must resolve via the frame live slot,
+        // never hitting the runtimeVarBindings chain walk.
+        expect(rtvbHits.length).toBe(0);
+      } finally {
+        RulesClass.prototype.findRuntimeVarBinding = originalFind;
+      }
+    });
+
     it('should call a mixin with a guard condition', async () => {
       // Create a mixin with a guard: .my-mixin(@color) when (@color = red) { color: @color; }
       const mixinDef = mixin({

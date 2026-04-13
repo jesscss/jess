@@ -13,7 +13,8 @@ Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit doc
 - [x] Slice 6 — `ScopeFrame` introduced alongside registry; `buildScopeFrame` / `resolveFrameCell` in `scope-frame.ts`
 - [x] Slice 7 — `mixinsByName` fast map on `Rules`; static-named mixin lookup bypasses `MixinRegistry.find`
 - [x] Slice 8 — Wire `ScopeFrame` parent chain at mixin call time; `outerRules.scopeFrame.liveSlotsByName` carries params; `resolveFrameCell` finds them via frame chain with call-site parent
-- [ ] Slice 9 — Delete fork/renderKey system (no remaining callers)
+- [x] Slice 9 — `liveSlotsByName` frame-chain walk is the primary mixin param lookup path in `performLookup`; `runtimeVarBindings` kept as fallback; only `liveSlotsByName` walked (not `declarationBucketsByName`) to preserve Less definition-site semantics for lexical vars
+- [ ] Slice 10 — Delete fork/renderKey system; retire `runtimeVarBindings` chain once frame chain covers all param cases; delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
 - [ ] Slice 10 — Delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
 
 ### Track 2 — Node Shape: Direct Instance Fields
@@ -321,30 +322,33 @@ is made faithful to the real benchmark execution path.
 
 ## Next Step
 
-Slices 1–7 complete. Mixin-param, ordinary lexical-variable, and static-named
-mixin lookup hot paths all bypass the generic registry machinery.
+Slices 1–9 complete. Mixin-param, ordinary lexical-variable, and static-named
+mixin lookup hot paths all bypass the generic registry machinery. The `ScopeFrame`
+parent chain is live at call time, and `liveSlotsByName` is the primary param
+lookup path — `runtimeVarBindings` is now a fallback only.
 
-The remaining smell:
+Key design constraint discovered in Slice 9: **only `liveSlotsByName` is safe to
+walk via the call-site frame chain**. `declarationBucketsByName` stores lexical
+vars that follow Less definition-site semantics — using the call-site frame parent
+for those would return wrong values (call-site definitions instead of definition-site
+definitions). The frame chain is used only for params; lexical vars still go through
+`findVarDeclarationFast` / `findRuntimeVarBinding`.
 
-- parsed default params still naturally exist as `VarDeclaration` nodes in the
-  AST (not a correctness issue; just a shape mismatch)
-- `ScopeFrame` is built and `resolveFrameCell` works, but the frame chain parent
-  wiring (call-site lexical chain) is not yet live — that's Slice 8
-- `resolution: 'linear'` still exists in `reference.ts` and should eventually be
-  deleted (it was a mis-named attempt at call-time contextual lookup) — Slice 10
+The next code slice (Slice 10):
 
-The next code slice (Slice 9):
-
-1. Route actual variable lookup through the frame chain (`resolveFrameCell`)
-   instead of `runtimeVarBindings` + `findVarDeclarationFast` separately.
-2. Once frame chain is the primary lookup path, remove `runtimeVarBindings`
-   from `Rules`.
-3. Remove the fork/renderKey system — no remaining callers once the frame chain
-   is live.
-4. Keep verifying with:
+1. Remove `runtimeVarBindings` from `Rules` once all mixin-param callers are
+   confirmed to go through `liveSlotsByName`. Run full test suite to verify.
+2. Remove the fork/renderKey system — no remaining callers once the frame chain
+   is the sole param path.
+3. Delete `resolution: 'linear'` from `reference.ts` (it is guarded out of the
+   fast path already; the mode itself is vestigial).
+4. Delete the generic `DeclarationRegistry` hot path once `varsByName` and
+   `mixinsByName` cover all cases.
+5. Keep verifying with:
 
    ```sh
    pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts
+   pnpm --filter @jesscss/core test
    ```
 
 ## Constraints To Preserve
