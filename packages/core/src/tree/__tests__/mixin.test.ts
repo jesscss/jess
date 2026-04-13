@@ -1,5 +1,6 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { resolveFrameCell } from '../scope-frame.js';
 
 let context: Context;
 
@@ -541,6 +542,45 @@ describe('Mixin', () => {
       } finally {
         RulesClass.prototype.find = originalFind;
       }
+    });
+
+    it('ScopeFrame (slice 6): declarationBucketsByName matches registry state after eval', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const root = rules([
+        vardecl({ name: 'brand', value: any('blue') }),
+        vardecl({ name: 'size', value: any('16px') }),
+        vardecl({ name: 'brand', value: any('navy') })  // shadows first — last wins
+      ]);
+      context.root = root;
+
+      await root.eval(context);
+
+      // varsByName is populated after eval (via _indexRules during registry access)
+      const frame = root.getScopeFrame();
+
+      // Frame should have both declared names
+      expect(frame.declarationBucketsByName.has('brand')).toBe(true);
+      expect(frame.declarationBucketsByName.has('size')).toBe(true);
+
+      // Last-definition-wins: 'brand' bucket has two entries; last wins
+      const brandBucket = frame.declarationBucketsByName.get('brand')!;
+      expect(brandBucket).toHaveLength(2);
+      expect(brandBucket[brandBucket.length - 1]!.cell.value.valueOf()).toBe('navy');
+
+      // resolveFrameCell should return the same winner as the registry
+      const frameResult = resolveFrameCell('brand', frame);
+      expect(frameResult).toBeDefined();
+      expect(frameResult!.cell.value.valueOf()).toBe('navy');
+
+      const sizeResult = resolveFrameCell('size', frame);
+      expect(sizeResult).toBeDefined();
+      expect(sizeResult!.cell.value.valueOf()).toBe('16px');
+
+      // A name not in the scope resolves to undefined
+      expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
     it('should call a mixin with a guard condition', async () => {

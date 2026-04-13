@@ -32,6 +32,7 @@ import { List } from './list.js';
 import { indent, normalizeIndent, serializeRulesContainerInline } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
+import { type ScopeFrame, buildScopeFrame } from './scope-frame.js';
 const { isArray } = Array;
 
 export const enum Priority {
@@ -157,6 +158,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   runtimeVarBindings: Map<string, RuntimeVarBinding> | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
+  /**
+   * Slice 6: ScopeFrame built alongside the existing registry.
+   * undefined until first accessed via getScopeFrame().
+   */
+  scopeFrame: ScopeFrame | undefined;
 
   rulesIndexed = 0;
   _indexing = false;
@@ -209,8 +215,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules._rulesSet = undefined;
     newRules.runtimeVarBindings = undefined;
     newRules.varsByName = undefined;
+    newRules.scopeFrame = undefined;
 
     return newRules;
+  }
+
+  /**
+   * Lazily build and cache the ScopeFrame for this scope.
+   * Requires _indexRules() to have run so varsByName is populated.
+   *
+   * Slice 6: frame is populated from varsByName (static-key VarDeclarations only).
+   * Parent frame wiring is added in a later slice.
+   */
+  getScopeFrame(parent?: ScopeFrame): ScopeFrame {
+    if (!this.scopeFrame) {
+      this.scopeFrame = buildScopeFrame(this.varsByName, this, parent);
+    }
+    return this.scopeFrame;
   }
 
   setRuntimeVarBinding(name: string, binding: Omit<RuntimeVarBinding, 'kind'>): RuntimeVarBinding {
