@@ -12,7 +12,7 @@ Related docs:
 - [2026-04-13-less-benchmark-investigation-tickets.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-less-benchmark-investigation-tickets.md)
 - [node-copy-reduction/README.md](/Users/matthew/git/oss/jess/docs/future/node-copy-reduction/README.md)
 - [node-copy-reduction/HANDOFF.md](/Users/matthew/git/oss/jess/docs/future/node-copy-reduction/HANDOFF.md)
-- [pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md) — later architecture slice; the emit model here is the prerequisite
+- [pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md) — later architecture slice; the render model here is the prerequisite
 
 ---
 
@@ -88,21 +88,22 @@ do not overwrite each other.
 **The fix: collapse both passes into one.**
 
 ```
-one pass — emit:  walk the node tree (as a read-only template),
+one pass — render:  walk the node tree (as a read-only template),
                   resolve references on the fly against a binding frame,
                   write output directly to an output buffer
 ```
 
-Nothing is stored on the node. The node is just a description of what to emit.
+Nothing is stored on the node. The node is just a description of what to render.
 Two invocations of the same mixin body walk the same template with different
 binding frames and write to different positions in the output buffer. No
 intermediate storage. No clone needed.
 
 ```
-emit(node, evalCtx) → writes to evalCtx.outputBuffer
+render(node, ctx) → void   // writes directly to ctx.outputBuffer
+resolve(node, ctx) → Node  // value-returning: resolves without writing
 ```
 
-Where `evalCtx` carries:
+Where `ctx` carries:
 - the active **binding frame** (where variable values live)
 - the current **selector context** (what selector prefix this output belongs to)
 - the **output buffer** (where CSS output goes)
@@ -183,7 +184,7 @@ The `renderKey` / fork system becomes unnecessary entirely.
 
 ### EvalContext
 
-Passed through every `emit` call. Carries everything the current invocation
+Passed through every `render` call. Carries everything the current invocation
 needs.
 
 ```ts
@@ -254,15 +255,20 @@ type OutputBuffer = {
 
 ---
 
-## How Each Node Type Emits
+## How Each Node Type Renders
 
-The `emit(node, ctx)` function dispatches by node type. Each case reads from
+The `render(node, ctx)` function dispatches by node type. Each case reads from
 `ctx.frame` and writes to `ctx.outputBuffer`. The source node is never mutated.
+
+`node.eval(ctx)` is the existing entry point — in the new model it will call
+`render(node, ctx)` internally. The current two-phase behavior (eval → mutate
+node, then serialize) is replaced by this single render pass. `node.toString()`
+/ `node.toTrimmedString()` remain for literal nodes that need no frame context.
 
 ### Literal nodes (Any, Color, Dimension, keyword, etc.)
 
 ```
-emit(node, ctx):
+render(node, ctx):
   ctx.outputBuffer.append(node.toTrimmedString())
 ```
 
@@ -272,7 +278,7 @@ majority of nodes in a real stylesheet — most values are literals.
 ### Reference nodes (@color, $var)
 
 ```
-emit(ref, ctx):
+render(ref, ctx):
   cell = resolveCell(ref.name, ctx.frame)
   ctx.outputBuffer.append(cell.value.toTrimmedString())
 ```
@@ -284,42 +290,43 @@ Either way: no registry, no Set, no sort.
 ### Expression nodes (function calls, operations)
 
 ```
-emit(expr, ctx):
-  args = expr.args.map(arg => evalEphemeral(arg, ctx))
+render(expr, ctx):
+  args = expr.args.map(arg => resolve(arg, ctx))
   result = applyFunction(expr.fn, args)   // returns a Node
   ctx.outputBuffer.append(result.toTrimmedString())
   // result is discarded — not stored anywhere
 ```
 
-`evalEphemeral` resolves the argument value (possibly a reference, possibly a
-nested expression) against the frame and returns it as a Node value. That value
-is passed to `applyFunction`, which computes the result (e.g. `darken(blue,
-10%)` → a Color node). The result's string goes into the buffer. The result node
-is then garbage collected — it was never stored on any AST node.
+`resolve(node, ctx)` is the value-returning sibling of `render`. It resolves
+a node against the current frame and returns its evaluated Node form — it does
+not write to the buffer. Used wherever a computed value is needed before the
+buffer write (function arguments, guard conditions, key resolution in dynamic
+declarations). The caller decides what to do with the result; any intermediate
+nodes are then garbage-collected — never stored on any AST node.
 
 ### Declaration nodes (background: @color)
 
 ```
-emit(decl, ctx):
-  ctx.outputBuffer.append(emit(decl.name, ctx))
+render(decl, ctx):
+  render(decl.name, ctx)    // writes name to buffer
   ctx.outputBuffer.append(': ')
-  emit(decl.value, ctx)
+  render(decl.value, ctx)   // writes value to buffer
   ctx.outputBuffer.append(';')
 ```
 
-The declaration node delegates to `emit` for its name and value. If the value
-is a reference, `emit` resolves it from the frame. If it is a literal, `emit`
+The declaration node delegates to `render` for its name and value. If the value
+is a reference, `render` resolves it from the frame. If it is a literal, `render`
 appends it directly. The declaration node itself stores nothing.
 
 ### Ruleset nodes (.inner { ... } inside a mixin body)
 
 ```
-emit(ruleset, ctx):
+render(ruleset, ctx):
   composedSelector = compose(ctx.selectorContext, ruleset.selector)
   ctx.outputBuffer.append(composedSelector.toTrimmedString() + ' {')
   childCtx = ctx.withSelector(composedSelector)
   for child in ruleset.rules.value:
-    emit(child, childCtx)
+    render(child, childCtx)
   ctx.outputBuffer.append('}')
 ```
 
@@ -424,7 +431,7 @@ in source order — a forward reference must be visible:
 Most declaration names are plain literals (`@color`, `@base-hue`, `@i`).
 For these, the bucket **can** be pre-populated from the AST when the scope
 frame is created — a single O(n) scan over `Rules.value`, inserting
-`VarDeclaration` nodes in source order into the Map. By the time the emit
+`VarDeclaration` nodes in source order into the Map. By the time the render
 pass starts, every statically-named declaration is already in its bucket.
 Every lookup for the lifetime of the frame is then a direct `Map.get` +
 array tail read.
@@ -522,7 +529,7 @@ resolveCell(name, frame):
 
   // 3. Dynamic declarations — scan and resolve keys, uncommon
   for decl in frame.pendingDynamicDecls (reverse source order):
-    resolvedKey = evalEphemeral(decl.name, frame)
+    resolvedKey = resolve(decl.name, ctx)   // value-returning: returns string key
     if resolvedKey === name:
       entry = insertIntoBucket(frame, resolvedKey, decl)  // cache for next time
       return entry.cell
@@ -538,7 +545,7 @@ resolveCell(name, frame):
 - **Static contextual var from enclosing scope**: step 2 misses, step 4 hops
   to parent, repeat.
 - **Forward reference** (definition after reference in source): visible because
-  the bucket was pre-populated from the full AST before the emit pass started
+  the bucket was pre-populated from the full AST before the render pass started
   — for static keys. Dynamic forward references resolved at first access.
 - **Interpolated / variable-variable declaration**: step 3. Slow path, but rare.
 
@@ -586,9 +593,9 @@ ctx = EvalContext {
   outputBuffer: buf
 }
 
-emit(Rules[background: @color, .inner{...}], ctx):
+render(Rules[background: @color, .inner{...}], ctx):
 
-  emit(Declaration[background: @color], ctx):
+  render(Declaration[background: @color], ctx):
     name  → 'background'
     value → Reference('color')
               → resolveCell('color', frame)
@@ -596,10 +603,10 @@ emit(Rules[background: @color, .inner{...}], ctx):
               → 'blue'
     buf ← 'background: blue;'
 
-  emit(Ruleset[.inner { border: 1px solid @color }], ctx):
+  render(Ruleset[.inner { border: 1px solid @color }], ctx):
     composedSelector = '.a .inner'
     buf ← '.a .inner {'
-    emit(Declaration[border: 1px solid @color], ctx.withSelector('.a .inner')):
+    render(Declaration[border: 1px solid @color], ctx.withSelector('.a .inner')):
       value → 1px solid + Reference('color') → Color(blue)
       buf ← 'border: 1px solid blue;'
     buf ← '}'
@@ -635,7 +642,7 @@ Some mixins use Less namespace-export semantics (`leakyRules`): variables or
 mixins defined inside the body become visible in the caller's scope after the
 call returns.
 
-In this case `ctx.leaky = true`. When the emit pass encounters a
+In this case `ctx.leaky = true`. When the render pass encounters a
 `VarDeclaration` or `Mixin` definition inside the body, it registers the
 binding into `ctx.frame.parent` (the caller's frame) in addition to emitting
 it. The registration is a `Map.set` into a `BindingCell` — still no synthetic
@@ -676,7 +683,7 @@ just not the runtime scope chain. Scope is what the frame chain is for.
 | `_searchRulesChildren` recursion | Frame chain hop |
 | Synthetic `VarDeclaration` nodes for params | Live `BindingCell` in frame slot |
 | `resolution: 'linear'` code path | Deleted — frame chain handles this |
-| Two-pass eval + serialize | One-pass emit |
+| Two-pass eval + serialize | One-pass render |
 
 ---
 
@@ -749,7 +756,7 @@ wrapped in a Proxy. The Proxy intercepts property assignments and calls
 `adopt(child)` which sets `child.parent = this`. This exists so that writing
 `this.value.name = x` automatically updates `x`'s parent pointer.
 
-In the emit model, parsed nodes are constructed once and never mutated during
+In the render model, parsed nodes are constructed once and never mutated during
 evaluation. The Proxy is therefore pure overhead on the hot path — the benchmark
 audit already shows it at ~1.2% of CPU.
 
@@ -775,7 +782,7 @@ Benefits:
 - No Proxy intercept cost on every field read
 - Stable V8 hidden classes — all Declaration instances have the same shape
 - Direct field access: `decl.name` instead of `decl.value.name`
-- Better inline cache hit rates on the hot emit path
+- Better inline cache hit rates on the hot render path
 
 The external API — passing an options object to the constructor — stays the
 same. The constructor destructures and stores directly, calling `adopt()`
@@ -793,9 +800,9 @@ constructor({ name, value, important }: DeclarationOptions) {
 }
 ```
 
-### `.parent` in the emit model
+### `.parent` in the render model
 
-`adopt()` sets `child.parent = this`. In the emit model, `.parent` is not
+`adopt()` sets `child.parent = this`. In the render model, `.parent` is not
 consulted during evaluation at all — scope resolution uses `evalCtx.frame`,
 selector composition uses `evalCtx.selectorContext`. `.parent` becomes purely
 **document structure**: where in the source tree was this node defined.
@@ -804,8 +811,8 @@ It is still needed for cold-path operations:
 
 - **Extend resolution** — which rulesets are structurally related in the document
 - **Error reporting** — where in the source file does this node live
-- **Import boundary detection** — encoded in `frame.importMode` during emit,
-  but still needed for structural analysis outside of emit
+- **Import boundary detection** — encoded in `frame.importMode` during render,
+  but still needed for structural analysis outside of render
 
 None of those are hot paths.
 
@@ -814,7 +821,7 @@ None of those are hot paths.
 The single-parent constraint (`child.parent` is one pointer) would force cloning
 if the same node needed to appear in multiple structural positions simultaneously.
 
-In the emit model this does not happen. A mixin body has **one structural
+In the render model this does not happen. A mixin body has **one structural
 position** — where it is defined in the source. `.parent` at the definition
 site is set once at parse time and is correct. The mixin body is then *invoked*
 in many places, but those invocations produce output in the buffer by walking
@@ -828,7 +835,7 @@ selectors go to `evalCtx.selectorContext` — and the single-parent constraint
 becomes a non-issue. The template is one node, walked N times, `.parent`
 untouched throughout.
 
-**Cloning is eliminated by the emit model. The single-parent constraint on
+**Cloning is eliminated by the render model. The single-parent constraint on
 `.parent` is not the obstacle; the node-parent-as-scope-chain pattern was.**
 
 Adoption still happens during parse and node construction — not during
@@ -844,7 +851,7 @@ is the right shape: cheap construction, zero evaluation-time overhead.
   the node graph as the collection source, but collect-all-then-filter semantics
   are unchanged
 - Declaration merging (`+:` / `+_:`) semantics are preserved — all merge entries
-  per scope are stored in the bucket array and combined during emit
+  per scope are stored in the bucket array and combined during render
 - The node graph is still the source of truth for structure
 - Extend, import, and selector composition logic are separate concerns — this
   proposal does not change them
@@ -947,12 +954,12 @@ property within the same scope are combined into one output declaration.
 **In the frame model:**
 
 `propertyBucketsByName` (and `declarationBucketsByName` for variable merges)
-holds all entries in source order. When emitting a scope's properties, the emit
+holds all entries in source order. When rendering a scope's properties, the render
 logic checks whether any entries for a given name carry merge flags:
 
 - If no merge flags: last entry wins (same as ordinary contextual lookup)
 - If merge flags present: collect all merge-flagged entries in source order,
-  combine their values with the appropriate separator, emit the merged result
+  combine their values with the appropriate separator, render the merged result
 
 Merging is a frame-local operation — it applies to entries within one
 `ScopeFrame`'s bucket. Entries from parent frames are not merged with entries
@@ -962,11 +969,11 @@ from child frames (they are shadowed by the child, same as without merging).
 emitPropertyBucket(name, entries, ctx):
   if any entry has mergeFlag:
     mergeEntries = entries.filter(e => e.mergeFlag)
-    combined = join(mergeEntries.map(e => emit(e.value, ctx)), separator)
+    combined = join(mergeEntries.map(e => render(e.value, ctx)), separator)
     ctx.outputBuffer.append(name + ': ' + combined + ';')
   else:
     // last definition wins
-    emit(entries[entries.length - 1].value, ctx)
+    render(entries[entries.length - 1].value, ctx)
 ```
 
 The key point: both cases (mixin candidates and merge declarations) store
@@ -988,12 +995,12 @@ Pre-eval elimination is a separate later slice. It proposes evaluating nodes in
 source order rather than separating a pre-eval phase (priority ordering,
 declaration collection) from a later eval phase.
 
-The emit model here is the prerequisite for that work:
+The render model here is the prerequisite for that work:
 
 - Once nodes are pure templates with no stored results, evaluation order becomes
-  a question of "in what order do we call `emit`?" rather than "in what order
+  a question of "in what order do we call `render`?" rather than "in what order
   do we mutate the node tree?"
-- Source-order emit is natural — walk `Rules.value` in order, emit each child
+- Source-order render is natural — walk `Rules.value` in order, render each child
 - The frame chain naturally builds up in source order as declarations are emitted
 
 That work belongs to a later slice. This proposal does not require it.
@@ -1023,7 +1030,7 @@ narrow verifiable slices, each one removing a specific wrong pattern.
   a guarded fallback to the current registry path for correctness during
   development.
 
-- **Slice 8:** Route mixin invocation through the emit model. Build the frame
+- **Slice 8:** Route mixin invocation through the render model. Build the frame
   chain at call time. Stop cloning mixin bodies.
 
 - **Slice 9:** Delete the fork/renderKey system. It has no remaining callers.
@@ -1070,7 +1077,7 @@ The fix is to separate them:
 
 - **Template**: the node graph, unchanged, read-only during evaluation
 - **Lookup**: the frame chain, built at call time, walked by reference resolution
-- **Output**: the output buffer, written directly during the emit pass
+- **Output**: the output buffer, written directly during the render pass
 
 With those separated:
 
@@ -1078,7 +1085,7 @@ With those separated:
 - **No forks** — the frame chain is the scope chain; node parents are document
   structure only
 - **No registry machinery** — lookup is a `Map.get` plus a frame chain walk
-- **No two-pass eval + serialize** — the emit pass is both at once
+- **No two-pass eval + serialize** — the render pass is both at once
 
 Serialization IS evaluation. Walk the template, resolve from the frame, write to
 the buffer. Done.
