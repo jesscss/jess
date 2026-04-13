@@ -14,6 +14,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { MixinEntry, Rules, RuntimeVarBinding } from './rules.js';
+import type { Mixin } from './mixin.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
 import type { Ruleset } from './ruleset.js';
@@ -152,6 +153,50 @@ function findVarDeclarationFast(
   }
   return undefined;
 }
+/**
+ * Fast parent-chain walk for static-named Mixin lookup.
+ *
+ * Mirrors findVarDeclarationFast: only covers Mixin nodes whose name was
+ * indexed into mixinsByName (non-interpolated Any name). Ruleset-as-mixin
+ * and interpolated-name mixins still go through the full MixinRegistry.
+ *
+ * Returns an array of Mixin candidates (all matching entries across scopes)
+ * or undefined if any scope in the chain is not yet indexed (triggering
+ * full-registry fallback which warms it up).
+ */
+function findMixinFast(
+  startRules: Rules,
+  key: string
+): Mixin[] | undefined {
+  const results: Mixin[] = [];
+  let cursor: Node | undefined = startRules;
+  let first = true;
+  while (cursor) {
+    if (isNode(cursor, N.Rules)) {
+      const scope = cursor as Rules;
+      if (!first) {
+        const sn = scope.sourceNode;
+        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          break;
+        }
+      }
+      first = false;
+      if (!scope.mixinsByName) {
+        // Scope not yet indexed — bail so full registry warms it up
+        return undefined;
+      }
+      const candidates = scope.mixinsByName.get(key);
+      if (candidates) {
+        for (let i = candidates.length - 1; i >= 0; i--) {
+          results.push(candidates[i]!);
+        }
+      }
+    }
+    cursor = cursor.parent ?? cursor.sourceParent;
+  }
+  return results;
+}
+
 const { isArray } = Array;
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
@@ -248,7 +293,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { type = 'variable', resolution, fallbackValue, role } = this.options;
+    let { type = 'variable', resolution, fallbackValue } = this.options;
     let { target, key, rawKey } = this.value;
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
@@ -557,7 +602,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   // Fast path: walk varsByName maps directly, skipping declaration-registry
                   // machinery. Uses the same .parent ?? .sourceParent traversal as
                   // findRuntimeVarBinding, which is proven correct under active renderKeys.
-                  {
+                  // Guard: only valid when position is fully ignored (ignoreParentScopeStart).
+                  // Positional lookups (resolution: 'linear') must use the full registry path.
+                  if (opts.ignoreParentScopeStart) {
                     const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter);
                     if (fast !== undefined) {
                       return fast;
@@ -627,6 +674,23 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'mixin-ruleset':
               if (isNode(targetRules, N.Rules)) {
+                // Fast path: single static string key → check mixinsByName before full registry.
+                // Only covers Mixin nodes (not Ruleset-as-mixin); falls through for:
+                //   - array keys (compound/namespace paths like .a > .b)
+                //   - interpolated names (not in mixinsByName at all)
+                //   - any scope not yet indexed (mixinsByName === undefined)
+                if (typeof valueKey === 'string') {
+                  const fast = findMixinFast(targetRules, valueKey);
+                  if (fast !== undefined) {
+                    // fast is an array; if non-empty, return it (same shape as full registry result).
+                    // If empty, fall through — there may be Ruleset-as-mixin candidates in the registry.
+                    if (fast.length > 0) {
+                      return fast;
+                    }
+                    // Empty fast result + all scopes indexed: no static Mixin candidates.
+                    // Still fall through to full registry in case Rulesets match.
+                  }
+                }
                 const mixinOrRuleset = targetRules.find('mixin', valueKey, undefined, opts);
                 if (mixinOrRuleset) {
                   return mixinOrRuleset;

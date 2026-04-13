@@ -159,6 +159,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
   /**
+   * Fast map: mixin start-key → ordered list of Mixin nodes with that plain name.
+   * Only covers Mixin nodes whose name is a static (non-interpolated) Any node.
+   * undefined means not yet indexed; an empty Map means indexed with no static mixins.
+   * Ruleset-as-mixin candidates still go through the full MixinRegistry.
+   */
+  mixinsByName: Map<string, Mixin[]> | undefined;
+  /**
    * Slice 6: ScopeFrame built alongside the existing registry.
    * undefined until first accessed via getScopeFrame().
    */
@@ -173,9 +180,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this._indexing = true;
     try {
-      // Initialize varsByName so the fast-path can distinguish
-      // "indexed (no vars)" from "not yet indexed" (undefined).
+      // Initialize fast maps so the hot-path can distinguish
+      // "indexed (nothing found)" from "not yet indexed" (undefined).
       this.varsByName ??= new Map();
+      this.mixinsByName ??= new Map();
       let value = this.value;
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
@@ -215,6 +223,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules._rulesSet = undefined;
     newRules.runtimeVarBindings = undefined;
     newRules.varsByName = undefined;
+    newRules.mixinsByName = undefined;
     newRules.scopeFrame = undefined;
 
     return newRules;
@@ -308,9 +317,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._indexRules();
     } else {
       // Even when no re-indexing is needed (empty or fully indexed), ensure
-      // varsByName is defined so the fast-path can distinguish this scope
+      // fast maps are defined so the hot-path can distinguish an indexed scope
       // from one that has never been accessed via getRegistry at all.
       this.varsByName ??= new Map();
+      this.mixinsByName ??= new Map();
     }
     return registry;
   }
@@ -886,6 +896,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.register('mixin', node);
     } else if (isNode(node, N.Mixin)) {
       this.register('mixin', node);
+      // Fast map: only static (non-interpolated) names get an O(1) entry.
+      // Interpolated mixin names fall through to the full MixinRegistry.
+      // Guard: skip when called from _indexRules (_indexing=true) — those nodes were
+      // already added during _multiPassPreEval and we must not double-count.
+      if (!this._indexing) {
+        const mixinName = (node as Mixin).value.name;
+        if (mixinName && mixinName.type !== 'Interpolated') {
+          const key = mixinName.valueOf() as string;
+          const mm = (this.mixinsByName ??= new Map());
+          let arr = mm.get(key);
+          if (!arr) {
+            mm.set(key, arr = []);
+          }
+          arr.push(node as Mixin);
+        }
+      }
     } else if (isNode(node, N.Func)) {
       this.register('function', node);
     }
@@ -1002,7 +1028,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     // Process each node with static name, handling both sync and async preEval
     const processResult = serialForEach(rules.value, (node, index) => {
-      // Check if node has a static name (can be registered immediately)
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1043,6 +1068,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     const finish = () => {
+      // Stamp fast maps so the hot-path (findVarDeclarationFast / findMixinFast) can distinguish
+      // "preEval completed with nothing registerable" from "scope never processed at all".
+      rules.varsByName ??= new Map();
+      rules.mixinsByName ??= new Map();
       // If no dynamic nodes, we're done
       if (dynamicNodes.length === 0) {
         // Restore context after preEval is complete

@@ -3,7 +3,57 @@
 Date: `2026-04-13`
 Branch: `dev`
 Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit docs`)
-Status: Fourth core runtime slice started, not yet committed
+
+## Work Checklist
+
+### Track 1 — Registry Bypass (Transition Slices)
+
+- [x] Slices 1–4 — mixin params → `RuntimeVarBinding` cells; params bypass declaration registry
+- [x] Slice 5 — `varsByName` fast map on `Rules`; lexical variable lookup bypasses declaration registry
+- [x] Slice 6 — `ScopeFrame` introduced alongside registry; `buildScopeFrame` / `resolveFrameCell` in `scope-frame.ts`
+- [x] Slice 7 — `mixinsByName` fast map on `Rules`; static-named mixin lookup bypasses `MixinRegistry.find`
+- [ ] Slice 8 — Route mixin invocation through render model; build frame chain at call time; stop cloning mixin bodies
+- [ ] Slice 9 — Delete fork/renderKey system (no remaining callers)
+- [ ] Slice 10 — Delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
+
+### Track 2 — Node Shape: Direct Instance Fields
+
+Replace the current `value = Proxy({ name, value, ... })` pattern with direct typed class fields on each node class (e.g. `decl.name`, `decl.value`). Stable V8 hidden classes, no per-node Proxy allocation, no Proxy intercept cost.
+
+- [ ] Audit all node classes for field shape (`declaration.ts`, `ruleset.ts`, `mixin.ts`, etc.)
+- [ ] Migrate fields off `value` proxy to direct class properties with explicit `adopt()` calls
+- [ ] Update all call sites in `core`, `fns`, parsers, and plugins to use new field accessors
+- [ ] Update `less-compat` adapter layer to map old `value.name` / `value.value` paths to new fields
+- [ ] Remove `value` proxy infrastructure from `Node` base class once all subclasses migrated
+
+### Track 3 — Less-Compat Adapter Layer
+
+Replace the transparent `Proxy`-based compat shim with explicit typed adapter classes (e.g. `LessRuleset`, `LessDeclaration`). V8-inlineable getters, no per-node Proxy, explicit API surface.
+
+- [ ] Design adapter class interface for each Less-exposed node type
+- [ ] Implement adapter classes (`jess-plugin-less-compat` package)
+- [ ] Replace `isLessProxy` / `getJessNodeFromProxy` checks with `instanceof` guards
+- [ ] Remove the `Proxy` factory from the compat layer
+- [ ] Verify Less compatibility suite still green after switch
+
+### Track 4 — Whitespace / Trivia Token Proposal
+
+Replace `pre`/`post` string fields on nodes with an offset-keyed `FormattingMap`. Static declaration names become plain strings (not `Any` nodes), which simplifies static-vs-dynamic detection in `ScopeFrame` and removes a Proxy allocation per declaration.
+
+- [ ] Finalize `FormattingMap` design (keyed by source offset or node identity)
+- [ ] Remove `pre`/`post` from `Node` base class
+- [ ] Migrate trivia storage to `FormattingMap` in serialization path
+- [ ] Static `name` fields on `VarDeclaration`, `Declaration`, `Mixin` become plain `string` (not `Any`)
+- [ ] Update `ScopeFrame` / `varsByName` / `mixinsByName` to key directly on `string` without `.valueOf()` call
+
+### Track 5 — Pre-Eval Elimination
+
+Registry redesign (Track 1) and direct instance fields (Track 2) are prerequisites. Once nodes are pure read-only templates and lookup goes through the frame chain, the two-phase eval+serialize collapses to a single render pass.
+
+- [ ] Eliminate `preEval` phase from `_multiPassPreEval` — frame creation at render time replaces it
+- [ ] Collapse `eval` + `toTrimmedString` into a single `render(ctx, buf)` method per node type
+- [ ] Remove `evalNode` / `preEval` from node base class once all call sites migrated
+- [ ] Verify end-to-end output parity with pre-existing test baselines
 
 ## Read This First
 
@@ -271,33 +321,26 @@ is made faithful to the real benchmark execution path.
 
 ## Next Step
 
-Slices 1–5 complete. The mixin-param and ordinary lexical-variable hot paths
-are now bypassing the generic declaration-registry machinery.
+Slices 1–7 complete. Mixin-param, ordinary lexical-variable, and static-named
+mixin lookup hot paths all bypass the generic registry machinery.
 
 The remaining smell:
 
 - parsed default params still naturally exist as `VarDeclaration` nodes in the
   AST (not a correctness issue; just a shape mismatch)
-- the broader registry architecture is not yet cut over beyond these two paths
-- `resolution: 'linear'` still exists in reference.ts and should eventually be
-  deleted (it was a mis-named attempt at call-time contextual lookup)
+- `ScopeFrame` is built and `resolveFrameCell` works, but the frame chain parent
+  wiring (call-site lexical chain) is not yet live — that's Slice 8
+- `resolution: 'linear'` still exists in `reference.ts` and should eventually be
+  deleted (it was a mis-named attempt at call-time contextual lookup) — Slice 10
 
-The next architectural direction (not necessarily the next immediate slice) is
-described in the updated proposal:
+The next code slice (Slice 8):
 
-- `ScopeFrame` with live binding cells and contextual buckets replacing generic
-  registries
-- pure-evaluation mixin invocation — mixin body evaluated as a function over
-  live cells, output emitted immediately, no node mutation for results, no fork
-  needed (except for mixins with `leakyRules` / namespace-export semantics where
-  cross-call state is intentional)
-
-The next code slice priority:
-
-1. Continue in `core` with focused proofs.
-2. Consider the callable registry as the next hot target: mixin lookup still
-   goes through the generic registry path for start-key resolution.
-3. Keep verifying with:
+1. Wire `ScopeFrame` parent chain at mixin call time (call-site lexical chain,
+   not definition-site `.parent` chain).
+2. Route mixin body evaluation through the live frame rather than the cloned
+   wrapper `Rules`.
+3. Remove the `mixin.copy()` / fork path for static-named mixins.
+4. Keep verifying with:
 
    ```sh
    pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts

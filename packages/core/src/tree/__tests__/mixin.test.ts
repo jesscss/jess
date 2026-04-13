@@ -583,6 +583,66 @@ describe('Mixin', () => {
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
+    it('mixinsByName fast path (slice 7): static-named mixin skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      // Intercept Rules.find to detect when the full registry is consulted for 'mixin' type
+      const originalFind = RulesClass.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'mixin' && typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.fast-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.c'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: green;
+          }
+          .b {
+            color: green;
+          }
+          .c {
+            color: green;
+          }
+        `);
+
+        // All 3 calls should resolve via mixinsByName fast path.
+        // The first call warms up mixinsByName; subsequent calls skip the registry entirely.
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('should call a mixin with a guard condition', async () => {
       // Create a mixin with a guard: .my-mixin(@color) when (@color = red) { color: @color; }
       const mixinDef = mixin({
