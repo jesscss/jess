@@ -225,6 +225,62 @@ describe('Mixin', () => {
       `);
     });
 
+    it('leaks non-param vars from mixin output in leaky Less mode', async () => {
+      const setHeight = mixin({
+        name: any('.setHeight'),
+        params: list([
+          any('h', { role: 'property' })
+        ]),
+        rules: rules([
+          vardecl({ name: 'height', value: any('1024px') })
+        ])
+      });
+
+      const useHeight = mixin({
+        name: any('.useHeightInMixinCall'),
+        params: list([
+          any('h', { role: 'property' })
+        ]),
+        rules: rules([
+          ruleset({
+            selector: el('.useHeightInMixinCall'),
+            rules: rules([
+              decl({ name: 'mixin-height', value: ref({ key: 'h' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      const root = rules([
+        setHeight,
+        useHeight,
+        vardecl({ name: 'mainHeight', value: any('50%') }),
+        call({
+          name: ref({ key: '.setHeight' }, { type: 'mixin' }),
+          args: list([ref({ key: 'mainHeight' }, { type: 'variable' })])
+        }),
+        ruleset({
+          selector: el('.heightIsSet'),
+          rules: rules([
+            decl({ name: 'height', value: ref({ key: 'height' }, { type: 'variable' }) })
+          ])
+        }),
+        call({
+          name: ref({ key: '.useHeightInMixinCall' }, { type: 'mixin' }),
+          args: list([ref({ key: 'height' }, { type: 'variable' })])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.heightIsSet');
+      expect(css).toContain('height: 1024px;');
+      expect(css).toContain('.useHeightInMixinCall');
+      expect(css).toContain('mixin-height: 1024px;');
+    });
+
     it('should call a mixin with multiple parameters', async () => {
       // Create a mixin with multiple parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({

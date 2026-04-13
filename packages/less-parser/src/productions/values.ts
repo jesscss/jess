@@ -9,6 +9,7 @@ import {
   Node,
   Any,
   Block,
+  For,
   List,
   Sequence,
   Call,
@@ -22,6 +23,7 @@ import {
   Num,
   Negative,
   Rest,
+  VarDeclaration,
   Expression,
   INTERPOLATION_PLACEHOLDER,
   isNode,
@@ -71,6 +73,66 @@ function startsCustomValueToken($: P, T: TokenMap): boolean {
     || $.isType(T.Comma)
     || $.isType(T.Important)
     || $.isType(T.Unknown);
+}
+
+function createEachPattern(
+  mixin: Node,
+  location: LocationInfo,
+  context: any
+): {
+  kind: 'single';
+  value: VarDeclaration;
+} | {
+  kind: 'tuple';
+  values: [VarDeclaration, ...VarDeclaration[]];
+} {
+  const defaultVars = ['value', 'key', 'index'].map((name) => {
+    return new VarDeclaration({
+      name: new Any(name, { role: 'property' }),
+      value: new Any('', { role: 'any' })
+    }, { paramVar: true }, location, context);
+  });
+
+  if (!isNode(mixin, N.Mixin) || !mixin.value.params) {
+    return {
+      kind: 'tuple',
+      values: defaultVars as [VarDeclaration, ...VarDeclaration[]]
+    };
+  }
+
+  const params = mixin.value.params.value
+    .map((param: Node) => {
+      if (isNode(param, N.VarDeclaration)) {
+        return param;
+      }
+      if (isNode(param, N.Any) && param.options.role === 'property') {
+        return new VarDeclaration({
+          name: param as Any<'property'>,
+          value: new Any('', { role: 'any' })
+        }, { paramVar: true }, param.location, context);
+      }
+      return undefined;
+    })
+    .filter((param): param is VarDeclaration => Boolean(param));
+
+  if (params.length === 0) {
+    return {
+      kind: 'tuple',
+      values: defaultVars as [VarDeclaration, ...VarDeclaration[]]
+    };
+  }
+
+  if (params.length === 1) {
+    return {
+      kind: 'single',
+      value: params[0]!
+    };
+  }
+
+  return {
+    kind: 'tuple',
+    values: params as [VarDeclaration, ...VarDeclaration[]]
+  };
 }
 
 // ── Production rules ──────────────────────────────────────────────────
@@ -816,6 +878,19 @@ export function functionCall(this: P, T: TokenMap) {
               location,
               $.context
             );
+          }
+          if (
+            nameValue === 'each'
+            && args?.value.length === 2
+            && isNode(args.value[1], N.Mixin)
+          ) {
+            const iterable = args.value[0]!;
+            const callback = args.value[1]!;
+            return new For({
+              pattern: createEachPattern(callback, location, $.context),
+              iterable: { kind: 'node', value: iterable },
+              rules: callback.value.rules
+            }, undefined, location, $.context);
           }
           const nameNode = new Reference(nameValue, { type: 'function', fallbackValue: true }, $.getLocationInfo(fnStart), $.context);
           /** Less / Sass functions we try to call that throw just get turned into calls. */

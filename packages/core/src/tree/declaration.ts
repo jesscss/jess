@@ -1,5 +1,6 @@
 import {
   Node,
+  CANONICAL,
   F_STATIC,
   defineType,
   type LocationInfo
@@ -84,6 +85,37 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override allowRuleRoot = true;
 
+  private formatNonCustomValue(valOut: string, options: PrintOptions) {
+    const trimmedEnd = valOut.replace(/\s+$/g, '');
+    if (!trimmedEnd.includes('\n')) {
+      return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
+    }
+
+    const continuationIndent = '  ';
+    const lines = trimmedEnd.split('\n');
+    let out = '';
+    const [firstLine = '', ...restLines] = lines;
+    const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
+
+    if (firstContent) {
+      out = ` ${firstContent}`;
+    }
+
+    for (const line of restLines) {
+      if (!line.trim()) {
+        out += '\n';
+        continue;
+      }
+
+      const lineIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
+      const content = line.replace(/^[ \t]+/g, '').trimEnd();
+      const normalizedIndent = ' '.repeat(Math.max(continuationIndent.length, lineIndent));
+      out += `\n${normalizedIndent}${content}`;
+    }
+
+    return out || `\n${continuationIndent}`;
+  }
+
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
     return !isNode(this.value.value, N.Collection) && !isNode(this.value.value, N.Mixin);
@@ -123,11 +155,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } catch (error: unknown) {
         throw error;
       }
-      // Remove leading / trailing whitespace
-      const normalizedValue = valOut.replace(/^[ \t]+|\s+$/g, '');
-      // Ensure exactly one space after ':' by adding one space
-      w.add(' ');
-      w.add(normalizedValue, value);
+      w.add(this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important) {
           let imp = w.capture(() => important.toString(options));
@@ -145,6 +173,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
+    const { renderKey } = context;
+    const needsCanonicalReset = renderKey !== undefined
+      && this._renderKey !== undefined
+      && this._renderKey !== renderKey;
+
+    if (needsCanonicalReset) {
+      this.getValue(CANONICAL);
+    }
+
+    const needsReeval = renderKey !== undefined
+      && this.preEvaluated
+      && (
+        !this._renderKey
+        || this._renderKey !== renderKey
+      );
+
+    if (needsReeval) {
+      this.getValue(CANONICAL);
+      this.preEvaluated = false;
+      this.evaluated = false;
+    }
+
     /** We need to clone declarations, because we alter their options */
     let node = this.maybeClone(context);
     node.preEvaluated = true;
@@ -154,6 +204,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
     let { name, value } = node.value;
+    const { renderKey } = context;
+    const setName = (newName: Any<'property'>) => {
+      node.set('name', newName, renderKey);
+    };
+    const setValue = (newValue: Node) => {
+      node.set('value', newValue, renderKey);
+      value = newValue;
+    };
 
     const applyAssignmentNormalization = (key: Any<'property'>) => {
       /** Normalize assignment types */
@@ -191,7 +249,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             value = isMergeListAssign
               ? new List([ref, value])
               : spaced([ref, value]);
-            node.value.value = value;
+            setValue(value);
             break;
           }
           case AssignmentType.Add: {
@@ -199,7 +257,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               // Less property `+:` appends comma-separated items.
               // Use list composition (not generic `Operation +`) so scalar previous values
               // remain distinct list members rather than string-concatenating.
-              node.value.value = new List([
+              setValue(new List([
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
@@ -208,23 +266,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   filter: n => n !== node
                 }),
                 value
-              ]);
+              ]));
             } else {
-              node.value.value =
+              setValue(
                 new Operation([
                   new Reference({ key }, { type }),
                   '+',
                   value
-                ]);
+                ])
+              );
             }
             break;
           }
           case AssignmentType.CondAssign: {
-            node.value.value =
+            setValue(
               new Reference({ key }, {
                 type,
                 fallbackValue: value
-              });
+              })
+            );
             break;
           }
         }
@@ -234,24 +294,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const out = node.value.value.preEval(context);
       if (isThenable(out)) {
         return out.then((value) => {
-          node.value.value = value;
+          setValue(value);
           return node;
         });
       }
-      node.value.value = out;
+      setValue(out);
       return node;
     };
 
     if (name instanceof Interpolated) {
+      if (renderKey !== undefined && name._renderKey !== undefined && name._renderKey !== renderKey) {
+        name.getValue(CANONICAL);
+      }
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.value.name = key;
+          setName(key);
           return applyAssignmentNormalization(key);
         });
       }
       const key = maybeKey as Any<'property'>;
-      node.value.name = key;
+      setName(key);
       return applyAssignmentNormalization(key);
     }
     return applyAssignmentNormalization(name);

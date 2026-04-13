@@ -97,6 +97,25 @@ describe('Declaration', () => {
       background: red, foo;
     `);
   });
+
+  it('preserves multiline declaration values while enforcing a minimum continuation indent', async () => {
+    const node = rules([
+      decl({ name: any('background'), value: any('the,\n              great,\n              wall') }),
+      decl({ name: any('color'), value: any('\nwhite') }),
+      decl({ name: any('background-position'), value: any('45\n-23') })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(evald.toString()).toBeString(`
+      background: the,
+                    great,
+                    wall;
+      color:
+        white;
+      background-position: 45
+        -23;
+    `);
+  });
   // it('should serialize to a module', () => {
   //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })
   //   rule.toModule(context, out)

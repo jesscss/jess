@@ -1346,7 +1346,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       };
       const runSingleEntry = (q: number): MaybePromise<void | undefined> => {
         const [idx, rule] = queue[q]!;
-
         /**
          * Var declarations have late evaluation, so they are skipped.
          * (Meaning: they are not evaluated until they are referenced.)
@@ -1752,6 +1751,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           };
           const rulesAfterPreEval = runPreEvalIfNeeded(this);
           const afterPreEval = (rules: Rules) => {
+            this._setupContextForRules(context, rules);
             // When we're the outermost Rules, use the tree we're evaling as root (may differ from context.root set in getTree, or be preEval's clone).
             if (context.rulesEvalStack.length === 1) {
               context.root = rules;
@@ -2389,22 +2389,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
         clearReferenceModeForMixinOutput(newRules as unknown as Node);
-        if (thisContext.treeContext?.file) {
-          /**
-           * NOTE (debug policy):
-           * `hasParamVar` / `hasNestedMixin` visibility branching was removed and
-           * should NOT be reintroduced.
-           *
-           * If this causes regressions, fix lookup/parenting behavior instead:
-           * - declaration/mixin registry traversal semantics
-           * - sourceParent/rulesParent/sourceRulesParent propagation
-           *
-           * Do not solve those regressions by adding new visibility heuristics based on
-           * "contains param vars" or "contains nested mixins".
-           */
-          newRules.options.rulesVisibility ??= {};
-          newRules.options.rulesVisibility.VarDeclaration = 'private';
-        }
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate

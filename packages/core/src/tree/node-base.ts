@@ -1025,12 +1025,13 @@ export abstract class Node<
   stripPrePost(n: Node, preOrPost: 'pre' | 'post') {
     const prePost = n[preOrPost];
     if (isArray(prePost)) {
-      n[preOrPost] = [...prePost];
-      for (let [key, node] of prePost.entries()) {
+      const clonedPrePost = [...prePost];
+      n[preOrPost] = clonedPrePost;
+      for (let [key, node] of clonedPrePost.entries()) {
         if (node instanceof Node && node.type === 'Comment') {
           /** Replace comment with a nil node that inherits location */
           const nilNode = this.nil?.() || this._createMinimalNil();
-          prePost[key] = nilNode.inherit(node);
+          clonedPrePost[key] = nilNode.inherit(node);
         }
       }
     }
@@ -1089,6 +1090,28 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
+    const renderKey = context.renderKey;
+    const needsCanonicalReset = renderKey !== undefined
+      && this._renderKey !== undefined
+      && this._renderKey !== renderKey;
+
+    if (needsCanonicalReset) {
+      this.getValue(CANONICAL);
+    }
+
+    const needsReeval = renderKey !== undefined
+      && this.preEvaluated
+      && (
+        !this._renderKey
+        || this._renderKey !== renderKey
+      );
+
+    if (needsReeval) {
+      this.getValue(CANONICAL);
+      this.preEvaluated = false;
+      this.evaluated = false;
+    }
+
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
@@ -1146,6 +1169,14 @@ export abstract class Node<
      * the node was evaluated in a different fork.
      */
     const renderKey = context.renderKey;
+    const needsCanonicalReset = renderKey !== undefined
+      && node._renderKey !== undefined
+      && node._renderKey !== renderKey;
+
+    if (needsCanonicalReset) {
+      node.getValue(CANONICAL);
+    }
+
     const needsReeval = renderKey !== undefined
       && node.evaluated
       && (

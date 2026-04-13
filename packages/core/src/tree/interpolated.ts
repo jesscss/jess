@@ -222,8 +222,15 @@ export class Interpolated<
    * node types.
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
-    let node = this;
+    const node = this;
+    const { renderKey } = context;
     let { replacements } = node.value;
+
+    if (renderKey !== undefined) {
+      const forkedReplacements = [...(node.getValue(renderKey) as InterpolatedValue).replacements];
+      node.set('replacements', forkedReplacements, renderKey);
+      replacements = forkedReplacements;
+    }
 
     let maybe = serialForEach(replacements, (n, idx) => {
       const out = n.eval(context);

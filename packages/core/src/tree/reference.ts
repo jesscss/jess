@@ -553,7 +553,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         let returnVal: any;
         if (isNode(resolvedTarget, N.Rules)) {
           returnVal = performLookup(resolvedTarget);
-
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
             returnVal = performLookup(this.rulesParent);

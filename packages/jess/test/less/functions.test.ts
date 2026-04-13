@@ -182,6 +182,22 @@ describe('Functions', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('value:');
     });
+
+    it('should support authored each() callback syntax end-to-end', async () => {
+      const lessCode = `
+        .test {
+          each(1 2 3 4, {
+            item-@{index}: @value;
+          });
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('item-1: 1');
+      expect(css).toContain('item-2: 2');
+      expect(css).toContain('item-3: 3');
+      expect(css).toContain('item-4: 4');
+    });
   });
 
   describe('Built-in Type Functions', () => {

@@ -4,15 +4,20 @@ import {
   Call,
   For,
   If,
+  INTERPOLATION_PLACEHOLDER,
   JsFunction,
   List,
   Nil,
   Sequence,
   VarDeclaration,
+  any,
+  call,
   decl,
   expr,
+  interpolated,
   list,
   el,
+  mixin,
   ref,
   rules,
   ruleset,
@@ -210,5 +215,94 @@ describe('Control Nodes', () => {
     expect(forNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
     expect(forNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
     expect(forNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
+  });
+
+  it('keeps nested renderKey state isolated across mixin calls and $for iterations', async () => {
+    const context = new Context({
+      leakyRules: true
+    });
+
+    const loopRules = rules([
+      decl({
+        name: interpolated({
+          source: `${INTERPOLATION_PLACEHOLDER}-${INTERPOLATION_PLACEHOLDER}`,
+          replacements: [
+            ref({ key: 'prefix' }, { type: 'variable' }),
+            ref({ key: 'index' }, { type: 'variable' })
+          ]
+        }, { role: 'property' }),
+        value: ref({ key: 'value' }, { type: 'variable' })
+      })
+    ]);
+
+    const loopMixin = mixin({
+      name: any('.loop'),
+      params: list([
+        any('prefix', { role: 'property' })
+      ]),
+      rules: rules([
+        new For({
+          pattern: {
+            kind: 'tuple',
+            values: [
+              new VarDeclaration({
+                name: new Any('value', { role: 'property' }),
+                value: new Nil()
+              }, { paramVar: true }),
+              new VarDeclaration({
+                name: new Any('key', { role: 'property' }),
+                value: new Nil()
+              }, { paramVar: true }),
+              new VarDeclaration({
+                name: new Any('index', { role: 'property' }),
+                value: new Nil()
+              }, { paramVar: true })
+            ]
+          },
+          iterable: {
+            kind: 'node',
+            value: list([new Any('one'), new Any('two')])
+          },
+          rules: loopRules
+        })
+      ])
+    });
+
+    const root = rules([
+      loopMixin,
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: rules([
+          call({
+            name: ref({ key: '.loop' }, { type: 'mixin' }),
+            args: list([new Any('a')])
+          })
+        ])
+      }),
+      ruleset({
+        selector: sel([el('.b')]),
+        rules: rules([
+          call({
+            name: ref({ key: '.loop' }, { type: 'mixin' }),
+            args: list([new Any('b')])
+          })
+        ])
+      })
+    ]);
+    context.root = root;
+
+    const evald = await root.eval(context);
+    const css = evald.toString();
+
+    expect(css).toBeString(`
+      .a {
+        a-1: one;
+        a-2: two;
+      }
+      .b {
+        b-1: one;
+        b-2: two;
+      }
+    `);
   });
 });

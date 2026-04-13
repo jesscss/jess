@@ -244,6 +244,10 @@ export class For extends Node<StructuredLoopValue> {
             ...PUBLIC_RULE_VISIBILITY
           }
         });
+        // Assign the renderKey before adopting shared loop-body children so
+        // they record per-iteration parent forks instead of overwriting their
+        // canonical parent chain on each pass.
+        iterationRules._renderKey = renderKey;
         iterationRules.inherit(originalRules);
 
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
@@ -256,7 +260,6 @@ export class For extends Node<StructuredLoopValue> {
         for (const child of originalRules.value) {
           iterationRules.push(child);
         }
-
         counter++;
         context.renderKeyStack.push(renderKey);
         const result = await iterationRules.eval(context);

@@ -18,6 +18,7 @@ import {
   Interpolated,
   Quoted,
   Rest,
+  Nil,
   VarDeclaration,
   StyleImport,
   type Url,
