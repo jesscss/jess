@@ -1310,6 +1310,34 @@ once: **flat mode** (direct string writes, no `RulesetBlock` allocation, no
 post-step) when neither flag is set, **segmented mode** otherwise. See
 `OutputBuffer` in the Runtime Model section for the full design.
 
+#### When the flag can be set: `@compose` vs `@import`
+
+The timing of when `_hasExtends` is reliably available differs by import
+mechanism:
+
+**`@compose` (Jess module system)**: children **cannot affect parents at all**.
+Parents can affect children only by passing `mutable: true` bindings downward —
+there is no upward channel. Extends in a composed file are completely local;
+they cannot target selectors in the importing file. Therefore `_hasExtends` is
+purely per-file, set at that file's own index time, and the flat/segmented
+decision is made independently per file before any parent is rendered.
+
+**`@import` (Less compatibility)**: children *can* affect parents. Extends in
+an imported file can target selectors in the importing file. The extend graph is
+global across the import tree. `_hasExtends` can only be set reliably after the
+full import graph is resolved, and the flat/segmented decision applies to the
+entire combined root.
+
+This asymmetry makes `@compose` the natural foundation for incremental and
+parallel rendering: each composed file is a closed rendering unit that can be
+compiled independently, its output cached, and the final result assembled from
+cached segments. A change to one file invalidates only that file's cache entry
+and its ancestors' assembly step — not siblings, not descendants.
+
+With `@import`, any file in the graph having an extend forces the entire merged
+root into segmented mode, and any file change potentially invalidates the whole
+combined render.
+
 ### Post-step
 
 After the render pass, a pure function `finalize(Segment[], ExtendRecord[]) →
