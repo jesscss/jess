@@ -604,7 +604,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                     while (f) {
                       const live = f.liveSlotsByName.get(`${keyStr}`);
                       if (live) {
-                        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
                         const src = live.sourceNode as Node | undefined;
                         if (!src || !context.searchScope.has(src)) {
                           return {
