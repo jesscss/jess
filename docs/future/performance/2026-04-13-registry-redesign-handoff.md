@@ -47,13 +47,65 @@ Replace `pre`/`post` string fields on nodes with an offset-keyed `FormattingMap`
 - [ ] Static `name` fields on `VarDeclaration`, `Declaration`, `Mixin` become plain `string` (not `Any`)
 - [ ] Update `ScopeFrame` / `varsByName` / `mixinsByName` to key directly on `string` without `.valueOf()` call
 
-### Track 5 — Pre-Eval Elimination
+### Track 5 — Pre-Eval Elimination (Buffered Render)
 
-Registry redesign (Track 1) and direct instance fields (Track 2) are prerequisites. Once nodes are pure read-only templates and lookup goes through the frame chain, the two-phase eval+serialize collapses to a single render pass.
+Registry redesign (Track 1) and direct instance fields (Track 2) are prerequisites.
 
-- [ ] Eliminate `preEval` phase from `_multiPassPreEval` — frame creation at render time replaces it
-- [ ] Collapse `eval` + `toTrimmedString` into a single `render(ctx, buf)` method per node type
-- [ ] Remove `evalNode` / `preEval` from node base class once all call sites migrated
+**Key design constraint: extends and `@import (reference)` require deferred selector finalization.**
+A true single-pass top-to-bottom render cannot know at the time it encounters `.a {}` whether
+a later `.b:extend(.a) {}` will augment its selector, or whether a reference-imported ruleset
+needs to surface at all. The solution is a *buffered render with typed segments* — most output
+is strings, but selector-bearing nodes push structured segments that are finalized in a cheap
+post-step.
+
+#### Buffer segment types
+
+```ts
+type Segment = string | RulesetBlock | MergeSlot
+
+interface RulesetBlock {
+  selector: SelectorSet   // live reference, not yet stringified
+  body: Segment[]         // recursively nested
+  isReference: boolean    // from @import (reference) — suppress unless activated by extend
+  extendRoot: ExtendRoot  // which root this ruleset is reachable from (baked in at push time)
+}
+
+interface MergeSlot {
+  property: string        // +: and +_: — needs all same-property decls within scope before finalizing
+  segments: Segment[]
+}
+```
+
+#### Extend side table (collected during the render pass)
+
+```ts
+interface ExtendRecord {
+  targetSelector: SelectorSet   // what's being targeted
+  extendRoot: ExtendRoot        // which root the :extend() lives in
+  sourceBlock: RulesetBlock     // block whose selector gets augmented
+}
+```
+
+#### Post-step (pure function, no AST access)
+
+For each `RulesetBlock` in the buffer:
+1. **Selector match** — walk-and-consume / `selector-match-core` against `ExtendRecord.targetSelector`
+   (same algorithm, but operating on already-resolved `SelectorSet` objects, not AST nodes)
+2. **Root visibility** — `record.extendRoot` can reach `block.extendRoot`
+   (same predicate as `extend-roots.ts`, but purely over two `ExtendRoot` values baked in at push time)
+3. **Reference visibility** — `block.isReference` blocks inclusion unless matched by steps 1+2
+
+The post-step is `(Segment[], ExtendRecord[]) → string` — no registry queries, no live context,
+no AST traversal. Straightforward to test in isolation.
+
+#### Checklist
+
+- [ ] Design `Segment` / `RulesetBlock` / `MergeSlot` / `ExtendRecord` types
+- [ ] Implement `render(ctx, buf: Segment[])` on each node type; most nodes push strings directly
+- [ ] Migrate extend collection from AST walk to render-pass side table population
+- [ ] Implement post-step: selector finalization, extend application, reference visibility
+- [ ] Migrate `extend-roots.ts` reachability logic to pure `ExtendRoot × ExtendRoot` predicate
+- [ ] Remove `evalNode` / `preEval` / `toTrimmedString` from node base class once all node types migrated
 - [ ] Verify end-to-end output parity with pre-existing test baselines
 
 ## Read This First
