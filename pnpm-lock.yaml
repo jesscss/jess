@@ -373,8 +373,8 @@ importers:
         specifier: workspace:*
         version: link:../jess-plugin-node-modules
       linecraft:
-        specifier: 0.2.5
-        version: 0.2.5
+        specifier: 0.2.6
+        version: 0.2.6
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.23
@@ -412,9 +412,6 @@ importers:
       '@jesscss/less-parser':
         specifier: workspace:*
         version: link:../less-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       '@jesscss/scss-parser':
         specifier: workspace:*
         version: link:../scss-parser
@@ -585,9 +582,6 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../css-parser
-      '@jesscss/parser':
-        specifier: workspace:*
-        version: link:../parser
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
@@ -618,6 +612,9 @@ importers:
       rollup:
         specifier: ^3.20.7
         version: 3.29.5
+      tsdown:
+        specifier: ~0.21.7
+        version: 0.21.7(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@5.8.3)
 
   packages/scss-parser:
     dependencies:
@@ -14182,8 +14179,8 @@ packages:
     resolution: {integrity: sha512-FWWMIEOxz3GwUI4Ts/IvgVy6LPvoMPgjMdQ185nN6psJyBJ4yOpzqm695/h5umdLJg2vW3GR5iG11MAkR2AzJA==}
     dev: true
 
-  /linecraft@0.2.5:
-    resolution: {integrity: sha512-6fcOjSjNiYnCJWYFsneVKWYYu/Cav0l1meaYwBqugQ7W8vrjrbw2dit5dB6sKx8/XQ/iqGB77SwnsZCMcLcfXQ==}
+  /linecraft@0.2.6:
+    resolution: {integrity: sha512-soXv8qKLqsAA3Ws9HDwrf6VlLUHHKBqLplHVJ/HVhWH5Oakgr5iZmsiKX7eC2VMdZxFaxhLxDsAmiCjLvKPZlQ==}
     engines: {node: '>=18.0.0'}
     dev: false
 
@@ -16163,7 +16160,7 @@ packages:
       got: 12.6.1
       registry-auth-token: 5.1.1
       registry-url: 6.0.1
-      semver: 7.7.3
+      semver: 7.7.4
 
   /package-manager-detector@0.2.11:
     resolution: {integrity: sha512-BEnLolu+yuz22S56CU1SUKq3XC3PkwD5wv4ikR4MfGvnRVcmzXR9DwSlW2fEamyTPyXHomBJRzgapeuBvRNzJQ==}
@@ -18396,7 +18393,6 @@ packages:
     resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
     hasBin: true
-    dev: true
 
   /send@0.16.2:
     resolution: {integrity: sha512-E64YFPUssFHEFBvpbbjr44NCLtI1AohxQ8ZSiJjQLskAdKuriYEP6VyGEsRDH8ScozGpkaX1BGvhanqCwkcEZw==}

@@ -155,7 +155,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
-  runtimeVarBindings: Map<string, RuntimeVarBinding> | undefined;
   /** Fast map: var name → ordered list of VarDeclarations registered in this scope. */
   varsByName: Map<string, VarDeclaration[]> | undefined;
   /**
@@ -221,7 +220,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules.rulesIndexed = 0;
     newRules._indexing = false;
     newRules._rulesSet = undefined;
-    newRules.runtimeVarBindings = undefined;
     newRules.varsByName = undefined;
     newRules.mixinsByName = undefined;
     newRules.scopeFrame = undefined;
@@ -241,35 +239,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.scopeFrame = buildScopeFrame(this.varsByName, this, parent);
     }
     return this.scopeFrame;
-  }
-
-  setRuntimeVarBinding(name: string, binding: Omit<RuntimeVarBinding, 'kind'>): RuntimeVarBinding {
-    const runtimeBinding: RuntimeVarBinding = {
-      kind: 'runtime-var-binding',
-      ...binding
-    };
-    (this.runtimeVarBindings ??= new Map()).set(name, runtimeBinding);
-    return runtimeBinding;
-  }
-
-  findRuntimeVarBinding(name: string): RuntimeVarBinding | undefined {
-    let cursor: Node | undefined = this;
-    const visited = new Set<Rules>();
-    while (cursor) {
-      if (isNode(cursor, N.Rules)) {
-        const scope = cursor as Rules;
-        if (visited.has(scope)) {
-          break;
-        }
-        visited.add(scope);
-        const binding = scope.runtimeVarBindings?.get(name);
-        if (binding) {
-          return binding;
-        }
-      }
-      cursor = cursor.parent ?? cursor.sourceParent;
-    }
-    return undefined;
   }
 
   /**
@@ -2809,50 +2778,40 @@ export class MixinCollection extends Node<MixinEntry[]> {
         (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
         outerRules.sourceParent = sourceParent;
         outerRules.index = candidate.index;
+        // Mark param source nodes and build the live-slot map for the ScopeFrame.
+        const liveSlots = new Map<string, BindingCell>();
         for (const binding of paramBindings) {
           if (isNode(binding.sourceNode, N.VarDeclaration)) {
             binding.sourceNode.options ??= {};
             binding.sourceNode.options.paramVar = true;
             binding.sourceNode.removeFlag(F_VISIBLE);
           }
-          outerRules.setRuntimeVarBinding(binding.name, {
+          liveSlots.set(binding.name, {
             value: binding.value,
-            readonly: binding.readonly,
-            sourceNode: binding.sourceNode
+            sourceNode: binding.sourceNode as Node | undefined,
+            readonly: binding.readonly
           });
         }
-        // Slice 8: wire ScopeFrame on the wrapper scope so the call-site frame
-        // chain is available for resolveFrameCell.  The frame's parent points at
-        // the call-site scope (not the mixin's definition site), giving correct
-        // contextual resolution once the frame chain becomes the primary path.
-        {
-          const callSiteRules = thisContext.rulesContext;
-          const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
-            ? (callSiteRules as Rules).getScopeFrame()
-            : undefined;
-          const liveSlots = new Map<string, BindingCell>();
-          for (const binding of paramBindings) {
-            liveSlots.set(binding.name, {
-              value: binding.value,
-              sourceNode: binding.sourceNode as Node | undefined,
-              readonly: binding.readonly
-            });
-          }
-          outerRules.scopeFrame = {
-            parent: parentFrame,
-            liveSlotsByName: liveSlots,
-            declarationBucketsByName: new Map(),
-            pendingDynamicDecls: [],
-            rulesNode: outerRules
-          };
-        }
+        // @arguments: build the Sequence first (mutable array filled below),
+        // then put it in the live-slot map so it's found via the frame chain.
         const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
+        let argumentsArgs: Node[] | undefined;
         if (shouldDefineArguments) {
-          const argumentsArgs: Node[] = [];
-          outerRules.setRuntimeVarBinding('arguments', {
+          argumentsArgs = [];
+          liveSlots.set('arguments', {
             value: new Sequence(argumentsArgs),
             readonly: true
           });
+        }
+        // Wire the ScopeFrame with call-site parent and the populated live slots.
+        const callSiteRules = thisContext.rulesContext;
+        const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
+          ? (callSiteRules as Rules).getScopeFrame()
+          : undefined;
+        outerRules.scopeFrame = buildScopeFrame(undefined, outerRules, parentFrame, liveSlots);
+        // Populate @arguments after the frame is wired (the Sequence holds a
+        // reference to argumentsArgs, so pushes here are visible through the frame).
+        if (shouldDefineArguments && argumentsArgs) {
           const paramValues = paramBindings.map(binding => binding.value);
           const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
           for (const argNode of argumentNodes) {

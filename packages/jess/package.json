@@ -27,7 +27,7 @@
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
-    "linecraft": "0.2.5",
+    "linecraft": "0.2.6",
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },

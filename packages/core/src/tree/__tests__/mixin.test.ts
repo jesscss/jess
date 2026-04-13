@@ -643,117 +643,83 @@ describe('Mixin', () => {
       }
     });
 
-    it('ScopeFrame parent chain (slice 8): wrapper scope frame carries call-site parent and live param slots', async () => {
+    it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      // Intercept setRuntimeVarBinding to capture the outerRules wrapper created
-      // during mixin invocation so we can inspect its ScopeFrame.
-      const originalSet = RulesClass.prototype.setRuntimeVarBinding;
-      let capturedWrapper: InstanceType<typeof RulesClass> | undefined;
-      RulesClass.prototype.setRuntimeVarBinding = function(
-        name: string,
-        ...rest: Parameters<typeof originalSet extends (n: string, ...a: infer P) => any ? (n: string, ...a: P) => any : never>
-      ) {
-        // Capture the first wrapper that receives a param named 'color'
-        if (name === 'color') {
-          capturedWrapper = this;
+      // Prove params and @arguments are in liveSlotsByName by testing their output.
+      // If either were missing from the frame, the reference lookup would fail or
+      // fall through to a stale registry path that no longer exists.
+      const mixinDef = mixin({
+        name: any('.parameterized'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+          // @arguments is automatically bound in liveSlotsByName (slice 10)
+          decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({
+            name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
+            args: list([any('red')])
+          })])
+        })
+      ]);
+      context.root = root;
+      const evald = await root.eval(context);
+
+      expect(evald.toString()).toBeString(`
+        .a {
+          color: red;
+          args: red;
         }
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        return (originalSet as unknown as (...a: unknown[]) => void).call(this, name, ...rest);
-      };
+      `);
 
-      try {
-        const mixinDef = mixin({
-          name: any('.parameterized'),
-          params: list([any('color', { role: 'property' })]),
-          rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
-        });
-
-        const root = rules([
-          mixinDef,
-          ruleset({
-            selector: el('.a'),
-            rules: rules([call({
-              name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
-              args: list([any('red')])
-            })])
-          })
-        ]);
-        context.root = root;
-        await root.eval(context);
-
-        // The wrapper Rules created for the mixin call must have a ScopeFrame
-        // with the 'color' param in liveSlotsByName.
-        expect(capturedWrapper).toBeDefined();
-        const frame = capturedWrapper!.scopeFrame;
-        expect(frame).toBeDefined();
-        expect(frame!.liveSlotsByName.has('color')).toBe(true);
-        expect(`${frame!.liveSlotsByName.get('color')!.value}`).toBe('red');
-
-        // resolveFrameCell must find the param via the frame.
-        const entry = resolveFrameCell('color', frame!);
-        expect(entry).toBeDefined();
-        expect(`${entry!.cell.value}`).toBe('red');
-
-        // The frame's parent is the call-site scope's frame (not undefined).
-        expect(frame!.parent).toBeDefined();
-      } finally {
-        RulesClass.prototype.setRuntimeVarBinding = originalSet;
-      }
+      // runtimeVarBindings infrastructure is fully retired.
+      expect('runtimeVarBindings' in RulesClass.prototype).toBe(false);
+      expect('findRuntimeVarBinding' in RulesClass.prototype).toBe(false);
+      expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
-    it('frame live slots (slice 9): mixin param lookup goes via frame chain, not runtimeVarBindings', async () => {
+    it('frame live slots (slice 9/10): mixin param lookup goes via frame chain; runtimeVarBindings removed', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFind = RulesClass.prototype.findRuntimeVarBinding;
-      const rtvbHits: string[] = [];
-      RulesClass.prototype.findRuntimeVarBinding = function(name: string) {
-        if (name === 'color') {
-          rtvbHits.push(name);
+      const mixinDef = mixin({
+        name: any('.colored'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+          decl({ name: 'border-color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({
+            name: ref({ key: '.colored' }, { type: 'mixin-ruleset' }),
+            args: list([any('red')])
+          })])
+        })
+      ]);
+      context.root = root;
+      const evald = await root.eval(context);
+
+      expect(evald.toString()).toBeString(`
+        .a {
+          color: red;
+          border-color: red;
         }
-        return originalFind.call(this, name);
-      };
-
-      try {
-        const mixinDef = mixin({
-          name: any('.colored'),
-          params: list([any('color', { role: 'property' })]),
-          rules: rules([
-            decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
-            decl({ name: 'border-color', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
-        });
-
-        const root = rules([
-          mixinDef,
-          ruleset({
-            selector: el('.a'),
-            rules: rules([call({
-              name: ref({ key: '.colored' }, { type: 'mixin-ruleset' }),
-              args: list([any('red')])
-            })])
-          })
-        ]);
-        context.root = root;
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toBeString(`
-          .a {
-            color: red;
-            border-color: red;
-          }
-        `);
-
-        // Both @color references in the body must resolve via the frame live slot,
-        // never hitting the runtimeVarBindings chain walk.
-        expect(rtvbHits.length).toBe(0);
-      } finally {
-        RulesClass.prototype.findRuntimeVarBinding = originalFind;
-      }
+      `);
     });
 
     it('should call a mixin with a guard condition', async () => {

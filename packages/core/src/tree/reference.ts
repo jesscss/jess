@@ -594,35 +594,38 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
                 if (type === 'variable') {
-                  // Slice 9: check frame live slots (mixin params) before the full
-                  // runtimeVarBindings chain walk.  Only liveSlotsByName is consulted
-                  // here — declarationBucketsByName uses the call-site parent chain
-                  // which does NOT match Less definition-site semantics for lexical
-                  // vars; those still go through findVarDeclarationFast / full registry.
+                  // Slice 9/10: check liveSlotsByName on each Rules node in the
+                  // parent chain for mixin param bindings.  We walk the node parent
+                  // chain (not the frame parent chain) because inner rules nodes
+                  // inside a mixin body may not have their scopeFrame.parent wired
+                  // yet — that full wiring is a later slice.  Only liveSlotsByName
+                  // is consulted here; declarationBucketsByName follows definition-site
+                  // semantics and must not be walked via the call-site chain.
                   {
-                    let f = targetRules.scopeFrame;
-                    while (f) {
-                      const live = f.liveSlotsByName.get(`${keyStr}`);
-                      if (live) {
-                        const src = live.sourceNode as Node | undefined;
-                        if (!src || !context.searchScope.has(src)) {
-                          return {
-                            kind: 'runtime-var-binding' as const,
-                            value: live.value,
-                            readonly: live.readonly,
-                            sourceNode: src
-                          } satisfies RuntimeVarBinding;
+                    let cursor: Node | undefined = targetRules;
+                    const visitedLive = new Set<Rules>();
+                    while (cursor) {
+                      if (isNode(cursor, N.Rules)) {
+                        const scope = cursor as Rules;
+                        if (visitedLive.has(scope)) {
+                          break;
+                        }
+                        visitedLive.add(scope);
+                        const live = scope.scopeFrame?.liveSlotsByName.get(`${keyStr}`);
+                        if (live) {
+                          const src = live.sourceNode as Node | undefined;
+                          if (!src || !context.searchScope.has(src)) {
+                            return {
+                              kind: 'runtime-var-binding' as const,
+                              value: live.value,
+                              readonly: live.readonly,
+                              sourceNode: src
+                            } satisfies RuntimeVarBinding;
+                          }
                         }
                       }
-                      f = f.parent;
+                      cursor = cursor.parent ?? cursor.sourceParent;
                     }
-                  }
-                  // Fallback: runtimeVarBindings chain walk (covers scopes not yet
-                  // reachable via the frame chain, e.g. nested @media wrappers).
-                  const runtimeBinding = targetRules.findRuntimeVarBinding(`${keyStr}`);
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  if (runtimeBinding && !context.searchScope.has(runtimeBinding.sourceNode as Node)) {
-                    return runtimeBinding;
                   }
                   // Fast path: walk varsByName maps directly, skipping declaration-registry
                   // machinery. Uses the same .parent ?? .sourceParent traversal as
