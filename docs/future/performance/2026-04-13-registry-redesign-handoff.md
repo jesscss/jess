@@ -14,7 +14,7 @@ Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit doc
 - [x] Slice 7 — `mixinsByName` fast map on `Rules`; static-named mixin lookup bypasses `MixinRegistry.find`
 - [x] Slice 8 — Wire `ScopeFrame` parent chain at mixin call time; `outerRules.scopeFrame.liveSlotsByName` carries params; `resolveFrameCell` finds them via frame chain with call-site parent
 - [x] Slice 9 — `liveSlotsByName` frame-chain walk is the primary mixin param lookup path in `performLookup`; `runtimeVarBindings` kept as fallback; only `liveSlotsByName` walked (not `declarationBucketsByName`) to preserve Less definition-site semantics for lexical vars
-- [ ] Slice 10 — Delete fork/renderKey system; retire `runtimeVarBindings` chain once frame chain covers all param cases; delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
+- [ ] Slice 10 — Delete fork/renderKey system; retire `runtimeVarBindings` once frame chain covers all param cases; delete `resolution: 'linear'`; retire `DeclarationRegistry`, `MixinRegistry`, and `RulesetRegistry` entirely (replaced by `declarationBucketsByName`, `mixinsByName`, and a forthcoming `rulesetsBySelector` fast map respectively); `FunctionRegistry` is a plugin API and stays
 - [ ] Slice 10 — Delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
 
 ### Track 2 — Node Shape: Direct Instance Fields

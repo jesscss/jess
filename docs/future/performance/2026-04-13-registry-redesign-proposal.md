@@ -880,15 +880,21 @@ just not the runtime scope chain. Scope is what the frame chain is for.
 | Clone mixin body per call site | Walk template with different EvalContext |
 | renderKey / fork system | Frame chain built at call time |
 | Node parent traversal for variable lookup | Frame chain traversal |
-| Generic `DeclarationRegistry` per Rules | `declarationBucketsByName` map per frame |
+| `DeclarationRegistry` per Rules | `declarationBucketsByName` map per ScopeFrame — retired entirely |
+| `MixinRegistry` per Rules | `mixinsByName` fast map on Rules — retired entirely |
+| `RulesetRegistry` per Rules | `rulesetsBySelector` fast map on Rules — retired entirely |
 | `indexPendingItems()` at lookup time | Incremental population as scope is built |
 | `Set` allocation per lookup | Direct `Map.get` |
 | `Set → Array` conversion | Not needed |
 | Sort by position per lookup | Not needed — bucket order = source order |
 | `_searchRulesChildren` recursion | Frame chain hop |
 | Synthetic `VarDeclaration` nodes for params | Live `BindingCell` in frame slot |
+| `runtimeVarBindings` chain walk | Frame `liveSlotsByName` — retired once frame chain covers all param cases |
 | `resolution: 'linear'` code path | Deleted — frame chain handles this |
-| Two-pass eval + serialize | One-pass render |
+| Two-pass eval + serialize | One-pass buffered render (flat mode for zero-extend case) |
+
+`FunctionRegistry` is not in this list — it is a plugin API for registering JS
+functions and serves a different purpose. It stays.
 
 ---
 
