@@ -1338,6 +1338,26 @@ With `@import`, any file in the graph having an extend forces the entire merged
 root into segmented mode, and any file change potentially invalidates the whole
 combined render.
 
+#### The limit of static analysis for `@import`
+
+The one tractable optimization for `@import` is the transitive `_hasExtends`
+flag: if a file and all its transitive imports have no extends and no reference
+imports, flat mode is safe for that subtree regardless of import mechanism. This
+is detectable at index time by propagating the flag up the import graph.
+
+Beyond that, static analysis hits a hard wall. Proving that an imported file's
+extends are "local" (cannot match selectors in the importing file) would require
+knowing the parent's selectors at child parse time — which is unavailable — and
+even then selector matching is undecidable in the general case due to variable
+interpolation. Approaches that look promising (namespace-prefix conventions,
+no-`&` heuristics, scoped-extend syntax) either cannot be enforced statically or
+don't exist in Less.
+
+The practical boundary: transitive `_hasExtends` is the optimization you get for
+`@import`. Per-file independent rendering and caching require `@compose`. For
+users who need incremental builds, migrating from `@import` to `@compose` is the
+correct path — not attempting deeper static analysis of Less import semantics.
+
 ### Post-step
 
 After the render pass, a pure function `finalize(Segment[], ExtendRecord[]) →
