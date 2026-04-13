@@ -113,13 +113,14 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
  * use the fast path for the entire chain.
  *
  * Rules: last entry in varsByName wins (Less "last definition wins" semantics).
- * Only valid when ignoreCurrentScopeStart + ignoreParentScopeStart are both true
- * (which is exactly what reference.ts sets for type === 'variable').
+ * For positional lookups (resolution: 'linear', e.g. merge declarations `@a+:`),
+ * pass `beforeIndex` to restrict matches to entries with index < beforeIndex.
  */
 function findVarDeclarationFast(
   startRules: Rules,
   name: string,
-  filter: (n: Node) => boolean
+  filter: (n: Node) => boolean,
+  beforeIndex?: number
 ): Node | undefined {
   let cursor: Node | undefined = startRules;
   let first = true;
@@ -142,6 +143,9 @@ function findVarDeclarationFast(
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
           const candidate = candidates[i]!;
+          if (beforeIndex !== undefined && (candidate.index === undefined || candidate.index >= beforeIndex)) {
+            continue;
+          }
           if (filter(candidate)) {
             return candidate;
           }
@@ -621,12 +625,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                       f = f.parent;
                     }
                   }
-                  // Fast path: walk varsByName maps directly, skipping declaration-registry
-                  // machinery.  Guard: only valid when position is fully ignored
-                  // (ignoreParentScopeStart).  Positional lookups (resolution: 'linear')
-                  // must use the full registry path.
+                  // Slice 12: fast paths — walk varsByName directly, skipping the
+                  // declaration-registry machinery.
+                  //   • ignoreParentScopeStart  → no positional filter needed
+                  //   • resolution: 'linear'    → positional filter at opts.start
                   if (opts.ignoreParentScopeStart) {
                     const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter);
+                    if (fast !== undefined) {
+                      return fast;
+                    }
+                  } else if (this.options.resolution === 'linear' && opts.start !== undefined) {
+                    const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter, opts.start);
                     if (fast !== undefined) {
                       return fast;
                     }
