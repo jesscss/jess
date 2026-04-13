@@ -1095,7 +1095,6 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       expect(`${evald}`).toBeString(`
         .out {
-          $name: some-name;
           color: red;
         }
       `);
