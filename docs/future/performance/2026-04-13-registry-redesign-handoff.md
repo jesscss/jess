@@ -100,8 +100,11 @@ no AST traversal. Straightforward to test in isolation.
 
 #### Checklist
 
-- [ ] Design `Segment` / `RulesetBlock` / `MergeSlot` / `ExtendRecord` types
-- [ ] Implement `render(ctx, buf: Segment[])` on each node type; most nodes push strings directly
+- [ ] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
+- [ ] Design `Segment` / `RulesetBlock` / `HoistBlock` / `MergeSlot` / `ExtendRecord` types
+- [ ] Implement flat-mode `RenderBuffer` (common case: no extends, no reference imports — pure `string[]`, no segment allocation, no post-step)
+- [ ] Implement segmented-mode `RenderBuffer` (has extends or reference imports)
+- [ ] Implement `render(ctx, buf: RenderBuffer)` on each node type; flat mode pushes strings directly
 - [ ] Migrate extend collection from AST walk to render-pass side table population
 - [ ] Implement post-step: selector finalization, extend application, reference visibility
 - [ ] Migrate `extend-roots.ts` reachability logic to pure `ExtendRoot × ExtendRoot` predicate
