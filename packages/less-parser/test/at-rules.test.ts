@@ -112,6 +112,7 @@ describe('mediaInParens', () => {
                       role: 'name'
                     key:
                       ['#ns', '.breakpoint']
+                    rawKey: '#ns > .breakpoint'
                   )
       `);
   });

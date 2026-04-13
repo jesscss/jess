@@ -125,7 +125,7 @@ describe('lookupOrCall', () => {
               )
             key: 
               (Quoted
-                  quote: '\''
+                  quote: '\\''
                 'key'
               )
           )

@@ -109,7 +109,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
       const lineIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
       const content = line.replace(/^[ \t]+/g, '').trimEnd();
-      const normalizedIndent = ' '.repeat(Math.max(continuationIndent.length, lineIndent));
+      const isClosingLine = /^[}\])]([,;])?$/.test(content);
+      const normalizedIndent = ' '.repeat(
+        isClosingLine ? lineIndent : Math.max(continuationIndent.length, lineIndent)
+      );
       out += `\n${normalizedIndent}${content}`;
     }
 

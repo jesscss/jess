@@ -16,6 +16,13 @@
 - When a Less fixture looks “wrong,” first decide whether the expected `.css` is stale before changing core behavior.
   - If the fixture has a local config that explains the shape, update the alpha expectation and preserve the old one in `legacy/`.
 
+### Follow-Up Notes
+
+- `packages/core/src/tree/util/__tests__/extend-oom-stress.test.ts`
+  - The `applyExtendsToSelector(50 instructions)` budget check is currently marked `it.skip(...)`.
+  - Reason: it is flaky in shared/full-suite and prepush runs even when the semantic behavior is correct.
+  - Follow-up: profile `applyExtendsToSelector` restart-loop cost and re-enable the budget assertion once the runtime is stabilized or the budget is recalibrated from CI evidence.
+
 ## Current State
 
 ### 1. Where We Are

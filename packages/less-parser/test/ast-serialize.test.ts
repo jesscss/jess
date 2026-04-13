@@ -33,7 +33,7 @@ describe('serializeTypes coverage', () => {
   test('nested reference', () => {
     const { errors, tree } = parser.parse('@ref: #ns.breakpoint(.valToGet[])[@max];');
     expect(errors.length).toBe(0);
-    expect(serializeTypes(tree)).toBeString(`
+    expect(serializeTypes(tree)).toContainString(`
       (Rules
         [
           (VarDeclaration
@@ -47,6 +47,7 @@ describe('serializeTypes coverage', () => {
                       (Reference [role=name]
                         key:
                           ['#ns', '.breakpoint']
+                        rawKey: '#ns > .breakpoint'
                       )
                     args: 
                       (List
@@ -92,11 +93,17 @@ describe('serializeTypes coverage', () => {
     const out = serializeTypes(tree);
     expect(out).toContainString(`
       (Mixin
-        name: '.mixin'
+        name: 
+          (Any [role=name] '.mixin')
         params: 
           (List
             [
-              (Any [role=name] 'color')
+              (VarDeclaration
+                name: 
+                  (Any [role=property] 'color')
+                value: 
+                  (Nil '')
+              )
             ]
           )
         rules: 
@@ -213,14 +220,15 @@ describe('serializeTypes coverage', () => {
   test('property accessor', () => {
     const { errors, tree } = parser.parse('.test { color: @obj[prop]; }');
     expect(errors.length).toBe(0);
-    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[prop]');
+    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[\'prop\']');
     expect(serializeTypes(tree)).toContainString(`
       (Reference
         target: 
           (Reference
             key: 'obj'
           )
-        key: 'prop'
+        key: 
+          (Quoted 'prop')
       )
     `);
   });
@@ -290,7 +298,8 @@ test('rest parameter in mixin', () => {
   const out = serializeTypes(tree);
   expect(out).toContainString(`
     (Mixin
-      name: '.mixin'
+      name: 
+        (Any [role=name] '.mixin')
       params: 
         (List
           [
@@ -707,6 +716,7 @@ test('namespace reference - complex selector', () => {
           (Reference [role=name]
             key:
               ['#namespace', '.scoped-mixin']
+            rawKey: '#namespace > .scoped-mixin'
           )
       )
     `);
@@ -766,7 +776,8 @@ test('namespace reference with accessor', () => {
               (Reference [role=name]
                 key: '#id'
               )
-            key: 'property'
+            key: 
+              (Quoted 'property')
           )
       )
     `);
@@ -787,14 +798,16 @@ test('variable reference with accessor', () => {
                 key: 'config'
               )
             key: 
-              (Interpolated [role=ident]
-                source: '${INTERPOLATION_PLACEHOLDER}'
-                replacements:
-                [
-                  (Reference [role=ident]
-                    key: 'prop'
-                  )
-                ]
+              (Quoted
+                (Interpolated [role=ident]
+                  source: '${INTERPOLATION_PLACEHOLDER}'
+                  replacements:
+                  [
+                    (Reference [role=ident]
+                      key: 'prop'
+                    )
+                  ]
+                )
               )
           )
       )

@@ -1,7 +1,7 @@
-import type { MaybePromise } from 'awaitable-pipe/lib/utils';
-import { defineType, type Node } from './node.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { defineType } from './node.js';
 import { Rules } from './rules.js';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import type { PrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 
 /**
@@ -24,7 +24,7 @@ export class Collection extends Rules {
    * Collection rules aren't evaluated by default. They're evaluated
    * at access time OR if assigned to a property.
    */
-  override evalNode(context: Context): MaybePromise<this> {
+  override evalNode(_context: Context): MaybePromise<this> {
     return this;
   }
 
