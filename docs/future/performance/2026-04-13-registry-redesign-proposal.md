@@ -1089,6 +1089,71 @@ The frame design already handles this — `declarationBucketsByName` and
 `mixinBucketsByStartKey` store arrays, not single values, for exactly this
 reason. The lookup strategy varies by call site, not by frame structure.
 
+## Relationship to Whitespace Token Proposal
+
+[docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md)
+
+### Why declaration names are currently `Any` nodes
+
+`VarDeclaration.value.name` (and `Declaration.value.name`) is typed as
+`Any | Interpolated`, not a plain string. The reason is that `Any` carries
+`pre` / `post` properties — so a comment or whitespace between the name and
+the colon (`@color /* comment */: value`) can be stored on the name node
+itself rather than being discarded at parse time.
+
+This is the same root problem the whitespace-token-proposal solves: nodes
+carry formatting because there is nowhere else to put it.
+
+### What changes when pre/post is eliminated
+
+Once `pre` / `post` are removed from nodes (replaced by the offset-keyed
+`FormattingMap`), the comment between `@color` and `:` lives in the
+`FormattingMap` at the appropriate source offset. The name node no longer needs
+to carry it.
+
+With that constraint lifted, declaration names that are plain identifiers can
+become plain strings in the AST rather than `Any` nodes. `Interpolated` names
+(interpolated like `@{prefix}-color`) still need a node type to represent the
+template, but static names become `string`.
+
+### Impact on the frame design
+
+The `BindingCell` / `BindingEntry` / static-vs-dynamic detection in the
+`ScopeFrame` becomes simpler:
+
+```ts
+// Today — static key detection requires calling .valueOf() and checking the
+// node type, because even plain names are Any nodes
+const name = decl.value.name.valueOf() as string;
+
+// After whitespace elimination — static name is just a string literal
+const isStatic = typeof decl.value.name === 'string';
+const name = isStatic ? decl.value.name : resolveKey(decl.value.name, ctx);
+```
+
+This removes the current ambiguity where `Any.valueOf()` on an interpolated
+name accidentally returns the raw template string instead of the resolved key.
+Static vs dynamic becomes an `instanceof` / `typeof` check, not a heuristic.
+
+### Sequencing
+
+The whitespace proposal and the registry redesign are independent work streams
+that reinforce each other:
+
+- Registry redesign slices 5–10 proceed without waiting for whitespace
+  elimination. The current `Any` name nodes work correctly with the
+  `varsByName` and `ScopeFrame` fast paths.
+- Whitespace elimination, when it lands, simplifies the frame population code
+  (one `typeof` check instead of `.valueOf()` + node-type inspection) and
+  removes a class of edge cases around interpolated names with static content.
+
+The render model here (`render()` writing to `ctx.outputBuffer`) is fully
+compatible with the whitespace proposal's `FormattingMap` — `emitFmt()` is
+just called at the start and end of each `render()` call exactly where the
+current `processPrePost()` sandwich is.
+
+---
+
 ## Relationship to Pre-Eval Elimination
 
 [docs/future/pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
