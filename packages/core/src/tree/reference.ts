@@ -594,37 +594,31 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
                 if (type === 'variable') {
-                  // Slice 9/10: check liveSlotsByName on each Rules node in the
-                  // parent chain for mixin param bindings.  We walk the node parent
-                  // chain (not the frame parent chain) because inner rules nodes
-                  // inside a mixin body may not have their scopeFrame.parent wired
-                  // yet — that full wiring is a later slice.  Only liveSlotsByName
-                  // is consulted here; declarationBucketsByName follows definition-site
-                  // semantics and must not be walked via the call-site chain.
+                  // Slice 9/10/11: walk the frame chain for mixin param bindings
+                  // (liveSlotsByName only — declarationBucketsByName follows
+                  // definition-site semantics and must not be walked via the
+                  // call-site chain).  getScopeFrame() now auto-wires parent
+                  // frames so inner rules nodes within a mixin body correctly
+                  // inherit outerRules.scopeFrame as their parent.
                   {
-                    let cursor: Node | undefined = targetRules;
-                    const visitedLive = new Set<Rules>();
-                    while (cursor) {
-                      if (isNode(cursor, N.Rules)) {
-                        const scope = cursor as Rules;
-                        if (visitedLive.has(scope)) {
-                          break;
-                        }
-                        visitedLive.add(scope);
-                        const live = scope.scopeFrame?.liveSlotsByName.get(`${keyStr}`);
-                        if (live) {
-                          const src = live.sourceNode as Node | undefined;
-                          if (!src || !context.searchScope.has(src)) {
-                            return {
-                              kind: 'runtime-var-binding' as const,
-                              value: live.value,
-                              readonly: live.readonly,
-                              sourceNode: src
-                            } satisfies RuntimeVarBinding;
-                          }
+                    const frame = isNode(targetRules, N.Rules)
+                      ? (targetRules as Rules).getScopeFrame()
+                      : undefined;
+                    let f = frame;
+                    while (f) {
+                      const live = f.liveSlotsByName.get(`${keyStr}`);
+                      if (live) {
+                        const src = live.sourceNode as Node | undefined;
+                        if (!src || !context.searchScope.has(src)) {
+                          return {
+                            kind: 'runtime-var-binding' as const,
+                            value: live.value,
+                            readonly: live.readonly,
+                            sourceNode: src
+                          } satisfies RuntimeVarBinding;
                         }
                       }
-                      cursor = cursor.parent ?? cursor.sourceParent;
+                      f = f.parent;
                     }
                   }
                   // Fast path: walk varsByName maps directly, skipping declaration-registry

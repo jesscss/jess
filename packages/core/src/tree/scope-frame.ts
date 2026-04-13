@@ -82,14 +82,16 @@ export interface ScopeFrame {
 /**
  * Build a ScopeFrame from a Rules node.
  *
- * Slice 6: builds declarationBucketsByName directly from Rules.varsByName so
- * the frame is always consistent with the existing registry index.  If varsByName
- * is undefined (not yet indexed), returns a frame with empty buckets — callers
- * should ensure _indexRules() has run before calling this.
+ * Slices 6–11: builds declarationBucketsByName from Rules.varsByName and
+ * populates liveSlotsByName from the supplied map (mixin params, @arguments).
+ * Parent frame wiring is handled by getScopeFrame() on Rules, which walks the
+ * node parent chain to find the nearest ancestor frame when no explicit parent
+ * is supplied.
  *
  * @param varsByName  Rules.varsByName — the per-scope static VarDecl index
  * @param rulesNode   Back-pointer for debugging
- * @param parent      Enclosing scope's frame (undefined for root)
+ * @param parent      Enclosing scope's frame (undefined = auto-wire via node chain)
+ * @param liveSlots   Pre-built live binding map (params, @arguments)
  */
 export function buildScopeFrame(
   varsByName: Map<string, VarDeclaration[]> | undefined,

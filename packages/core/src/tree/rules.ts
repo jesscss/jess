@@ -231,12 +231,30 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Lazily build and cache the ScopeFrame for this scope.
    * Requires _indexRules() to have run so varsByName is populated.
    *
-   * Slice 6: frame is populated from varsByName (static-key VarDeclarations only).
-   * Parent frame wiring is added in a later slice.
+   * Parent frame: if the caller supplies one it is used directly (mixin
+   * call sites do this to wire the call-site lexical chain).  Otherwise
+   * the nearest ancestor Rules node with an already-built scopeFrame is
+   * used, so inner rules nodes within a mixin body automatically inherit
+   * outerRules.scopeFrame as their parent without needing an explicit
+   * argument.
    */
   getScopeFrame(parent?: ScopeFrame): ScopeFrame {
     if (!this.scopeFrame) {
-      this.scopeFrame = buildScopeFrame(this.varsByName, this, parent);
+      let resolvedParent = parent;
+      if (resolvedParent === undefined) {
+        let cursor = this.parent ?? this.sourceParent;
+        while (cursor) {
+          if (isNode(cursor, N.Rules)) {
+            const frame = (cursor as Rules).scopeFrame;
+            if (frame) {
+              resolvedParent = frame;
+              break;
+            }
+          }
+          cursor = cursor.parent ?? cursor.sourceParent;
+        }
+      }
+      this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent);
     }
     return this.scopeFrame;
   }
