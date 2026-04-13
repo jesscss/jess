@@ -622,10 +622,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                     }
                   }
                   // Fast path: walk varsByName maps directly, skipping declaration-registry
-                  // machinery. Uses the same .parent ?? .sourceParent traversal as
-                  // findRuntimeVarBinding, which is proven correct under active renderKeys.
-                  // Guard: only valid when position is fully ignored (ignoreParentScopeStart).
-                  // Positional lookups (resolution: 'linear') must use the full registry path.
+                  // machinery.  Guard: only valid when position is fully ignored
+                  // (ignoreParentScopeStart).  Positional lookups (resolution: 'linear')
+                  // must use the full registry path.
                   if (opts.ignoreParentScopeStart) {
                     const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter);
                     if (fast !== undefined) {
@@ -685,13 +684,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   return targetRules.find('function', `${keyStr}`, undefined, opts);
                 }
                 return undefined;
-              }
-              break;
-            /** @todo - Remove? */
-            case 'ruleset':
-              if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                return targetRules.find('mixin', `${keyStr}`, 'Ruleset', opts);
               }
               break;
             case 'mixin-ruleset':
