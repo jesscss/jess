@@ -1,4 +1,4 @@
-import { decl, spaced, color, rules, any, ref } from '..';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension } from '..';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -114,6 +114,131 @@ describe('Declaration', () => {
         white;
       background-position: 45
         -23;
+    `);
+  });
+
+  it('does not re-merge sequence assignments during post-eval coalescing in nested at-rules', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('nav'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              decl({ name: any('padding'), value: any('10px') }, { assign: '&_:' as any }),
+              decl({ name: any('padding'), value: any('8px') }, { assign: '&_:' as any }),
+              decl({ name: any('padding'), value: any('6px') }, { assign: '&_:' as any }),
+              decl({ name: any('padding'), value: any('4px') }, { assign: '&_:' as any })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      nav {
+        @starting-style {
+          padding: 10px 8px 6px 4px;
+        }
+      }
+    `);
+  });
+
+  it('coalesces sequence assignments emitted through nested $for output rules', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('aside'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              forNode({
+                pattern: {
+                  kind: 'single',
+                  value: new VarDeclaration({
+                    name: any('value', { role: 'property' }),
+                    value: any('_')
+                  })
+                },
+                iterable: {
+                  kind: 'node',
+                  value: new List([
+                    any('10px'),
+                    any('20px'),
+                    any('30px'),
+                    any('40px')
+                  ])
+                },
+                rules: rules([
+                  decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: '&_:' as any })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      aside {
+        @starting-style {
+          padding: 10px 20px 30px 40px;
+        }
+      }
+    `);
+  });
+
+  it('coalesces sequence assignments emitted through tuple-pattern each()-style loops', async () => {
+    context = new Context({ collapseNesting: true, leakyRules: true });
+    const node = rules([
+      ruleset({
+        selector: el('aside'),
+        rules: rules([
+          atrule({
+            name: any('@starting-style', { role: 'atkeyword' }),
+            rules: rules([
+              forNode({
+                pattern: {
+                  kind: 'tuple',
+                  values: [
+                    new VarDeclaration({ name: any('value', { role: 'property' }), value: any('_') }),
+                    new VarDeclaration({ name: any('key', { role: 'property' }), value: any('_') }),
+                    new VarDeclaration({ name: any('index', { role: 'property' }), value: any('_') })
+                  ]
+                },
+                iterable: {
+                  kind: 'node',
+                  value: new List([
+                    num(1),
+                    num(2),
+                    num(3),
+                    num(4)
+                  ])
+                },
+                rules: rules([
+                  decl({
+                    name: any('padding'),
+                    value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
+                  }, { assign: '&_:' as any })
+                ])
+              })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    expect(`${evald}`).toBeString(`
+      aside {
+        @starting-style {
+          padding: 10px 20px 30px 40px;
+        }
+      }
     `);
   });
   // it('should serialize to a module', () => {

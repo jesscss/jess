@@ -281,6 +281,77 @@ describe('Mixin', () => {
       expect(css).toContain('mixin-height: 1024px;');
     });
 
+    it('does not let earlier sibling declarations see later mixin output in leaky Less mode', async () => {
+      const setMix = mixin({
+        name: any('.mixin'),
+        rules: rules([
+          vardecl({ name: 'mix', value: any('#989') })
+        ])
+      });
+
+      const root = rules([
+        setMix,
+        vardecl({ name: 'mix', value: any('blue') }),
+        ruleset({
+          selector: el('.tiny-scope'),
+          rules: rules([
+            decl({ name: 'color', value: ref({ key: 'mix' }, { type: 'variable' }) }),
+            call({ name: ref({ key: '.mixin' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.tiny-scope');
+      expect(css).toContain('color: blue;');
+      expect(css).not.toContain('color: #989;');
+    });
+
+    it('falls back to caller scope for unresolved body vars while keeping default param scope lexical', async () => {
+      const mixinNoParam = mixin({
+        name: any('.mixinNoParam'),
+        params: list([
+          vardecl({ name: 'parameter', value: ref({ key: 'parameterDefault' }, { type: 'variable' }) }, { paramVar: true })
+        ]),
+        guard: condition([
+          ref({ key: 'parameter' }, { type: 'variable' }),
+          '=',
+          any('top level')
+        ]),
+        rules: rules([
+          decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
+          decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
+          decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        vardecl({ name: 'parameterDefault', value: any('top level') }),
+        vardecl({ name: 'anotherVariable', value: any('top level') }),
+        mixinNoParam,
+        ruleset({
+          selector: el('#allAreUsedHere'),
+          rules: rules([
+            vardecl({ name: 'parameterDefault', value: any('inside') }),
+            vardecl({ name: 'anotherVariable', value: any('inside') }),
+            vardecl({ name: 'subScopeOnly', value: any('inside') }),
+            call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain("default: top level;");
+      expect(css).toContain("scope: top level;");
+      expect(css).toContain("sub-scope-only: inside;");
+    });
+
     it('should call a mixin with multiple parameters', async () => {
       // Create a mixin with multiple parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({

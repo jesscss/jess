@@ -716,6 +716,38 @@ describe('Style import extend behavior', () => {
       expect(css).not.toContain('.only-with-visible');
     });
 
+    it('reference import with collapseNesting=true does not double-compose a literal bare ampersand block', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      localContext.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.z')])]),
+          rules: rules([
+            ruleset({
+              selector: sellist([sel([amp()])]),
+              rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+            })
+          ])
+        })
+      ]));
+
+      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      expect(css).toContain('.visible {');
+      expect(css).not.toContain('.visible .visible {');
+    });
+
+    it('reference import with collapseNesting=true does not double-compose an activated top-level selector list item', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      localContext.sourceTrees.set(referencedPath, createReferencedZTree());
+
+      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      expect(css).toContain('.visible {');
+      expect(css).not.toContain('.visible .visible {');
+    });
+
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {
       const localContext = createTestContext();
       localContext.opts.collapseNesting = true;

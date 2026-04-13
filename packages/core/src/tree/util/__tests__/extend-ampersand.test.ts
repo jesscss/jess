@@ -134,6 +134,22 @@ describe('Extend Ampersand Handling Tests', () => {
       expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
       expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
     });
+
+    it('should resolve authored && to the doubled parent selector for exact extends', () => {
+      const parentSelector = el('.e');
+      const amp1 = ampWithSelector(parentSelector);
+      const amp2 = ampWithSelector(parentSelector);
+      const selector = compound([amp1, amp2]); // &&
+
+      const target = compound([el('.e'), el('.e')]); // .e.e
+      const extendWith = el('.dbl');
+
+      const result = extendSelector(selector, target, extendWith, true);
+      const output = result.toTrimmedString();
+
+      expect(result.hoistToRoot).toBe(true);
+      expect(output).toBe('.e.e,\n.dbl');
+    });
   });
 
   describe('Expected outputs - boundary preservation', () => {

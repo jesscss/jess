@@ -16,6 +16,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import * as path from 'path';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { Parser } from '../../../../less-parser/lib/index.js';
 import { Context } from '../../context.js';
 import {
   any,
@@ -38,6 +42,8 @@ import {
 
 // false so we expect nested output where source .less is nested (Less test-data style)
 const collapseNesting = false;
+const require = createRequire(import.meta.url);
+const testData = path.dirname(require.resolve('@less/test-data'));
 
 describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   /**
@@ -478,6 +484,35 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }`.trim());
   });
 
+  it('3b. parsed-source extend-nest hover extend keeps :is(...):hover shape', async () => {
+    const source = `
+.button {
+  color: black;
+  &:hover {
+    color: inherit;
+  }
+}
+.submit {
+  &:extend(.button);
+  &:hover:extend(.button:hover) {}
+}
+`;
+    const context = new Context({ collapseNesting: true, leakyRules: true });
+    const parser = new Parser();
+    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const evald = await tree.eval(context);
+    const css = evald.toString({ context });
+    expect(css.trim()).toBeString(`
+.button,
+.submit {
+  color: black;
+}
+:is(.button, .submit):hover {
+  color: inherit;
+}
+`.trim());
+  });
+
   /**
    * 4. extend-selector.less – full fixture parity for all-less failing shape.
    */
@@ -747,8 +782,7 @@ div:is(.ext5, .ext7),
 .cc {
   color: black;
   .dd,
-  .ee,
-  .ff {
+  .ee {
     background: red;
   }
 }
@@ -760,6 +794,165 @@ div:is(.ext5, .ext7),
   .bb,
   .ff {
     color: black;
+  }
+}
+`.trim());
+  });
+
+  it('5b. parsed-shape extend.less – selector-list target on .cc stays exact per branch', async () => {
+    const root = rules([
+      ruleset({
+        selector: el('.aa'),
+        rules: rules([
+          decl({ name: 'color', value: any('black') }),
+          ruleset({
+            selector: el('.dd'),
+            rules: rules([decl({ name: 'background', value: any('red') })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.bb'),
+        rules: rules([
+          decl({ name: 'background', value: any('red') }),
+          ruleset({
+            selector: el('.bb'),
+            rules: rules([decl({ name: 'color', value: any('black') })])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.cc'),
+        rules: rules([
+          extend({ target: sellist([el('.aa'), el('.bb')]), flag: ExtendFlag.Exact })
+        ])
+      }),
+      ruleset({
+        selector: el('.ee'),
+        rules: rules([
+          extend({ target: el('.dd'), flag: ExtendFlag.All }),
+          extend({ target: el('.bb'), flag: ExtendFlag.Exact })
+        ])
+      }),
+      ruleset({
+        selector: el('.ff'),
+        rules: rules([
+          extend({ target: el('.dd'), flag: ExtendFlag.Exact }),
+          extend({ target: el('.bb'), flag: ExtendFlag.All })
+        ])
+      })
+    ]);
+    const context = new Context({ collapseNesting });
+    const evald = await root.eval(context);
+    const css = evald.toString({ context });
+    expect(css.trim()).toBeString(`
+.aa,
+.cc {
+  color: black;
+  .dd,
+  .ee {
+    background: red;
+  }
+}
+.bb,
+.cc,
+.ee,
+.ff {
+  background: red;
+  .bb,
+  .ff {
+    color: black;
+  }
+}
+`.trim());
+  });
+
+  it('5c. parsed-source tail block – exact .dd/.bb do not match nested composed selectors', async () => {
+    const source = `
+.aa {
+  color: black;
+  .dd {
+    background: red;
+  }
+}
+.bb {
+  background: red;
+  .bb {
+    color: black;
+  }
+}
+.cc:extend(.aa,.bb) {}
+.ee:extend(.dd all,.bb) {}
+.ff:extend(.dd,.bb all) {}
+`;
+    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const parser = new Parser();
+    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const evald = await tree.eval(context);
+    const css = evald.toString({ context });
+    expect(css.trim()).toBeString(`
+.aa,
+.cc {
+  color: black;
+  .dd,
+  .ee {
+    background: red;
+  }
+}
+.bb,
+.cc,
+.ee,
+.ff {
+  background: red;
+  .bb,
+  .ff {
+    color: black;
+  }
+}
+`.trim());
+  });
+
+  it('5d. parsed full extend.less keeps exact nested matches out of the .aa .dd branch', async () => {
+    const source = readFileSync(path.join(testData, 'tests-unit/extend/extend.less'), 'utf8');
+    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const parser = new Parser();
+    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const evald = await tree.eval(context);
+    const css = evald.toString({ context });
+    expect(css).toContain(`
+.aa,
+.cc {
+  color: black;
+  .dd,
+  .ee {
+    background: red;
+  }
+}`.trim());
+  });
+
+  it('5e. parsed-source extend-exact.less doubles parent selector for && exact extend', async () => {
+    const source = `
+.e {
+  && {
+    prop: extend-double;
+    &:hover {
+      hover: not-extended;
+    }
+  }
+}
+.dbl:extend(.e.e) {}
+`;
+    const context = new Context({ collapseNesting: false, leakyRules: true });
+    const parser = new Parser();
+    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const evald = await tree.eval(context);
+    const css = evald.toString({ context });
+    expect(css.trim()).toBeString(`
+.e.e,
+.dbl {
+  prop: extend-double;
+  &:hover {
+    hover: not-extended;
   }
 }
 `.trim());

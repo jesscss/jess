@@ -1,11 +1,25 @@
 import type { AtRule } from '../at-rule.js';
 import { Ruleset } from '../ruleset.js';
-import { F_EXTENDED, type Node, type RenderKey } from '../node.js';
+import { F_AMPERSAND, F_EXTENDED, type Node, type RenderKey } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
+import { SelectorList } from '../selector-list.js';
+
+function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
+  if (!sel || sel instanceof Nil) {
+    return false;
+  }
+  if (isNode(sel, N.Ampersand)) {
+    return true;
+  }
+  if (isNode(sel, N.SelectorList)) {
+    return (sel as SelectorList).value.every((item: Selector) => isNode(item, N.Ampersand));
+  }
+  return false;
+}
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -142,9 +156,37 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const rk = options.renderKey;
       let cached = rs.getComposedSelector(rk);
       if (!cached && sel && !(sel instanceof Nil)) {
-        cached = parentComposed
-          ? (rs.constructor as typeof Ruleset).composeSelector(sel as Selector, parentComposed as Selector)
+        const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+        const structuralParent = (
+          rs.hoistToRoot === true
+          && rs.parent?.parent
+          && isNode(rs.parent.parent, N.Ruleset)
+        )
+          ? ((rs.parent.parent as Ruleset).value.selector as Selector | Nil)
+          : null;
+        const composeParent = parentComposed ?? (
+          structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
+        );
+        const hasExtendedComposeContext = Boolean(
+          rulesetHasExtendedTopLevelSelector(rs)
+          || (composeParent && !(composeParent instanceof Nil) && (
+            (composeParent as Selector).hasFlag(F_EXTENDED)
+            || (isNode(composeParent as Selector, N.SelectorList)
+              && (composeParent as SelectorList).value.some(item => item.hasFlag(F_EXTENDED)))
+          ))
+        );
+        const composeInput = (
+          ownSelector
+          && ownSelector.hasFlag(F_AMPERSAND)
+          && !isBareAmpersandSelectorForSerialize(ownSelector)
+          && composeParent
+          && hasExtendedComposeContext
+        )
+          ? (ownSelector as Selector)
           : (sel as Selector);
+        cached = composeParent
+          ? (rs.constructor as typeof Ruleset).composeSelector(composeInput, composeParent as Selector)
+          : composeInput;
         rs.setComposedSelector(cached, rk);
       }
       if (cached) {

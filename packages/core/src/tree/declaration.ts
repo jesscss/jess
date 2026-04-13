@@ -125,10 +125,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = this.getValue(options.renderKey) as DeclarationValue;
-    const { assign = ':', setDefined } = this.options;
+    const { assign = ':', normalizedFromAssign, setDefined } = this.options;
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
-    const effAssign = (setDefined && assign === ':') ? ':=' : assign;
+    const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
+    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const normalizedName = String(name).replace(/\s+$/, '');
@@ -289,7 +290,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
         }
         node.options.normalizedFromAssign = normalizedAssign;
-        node.options.assign = AssignmentType.Default;
       }
       const out = node.value.value.preEval(context);
       if (isThenable(out)) {

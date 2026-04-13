@@ -462,6 +462,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   invalidateSelectorValueCache(): void {
     this._valueOf = undefined;
+    this.clearComposedSelectorCache();
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -706,15 +707,59 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
 
     let renderSelector = withoutComments ? (selector.copy(true) as typeof selector) : selector;
+    const referenceFilteredLocal = (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && !(renderSelector instanceof Nil)
+      && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
+    )
+      ? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector
+      : undefined;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
-      const parentComposed = options.composedSelectorStack?.at(-1);
+      const rawParentComposed = options.composedSelectorStack?.at(-1);
+      const parentComposed = (
+        options.referenceMode === true
+        && options.referenceRenderEnabled === true
+        && rawParentComposed
+      )
+        ? Ruleset.filterExtendedForReferenceCompose(rawParentComposed as Selector) ?? rawParentComposed
+        : rawParentComposed;
+      const structuralParent = (
+        this.hoistToRoot === true
+        && this.parent?.parent
+        && isNode(this.parent.parent, N.Ruleset)
+      )
+        ? ((this.parent.parent as Ruleset).value.selector as Selector | Nil)
+        : null;
+      const composeParent = parentComposed ?? (
+        structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
+      );
       const rk = options.renderKey;
       let cached = this.getComposedSelector(rk);
       if (!cached) {
-        cached = parentComposed
-          ? Ruleset.composeSelector(renderSelector as Selector, parentComposed as Selector)
-          : (renderSelector as Selector);
-        this.setComposedSelector(cached, rk);
+        const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
+        const hasExtendedComposeContext = Boolean(
+          Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector)
+          || (composeParent && Ruleset.hasExtendedTopLevelSelector(composeParent as Selector))
+          || this.hasFlag(F_EXTENDED)
+        );
+        const composeInput: Selector = (
+          ownSelector
+          && ownSelector.hasFlag(F_AMPERSAND)
+          && !Ruleset.isBareAmpersandSelector(ownSelector)
+          && composeParent
+          && hasExtendedComposeContext
+        )
+          ? (ownSelector as Selector)
+          : (referenceFilteredLocal ?? (renderSelector as Selector));
+        cached = composeParent
+          ? (
+              composeInput.valueOf() === (composeParent as Selector).valueOf()
+                ? composeInput
+                : Ruleset.composeSelector(composeInput, composeParent as Selector)
+            )
+          : composeInput;
+        this.setComposedSelector(cached as Selector, rk);
       }
       renderSelector = cached as typeof selector;
     }
@@ -722,13 +767,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     // reflect the selectors that were actually unlocked. When an extend adds
     // visible selectors, we emit those; for self-extends with no added items,
     // we fall back to the touched original selector.
-    if (
-      options.referenceMode === true
-      && options.referenceRenderEnabled === true
-      && !(renderSelector instanceof Nil)
-      && Ruleset.hasExtendedTopLevelSelector(renderSelector as Selector | Nil)
-    ) {
-      renderSelector = Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector;
+    if (referenceFilteredLocal) {
+      renderSelector = (
+        renderSelector.valueOf() === referenceFilteredLocal.valueOf()
+          ? renderSelector
+          : Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector
+      );
       if (renderSelector instanceof Nil) {
         return '';
       }

@@ -198,6 +198,22 @@ describe('Functions', () => {
       expect(css).toContain('item-3: 3');
       expect(css).toContain('item-4: 4');
     });
+
+    it('should merge each() callback output correctly inside nested @starting-style', async () => {
+      const lessCode = `
+        aside {
+          @starting-style {
+            each(1 2 3 4, {
+              padding+_: (@value * 10px);
+            });
+          }
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('@starting-style');
+      expect(css).toContain('padding: 10px 20px 30px 40px');
+    });
   });
 
   describe('Built-in Type Functions', () => {

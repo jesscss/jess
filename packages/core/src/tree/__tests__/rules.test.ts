@@ -504,6 +504,168 @@ describe('Rules', () => {
         expect(`${getVar(node, 'c')}`).toBe('$c: optional-c');
       });
 
+      it('nested rulesets inherit nearer parent vars over globals in Less mode', async () => {
+        context = new Context({ leakyRules: true });
+        getProp = getPropWithContext.bind(context, context);
+        getVar = getVarWithContext.bind(context, context);
+        getDeclEither = getDeclEitherWithContext.bind(context, context);
+
+        let root = rules([
+          vardecl({ name: 'z', value: any('transparent') }),
+          ruleset({
+            selector: el('.scope1'),
+            rules: rules([
+              vardecl({ name: 'z', value: any('black') }),
+              ruleset({
+                selector: el('.scope2'),
+                rules: rules([
+                  ruleset({
+                    selector: el('.scope3'),
+                    rules: rules([
+                      decl({ name: 'border-color', value: ref('z', { type: 'variable' }) })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        root = await root.eval(context);
+        expect(context.searchScope.size).toBe(0);
+        expect(context.renderKey).toBeUndefined();
+        const scope1 = root.at(1) as any;
+        const scope2 = scope1.value.rules.at(1) as any;
+        const scope3 = scope2.value.rules.at(0) as any;
+        const scope3Rules = scope3.value.rules as Rules;
+        expect(`${getVar(scope3Rules, 'z', { start: 0 })}`).toBe('$z: black');
+        const scope3Found = scope3Rules.find('declaration', 'z', 'VarDeclaration', {
+          filter: () => true,
+          context,
+          hasTarget: false,
+          renderKey: context.renderKey,
+          searchParents: true,
+          start: 0
+        });
+        expect(`${scope3Found}`).toBe('$z: black');
+        const border = scope3Rules.at(0) as Declaration;
+        context.rulesContext = scope3Rules;
+        const evald = await border.eval(context);
+        expect(`${evald}`).toBe('border-color: black');
+      });
+
+      it('preserves start when searching later child rules', async () => {
+        context = new Context({ leakyRules: true });
+        getProp = getPropWithContext.bind(context, context);
+        getVar = getVarWithContext.bind(context, context);
+        getDeclEither = getDeclEitherWithContext.bind(context, context);
+
+        let root = rules([
+          vardecl({ name: 'mix', value: any('blue') }),
+          decl({ name: 'color', value: ref('mix', { type: 'variable' }) }),
+          rules([
+            vardecl({ name: 'mix', value: any('green') })
+          ], {
+            rulesVisibility: {
+              VarDeclaration: 'public'
+            }
+          })
+        ]);
+
+        root = await root.eval(context);
+        const color = root.at(1) as Declaration;
+        const evald = await color.eval(context);
+        expect(`${evald}`).toBe('color: blue');
+      });
+
+      it('still sees later same-scope vars in Less mode', async () => {
+        context = new Context({ leakyRules: true });
+        getProp = getPropWithContext.bind(context, context);
+        getVar = getVarWithContext.bind(context, context);
+        getDeclEither = getDeclEitherWithContext.bind(context, context);
+
+        let root = rules([
+          decl({ name: 'total-width', value: ref('total-width', { type: 'variable' }) }),
+          vardecl({ name: 'base', value: any('1') }),
+          vardecl({ name: 'column-width', value: any('6em') }),
+          vardecl({ name: 'gutter-width', value: any('2em') }),
+          vardecl({ name: 'columns', value: any('12') }),
+          vardecl({ name: 'gridsystem-width', value: any('96em') }),
+          vardecl({ name: 'total-width', value: ref('gridsystem-width', { type: 'variable' }) })
+        ]);
+
+        root = await root.eval(context);
+        const width = root.at(0) as Declaration;
+        const evald = await width.eval(context);
+        expect(`${evald}`).toBe('total-width: 96em');
+      });
+
+      it('still sees later parent-scope vars from inside nested rulesets in Less mode', async () => {
+        context = new Context({ leakyRules: true });
+        getProp = getPropWithContext.bind(context, context);
+        getVar = getVarWithContext.bind(context, context);
+        getDeclEither = getDeclEitherWithContext.bind(context, context);
+
+        let root = rules([
+          ruleset({
+            selector: el('.grid'),
+            rules: rules([
+              decl({ name: 'total-width', value: ref('total-width', { type: 'variable' }) })
+            ])
+          }),
+          vardecl({ name: 'base', value: any('1') }),
+          vardecl({ name: 'column-width', value: any('6em') }),
+          vardecl({ name: 'gutter-width', value: any('2em') }),
+          vardecl({ name: 'columns', value: any('12') }),
+          vardecl({ name: 'gridsystem-width', value: any('96em') }),
+          vardecl({ name: 'total-width', value: ref('gridsystem-width', { type: 'variable' }) })
+        ]);
+
+        root = await root.eval(context);
+        const grid = root.at(0) as any;
+        const width = grid.value.rules.at(0) as Declaration;
+        context.rulesContext = grid.value.rules;
+        const evald = await width.eval(context);
+        expect(`${evald}`).toBe('total-width: 96em');
+      });
+
+      it('re-bases start to the outer container index when searching parent rules', async () => {
+        context = new Context({ leakyRules: true });
+        getProp = getPropWithContext.bind(context, context);
+        getVar = getVarWithContext.bind(context, context);
+        getDeclEither = getDeclEitherWithContext.bind(context, context);
+
+        let root = rules([
+          vardecl({ name: 'z', value: any('red') }),
+          rules([
+            rules([
+              decl({ name: 'border-color', value: ref('z', { type: 'variable', resolution: 'linear' }) })
+            ])
+          ]),
+          vardecl({ name: 'z', value: any('blue') })
+        ]);
+
+        root = await root.eval(context);
+        expect(context.searchScope.size).toBe(0);
+        expect(context.renderKey).toBeUndefined();
+        const outer = root.at(1) as Rules;
+        const inner = outer.at(0) as Rules;
+        expect(`${getVar(inner, 'z', { start: 0 })}`).toBe('$z: red');
+        const innerFound = inner.find('declaration', 'z', 'VarDeclaration', {
+          filter: () => true,
+          context,
+          hasTarget: false,
+          renderKey: context.renderKey,
+          searchParents: true,
+          start: 0
+        });
+        expect(`${innerFound}`).toBe('$z: red');
+        const border = inner.at(0) as Declaration;
+        context.rulesContext = inner;
+        const evald = await border.eval(context);
+        expect(`${evald}`).toBe('border-color: red');
+      });
+
       it('shadows variables #1', async () => {
         let node = rules([
           vardecl({ name: 'one', value: any('one') }),

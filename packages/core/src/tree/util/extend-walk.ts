@@ -54,9 +54,10 @@ import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
+import { Ruleset } from '../ruleset.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-import { F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
+import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
 
 const { isArray } = Array;
@@ -1038,6 +1039,18 @@ function wouldMatchNode(
 
   if (isWholeNodeMatch(node, spec)) {
     if (!partial) {
+      // Exact extends match against the fully composed selector. If this local
+      // selector still sits under parent selector context, the whole selector
+      // is longer than the local node, so an exact local hit is invalid.
+      if (ctx.isRoot && parentSelector) {
+        if (node.hasFlag(F_AMPERSAND)) {
+          const composed = Ruleset.composeSelector(node, parentSelector);
+          if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
+            return 'crossing';
+          }
+        }
+        return false;
+      }
       if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
         return false;
       }
@@ -1108,6 +1121,15 @@ function wouldMatchNode(
   }
 
   if (isNode(node, N.CompoundSelector)) {
+    // Exact targets like `.e.e` against authored nested selectors like `&&`
+    // only become visible after substituting the parent selector into the
+    // whole compound. Looking at each `&` component independently misses that.
+    if (parentSelector && !partial && node.hasFlag(F_AMPERSAND)) {
+      const composed = Ruleset.composeSelector(node as CompoundSelector, parentSelector);
+      if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
+        return 'crossing';
+      }
+    }
     if (isMultiSimple(spec) && partial) {
       return wouldSimplesMatch(node as CompoundSelector, spec) ? 'local' : false;
     }

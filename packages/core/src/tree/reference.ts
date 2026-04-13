@@ -135,6 +135,29 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   return selector.valueOf();
 }
 
+function getLookupStartIndex(node: Node): number | undefined {
+  let startIndex = node.index;
+  let currentNode: Node | undefined = node;
+
+  if (startIndex === undefined) {
+    while (currentNode && startIndex === undefined) {
+      currentNode = currentNode.parent;
+      if (currentNode) {
+        startIndex = currentNode.index;
+      }
+    }
+  }
+
+  while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
+    currentNode = currentNode.parent;
+    if (currentNode && currentNode.index !== undefined) {
+      startIndex = currentNode.index;
+    }
+  }
+
+  return startIndex;
+}
+
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
@@ -388,32 +411,29 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             opts.local = true;
           }
 
-          if (this.options.resolution === 'linear' && !isInterpolatedVariable) {
-            // For linear resolution, climb up the parent chain until we find a node with a Rules parent
-            // and use that node's index for linear lookup
-            let startIndex = this.index;
-            let currentNode: Node | undefined = this;
-
-            // If this node doesn't have an index, climb up until we find one
-            if (startIndex === undefined) {
-              while (currentNode && startIndex === undefined) {
-                currentNode = currentNode.parent;
-                if (currentNode) {
-                  startIndex = currentNode.index;
-                }
-              }
-            }
-
-            // Now climb up until we find a node that has a Rules parent
-            while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
-              currentNode = currentNode.parent;
-              if (currentNode && currentNode.index !== undefined) {
-                startIndex = currentNode.index;
-              }
-            }
-
+          if (
+            !target
+            && !isInterpolatedVariable
+            && this.options.resolution === 'linear'
+          ) {
+            const startIndex = getLookupStartIndex(this);
             if (startIndex !== undefined) {
               opts.start = startIndex;
+            }
+          } else if (
+            !target
+            && !isInterpolatedVariable
+            && (
+              type === 'variable'
+              || type === 'property'
+              || type === 'declaration'
+            )
+          ) {
+            const startIndex = getLookupStartIndex(this);
+            if (startIndex !== undefined) {
+              opts.start = startIndex;
+              opts.ignoreCurrentScopeStart = true;
+              opts.ignoreParentScopeStart = true;
             }
           } else if (this.options.resolution === 'call-time' && !isInterpolatedVariable) {
             // For call-time resolution, use the call site's position (context.callSiteIndex)
@@ -423,25 +443,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               opts.start = context.rulesContext.index;
             } else {
               // Fall back to linear resolution if we can't find a call site
-              let startIndex = this.index;
-              let currentNode: Node | undefined = this;
-
-              if (startIndex === undefined) {
-                while (currentNode && startIndex === undefined) {
-                  currentNode = currentNode.parent;
-                  if (currentNode) {
-                    startIndex = currentNode.index;
-                  }
-                }
-              }
-
-              while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
-                currentNode = currentNode.parent;
-                if (currentNode && currentNode.index !== undefined) {
-                  startIndex = currentNode.index;
-                }
-              }
-
+              const startIndex = getLookupStartIndex(this);
               if (startIndex !== undefined) {
                 opts.start = startIndex;
               }

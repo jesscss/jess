@@ -1,5 +1,21 @@
 # Extend Implementation Status
 
+## Session Notes
+
+### Do Not Repeat
+
+- Always check fixture-local `styles.config.*` before calling a nested vs flattened selector shape a core bug.
+  - Canonical path: [packages/jess/src/config.ts](/Users/matthew/git/oss/jess/packages/jess/src/config.ts)
+  - Per-output `collapseNesting` resolution: [packages/jess/src/index.ts](/Users/matthew/git/oss/jess/packages/jess/src/index.ts)
+  - Recent mistake: treating `tests-unit/extend/extend.less` as if it were running under the default collapsed mode when its local config explicitly sets `collapseNesting: false`.
+
+- Do not add selector-shape helper logic just because one serialized output differs from expectation.
+  - Recent mistake: `isPseudoWrapperAmpersandSelector()` in `extend-roots.ts` downgraded extend classification based on `&:pseudo` shape.
+  - Correct rule: resolve `&`, match the resolved selector, then let normal extend classification and serializer mode decide the output.
+
+- When a Less fixture looks “wrong,” first decide whether the expected `.css` is stale before changing core behavior.
+  - If the fixture has a local config that explains the shape, update the alpha expectation and preserve the old one in `legacy/`.
+
 ## Current State
 
 ### 1. Where We Are

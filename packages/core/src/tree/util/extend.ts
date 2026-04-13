@@ -256,10 +256,27 @@ export function applyExtendsToSelector(
   if (extendsList.length === 0) {
     return initialSelector;
   }
+  const expandExactSelectorListTargets = (instructions: ExtendInstruction[]): ExtendInstruction[] => {
+    const expanded: ExtendInstruction[] = [];
+    for (const instruction of instructions) {
+      if (!instruction.partial && isNode(instruction.target, N.SelectorList)) {
+        for (const target of instruction.target.value) {
+          expanded.push({
+            ...instruction,
+            target
+          });
+        }
+      } else {
+        expanded.push(instruction);
+      }
+    }
+    return expanded;
+  };
   let selector = initialSelector;
   const originalSelector = initialSelector;
-  const instructions = extendsList.slice();
-  const allExtendTuples = allExtends.map(inst => [
+  const expandedAllExtends = expandExactSelectorListTargets(allExtends);
+  const instructions = expandExactSelectorListTargets(extendsList);
+  const allExtendTuples = expandedAllExtends.map(inst => [
     inst.target,
     inst.extendWith,
     inst.partial,
@@ -315,7 +332,7 @@ export function applyExtendsToSelector(
               if (queuedKeys.has(chainedKey)) {
                 continue;
               }
-              const matchingInstruction = allExtends.find(inst =>
+              const matchingInstruction = expandedAllExtends.find(inst =>
                 inst.partial === chainedPartial
                 && inst.target.valueOf() === chainedTarget.valueOf()
                 && inst.extendWith.valueOf() === chainedExtendWith.valueOf()
@@ -353,7 +370,7 @@ export function applyExtendsToSelector(
             if (queuedKeys.has(chainedKey)) {
               continue;
             }
-            const matchingInstruction = allExtends.find(inst =>
+            const matchingInstruction = expandedAllExtends.find(inst =>
               inst.partial === chainedPartial
               && inst.target.valueOf() === chainedTarget.valueOf()
               && inst.extendWith.valueOf() === chainedExtendWith.valueOf()

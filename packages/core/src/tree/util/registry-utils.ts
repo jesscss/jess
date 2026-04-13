@@ -96,6 +96,8 @@ export type DeclarationFindOptions = {
   readonly?: boolean;
   searchParents?: boolean;
   start?: number;
+  ignoreCurrentScopeStart?: boolean;
+  ignoreParentScopeStart?: boolean;
   local?: boolean;
 };
 
@@ -187,7 +189,6 @@ export abstract class Registry<
         const isMixinOutput = n.node.options?.isMixinOutput === true;
         // Mixin output Rules should never participate in untargeted lookups.
         // They are only searchable when the lookup has an explicit target.
-        // (This prevents mixin-call frame variables—including parameter bindings—from leaking.)
         if (isMixinOutput) {
           return options?.hasTarget === true;
         }
@@ -240,7 +241,11 @@ export abstract class Registry<
           let newLocal = local || Boolean(r.node.options?.local);
           let newOpts = options ? { ...options, readonly: readonly || r.readonly } : { readonly: readonly || r.readonly };
           newOpts.local = newLocal;
-          newOpts.start = undefined;
+          // Preserve source-order constraints when looking "through" child Rules.
+          // This prevents an earlier sibling declaration from seeing vars emitted by
+          // a later child/call output Rules (e.g. `.tiny-scope { color: @mix; .mixin(); }`).
+          // Parent searches still reset start naturally as they walk outward.
+          newOpts.start = start;
           // _searchRulesChildren should never search parents - only search within imported Rules
           newOpts.searchParents = false;
           // Pass through searchedRules to prevent circular references
@@ -1304,11 +1309,15 @@ export class DeclarationRegistry extends Registry<Declaration> {
       local = false,
       start
     } = options ?? {};
+    const preserveLinearStart = start !== undefined;
 
     let newReadonly: boolean | undefined = false;
     // Track visited Rules nodes in the parent chain to detect circular parent chains
     const visitedRules = new Set<Rules>();
+    let ignoreCurrentScopeStart = options?.ignoreCurrentScopeStart === true;
     while (rules) {
+      const currentScopeStart = ignoreCurrentScopeStart ? undefined : start;
+      ignoreCurrentScopeStart = false;
       // CRITICAL: Check for circular parent chain
       if (visitedRules.has(rules)) {
         throw new Error(`Circular parent chain detected in DeclarationRegistry.find`);
@@ -1340,7 +1349,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         }
       }
       if (list?.length) {
-        let result = rules.getRegistry('declaration')._findClosestByStart(list, start);
+        let result = rules.getRegistry('declaration')._findClosestByStart(list, currentScopeStart);
         if (result) {
           newReadonly ||= result.options.readonly;
           // Visibility determines how declarations are found:
@@ -1353,7 +1362,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
           // search originates from a descendant of this scope, so private does NOT block.
           // Private only blocks _searchRulesChildren (outside looking in).
           const currentRulesVisibility = (filterType ? rules.options.rulesVisibility?.[filterType] : undefined) ?? '';
-          if (currentRulesVisibility === 'optional') {
+          const isRulesetBodyScope = isNode(rules.parent, N.Ruleset) || isNode(rules.sourceNode, N.Ruleset);
+          if (currentRulesVisibility === 'optional' && !isRulesetBodyScope) {
             optionalCandidates.add(result);
           } else {
             declCandidate.add(result);
@@ -1376,7 +1386,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
         searchParents: false, // Always false when searching children
         readonly: newReadonly,
         candidates: declCandidate,
-        searchedRules: searchedRules
+        searchedRules: searchedRules,
+        start
       };
 
       const searchRules = rules;
@@ -1417,6 +1428,11 @@ export class DeclarationRegistry extends Registry<Declaration> {
       }
 
       do {
+        const childRules = rules;
+        let containingNode: Node | undefined = childRules as unknown as Node;
+        while (containingNode?.parent && !isNode(containingNode.parent, N.Rules)) {
+          containingNode = containingNode.parent;
+        }
         rules = (options?.renderKey ? rules?.getParent(options.renderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
@@ -1426,6 +1442,11 @@ export class DeclarationRegistry extends Registry<Declaration> {
         if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
           rules = undefined;
           break;
+        }
+        if (rules && options?.ignoreParentScopeStart) {
+          start = undefined;
+        } else if (rules && preserveLinearStart) {
+          start = containingNode?.index;
         }
       } while (rules && rules.type !== 'Rules');
     }

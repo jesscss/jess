@@ -224,6 +224,12 @@ function classifyInstructionMatch(
     if (classified) {
       return classified;
     }
+    if (parentSelector && !partial && selector.valueOf() === target.valueOf()) {
+      // Exact nested matches like `.dd` under `.aa` must not fall back to the
+      // parentless legacy matcher, which would incorrectly treat the local
+      // fragment as the full selector.
+      return false;
+    }
   }
   // Fallback: legacy path (no parent context)
   const after = applyExtendsToSelector(selector, [instruction]);
@@ -522,11 +528,9 @@ export function processExtends(context: Context): void {
       return undefined;
     };
 
-    const instructions = context.extends.map(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
-      target.keySetLibrary ??= context.selectorBits;
+    const instructions = context.extends.flatMap(([target, selectorWithExtend, partial, extendRoot, extendNode, , fromReferenceScope]) => {
       selectorWithExtend.keySetLibrary ??= context.selectorBits;
-      return {
-        target,
+      const base = {
         extendWith: selectorWithExtend,
         extendingRuleset: findExtendingRuleset(extendNode),
         partial,
@@ -534,6 +538,20 @@ export function processExtends(context: Context): void {
         extendNode,
         fromReferenceScope: fromReferenceScope === true
       };
+      if (!partial && isNode(target, N.SelectorList)) {
+        return target.value.map((item) => {
+          item.keySetLibrary ??= context.selectorBits;
+          return {
+            ...base,
+            target: item
+          };
+        });
+      }
+      target.keySetLibrary ??= context.selectorBits;
+      return [{
+        ...base,
+        target
+      }];
     });
 
     if (!instructions.length) {
@@ -582,7 +600,7 @@ export function processExtends(context: Context): void {
         let isActivatedByVisibleExtend = false;
         let hasWithinAmpersandMatch = false;
         let hasAnyLocalMatch = false;
-        const crossingInstructions: ExtendInstruction[] = [];
+        let crossingInstructions: ExtendInstruction[] = [];
         // Instructions excluded from local application (within-ampersand / crossing):
         const excludedFromLocal = new Set<ExtendInstruction>();
         // First pass: classify each instruction.
@@ -749,10 +767,11 @@ export function processExtends(context: Context): void {
           ownSelector
           && ownSelector.valueOf() !== selector.valueOf()
         );
-        const hasOnlyPartialExtends = visibleExtends.length > 0 && visibleExtends.every(instruction => instruction.partial);
+        const hasOnlyPartialExtends = localApplicableExtends.length > 0
+          && localApplicableExtends.every(instruction => instruction.partial);
         if (ownSelector && hasResolvedNestedSelector && hasOnlyPartialExtends) {
-          const ownNewSelector = applyExtendsToSelector(ownSelector, visibleExtends);
-          const fullNewSelector = applyExtendsToSelector(selector, visibleExtends);
+          const ownNewSelector = applyExtendsToSelector(ownSelector, localApplicableExtends);
+          const fullNewSelector = applyExtendsToSelector(selector, localApplicableExtends);
           const ownBefore = ownSelector.valueOf();
           const ownAfter = ownNewSelector.valueOf();
           const fullBefore = selector.valueOf();
@@ -771,18 +790,14 @@ export function processExtends(context: Context): void {
           }
         }
         if (ownSelector && hasResolvedNestedSelector) {
-          const partialOnly = visibleExtends.filter(instruction => instruction.partial);
-          const nonPartialOnly = visibleExtends.filter(instruction => !instruction.partial);
+          const partialOnly = localApplicableExtends.filter(instruction => instruction.partial);
+          const nonPartialOnly = localApplicableExtends.filter(instruction => !instruction.partial);
           if (partialOnly.length > 0 && nonPartialOnly.length === 0) {
             const ownAfterPartialOnly = applyExtendsToSelector(ownSelector, partialOnly);
             const fullAfterPartialOnly = applyExtendsToSelector(selector, partialOnly);
             const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
             const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
-            const parentSelector = (
-              ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
-                ? (ruleset.parent.parent as Ruleset).value.selector
-                : null
-            );
+            const parentSelector = getParentSelector(ruleset) ?? null;
             const canDeriveOwnFromGeneratedIs = Boolean(
               !ownChangedByPartialOnly
               && fullChangedByPartialOnly
@@ -810,17 +825,12 @@ export function processExtends(context: Context): void {
             }
           }
           if (nonPartialOnly.length > 0) {
-            const parentSelectorForOwnSplit = (
-              ruleset.parent?.parent && isNode(ruleset.parent.parent, N.Ruleset)
-                ? (ruleset.parent.parent as Ruleset).value.selector as Selector
-                : null
-            );
+            const parentSelectorForOwnSplit = getParentSelector(ruleset) ?? null;
             const {
               nonPartialOwnOnly,
               hasAncestorDrivenNonPartial,
               hasParentMatchedOwnOnlyNonPartial
             } = analyzeNonPartialExtends(ownSelector, selector, nonPartialOnly, parentSelectorForOwnSplit);
-
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
@@ -879,7 +889,11 @@ export function processExtends(context: Context): void {
           }
         }
         const applyInput = (currentSelector && !isNode(currentSelector, N.Nil) ? currentSelector : selector) as Selector;
-        const newSelector = applyExtendsToSelector(applyInput, localApplicableExtends, visibleExtends);
+        const newSelector = applyExtendsToSelector(
+          applyInput,
+          localApplicableExtends,
+          visibleExtends
+        );
         if (newSelector.valueOf() !== applyInput.valueOf()) {
           if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
             const previousValues = new Set<string>();
