@@ -21,6 +21,7 @@ import {
   Node,
   atrule
 } from '../index.js';
+import { Rules as RulesClass } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
@@ -156,6 +157,47 @@ describe('Style import', () => {
       expect(`${resolved}`).toBe('color: green');
     });
 
+    it('import type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
+      context.sourceTrees.set('imported.jess', rules([
+        vardecl({ name: 'importedVar', value: any('green') })
+      ]));
+
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'importedVar') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          style({
+            path: quoted(any('imported.jess'))
+          }, {
+            type: 'import'
+          }),
+          ruleset({
+            selector: sellist([sel([el('.parent')])]),
+            rules: rules([
+              decl({ name: any('color'), value: ref('importedVar', { type: 'variable' }) })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        const parentRuleset = evald.at(1);
+        const parentDecl = (parentRuleset as any).value.rules.at(0);
+        const resolved = await parentDecl.eval(context);
+        expect(`${resolved}`).toBe('color: green');
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('compose type variables are visible to parent', async () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
@@ -183,6 +225,49 @@ describe('Style import', () => {
       const resolved = await parentDecl.eval(context);
       // Should use composedVar from the compose
       expect(`${resolved}`).toBe('color: purple');
+    });
+
+    it('compose type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
+      const composedPath = resolve(process.cwd(), 'composed.jess');
+      context.sourceTrees.set(composedPath, rules([
+        vardecl({ name: 'composedVar', value: any('purple') })
+      ]));
+
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'composedVar') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          style({
+            path: quoted(any('composed.jess'))
+          }, {
+            type: 'compose',
+            namespace: '*'
+          }),
+          ruleset({
+            selector: sellist([sel([el('.parent')])]),
+            rules: rules([
+              decl({ name: any('color'), value: ref('composedVar', { type: 'variable' }) })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        const parentRuleset = evald.at(1);
+        const parentDecl = (parentRuleset as any).value.rules.at(0);
+        const resolved = await parentDecl.eval(context);
+        expect(`${resolved}`).toBe('color: purple');
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
     });
   });
 

@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo } from './node.js';
+import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { cast } from './util/cast.js';
 import type { FindOptions } from './util/registry-utils.js';
@@ -22,6 +22,9 @@ import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
+import { comparePosition } from './util/compare.js';
+import type { BindingEntry, ScopeFrame } from './scope-frame.js';
+import type { VarDeclaration } from './declaration-var.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -117,57 +120,270 @@ function findVarDeclarationFast(
   startRules: Rules,
   name: string,
   filter: (n: Node) => boolean,
-  options?: {
+  options: {
     start?: number;
-    context?: Context;
+    context: Context;
     hasTarget?: boolean;
     local?: boolean;
   }
 ): {
   match: Node | undefined;
-  needsRegistryFallback: boolean;
+  matchKind: 'public' | 'optional' | undefined;
+  needsAsyncProbe: boolean;
 } {
-  const hasSearchableChildVarScopes = (scope: Rules, applyStart: boolean): boolean => {
+  const selectBucketCandidate = (
+    bucket: BindingEntry[] | undefined,
+    start: number | undefined
+  ): Node | undefined => {
+    if (!bucket?.length) {
+      return undefined;
+    }
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      const candidate = bucket[i]!;
+      if (start !== undefined && !(candidate.sourceNode.index !== undefined && candidate.sourceNode.index < start)) {
+        continue;
+      }
+      if (filter(candidate.sourceNode)) {
+        return candidate.sourceNode;
+      }
+    }
+    return undefined;
+  };
+
+  const laterOf = <T extends Node>(a: T | undefined, b: T | undefined): T | undefined => {
+    if (!a) {
+      return b;
+    }
+    if (!b) {
+      return a;
+    }
+    if (!a.parent && b.parent) {
+      return b;
+    }
+    if (a.parent && !b.parent) {
+      return a;
+    }
+    let position: ReturnType<typeof comparePosition>;
+    try {
+      position = comparePosition(a, b);
+    } catch {
+      return a.parent || !b.parent ? a : b;
+    }
+    return position !== undefined && position <= 0 ? b : a;
+  };
+
+  const unresolvedDynamicCouldBeat = (
+    scope: Rules,
+    pendingDynamicDecls: readonly VarDeclaration[],
+    currentBest: Node | undefined
+  ): VarDeclaration[] => {
+    const candidates: VarDeclaration[] = [];
+    for (const decl of pendingDynamicDecls) {
+      if (decl.parent !== scope) {
+        continue;
+      }
+      if (!filter(decl)) {
+        continue;
+      }
+      if (!currentBest) {
+        candidates.push(decl);
+        continue;
+      }
+      if (!currentBest.parent) {
+        candidates.push(decl);
+        continue;
+      }
+      const position = comparePosition(currentBest, decl);
+      if (position === undefined || position <= 0) {
+        candidates.push(decl);
+      }
+    }
+    return candidates;
+  };
+
+  const promoteResolvedPendingDecls = (
+    scope: Rules,
+    frame: ScopeFrame
+  ): void => {
+    if (frame.pendingDynamicDecls.length === 0) {
+      return;
+    }
+    const remaining: VarDeclaration[] = [];
+    let mutated = false;
+
+    for (const decl of frame.pendingDynamicDecls) {
+      if (decl.parent !== scope) {
+        remaining.push(decl);
+        continue;
+      }
+
+      const declName = decl.value.name;
+      const isStaticName = !(declName instanceof Node) || declName.hasFlag(F_STATIC);
+      if (!isStaticName) {
+        remaining.push(decl);
+        continue;
+      }
+
+      const resolvedName = `${declName.valueOf()}`;
+      const sourceIdentity = decl.sourceNode ?? decl;
+      let bucket = frame.declarationBucketsByName.get(resolvedName);
+      if (!bucket) {
+        frame.declarationBucketsByName.set(resolvedName, bucket = []);
+      }
+      if (!bucket.some((entry) => {
+        const entryIdentity = entry.sourceNode.sourceNode ?? entry.sourceNode;
+        return entry.sourceNode === decl
+          || entry.sourceNode === sourceIdentity
+          || entryIdentity === sourceIdentity;
+      })) {
+        bucket.push({
+          cell: {
+            value: decl.value.value,
+            sourceNode: decl,
+            readonly: decl.options?.readonly
+          },
+          sourceNode: decl
+        });
+      }
+      mutated = true;
+    }
+
+    if (mutated) {
+      frame.pendingDynamicDecls = remaining;
+    }
+  };
+
+  const findVarWithinScopeSurface = (
+    scope: Rules,
+    scopeStart: number | undefined,
+    localContext: boolean | undefined,
+    visited: Set<Rules>,
+    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration']
+  ): {
+    publicMatch: Node | undefined;
+    optionalMatch: Node | undefined;
+    needsAsyncProbe: boolean;
+  } => {
+    if (visited.has(scope)) {
+      return {
+        publicMatch: undefined,
+        optionalMatch: undefined,
+        needsAsyncProbe: false
+      };
+    }
+    visited.add(scope);
+
+    const frame = scope.getScopeFrame();
+    promoteResolvedPendingDecls(scope, frame);
+    let publicMatch: Node | undefined;
+    let optionalMatch: Node | undefined;
+    let needsAsyncProbe = false;
+
+    const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
+    if (currentCandidate) {
+      const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
+      const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
+      const isOptionalCurrentScope = visibilityOverride === undefined
+        ? scopeVisibility === 'optional' && !isRulesetBodyScope
+        : scopeVisibility === 'optional';
+      if (isOptionalCurrentScope) {
+        optionalMatch = currentCandidate;
+      } else {
+        publicMatch = currentCandidate;
+      }
+    }
+
+    const pendingCandidates = unresolvedDynamicCouldBeat(scope, frame.pendingDynamicDecls, publicMatch ?? optionalMatch);
+    if (pendingCandidates.length > 0) {
+      for (let i = pendingCandidates.length - 1; i >= 0; i--) {
+        const decl = pendingCandidates[i]!;
+        let resolvedName: unknown;
+        options.context.searchScope.add(decl);
+        try {
+          resolvedName = decl.value.name.eval(options.context);
+        } catch {
+          options.context.searchScope.delete(decl);
+          continue;
+        }
+        if (isThenable(resolvedName)) {
+          options.context.searchScope.delete(decl);
+          needsAsyncProbe = true;
+          continue;
+        }
+        options.context.searchScope.delete(decl);
+        const resolvedKey = isNode(resolvedName) ? `${resolvedName.valueOf()}` : `${resolvedName}`;
+        if (resolvedKey !== name) {
+          continue;
+        }
+        const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
+        const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
+        const isOptionalCurrentScope = visibilityOverride === undefined
+          ? scopeVisibility === 'optional' && !isRulesetBodyScope
+          : scopeVisibility === 'optional';
+        if (isOptionalCurrentScope) {
+          optionalMatch = laterOf(optionalMatch, decl);
+        } else {
+          publicMatch = laterOf(publicMatch, decl);
+        }
+        break;
+      }
+    }
+
     const childEntries = scope._rulesSet as Array<{
       node: Rules;
       rulesVisibility?: RulesOptions['rulesVisibility'];
     }> | undefined;
     if (!childEntries?.length) {
-      return false;
+      return { publicMatch, optionalMatch, needsAsyncProbe };
     }
-    for (const entry of childEntries) {
+
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
       const visibility = entry.rulesVisibility?.VarDeclaration
         ?? entry.node.options.rulesVisibility?.VarDeclaration;
       if (visibility !== 'public' && visibility !== 'optional') {
         continue;
       }
-      if (entry.node.options?.isMixinOutput === true && options?.hasTarget !== true) {
+      if (entry.node.options?.isMixinOutput === true && options.hasTarget !== true) {
         continue;
       }
-      if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
+      if (options.context.rulesContext === scope && entry.node.options?.forward) {
         continue;
       }
-      if (options?.local && entry.node.options?.local) {
+      if (localContext && entry.node.options?.local) {
         continue;
       }
       if (
-        applyStart
-        && options?.start !== undefined
-        && !(entry.node.index !== undefined && entry.node.index < options.start)
+        scopeStart !== undefined
+        && !(entry.node.index !== undefined && entry.node.index < scopeStart)
       ) {
         continue;
       }
-      return true;
+
+      const childResult = findVarWithinScopeSurface(
+        entry.node,
+        scopeStart,
+        localContext || Boolean(entry.node.options?.local),
+        visited,
+        visibility
+      );
+      needsAsyncProbe ||= childResult.needsAsyncProbe;
+      publicMatch = laterOf(publicMatch, childResult.publicMatch);
+      optionalMatch = laterOf(optionalMatch, childResult.optionalMatch);
     }
-    return false;
+
+    return { publicMatch, optionalMatch, needsAsyncProbe };
   };
 
   let cursor: Node | undefined = startRules;
   let first = true;
-  let needsRegistryFallback = false;
+  let needsAsyncProbe = false;
+  let publicMatch: Node | undefined;
+  let optionalMatch: Node | undefined;
   while (cursor) {
     if (isNode(cursor, N.Rules)) {
       const scope = cursor as Rules;
+      const scopeStart = first ? options.start : undefined;
       const applyCurrentScopeStart = first;
       if (!first) {
         // Stop at non-classic-import boundaries (same as DeclarationRegistry.find)
@@ -177,24 +393,243 @@ function findVarDeclarationFast(
         }
       }
       first = false;
-      const frame = scope.getScopeFrame();
-      if (hasSearchableChildVarScopes(scope, applyCurrentScopeStart) || frame.pendingDynamicDecls.length > 0) {
-        needsRegistryFallback = true;
-      }
-      const candidates = frame.declarationBucketsByName.get(name);
-      if (candidates) {
-        for (let i = candidates.length - 1; i >= 0; i--) {
-          const candidate = candidates[i]!;
-          if (filter(candidate.sourceNode)) {
-            return { match: candidate.sourceNode, needsRegistryFallback };
-          }
-        }
-      }
+      const result = findVarWithinScopeSurface(
+        scope,
+        applyCurrentScopeStart ? scopeStart : undefined,
+        options.local,
+        new Set<Rules>()
+      );
+      needsAsyncProbe ||= result.needsAsyncProbe;
+      publicMatch = laterOf(publicMatch, result.publicMatch);
+      optionalMatch = laterOf(optionalMatch, result.optionalMatch);
       // No match at this scope; continue up the chain
     }
     cursor = cursor.parent ?? cursor.sourceParent;
   }
-  return { match: undefined, needsRegistryFallback };
+  if (publicMatch !== undefined) {
+    return {
+      match: publicMatch,
+      matchKind: 'public',
+      needsAsyncProbe
+    };
+  }
+  if (optionalMatch !== undefined) {
+    return {
+      match: optionalMatch,
+      matchKind: 'optional',
+      needsAsyncProbe
+    };
+  }
+  return { match: undefined, matchKind: undefined, needsAsyncProbe };
+}
+
+async function resolvePendingDynamicVarMatchAsync(
+  startRules: Rules,
+  name: string,
+  filter: (n: Node) => boolean,
+  options: {
+    start?: number;
+    context: Context;
+    hasTarget?: boolean;
+    local?: boolean;
+  },
+  baselineMatch: Node | undefined,
+  baselineKind: 'public' | 'optional' | undefined
+): Promise<Node | undefined> {
+  const laterOf = <T extends Node>(a: T | undefined, b: T | undefined): T | undefined => {
+    if (!a) {
+      return b;
+    }
+    if (!b) {
+      return a;
+    }
+    if (!a.parent && b.parent) {
+      return b;
+    }
+    if (a.parent && !b.parent) {
+      return a;
+    }
+    let position: ReturnType<typeof comparePosition>;
+    try {
+      position = comparePosition(a, b);
+    } catch {
+      return a.parent || !b.parent ? a : b;
+    }
+    return position !== undefined && position <= 0 ? b : a;
+  };
+
+  const unresolvedDynamicCouldBeat = (
+    scope: Rules,
+    pendingDynamicDecls: readonly VarDeclaration[],
+    currentBest: Node | undefined
+  ): VarDeclaration[] => {
+    const candidates: VarDeclaration[] = [];
+    for (const decl of pendingDynamicDecls) {
+      if (decl.parent !== scope) {
+        continue;
+      }
+      if (!filter(decl)) {
+        continue;
+      }
+      if (!currentBest || !currentBest.parent) {
+        candidates.push(decl);
+        continue;
+      }
+      const position = comparePosition(currentBest, decl);
+      if (position === undefined || position <= 0) {
+        candidates.push(decl);
+      }
+    }
+    return candidates;
+  };
+
+  const classifyVisibility = (
+    scope: Rules,
+    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration']
+  ): 'public' | 'optional' => {
+    const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
+    const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
+    const isOptionalCurrentScope = visibilityOverride === undefined
+      ? scopeVisibility === 'optional' && !isRulesetBodyScope
+      : scopeVisibility === 'optional';
+    return isOptionalCurrentScope ? 'optional' : 'public';
+  };
+
+  const probeScopeSurface = async (
+    scope: Rules,
+    scopeStart: number | undefined,
+    localContext: boolean | undefined,
+    visited: Set<Rules>,
+    currentPublicMatch: Node | undefined,
+    currentOptionalMatch: Node | undefined,
+    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration']
+  ): Promise<{
+    publicMatch: Node | undefined;
+    optionalMatch: Node | undefined;
+  }> => {
+    if (visited.has(scope)) {
+      return {
+        publicMatch: currentPublicMatch,
+        optionalMatch: currentOptionalMatch
+      };
+    }
+    visited.add(scope);
+
+    const frame = scope.getScopeFrame();
+    const pendingCandidates = unresolvedDynamicCouldBeat(scope, frame.pendingDynamicDecls, currentPublicMatch ?? currentOptionalMatch);
+    for (let i = pendingCandidates.length - 1; i >= 0; i--) {
+      const decl = pendingCandidates[i]!;
+      let resolvedName: unknown;
+      options.context.searchScope.add(decl);
+      try {
+        resolvedName = decl.value.name.eval(options.context);
+      } catch {
+        options.context.searchScope.delete(decl);
+        continue;
+      }
+      if (isThenable(resolvedName)) {
+        try {
+          resolvedName = await resolvedName;
+        } catch {
+          options.context.searchScope.delete(decl);
+          continue;
+        }
+      }
+      options.context.searchScope.delete(decl);
+      const resolvedKey = isNode(resolvedName) ? `${resolvedName.valueOf()}` : `${resolvedName}`;
+      if (resolvedKey !== name) {
+        continue;
+      }
+      if (classifyVisibility(scope, visibilityOverride) === 'optional') {
+        currentOptionalMatch = laterOf(currentOptionalMatch, decl);
+      } else {
+        currentPublicMatch = laterOf(currentPublicMatch, decl);
+      }
+    }
+
+    const childEntries = scope._rulesSet as Array<{
+      node: Rules;
+      rulesVisibility?: RulesOptions['rulesVisibility'];
+    }> | undefined;
+    if (!childEntries?.length) {
+      return {
+        publicMatch: currentPublicMatch,
+        optionalMatch: currentOptionalMatch
+      };
+    }
+
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      const visibility = entry.rulesVisibility?.VarDeclaration
+        ?? entry.node.options.rulesVisibility?.VarDeclaration;
+      if (visibility !== 'public' && visibility !== 'optional') {
+        continue;
+      }
+      if (entry.node.options?.isMixinOutput === true && options.hasTarget !== true) {
+        continue;
+      }
+      if (options.context.rulesContext === scope && entry.node.options?.forward) {
+        continue;
+      }
+      if (localContext && entry.node.options?.local) {
+        continue;
+      }
+      if (
+        scopeStart !== undefined
+        && !(entry.node.index !== undefined && entry.node.index < scopeStart)
+      ) {
+        continue;
+      }
+      const childResult = await probeScopeSurface(
+        entry.node,
+        scopeStart,
+        localContext || Boolean(entry.node.options?.local),
+        visited,
+        currentPublicMatch,
+        currentOptionalMatch,
+        visibility
+      );
+      currentPublicMatch = childResult.publicMatch;
+      currentOptionalMatch = childResult.optionalMatch;
+    }
+
+    return {
+      publicMatch: currentPublicMatch,
+      optionalMatch: currentOptionalMatch
+    };
+  };
+
+  let cursor: Node | undefined = startRules;
+  let first = true;
+  let publicMatch = baselineKind === 'public' ? baselineMatch : undefined;
+  let optionalMatch = baselineKind === 'optional' ? baselineMatch : undefined;
+
+  while (cursor) {
+    if (isNode(cursor, N.Rules)) {
+      const scope = cursor as Rules;
+      const scopeStart = first ? options.start : undefined;
+      if (!first) {
+        const sn = scope.sourceNode;
+        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          break;
+        }
+      }
+      first = false;
+      const result = await probeScopeSurface(
+        scope,
+        scopeStart,
+        options.local,
+        new Set<Rules>(),
+        publicMatch,
+        optionalMatch
+      );
+      publicMatch = result.publicMatch;
+      optionalMatch = result.optionalMatch;
+    }
+    cursor = cursor.parent ?? cursor.sourceParent;
+  }
+
+  return publicMatch ?? optionalMatch;
 }
 /**
  * Fast parent-chain walk for static-named Mixin lookup.
@@ -209,8 +644,75 @@ function findVarDeclarationFast(
  */
 function findMixinFast(
   startRules: Rules,
-  key: string
+  key: string,
+  options?: {
+    context?: Context;
+    hasTarget?: boolean;
+    local?: boolean;
+  }
 ): Mixin[] | undefined {
+  const findMixinsWithinScopeSurface = (
+    scope: Rules,
+    localContext: boolean | undefined,
+    visited: Set<Rules>
+  ): Mixin[] | undefined => {
+    if (visited.has(scope)) {
+      return [];
+    }
+    visited.add(scope);
+
+    if (!scope.mixinsByName) {
+      // Scope not yet indexed — bail so full registry warms it up
+      return undefined;
+    }
+
+    const results: Mixin[] = [];
+    const candidates = scope.mixinsByName.get(key);
+    if (candidates) {
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        results.push(candidates[i]!);
+      }
+    }
+
+    const childEntries = scope._rulesSet as Array<{
+      node: Rules;
+      rulesVisibility?: RulesOptions['rulesVisibility'];
+    }> | undefined;
+    if (!childEntries?.length) {
+      return results;
+    }
+
+    for (let i = childEntries.length - 1; i >= 0; i--) {
+      const entry = childEntries[i]!;
+      const visibility = entry.rulesVisibility?.Mixin
+        ?? entry.node.options.rulesVisibility?.Mixin;
+      if (visibility !== 'public' && visibility !== 'optional') {
+        continue;
+      }
+      if (entry.node.options?.isMixinOutput === true && options?.hasTarget !== true) {
+        continue;
+      }
+      if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
+        continue;
+      }
+      if (localContext && entry.node.options?.local) {
+        continue;
+      }
+
+      const childResult = findMixinsWithinScopeSurface(
+        entry.node,
+        localContext || Boolean(entry.node.options?.local),
+        visited
+      );
+      if (childResult === undefined) {
+        return undefined;
+      }
+      results.push(...childResult);
+    }
+
+    return results;
+  };
+
   const results: Mixin[] = [];
   let cursor: Node | undefined = startRules;
   let first = true;
@@ -224,16 +726,11 @@ function findMixinFast(
         }
       }
       first = false;
-      if (!scope.mixinsByName) {
-        // Scope not yet indexed — bail so full registry warms it up
+      const scopeResults = findMixinsWithinScopeSurface(scope, options?.local, new Set<Rules>());
+      if (scopeResults === undefined) {
         return undefined;
       }
-      const candidates = scope.mixinsByName.get(key);
-      if (candidates) {
-        for (let i = candidates.length - 1; i >= 0; i--) {
-          results.push(candidates[i]!);
-        }
-      }
+      results.push(...scopeResults);
     }
     cursor = cursor.parent ?? cursor.sourceParent;
   }
@@ -655,19 +1152,29 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   }
                   // Fast path: walk varsByName directly, skipping the declaration-registry
                   // machinery for the dominant contextual variable lookup case.
-                  if (opts.ignoreParentScopeStart) {
+                  {
                     const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter, {
                       start: opts.start,
                       context,
                       hasTarget,
                       local: opts.local
                     });
-                    if (fast.match !== undefined) {
+                    if (!fast.needsAsyncProbe) {
                       return fast.match;
                     }
-                    if (!fast.needsRegistryFallback) {
-                      return undefined;
-                    }
+                    return resolvePendingDynamicVarMatchAsync(
+                      targetRules,
+                      `${keyStr}`,
+                      filter,
+                      {
+                        start: opts.start,
+                        context,
+                        hasTarget,
+                        local: opts.local
+                      },
+                      fast.match,
+                      fast.matchKind
+                    );
                   }
                 }
                 const declarationType = type === 'property' ? 'Declaration' : 'VarDeclaration';
@@ -711,11 +1218,19 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             case 'mixin':
               if (isNode(targetRules, N.Rules)) {
                 if (typeof valueKey === 'string') {
-                  const fast = findMixinFast(targetRules, valueKey);
+                  const fast = findMixinFast(targetRules, valueKey, {
+                    context,
+                    hasTarget,
+                    local: opts.local
+                  });
                   if (fast !== undefined) {
                     if (fast.length > 0) {
                       return fast;
                     }
+                    if (isNode(this.parent, N.Call)) {
+                      return targetRules.find('function', `${valueKey}`, undefined, opts);
+                    }
+                    return undefined;
                   }
                 }
                 const mixin = targetRules.find('mixin', valueKey, 'Mixin', opts);
@@ -739,7 +1254,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 //   - interpolated names (not in mixinsByName at all)
                 //   - any scope not yet indexed (mixinsByName === undefined)
                 if (typeof valueKey === 'string') {
-                  const fast = findMixinFast(targetRules, valueKey);
+                  const fast = findMixinFast(targetRules, valueKey, {
+                    context,
+                    hasTarget,
+                    local: opts.local
+                  });
                   if (fast !== undefined) {
                     // fast is an array; if non-empty, return it (same shape as full registry result).
                     // If empty, fall through — there may be Ruleset-as-mixin candidates in the registry.
@@ -771,9 +1290,58 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         let returnVal: any;
         if (isNode(resolvedTarget, N.Rules)) {
           returnVal = performLookup(resolvedTarget);
+          if (isThenable(returnVal)) {
+            return (returnVal as Promise<any>).then((asyncReturnVal) => {
+              if (asyncReturnVal !== undefined || !context.leakyRules) {
+                return { returnVal: asyncReturnVal, valueKey };
+              }
+              let callerLookup = performLookup(this.rulesParent);
+              if (isThenable(callerLookup)) {
+                return (callerLookup as Promise<any>).then((callerReturnVal) => {
+                  if (callerReturnVal !== undefined) {
+                    return { returnVal: callerReturnVal, valueKey };
+                  }
+                  let sourceLookup = performLookup(this.sourceRulesParent);
+                  if (isThenable(sourceLookup)) {
+                    return (sourceLookup as Promise<any>).then(sourceReturnVal => ({
+                      returnVal: sourceReturnVal,
+                      valueKey
+                    }));
+                  }
+                  return { returnVal: sourceLookup, valueKey };
+                });
+              }
+              if (callerLookup !== undefined) {
+                return { returnVal: callerLookup, valueKey };
+              }
+              let sourceLookup = performLookup(this.sourceRulesParent);
+              if (isThenable(sourceLookup)) {
+                return (sourceLookup as Promise<any>).then(sourceReturnVal => ({
+                  returnVal: sourceReturnVal,
+                  valueKey
+                }));
+              }
+              return { returnVal: sourceLookup, valueKey };
+            });
+          }
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
             returnVal = performLookup(this.rulesParent);
+            if (isThenable(returnVal)) {
+              return (returnVal as Promise<any>).then((asyncReturnVal) => {
+                if (asyncReturnVal !== undefined) {
+                  return { returnVal: asyncReturnVal, valueKey };
+                }
+                let sourceLookup = performLookup(this.sourceRulesParent);
+                if (isThenable(sourceLookup)) {
+                  return (sourceLookup as Promise<any>).then(sourceReturnVal => ({
+                    returnVal: sourceReturnVal,
+                    valueKey
+                  }));
+                }
+                return { returnVal: sourceLookup, valueKey };
+              });
+            }
             if (returnVal === undefined) {
               returnVal = performLookup(this.sourceRulesParent);
             }

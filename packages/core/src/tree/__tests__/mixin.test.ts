@@ -923,6 +923,51 @@ describe('Mixin', () => {
       }
     });
 
+    it('mixinsByName fast path (slice 15): type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = RulesClass.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'mixin' && typeof key === 'string' && key === '.missing-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.other-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([
+              decl({
+                name: 'content',
+                value: ref({ key: '.missing-mixin' }, { type: 'mixin', fallbackValue: true })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            content: .missing-mixin;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
     it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

@@ -2,6 +2,16 @@ import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, c
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { Node, defineType } from '../node.js';
+import type { Node as NodeType } from '../node.js';
+
+class AsyncResolvedNameNode extends Node<string> {
+  override eval(): Promise<NodeType> {
+    return Promise.resolve(any(this.value));
+  }
+}
+
+const asyncResolvedName = defineType(AsyncResolvedNameNode, 'AsyncResolvedNameNode', 'async-name');
 
 let context: Context;
 
@@ -359,7 +369,7 @@ describe('reference', () => {
       }
     });
 
-    it('plain lexical misses still fall back when scope contains unresolved dynamic declaration names', async () => {
+    it('plain lexical misses ignore unresolved dynamic declaration names without declaration-registry fallback', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -385,8 +395,246 @@ describe('reference', () => {
           })
         ]);
         await expect(async () => await node.eval(context)).rejects.toThrow();
-        expect(declarationHits.length).toBeGreaterThan(0);
+        expect(declarationHits).toHaveLength(0);
       } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('same-scope unresolved dynamic names before a static winner do not force declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          vardecl({
+            name: any('x'),
+            value: any('blue')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          bar: blue;
+        `);
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('same-scope unresolved dynamic names after a static winner do not force declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: any('x'),
+            value: any('blue')
+          }),
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          bar: blue;
+        `);
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('prunes stale pendingDynamicDecls entries when a dynamic name resolves after ScopeFrame creation', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        let node = rules([
+          vardecl({
+            name: any('suffix'),
+            value: any('x')
+          }),
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        // Force a pre-resolution frame snapshot so pendingDynamicDecls is populated first.
+        node.getScopeFrame();
+
+        node = await node.eval(context);
+        expect(`${node}`).toBeString(`
+          bar: red;
+        `);
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('promotes pending dynamic declarations that have already become static before lookup', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        const frame = node.getScopeFrame();
+        const dynamicDecl = node.at(0)!;
+        dynamicDecl.set('name', any('x'));
+
+        const resolved = await node.at(1)!.eval(context);
+        expect(`${resolved}`).toBe('bar: red');
+        expect(declarationHits).toHaveLength(0);
+        expect(frame.pendingDynamicDecls).toHaveLength(0);
+        expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('resolves synchronously-computable pending dynamic names without declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: any('suffix'),
+            value: any('x')
+          }),
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        const frame = node.getScopeFrame();
+        context.rulesContext = node;
+        const resolved = await node.at(2)!.eval(context);
+        expect(`${resolved}`).toBe('bar: red');
+        expect(declarationHits).toHaveLength(0);
+        expect(frame.pendingDynamicDecls).toHaveLength(1);
+      } finally {
+        context.rulesContext = undefined;
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('resolves asynchronously-computable pending dynamic names without declaration-registry fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: asyncResolvedName('x'),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'x' }, { type: 'variable' })
+          })
+        ]);
+
+        const frame = node.getScopeFrame();
+        context.rulesContext = node;
+        const resolved = await node.at(1)!.eval(context);
+        expect(`${resolved}`).toBe('bar: red');
+        expect(declarationHits).toHaveLength(0);
+        expect(frame.pendingDynamicDecls).toHaveLength(1);
+      } finally {
+        context.rulesContext = undefined;
         RulesClass.prototype.find = originalFind;
       }
     });

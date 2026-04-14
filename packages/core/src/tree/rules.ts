@@ -881,6 +881,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this.register('declaration', node);
       if (isNode(node, N.VarDeclaration)) {
         if (this._hasStaticName(node)) {
+          if (this.scopeFrame && !this._indexing) {
+            const sourceIdentity = node.sourceNode ?? node;
+            this.scopeFrame.pendingDynamicDecls = this.scopeFrame.pendingDynamicDecls.filter((entry) => {
+              const entryIdentity = entry.sourceNode ?? entry;
+              return entry !== node
+                && entry !== sourceIdentity
+                && entryIdentity !== sourceIdentity
+                && entry.index !== node.index;
+            });
+          }
           const name = (node as VarDeclaration).value.name.valueOf();
           const map = (this.varsByName ??= new Map());
           let arr = map.get(name);
