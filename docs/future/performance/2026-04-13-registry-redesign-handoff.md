@@ -26,7 +26,8 @@ Checkpoint commit: `caf1d6d6` (`Update obsolete Less compression fixture exclusi
   Current parser reality: both the current Jess parser and the Less parser still emit static `VarDeclaration` names for normal syntax; dynamic-name `VarDeclaration`s appear to be hand-built/API-only right now rather than a common frontend path. `findVarDeclarationFast` now promotes `pendingDynamicDecls` entries into the static buckets when their names have already become static on the node, resolves synchronously-computable pending dynamic names directly during lookup, and awaits asynchronously-computable names without falling back to `DeclarationRegistry`. Unresolved or throwing dynamic-name candidates are now ignored for contextual reference lookup rather than forcing the old registry path; missing-variable errors are reported by the reference itself. The remaining direct `Rules.find('declaration', ..., 'VarDeclaration')` uses are outside the `Reference(type='variable')` hot path.
 - [x] Slice 15 — Retire `MixinRegistry` hot path; `findMixinFast` already covers static-name Mixin lookups; verify no Ruleset-as-mixin gaps, then drop the `targetRules.find('mixin', ...)` fallback for the static-string case
   Current status: static-string `Reference(type='mixin')` lookups now return directly from `findMixinFast` on both hit and miss once scopes are indexed, so they no longer touch `MixinRegistry.find`. The remaining `targetRules.find('mixin', ...)` fallback is intentionally retained for `mixin-ruleset` lookups (which still need Ruleset-as-mixin candidates), array-path keys, interpolated names, and unindexed scopes.
-- [ ] Slice 16 — Retire `RulesetRegistry`; design and add `rulesetsBySelector` fast map; drop `RulesetRegistry`
+- [x] Slice 16 — Retire `RulesetRegistry`; design and add `rulesetsBySelector` fast map; drop `RulesetRegistry`
+  Current status: ordinary `Rules.find('ruleset', ...)` now uses `rulesetsBySelector` for direct child `Ruleset`s plus a parent-owned, source-ordered child-surface index for descendant `Rules` visibility. This preserves the semantic boundary between local members and child surfaces while removing the ad hoc child-search/sort pattern for ordinary ruleset lookup. `RulesetRegistry` itself is gone; extend roots now keep their own per-root `Ruleset` sets directly, and ruleset-as-mixin lookup continues through `MixinRegistry`.
 - [ ] `FunctionRegistry` optimization — keep as plugin API but change granularity from per-`Rules` to per-stylesheet: one global registry for built-ins/plugins; one stylesheet-level registry created on demand when `registerFunction()` is called within a stylesheet; stylesheet registry falls through to global; `@compose` children see only the global (not the parent stylesheet registry); `@import` children see the parent stylesheet registry; O(1) lookup in common case (no stylesheet-local functions), O(depth of stylesheet registries between call site and global) otherwise — in practice 1-2 hops, never the full Rules-node depth
 
 ### Track 2 — Node Shape: Direct Instance Fields
@@ -62,6 +63,21 @@ Replace `pre`/`post` string fields on nodes with an offset-keyed `TriviaMap`. St
 ### Track 5 — Pre-Eval Elimination (Buffered Render)
 
 Registry redesign (Track 1) and direct instance fields (Track 2) are prerequisites.
+
+**Open design question (exploratory): priority queue vs linear render with deferred misses.**
+Before this track hardens, decide empirically whether to keep the existing
+priority-queue staging (classify children, evaluate in bucket order, requeue on
+resolution) or switch to a single source-order render that streams strings and
+queues `PendingRefSlot` placeholder segments for unresolved lookups, draining
+them at the end of each `Rules` walk. The segmented buffer below already
+requires deferred finalization for extends / `@media` bubbling / reference
+imports; a pending-ref segment reuses that machinery rather than adding a
+second ordering source of truth. Static bucket pre-population from
+`_indexRules` means forward refs usually resolve on first touch, so the miss
+list is expected to be small or empty in the common case. See
+[pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
+("Open Question: Priority Queue vs Linear Render With Deferred Misses") for
+the full tradeoff and the measurements to take before committing.
 
 **Key design constraint: extends and `@import (reference)` require deferred selector finalization.**
 A true single-pass top-to-bottom render cannot know at the time it encounters `.a {}` whether
@@ -112,6 +128,7 @@ no AST traversal. Straightforward to test in isolation.
 
 #### Checklist
 
+- [ ] **Decide eval shape** (priority queue vs linear render with deferred misses — see Open design question above). Spike both against the Less benchmark and jess corpus; gate the rest of this checklist on the result. If Shape B (linear + `PendingRefSlot`) wins, revise the segment and post-step sections accordingly before implementation.
 - [ ] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
   - **`@compose`**: flags are per-file, set at that file's own index time — each file is a
     closed rendering unit; children cannot affect parents at all (parents pass state *down*

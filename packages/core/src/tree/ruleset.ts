@@ -874,11 +874,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
             (sel as Selector).keySetLibrary ??= selectorBits;
           }
-          // Register to extend root's registry for extend lookups
+          // Register the concrete Ruleset with the current extend root.
           const extendRoot = context.extendRoots.getCurrentExtendRoot();
           if (extendRoot) {
-            extendRoot.getRegistry('ruleset').add(node as Ruleset);
-            // Keep a per-root registry list for visibility processing
             registerRulesetWithRoot(extendRoot, node as Ruleset);
           }
           // Depth-first: preEval child rules immediately so all nested rulesets/extends

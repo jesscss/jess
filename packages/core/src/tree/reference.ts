@@ -273,6 +273,9 @@ function findVarDeclarationFast(
     }
     visited.add(scope);
 
+    if (scope.rulesIndexed < scope.value.length) {
+      scope._indexRules();
+    }
     const frame = scope.getScopeFrame();
     promoteResolvedPendingDecls(scope, frame);
     let publicMatch: Node | undefined;
@@ -650,21 +653,21 @@ function findMixinFast(
     hasTarget?: boolean;
     local?: boolean;
   }
-): Mixin[] | undefined {
-  const findMixinsWithinScopeSurface = (
-    scope: Rules,
-    localContext: boolean | undefined,
-    visited: Set<Rules>
+  ): Mixin[] | undefined {
+    const findMixinsWithinScopeSurface = (
+      scope: Rules,
+      localContext: boolean | undefined,
+      visited: Set<Rules>
   ): Mixin[] | undefined => {
     if (visited.has(scope)) {
       return [];
     }
     visited.add(scope);
 
-    if (!scope.mixinsByName) {
-      // Scope not yet indexed — bail so full registry warms it up
-      return undefined;
+    if (scope.rulesIndexed < scope.value.length) {
+      scope._indexRules();
     }
+    scope.mixinsByName ??= new Map();
 
     const results: Mixin[] = [];
     const candidates = scope.mixinsByName.get(key);

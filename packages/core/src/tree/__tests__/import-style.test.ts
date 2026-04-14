@@ -427,6 +427,72 @@ describe('Style import', () => {
       expect(found).toBeUndefined();
     });
 
+    it('import type rulesets are visible to parent through ruleset child surfaces', async () => {
+      const importedPath = resolve(process.cwd(), 'rulesets-visible.jess');
+      context.sourceTrees.set(importedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.visible')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('green') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('rulesets-visible.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const found = getRulesetWithContext(context, evald, '.visible');
+      expect(found).toBeDefined();
+      expect(found).toHaveLength(1);
+      expect(`${found![0]}`).toContainString('.visible');
+    });
+
+    it('import type rulesets visible to parent do not ask Rules.getRegistry for rulesets', async () => {
+      const importedPath = resolve(process.cwd(), 'rulesets-fast.jess');
+      context.sourceTrees.set(importedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.fast-visible')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('green') })
+          ])
+        })
+      ]));
+
+      const originalGetRegistry = RulesClass.prototype.getRegistry;
+      const rulesetRegistryHits: string[] = [];
+      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
+        const [type] = args;
+        if (type === 'ruleset') {
+          rulesetRegistryHits.push(type);
+        }
+        return originalGetRegistry.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          style({
+            path: quoted(any('rulesets-fast.jess'))
+          }, {
+            type: 'import'
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        const found = getRulesetWithContext(context, evald, '.fast-visible');
+        expect(found).toBeDefined();
+        expect(found).toHaveLength(1);
+        expect(rulesetRegistryHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.getRegistry = originalGetRegistry;
+      }
+    });
+
     it('reference import makes rulesets optional', async () => {
       const referencedPath = resolve(process.cwd(), 'referenced.jess');
       context.sourceTrees.set(referencedPath, rules([

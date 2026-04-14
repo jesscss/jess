@@ -13,6 +13,7 @@ import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { Nil } from './nil.js';
+import { registerRulesetWithRoot } from './util/extend-roots.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -650,15 +651,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           });
 
           // For imports that evaluated under a local extend root (protected import or implicit _dedupe
-          // reference traversal), rulesets were registered in the pre-finalized Rules root. Since
-          // getFinalRules can clone, re-register all descendant rulesets under finalRules.
-          // during preEval (when we pushed rules to the stack). Since getFinalRules clones,
-          // we need to re-register rulesets in finalRules' registry.
+          // reference traversal), rulesets were registered against the pre-finalized Rules root. Since
+          // getFinalRules can clone, re-register all descendant rulesets under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
-            const finalRulesRegistry = finalRules.getRegistry('ruleset');
             for (const maybeRuleset of finalRules.nodes()) {
               if (isNode(maybeRuleset, N.Ruleset)) {
-                finalRulesRegistry.add(maybeRuleset as Ruleset);
+                registerRulesetWithRoot(finalRules, maybeRuleset as Ruleset);
               }
             }
           }

@@ -58,6 +58,14 @@ type RuntimeVarBindingRecord = {
   sourceNode?: Node;
 };
 
+type RulesetSurfaceEntry = {
+  node: Ruleset;
+  visibility: RulesVisibility;
+  local: boolean;
+  forward: boolean;
+  mixinOutput: boolean;
+};
+
 export type RulesOptions = {
   /**
    * - public   = all members are considered in lookup algorithms
@@ -151,7 +159,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
 
-  rulesetRegistry: Registries.RulesetRegistry | undefined;
   mixinRegistry: Registries.MixinRegistry | undefined;
   declarationRegistry: Registries.DeclarationRegistry | undefined;
   functionRegistry: Registries.FunctionRegistry | undefined;
@@ -164,6 +171,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Ruleset-as-mixin candidates still go through the full MixinRegistry.
    */
   mixinsByName: Map<string, Mixin[]> | undefined;
+  /**
+   * Slice 16 transition: local selector-key bucket for direct Ruleset children.
+   * Does not flatten child Rules surfaces into the local bucket.
+   */
+  rulesetsBySelector: Map<string, Ruleset[]> | undefined;
+  /**
+   * Parent-owned descendant Rules surface, keyed by selector key and already
+   * ordered by source. Entries preserve the boundary metadata needed to keep
+   * lookup semantics explicit instead of flattening child members into the
+   * local bucket.
+   */
+  rulesetChildSurfaceBySelector: Map<string, RulesetSurfaceEntry[]> | undefined;
   /**
    * Slice 6: ScopeFrame built alongside the existing registry.
    * undefined until first accessed via getScopeFrame().
@@ -183,6 +202,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // "indexed (nothing found)" from "not yet indexed" (undefined).
       this.varsByName ??= new Map();
       this.mixinsByName ??= new Map();
+      this.rulesetsBySelector ??= new Map();
       let value = this.value;
       let length = value.length;
       for (let i = this.rulesIndexed; i < length; i++) {
@@ -222,6 +242,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules._rulesSet = undefined;
     newRules.varsByName = undefined;
     newRules.mixinsByName = undefined;
+    newRules.rulesetsBySelector = undefined;
+    newRules.rulesetChildSurfaceBySelector = undefined;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's parent/sourceParent chain. Reusing an empty frame from
@@ -292,12 +314,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return result;
   }
 
-  getRegistry(type: 'ruleset'): Registries.RulesetRegistry;
   getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
   getRegistry(type: 'mixin'): Registries.MixinRegistry;
   getRegistry(type: 'function'): Registries.FunctionRegistry;
-  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function'): Registries.RulesetRegistry | Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
-  getRegistry(type: 'ruleset' | 'declaration' | 'mixin' | 'function') {
+  getRegistry(type: 'declaration' | 'mixin' | 'function'): Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
+  getRegistry(type: 'declaration' | 'mixin' | 'function') {
     let registry = this[`${type}Registry`];
     if (!registry) {
       /**
@@ -320,6 +341,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // from one that has never been accessed via getRegistry at all.
       this.varsByName ??= new Map();
       this.mixinsByName ??= new Map();
+      this.rulesetsBySelector ??= new Map();
     }
     return registry;
   }
@@ -328,17 +350,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This wrapper is used so we don't prematurely create a registry
    * just to search it.
    */
-  find(type: 'ruleset', keys: string | string[] | Set<string>, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | undefined;
+  find(type: 'ruleset', keys: string | string[] | Set<string>, filterType?: string, options?: Registries.FindOptions): Ruleset[] | undefined;
   find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
   find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.MixinRegistry['find']> | undefined;
   find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(type: 'ruleset' | 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(type: 'ruleset' | 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): Ruleset[] | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
   find(
     type: 'ruleset' | 'declaration' | 'mixin' | 'function',
     keys: string | string[] | Set<string>,
     filterType?: string,
     options: Registries.FindOptions = {}
-  ): ReturnType<Registries.RulesetRegistry['find']> | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+  ): Ruleset[] | ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+    if (type === 'ruleset') {
+      return this.findRulesetsFast(keys, options);
+    }
     let registry = this.getRegistry(type);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return (registry as any).find(keys, filterType, options);
@@ -787,7 +812,247 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return (this._rulesSet ??= []);
   }
 
+  private invalidateRulesetSurfaceIndexChain() {
+    let cursor: Node | undefined = this;
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        (cursor as Rules).rulesetChildSurfaceBySelector = undefined;
+      }
+      cursor = cursor.parent ?? cursor.sourceParent;
+    }
+  }
+
+  private getSelectorIndexKeys(selector: Selector | Nil): string[] {
+    if (isNode(selector, N.Nil)) {
+      return [];
+    }
+    try {
+      const keySet = selector.keySet as Set<string> | { _library?: { valuesOf(keySet: unknown): string[] } } | undefined;
+      if (!keySet) {
+        return Registries.getOrderedSelectorKeys(selector);
+      }
+      if (keySet instanceof Set) {
+        return [...keySet];
+      }
+      return keySet._library?.valuesOf(keySet) ?? Registries.getOrderedSelectorKeys(selector);
+    } catch {
+      return Registries.getOrderedSelectorKeys(selector);
+    }
+  }
+
+  private indexRulesetBySelector(ruleset: Ruleset) {
+    this.rulesetsBySelector ??= new Map();
+    const keys = this.getSelectorIndexKeys(ruleset.selector);
+    for (const key of keys) {
+      const bucket = this.rulesetsBySelector.get(key);
+      if (bucket) {
+        bucket.push(ruleset);
+      } else {
+        this.rulesetsBySelector.set(key, [ruleset]);
+      }
+    }
+  }
+
+  private pushRulesetSurfaceEntry(map: Map<string, RulesetSurfaceEntry[]>, entry: RulesetSurfaceEntry) {
+    const keys = this.getSelectorIndexKeys(entry.node.selector);
+    for (const key of keys) {
+      const bucket = map.get(key);
+      if (bucket) {
+        bucket.push(entry);
+      } else {
+        map.set(key, [entry]);
+      }
+    }
+  }
+
+  private collectRulesetSurfaceEntriesInto(
+    map: Map<string, RulesetSurfaceEntry[]>,
+    state: Omit<RulesetSurfaceEntry, 'node'>
+  ) {
+    const childEntryByNode = this._rulesSet?.length
+      ? new Map(this._rulesSet.map((entry) => [entry.node, entry] as const))
+      : undefined;
+
+    for (const node of this.value) {
+      if (isNode(node, N.Ruleset)) {
+        this.pushRulesetSurfaceEntry(map, {
+          node: node as Ruleset,
+          ...state
+        });
+        continue;
+      }
+
+      if (!isNode(node, N.Rules)) {
+        continue;
+      }
+
+      const childEntry = childEntryByNode?.get(node as Rules);
+      if (!childEntry) {
+        continue;
+      }
+
+      const childRules = childEntry.node;
+      const childVisibility = childEntry.rulesVisibility?.Ruleset
+        ?? childRules.options.rulesVisibility?.Ruleset
+        ?? 'public';
+      if (childVisibility === 'private') {
+        continue;
+      }
+
+      childRules._indexRules();
+      childRules.collectRulesetSurfaceEntriesInto(map, {
+        visibility: state.visibility === 'optional' || childVisibility === 'optional' ? 'optional' : 'public',
+        local: state.local || Boolean(childRules.options?.local),
+        forward: state.forward || Boolean(childRules.options?.forward),
+        mixinOutput: state.mixinOutput || Boolean(childRules.options?.isMixinOutput)
+      });
+    }
+  }
+
+  private ensureRulesetChildSurfaceBySelector(): Map<string, RulesetSurfaceEntry[]> {
+    if (this.rulesetChildSurfaceBySelector) {
+      return this.rulesetChildSurfaceBySelector;
+    }
+    if (this.rulesIndexed < this.value.length) {
+      this._indexRules();
+    }
+    const map = new Map<string, RulesetSurfaceEntry[]>();
+    if (this._rulesSet?.length) {
+      for (const entry of this._rulesSet) {
+        const childVisibility = entry.rulesVisibility?.Ruleset
+          ?? entry.node.options.rulesVisibility?.Ruleset
+          ?? 'public';
+        if (childVisibility === 'private') {
+          continue;
+        }
+        entry.node._indexRules();
+        entry.node.collectRulesetSurfaceEntriesInto(map, {
+          visibility: childVisibility === 'optional' ? 'optional' : 'public',
+          local: Boolean(entry.node.options?.local),
+          forward: Boolean(entry.node.options?.forward),
+          mixinOutput: Boolean(entry.node.options?.isMixinOutput)
+        });
+      }
+    }
+    this.rulesetChildSurfaceBySelector = map;
+    return map;
+  }
+
+  private rulesetSelectorContainsAllKeys(ruleset: Ruleset, keys: Set<string>): boolean {
+    const selectorKeys = this.getSelectorIndexKeys(ruleset.selector);
+    if (!selectorKeys.length) {
+      return false;
+    }
+    for (const key of keys) {
+      if (!selectorKeys.includes(key)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private findRulesetsFast(
+    keys: string | string[] | Set<string>,
+    options: Registries.FindOptions = {}
+  ): Ruleset[] | undefined {
+    const keyValues = typeof keys === 'string'
+      ? [keys]
+      : (keys instanceof Set ? [...keys] : keys);
+    if (!keyValues.length) {
+      return undefined;
+    }
+
+    const searchKeys = new Set(keyValues);
+    const publicMatches: Ruleset[] = [];
+    const optionalMatches: Ruleset[] = [];
+    const publicSet = new Set<Ruleset>();
+    const optionalSet = new Set<Ruleset>();
+    const visitedScopes = new Set<Rules>();
+
+    const pushMatch = (ruleset: Ruleset, visibility: RulesVisibility) => {
+      if (!this.rulesetSelectorContainsAllKeys(ruleset, searchKeys)) {
+        return;
+      }
+      if (visibility === 'optional') {
+        if (publicSet.has(ruleset) || optionalSet.has(ruleset)) {
+          return;
+        }
+        optionalSet.add(ruleset);
+        optionalMatches.push(ruleset);
+      } else {
+        if (publicSet.has(ruleset)) {
+          return;
+        }
+        if (optionalSet.delete(ruleset)) {
+          const optionalIndex = optionalMatches.indexOf(ruleset);
+          if (optionalIndex !== -1) {
+            optionalMatches.splice(optionalIndex, 1);
+          }
+        }
+        publicSet.add(ruleset);
+        publicMatches.push(ruleset);
+      }
+    };
+
+    let cursor: Node | undefined = this;
+    let first = true;
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        const scope = cursor as Rules;
+        if (visitedScopes.has(scope)) {
+          break;
+        }
+        visitedScopes.add(scope);
+
+        if (!first) {
+          const sn = scope.sourceNode;
+          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+            break;
+          }
+        }
+        first = false;
+
+        scope._indexRules();
+
+        const localCandidates = scope.rulesetsBySelector?.get(keyValues[0]!);
+        if (localCandidates) {
+          for (const ruleset of localCandidates) {
+            pushMatch(ruleset, 'public');
+          }
+        }
+
+        const childCandidates = scope.ensureRulesetChildSurfaceBySelector().get(keyValues[0]!);
+        if (childCandidates) {
+          for (const entry of childCandidates) {
+            if (entry.mixinOutput && options.hasTarget !== true) {
+              continue;
+            }
+            if (options.context?.rulesContext === scope && entry.forward) {
+              continue;
+            }
+            if (options.local && entry.local) {
+              continue;
+            }
+            pushMatch(entry.node, entry.visibility);
+          }
+        }
+
+        if (!options.searchParents) {
+          break;
+        }
+      }
+
+      cursor = cursor.parent ?? cursor.sourceParent;
+    }
+
+    return publicMatches.length ? publicMatches : (optionalMatches.length ? optionalMatches : undefined);
+  }
+
   registerNode(node: Node, options?: Record<string, any>, _context?: Context) {
+    if (isNode(node, N.Rules) || isNode(node, N.Ruleset)) {
+      this.invalidateRulesetSurfaceIndexChain();
+    }
+
     if (isNode(node, N.Rules)) {
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
@@ -923,23 +1188,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Ruleset)) {
       // Register to 'mixin' for mixin calls
       // Always register - guard filtering happens at call time in getFunctionFromMixins
-      // Note: 'ruleset' registration for extends now happens in Ruleset.preEval to the extend root's registry
+      // Note: extend processing keeps its own per-root Ruleset sets in Ruleset.preEval.
       this.register('mixin', node);
+      if (this.rulesetsBySelector !== undefined) {
+        this.indexRulesetBySelector(node as Ruleset);
+      }
     } else if (isNode(node, N.Mixin)) {
       this.register('mixin', node);
       // Fast map: only static (non-interpolated) names get an O(1) entry.
       // Interpolated mixin names fall through to the full MixinRegistry.
-      // Guard: skip when called from _indexRules (_indexing=true) — those nodes were
-      // already added during _multiPassPreEval and we must not double-count.
-      if (!this._indexing) {
-        const mixinName = (node as Mixin).value.name;
-        if (mixinName && mixinName.type !== 'Interpolated') {
-          const key = mixinName.valueOf() as string;
-          const mm = (this.mixinsByName ??= new Map());
-          let arr = mm.get(key);
-          if (!arr) {
-            mm.set(key, arr = []);
-          }
+      const mixinName = (node as Mixin).value.name;
+      if (mixinName && mixinName.type !== 'Interpolated') {
+        const key = mixinName.valueOf() as string;
+        const mm = (this.mixinsByName ??= new Map());
+        let arr = mm.get(key);
+        if (!arr) {
+          mm.set(key, arr = []);
+        }
+        if (!arr.includes(node as Mixin)) {
           arr.push(node as Mixin);
         }
       }
@@ -2033,8 +2299,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ({ rules }: { rules: Rules; rulesToHoist: boolean }) => {
         // Note: Rulesets from imported Rules are already registered to their own treeRoot
         // during preEval when the imported Rules node is evaluated. The extend search
-        // loops through allRoots, so it should find them. The _searchRulesChildrenForRulesets
-        // method in RulesetRegistry also searches imported Rules' registries.
+        // loops through allRoots directly via extend-roots' per-root ruleset sets.
 
           // After all evaluation stages, check if any variables in the current Rules
           // shadow readonly variables from imported Rules (compose type) at the same level

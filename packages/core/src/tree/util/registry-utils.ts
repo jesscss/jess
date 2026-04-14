@@ -51,7 +51,7 @@ function selectorKeySetSize(keySet: SelectorKeySet | undefined): number {
   return keySet._library?.valuesOf(keySet).length ?? 0;
 }
 
-function getOrderedSelectorKeys(selector: Selector | Nil | undefined): string[] {
+export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): string[] {
   if (!selector || isNode(selector, N.Nil)) {
     return [];
   }
@@ -393,94 +393,6 @@ export abstract class Registry<
       return candidates.size ? [...candidates] : undefined;
     }
     return candidates;
-  }
-}
-
-/**
- * Registry for fast selector-based ruleset lookups
- */
-export class RulesetRegistry extends Registry<Ruleset> {
-  index = new Map<string, Set<Ruleset>>();
-
-  /**
-   * Add a ruleset to be indexed later
-   */
-  override add(ruleset: Ruleset) {
-    if (isNode(ruleset.value.selector, N.Selector)) {
-      this.pendingItems.add(ruleset);
-    }
-  }
-
-  /**
-   * Index any pending rulesets
-   * Override the base class method to use keySet-based indexing
-   */
-  override indexPendingItems() {
-    const index = this.index;
-    for (const ruleset of this.pendingItems) {
-      /** Index using the ruleset's actual selector keySet - no need for getImplicitSelector here
-       * since we're indexing the selector as-is, not transforming it for parent context */
-      const selector = ruleset.selector;
-      if (selector instanceof Nil) {
-        continue;
-      }
-      if (!('keySet' in selector)) {
-        continue;
-      }
-      const keys = getSelectorKeyValues(selector.keySet);
-      for (const key of keys) {
-        const existing = index.get(key);
-        if (existing) {
-          existing.add(ruleset);
-        } else {
-          index.set(key, new Set([ruleset]));
-        }
-      }
-    }
-    this.pendingItems.clear();
-  }
-
-  /**
-   * Find candidate rulesets that might match the target selector.
-   * Searches only the local index - all rulesets should be registered
-   * to the extend root's registry during evaluation.
-   */
-  override find(keys: string[] | Set<string>): Ruleset[] | undefined {
-    // Index any pending rulesets first
-    this.indexPendingItems();
-
-    let candidates: Set<Ruleset> | undefined;
-    let rulesets: Ruleset[] | undefined;
-
-    /** Just get based on first key */
-    for (const key of keys) {
-      candidates = this.index.get(key);
-      break;
-    }
-    if (!candidates) {
-      return undefined;
-    }
-
-    /** Now find selectors that have all keys */
-    let keySet = keys instanceof Set ? keys : new Set(keys);
-    for (const c of candidates) {
-      let sel = c.selector;
-      if (!sel || isNode(sel, N.Nil)) {
-        continue;
-      }
-      let isSubset = true;
-      for (const k of keySet) {
-        if (!hasSelectorKey(sel.keySet, k)) {
-          isSubset = false;
-          break;
-        }
-      }
-      if (isSubset) {
-        (rulesets ??= []).push(c);
-      }
-    }
-
-    return rulesets;
   }
 }
 
