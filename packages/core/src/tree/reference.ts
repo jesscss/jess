@@ -73,10 +73,10 @@ export type ReferenceOptions = {
   type?: 'index' | 'declaration' | 'property' | 'variable' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   /**
    * Resolution strategy:
-   * - 'scope': Contextual lookup — last definition in scope wins (Less semantics, default)
-   * - 'call-time': Resolve at call-site position rather than definition position
+   * - 'contextual': Contextual lookup (default)
+   * - 'live': Resolve using call-site/live lookup semantics
    */
-  resolution?: 'scope' | 'call-time';
+  resolution?: 'contextual' | 'live';
   /**
    * Optional references just resolve to the string
    * representation if the fallback value is set to true.
@@ -309,7 +309,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     } else {
       w.add('$');
     }
-    if (resolution === 'call-time') {
+    if (resolution === 'live') {
       w.add('~');
     }
     switch (type) {
@@ -367,8 +367,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
-    // Prefer the *current* evaluation rules context (mixin call-time scope) over the lexical rulesParent.
-    // This is critical for mixin parameters (e.g. `@fallback`) which are registered onto the call-time
+    // Prefer the *current* evaluation rules context (mixin live scope) over the lexical rulesParent.
+    // This is critical for mixin parameters (e.g. `@fallback`) which are registered onto the live
     // wrapper `Rules` and should be visible inside nested at-rule preludes.
     let resolvedTarget = target ? target.eval(context) : context.rulesContext ?? this.rulesParent;
     const result = pipe(
@@ -535,20 +535,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               || type === 'declaration'
             )
           ) {
-            const startIndex = getLookupStartIndex(this);
-            if (startIndex !== undefined) {
-              opts.start = startIndex;
-              opts.ignoreCurrentScopeStart = true;
-              opts.ignoreParentScopeStart = true;
-            }
-          } else if (this.options.resolution === 'call-time' && !isInterpolatedVariable) {
-            // For call-time resolution, use the call site's position (context.callSiteIndex)
-            // instead of the definition position. This allows mixins to resolve variables
-            // at the time they're called, not when they're defined.
+            // Ordinary refs are contextual by default: they should not carry
+            // a source-order cutoff into outward scope walks.
+          } else if (this.options.resolution === 'live' && !isInterpolatedVariable) {
+            // Live lookup uses the call site's position rather than the
+            // definition position.
             if (context.rulesContext !== undefined) {
               opts.start = context.rulesContext.index;
             } else {
-              // Fall back to definition-site lookup if no call site is available
+              // Fall back to the local node position if no call-site scope is active.
               const startIndex = getLookupStartIndex(this);
               if (startIndex !== undefined) {
                 opts.start = startIndex;
@@ -764,21 +759,41 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (bindingSource) {
             context.searchScope.add(bindingSource);
           }
-          return pipe(
-            () => {
-              returnVal.value.frozen = true;
+          const finalizeRuntimeBinding = (evald: Node) => {
+            if (bindingSource) {
+              context.searchScope.delete(bindingSource);
+            }
+            const out = evald.copy(true, freezeChildren).inherit(evald);
+            out.frozen = true;
+            out.pre = this.pre;
+            out.post = this.post;
+            out.sourceParent = this;
+            return out;
+          };
+          const evaluatedBinding = (() => {
+            returnVal.value.frozen = true;
+            try {
               return returnVal.value.eval(context);
-            },
-            (evald) => {
+            } catch (error) {
               if (bindingSource) {
                 context.searchScope.delete(bindingSource);
               }
-              const out = evald.copy(true, freezeChildren).inherit(evald);
-              out.frozen = true;
-              out.pre = this.pre;
-              out.post = this.post;
-              out.sourceParent = this;
-              return out;
+              throw error;
+            }
+          })();
+          if (isThenable(evaluatedBinding)) {
+            return (evaluatedBinding as Promise<Node>)
+              .then(finalizeRuntimeBinding, (error) => {
+                if (bindingSource) {
+                  context.searchScope.delete(bindingSource);
+                }
+                throw error;
+              });
+          }
+          return pipe(
+            () => evaluatedBinding,
+            (evald) => {
+              return finalizeRuntimeBinding(evald as Node);
             }
           );
         }

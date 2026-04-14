@@ -239,7 +239,7 @@ export class Context {
   /**
    * This is set when entering rulesets so that child nodes
    * can use this to lookup values. When evaluating inside a mixin/function,
-   * this also enables call-time variable resolution ($~variable).
+   * this also enables live variable resolution ($~variable).
    */
   rulesContext!: Rules;
   /** Entire context root (ultimate root) */

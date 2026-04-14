@@ -757,9 +757,9 @@ resolveCell(name, frame):
 ### No `resolution: 'linear'`
 
 The `resolution: 'linear'` code path in the current `reference.ts` was a
-mis-named attempt to implement call-time contextual lookup. It compensated for
+mis-named attempt to implement live contextual lookup. It compensated for
 the fact that the registry system did not correctly model which scope should be
-visible at call time. With explicit frame chains built at call time, this
+visible at evaluation time. With explicit frame chains built at evaluation time, this
 concept disappears. There is no "linear" mode — there are live bindings and
 contextual bindings, and the frame chain wires them up correctly.
 

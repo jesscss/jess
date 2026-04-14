@@ -162,7 +162,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return new Nil();
     }
     // Defer prelude evaluation to evalNode so variable lookups happen in the correct
-    // call-time scope (e.g. mixin parameters referenced from nested @media preludes).
+    // live scope (e.g. mixin parameters referenced from nested @media preludes).
     if (prelude) {
       node.value.prelude = prelude;
     }

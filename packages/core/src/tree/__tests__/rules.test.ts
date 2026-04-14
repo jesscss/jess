@@ -728,9 +728,9 @@ describe('Rules', () => {
         //   .box { color: red; color: red; }
         //   .box3 { color: blue; color: blue; }
         //
-        // This test demonstrates Sass !global behavior with mixins using call-time resolution.
+        // This test demonstrates Sass !global behavior with mixins using live resolution.
         //
-        // Solution implemented: `$~color` syntax for call-time resolution.
+        // Solution implemented: `$~color` syntax for live resolution.
         // - `$color` = scoped lookup (Less-style)
         // - `$^color` = linear lookup from definition position (Sass-style for regular code)
         // - `$~color` = linear lookup from call site position (Sass-style for mixins/functions)
@@ -742,13 +742,13 @@ describe('Rules', () => {
           // Global variable declaration
           vardecl({ name: 'color', value: any('red') }),
 
-          // Mixin definition that uses the variable with call-time resolution
+          // Mixin definition that uses the variable with live resolution
           // In Jess, this would be: my-mixin() { color: $~color; }
           // This makes the mixin resolve the variable at call time, not definition time
           mixin({
             name: any('my-mixin'),
             rules: rules([
-              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'call-time' }) })
+              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'live' }) })
             ], { rulesVisibility: { VarDeclaration: 'optional' } })
           }),
 
@@ -847,7 +847,7 @@ describe('Rules', () => {
         let box3MixinRules = box3MixinResult;
         expect(box3MixinRules.value.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
-        // With call-time resolution ($~color), the mixin should resolve the variable
+        // With live resolution ($~color), the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
         expect(`${box3MixinDecl}`).toBe('color: blue');
 

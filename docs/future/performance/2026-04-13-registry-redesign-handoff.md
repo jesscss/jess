@@ -272,7 +272,7 @@ Reference evaluation also learned how to evaluate a runtime binding:
 
 The focused mixin suite was updated to match the new intended model:
 
-- call-time params no longer render as emitted `$var: ...;` declarations
+- live params no longer render as emitted `$var: ...;` declarations
 - mixin behavior still resolves those params correctly
 - rest params and nested param lookups still work
 
@@ -443,12 +443,12 @@ See: proposal "How Each Node Type Renders" (~line 347) and "Materialization Boun
 
 | Mode | Meaning | When used |
 |------|---------|-----------|
-| `'scope'` (default) | **Contextual** — last definition in scope wins (Less/CSS semantics). In the current scope, declarations after the reference's source position are ignored (`ignoreCurrentScopeStart`). In ancestor scopes, the last definition is always used (`ignoreParentScopeStart`). | All ordinary variable and property lookups |
-| `'call-time'` | Resolve at call-site position — mixin body variables are looked up using the call site's source index, not the definition site. | Jess `$~var` syntax inside mixin bodies |
+| `'contextual'` (default) | **Contextual** — ordinary refs use contextual scope lookup. | All ordinary variable and property lookups |
+| `'live'` | Resolve using the call site's live lookup position. | Jess `$~var` syntax inside mixin bodies |
 
 `'linear'` (formerly Jess `$^var` syntax) has been deleted. It is not used in Less
 or in any shipped Jess syntax, and the merge-declaration case that was incorrectly
-using it now works correctly under the default contextual (`'scope'`) resolution.
+using it should be handled through explicit live lookup, not the default contextual mode.
 
 ### Variable lookup order in `performLookup` (type === 'variable')
 

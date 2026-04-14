@@ -222,7 +222,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules._rulesSet = undefined;
     newRules.varsByName = undefined;
     newRules.mixinsByName = undefined;
-    newRules.scopeFrame = undefined;
+    // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
+    // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
+    // re-wire against the clone's parent/sourceParent chain. Reusing an empty frame from
+    // the source tree can shadow a live wrapper frame that actually carries live slots.
+    newRules.scopeFrame = this.scopeFrame?.liveSlotsByName.size
+      ? buildScopeFrame(undefined, newRules, this.scopeFrame.parent, new Map(this.scopeFrame.liveSlotsByName))
+      : undefined;
 
     return newRules;
   }
