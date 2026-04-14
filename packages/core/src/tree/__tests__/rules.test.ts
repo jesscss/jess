@@ -629,42 +629,6 @@ describe('Rules', () => {
         expect(`${evald}`).toBe('total-width: 96em');
       });
 
-      it('re-bases start to the outer container index when searching parent rules', async () => {
-        context = new Context({ leakyRules: true });
-        getProp = getPropWithContext.bind(context, context);
-        getVar = getVarWithContext.bind(context, context);
-        getDeclEither = getDeclEitherWithContext.bind(context, context);
-
-        let root = rules([
-          vardecl({ name: 'z', value: any('red') }),
-          rules([
-            rules([
-              decl({ name: 'border-color', value: ref('z', { type: 'variable', resolution: 'linear' }) })
-            ])
-          ]),
-          vardecl({ name: 'z', value: any('blue') })
-        ]);
-
-        root = await root.eval(context);
-        expect(context.searchScope.size).toBe(0);
-        expect(context.renderKey).toBeUndefined();
-        const outer = root.at(1) as Rules;
-        const inner = outer.at(0) as Rules;
-        expect(`${getVar(inner, 'z', { start: 0 })}`).toBe('$z: red');
-        const innerFound = inner.find('declaration', 'z', 'VarDeclaration', {
-          filter: () => true,
-          context,
-          hasTarget: false,
-          renderKey: context.renderKey,
-          searchParents: true,
-          start: 0
-        });
-        expect(`${innerFound}`).toBe('$z: red');
-        const border = inner.at(0) as Declaration;
-        context.rulesContext = inner;
-        const evald = await border.eval(context);
-        expect(`${evald}`).toBe('border-color: red');
-      });
 
       it('shadows variables #1', async () => {
         let node = rules([
@@ -715,7 +679,7 @@ describe('Rules', () => {
 
           // First rule that uses the original value
           rules([
-            decl({ name: 'background', value: ref('color', { type: 'variable', resolution: 'linear' }) })
+            decl({ name: 'background', value: ref('color', { type: 'variable' }) })
           ]),
 
           // Nested rule that sets the variable with setDefined
@@ -725,7 +689,7 @@ describe('Rules', () => {
 
           // Subsequent rule that should use the updated value
           rules([
-            decl({ name: 'border-color', value: ref('color', { type: 'variable', resolution: 'linear' }) })
+            decl({ name: 'border-color', value: ref('color', { type: 'variable' }) })
           ])
         ]);
 
@@ -792,7 +756,7 @@ describe('Rules', () => {
           ruleset({
             selector: sellist([sel([el('.box')])]),
             rules: rules([
-              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'linear' }) }),
+              decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
             ])
           }),
@@ -809,7 +773,7 @@ describe('Rules', () => {
           ruleset({
             selector: sellist([sel([el('.box3')])]),
             rules: rules([
-              decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'linear' }) }),
+              decl({ name: 'color', value: ref('color', { type: 'variable' }) }),
               call({ name: ref('my-mixin', { type: 'mixin' }) })
             ])
           })

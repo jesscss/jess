@@ -2536,7 +2536,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     if (evalCandidates.length === 0) {
       throw new ReferenceError('No matching mixins found.');
     }
-
     /**
      * Now we have a set of mixins that can return rulesets,
      * but first we need to create a new scope for each mixin,
@@ -2749,6 +2748,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         const sourceRules = getRootSourceRules(candidate.value.rules);
         let unlocked = sourceRules.clone(false);
+        // Adopt to the call-site parent (the args List of the outer mixin call).
+        // This establishes the correct parent chain for variable lookup — walking up
+        // from the args List reaches the calling mixin's body where definition-site
+        // variables (e.g. @hover-background) are registered.
         candidate.parent!.adopt(unlocked);
         unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
@@ -2757,6 +2760,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(unlocked as unknown as Node);
         unlocked.index = candidate.index;
+        // Evaluate immediately while the call-site parent chain is intact.
+        // Variables in the enclosing scope (e.g. @hover-background declared before the
+        // detached-ruleset call) are reachable now via unlocked.parent → cbody.
+        // After evaluation the node is static so subsequent re-processing in
+        // Call.evalNode's result.eval() path finds no live references to re-resolve.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const evaledUnlocked = unlocked.eval(context);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
         outputRules.push(unlocked);
         continue;
       }

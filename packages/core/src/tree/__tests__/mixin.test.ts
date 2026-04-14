@@ -223,6 +223,232 @@ describe('Mixin', () => {
       `);
     });
 
+    it('resolves local mixin body variable inside a detached ruleset passed to another mixin (closure)', async () => {
+      // Reproduces: Bootstrap's #table-row-variant / #hover pattern
+      //   #hover(@content) { &:hover { @content(); } }
+      //   #table-row-variant(@background) {
+      //     @hover-background: darken(@background, 5%);  <-- local var
+      //     #hover({ background-color: @hover-background; });  <-- closure!
+      //   }
+      //
+      // @hover-background is a body-level VarDeclaration in the mixin scope.
+      // When the detached ruleset { background-color: @hover-background; } is evaluated
+      // inside #hover (as @content()), it must still find @hover-background.
+
+      // Build #hover(@content) { &:hover { @content(); } }
+      const hoverMixin = mixin({
+        name: any('.hover'),
+        params: list([any('content', { role: 'property' })]),
+        rules: rules([
+          ruleset({
+            selector: compound([amp(), el(':hover')]),
+            rules: rules([
+              call({ name: ref({ key: 'content' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      // Build #table-row-variant(@background) {
+      //   @hover-background: darken(@background, 5%);
+      //   .hover({ background-color: @hover-background; });
+      // }
+      // Simplified: use a literal value for @hover-background default
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          // @hover-background: @background (local body var, not a param)
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          // .hover({ background-color: @hover-background; })
+          call({
+            name: ref({ key: '.hover' }, { type: 'mixin' }),
+            args: list([
+              // detached ruleset that references the local var
+              rules([
+                decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+              ])
+            ])
+          })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([hoverMixin, tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      // @hover-background = @background = blue
+      // Jess preserves CSS nesting: &:hover stays nested, not compiled to .table-primary:hover
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('&:hover');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('resolves local mixin body variable inside a detached ruleset when call is nested in a child ruleset', async () => {
+      // Reproduces the jess test structure where #hover() is called INSIDE a nested ruleset,
+      // not at the top level of the mixin body. @hover-background is declared at the OUTER
+      // mixin body level, but the call is inside .table-hover { #hover({...}); }.
+
+      const hoverMixin = mixin({
+        name: any('.hover'),
+        params: list([any('content', { role: 'property' })]),
+        rules: rules([
+          ruleset({
+            selector: compound([amp(), el(':hover')]),
+            rules: rules([
+              call({ name: ref({ key: 'content' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          // @hover-background: @background (local body var, at outer mixin level)
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          // .table-hover { .hover({ background-color: @hover-background; }); }
+          ruleset({
+            selector: el('.table-hover'),
+            rules: rules([
+              call({
+                name: ref({ key: '.hover' }, { type: 'mixin' }),
+                args: list([
+                  rules([
+                    decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+                  ])
+                ])
+              })
+            ])
+          })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([hoverMixin, tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-hover');
+      expect(css).toContain('&:hover');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('resolves default params when mixin body lives in a separate (imported) rules context', async () => {
+      // Simulates: @import "mixins.less" where mixins.less defines:
+      //   .responsive-mixin(@size: 14px, @weight: normal) { font-size: @size; font-weight: @weight; }
+      // and the main file calls: .component { .responsive-mixin(); }
+      //
+      // The mixin body's parent chain points into the "imported" tree, not the main tree.
+      // outerRules.scopeFrame must still carry the default bindings.
+
+      const mixinBody = rules([
+        decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
+        decl({ name: 'font-weight', value: ref({ key: 'weight' }, { type: 'variable' }) })
+      ]);
+
+      // Build an "imported" root — mixin lives here
+      const importedMixinDef = mixin({
+        name: any('.responsive-mixin'),
+        params: list([
+          vardecl({ name: 'size', value: any('14px') }, { paramVar: true }),
+          vardecl({ name: 'weight', value: any('normal') }, { paramVar: true })
+        ]),
+        rules: mixinBody
+      });
+      const importedRoot = rules([importedMixinDef]);
+
+      // The main file calls the mixin inside a ruleset
+      const component = ruleset({
+        selector: el('.component'),
+        rules: rules([
+          call({ name: ref({ key: '.responsive-mixin' }, { type: 'mixin' }) })
+        ])
+      });
+
+      // Wire the imported root into the main root via push so the registry can find the mixin
+      const mainRoot = rules([importedRoot, component]);
+      context.root = mainRoot;
+
+      const evald = await mainRoot.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .component {
+          font-size: 14px;
+          font-weight: normal;
+        }
+      `);
+    });
+
+    it('resolves default params when mixin is nested inside a namespace (Less import pattern)', async () => {
+      // Simulates a multi-default-param mixin nested inside a namespace ruleset
+      // equivalent to Bootstrap's .button-variant(@background, @border, @hover-background)
+      // where the mixin params should remain accessible throughout the body
+
+      const mixinDef = mixin({
+        name: any('.button-variant'),
+        params: list([
+          any('background', { role: 'property' }),
+          any('border', { role: 'property' }),
+          vardecl({ name: 'hover-background', value: any('darken') }, { paramVar: true })
+        ]),
+        rules: rules([
+          decl({ name: 'background-color', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) }),
+          decl({ name: 'background-hover', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.btn-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.button-variant' }, { type: 'mixin' }),
+            args: list([any('blue'), any('darkblue')])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .btn-primary {
+          background-color: blue;
+          border-color: darkblue;
+          background-hover: darken;
+        }
+      `);
+    });
+
     it('leaks non-param vars from mixin output in leaky Less mode', async () => {
       const setHeight = mixin({
         name: any('.setHeight'),
@@ -637,6 +863,62 @@ describe('Mixin', () => {
 
         // All 3 calls should resolve via mixinsByName fast path.
         // The first call warms up mixinsByName; subsequent calls skip the registry entirely.
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path (slice 7): type=mixin static-name lookup skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = RulesClass.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key] = args;
+        if (type === 'mixin' && typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.fast-mixin'),
+          rules: rules([decl({ name: 'color', value: any('purple') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          }),
+          ruleset({
+            selector: el('.c'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: purple;
+          }
+          .b {
+            color: purple;
+          }
+          .c {
+            color: purple;
+          }
+        `);
         expect(mixinRegistryHits.length).toBe(0);
       } finally {
         RulesClass.prototype.find = originalFind;

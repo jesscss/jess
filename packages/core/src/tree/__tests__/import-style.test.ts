@@ -651,7 +651,7 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
-        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable', resolution: 'linear' }) })
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
       ]));
 
       const node = rules([
@@ -731,7 +731,7 @@ describe('Style import', () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
-        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable', resolution: 'linear' }) })
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) })
       ]));
 
       const node = rules([

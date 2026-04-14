@@ -8,6 +8,7 @@ import {
   JsFunction,
   List,
   Nil,
+  Rules,
   Sequence,
   VarDeclaration,
   any,
@@ -181,6 +182,33 @@ describe('Control Nodes', () => {
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
     const evald = await root.eval(context);
     expect(`${evald}`).toContain('item: a');
+  });
+
+  it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
+    const context = new Context();
+    const registryHits: string[] = [];
+    const originalFind = Rules.prototype.find;
+    Rules.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      const [type, key] = args;
+      if (
+        type === 'declaration'
+        && typeof key === 'string'
+        && (key === 'value' || key === 'key' || key === 'index')
+      ) {
+        registryHits.push(key);
+      }
+      return originalFind.apply(this, args);
+    };
+
+    try {
+      const root = rules([makeLoop(makePattern(['value', 'key', 'index']), list([new Any('a'), new Any('b')]))]);
+      const evald = await root.eval(context);
+      expect(`${evald}`).toContain('item: a');
+      expect(`${evald}`).toContain('item: b');
+      expect(registryHits).toEqual([]);
+    } finally {
+      Rules.prototype.find = originalFind;
+    }
   });
 
   it('forces public rulesVisibility for $if and $for rules', () => {

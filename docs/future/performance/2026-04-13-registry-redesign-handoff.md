@@ -16,9 +16,15 @@ Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit doc
 - [x] Slice 9 — `liveSlotsByName` frame-chain walk is the primary mixin param lookup path in `performLookup`; `runtimeVarBindings` kept as fallback; only `liveSlotsByName` walked (not `declarationBucketsByName`) to preserve Less definition-site semantics for lexical vars
 - [x] Slice 10 — Retire `runtimeVarBindings`; `@arguments` joins `liveSlotsByName`; `buildScopeFrame` accepts optional live slots; proof tests updated to behavioral assertions
 - [x] Slice 11 — `getScopeFrame()` auto-wires parent frame by walking node parent chain; inner rules within mixin body inherit `outerRules.scopeFrame` as parent; `reference.ts` live-slot walk uses clean `frame.parent` chain
-- [ ] Slice 12 — Delete fork/renderKey system; delete `resolution: 'linear'`; retire `DeclarationRegistry`, `MixinRegistry`, and `RulesetRegistry` entirely (replaced by `declarationBucketsByName`, `mixinsByName`, and a forthcoming `rulesetsBySelector` fast map respectively)
+- [x] Slice 12a — Extend `findVarDeclarationFast` with `beforeIndex` for positional variable lookups
+- [x] Slice 12b — Delete `resolution: 'linear'`; remove `beforeIndex` from `findVarDeclarationFast`; strip linear branches from `performLookup`, `toTrimmedString`, and `declaration.ts`; delete the linear-specific test in `rules.test.ts`
+- [ ] Slice 13 — Delete fork/renderKey system from **all nodes**; the renderKey system serves two distinct purposes that must both be addressed before it can be removed: (1) **mixin param isolation** — a shared mixin body node needs different param values in different call contexts; Slices 10–11 addressed this via `liveSlotsByName` / `ScopeFrame`; (2) **eval-time node mutation** — nodes like `Interpolated`, `Operation`, `SelectorPseudo`, `SelectorAttr`, `Ampersand` store their evaluated results keyed by renderKey so a shared source node can hold different evaluated values per render context; these have nothing to do with params and are not addressed by `liveSlotsByName`; eliminating them requires either (a) stopping all storage of eval results on nodes (always re-evaluate, relying on context), or (b) the buffered render from Track 5 which gives each render call its own output surface; known call sites using renderKey for (2): `interpolated.ts`, `selector-pseudo.ts`, `ampersand.ts`, `selector-attr.ts`, `operation.ts`; also `mixin.ts`, `serialize-helper.ts`, `rules.ts`; the `renderKey` prop on `FindOptions` also goes away; the proposal's "No forks" promise is not met until ALL of these are gone
+- [x] Slice 13b — Wire `$for` loop iteration variables through `ScopeFrame` / `liveSlotsByName` (same as mixin params, Slices 8–11). `$for` no longer materializes synthetic loop `VarDeclaration`s just to transport `value` / `key` / `index`; per-iteration wrapper `Rules` now get a `scopeFrame` with those bindings in `liveSlotsByName`, and loop-var references resolve without declaration-registry lookup. The loop body still uses renderKey for shared-node mutation isolation, so this slice removes declaration-shaped binding transport but does **not** make `$for` fully fork-free by itself.
+- [ ] Slice 13c — Wire `@import` scope isolation through `ScopeFrame`. Imported files share their parsed AST across call sites; any per-call-site mutations (currently handled by renderKey forks) must migrate to context-local evaluation. This is closely related to Track 5 (buffered render) — the full fix may depend on `render(node, ctx)` giving each import its own output surface. Track here so it is not assumed free after the renderKey deletion in Slice 13.
+- [ ] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
+- [ ] Slice 15 — Retire `MixinRegistry` hot path; `findMixinFast` already covers static-name Mixin lookups; verify no Ruleset-as-mixin gaps, then drop the `targetRules.find('mixin', ...)` fallback for the static-string case
+- [ ] Slice 16 — Retire `RulesetRegistry`; design and add `rulesetsBySelector` fast map; drop `RulesetRegistry`
 - [ ] `FunctionRegistry` optimization — keep as plugin API but change granularity from per-`Rules` to per-stylesheet: one global registry for built-ins/plugins; one stylesheet-level registry created on demand when `registerFunction()` is called within a stylesheet; stylesheet registry falls through to global; `@compose` children see only the global (not the parent stylesheet registry); `@import` children see the parent stylesheet registry; O(1) lookup in common case (no stylesheet-local functions), O(depth of stylesheet registries between call site and global) otherwise — in practice 1-2 hops, never the full Rules-node depth
-- [ ] Slice 10 — Delete `resolution: 'linear'`; delete generic `DeclarationRegistry` hot path; clean up
 
 ### Track 2 — Node Shape: Direct Instance Fields
 
@@ -42,11 +48,11 @@ Replace the transparent `Proxy`-based compat shim with explicit typed adapter cl
 
 ### Track 4 — Whitespace / Trivia Token Proposal
 
-Replace `pre`/`post` string fields on nodes with an offset-keyed `FormattingMap`. Static declaration names become plain strings (not `Any` nodes), which simplifies static-vs-dynamic detection in `ScopeFrame` and removes a Proxy allocation per declaration.
+Replace `pre`/`post` string fields on nodes with an offset-keyed `TriviaMap`. Static declaration names become plain strings (not `Any` nodes), which simplifies static-vs-dynamic detection in `ScopeFrame` and removes a Proxy allocation per declaration.
 
-- [ ] Finalize `FormattingMap` design (keyed by source offset or node identity)
+- [ ] Finalize `TriviaMap` design (keyed by source offset); see `docs/future/whitespace-token-proposal.md`
 - [ ] Remove `pre`/`post` from `Node` base class
-- [ ] Migrate trivia storage to `FormattingMap` in serialization path
+- [ ] Migrate trivia storage to `TriviaMap` in serialization path
 - [ ] Static `name` fields on `VarDeclaration`, `Declaration`, `Mixin` become plain `string` (not `Any`)
 - [ ] Update `ScopeFrame` / `varsByName` / `mixinsByName` to key directly on `string` without `.valueOf()` call
 
@@ -386,31 +392,187 @@ default-param access, but only in the harness path.
 Do **not** assume the runtime-binding cut itself is wrong until the harness path
 is made faithful to the real benchmark execution path.
 
+## Why "No Forks, No Mutations" Is Possible
+
+The fork/renderKey system exists because the current engine is **two-pass**:
+
+```
+pass 1 — eval:       walk the tree, evaluate each node, store results on the node
+pass 2 — serialize:  walk the tree again, read stored results, build CSS string
+```
+
+Between pass 1 and pass 2, results must be stored somewhere. Nodes are that somewhere. When the same mixin body is called twice with different params, both calls would overwrite each other's stored results — so `renderKey` forks each node into per-call storage.
+
+**The target model collapses both passes into one:**
+
+```
+one pass — render:   walk the tree as a read-only template,
+                     resolve references against the active ScopeFrame on the fly,
+                     write output directly to the output buffer
+```
+
+Nothing is stored on the node. The node is a description of what to render. Two calls to the same mixin body walk the same template with different `ScopeFrame`s and write to different positions in the output buffer. No intermediate storage. No fork.
+
+The two-function API (from the proposal's "How Each Node Type Renders" section):
+
+- `render(node, ctx) → void` — for output-producing nodes; writes directly to `ctx.outputBuffer`; never stores on the AST
+- `resolve(node, ctx) → Node` — for value-returning contexts (function arguments, guard conditions, key resolution); evaluates without writing; result is used immediately then garbage-collected
+
+For example, an `Operation` in the new model:
+
+```
+render(op, ctx):
+  left  = resolve(op.left, ctx)   // → Color, Dimension, etc. — discarded after use
+  right = resolve(op.right, ctx)
+  result = compute(left, op.operator, right)
+  ctx.outputBuffer.append(result.valueOf())
+  // result is GC'd — never stored on any AST node
+```
+
+No `op.set('result', result, renderKey)`. No per-call fork. Just compute → write → discard.
+
+**Current status**: the Track 1 slices (1–12b) have built the prerequisite for this by making all *variable and param lookups* context-driven via `ScopeFrame`/`varsByName`. The *structural evaluation* changes (Operation, Interpolated, SelectorPseudo, etc.) are the remaining work in Track 1 (Slice 13, fork/renderKey deletion) and depend on Track 5 (buffered render) for the full one-pass architecture.
+
+See: proposal "How Each Node Type Renders" (~line 347) and "Materialization Boundaries" (~line 398) for the full model.
+
+---
+
+## Resolution Strategy Architecture
+
+`ReferenceOptions.resolution` now has two modes:
+
+| Mode | Meaning | When used |
+|------|---------|-----------|
+| `'scope'` (default) | **Contextual** — last definition in scope wins (Less/CSS semantics). In the current scope, declarations after the reference's source position are ignored (`ignoreCurrentScopeStart`). In ancestor scopes, the last definition is always used (`ignoreParentScopeStart`). | All ordinary variable and property lookups |
+| `'call-time'` | Resolve at call-site position — mixin body variables are looked up using the call site's source index, not the definition site. | Jess `$~var` syntax inside mixin bodies |
+
+`'linear'` (formerly Jess `$^var` syntax) has been deleted. It is not used in Less
+or in any shipped Jess syntax, and the merge-declaration case that was incorrectly
+using it now works correctly under the default contextual (`'scope'`) resolution.
+
+### Variable lookup order in `performLookup` (type === 'variable')
+
+1. **`liveSlotsByName` frame-chain walk** — covers mixin params and `@arguments`
+   (populated at call time into the `ScopeFrame`; walks `frame.parent` chain which
+   is the call-site chain, not the node-parent chain)
+2. **`findVarDeclarationFast` fast path** — covers ordinary lexical vars when
+   `opts.ignoreParentScopeStart` is true (the normal case); walks `varsByName`
+   on each `Rules` ancestor via node-parent chain; bails if any scope is not yet
+   indexed (falls through to full registry which warms it up)
+3. **`targetRules.find('declaration', ...)` full registry** — fallback for
+   unindexed scopes and edge cases; also warms up `varsByName` and `mixinsByName`
+   for future fast-path hits
+
+### Key constraint: `liveSlotsByName` vs `declarationBucketsByName`
+
+Only `liveSlotsByName` is safe to walk via the call-site frame chain. Lexical
+vars in `declarationBucketsByName` follow Less **definition-site** semantics —
+walking them via the call-site chain would return wrong values (call-site
+definitions instead of definition-site definitions). The frame chain is therefore
+used only for live param slots; lexical vars go through `findVarDeclarationFast`
+which uses the node-parent chain (definition site).
+
+## Bootstrap Closure Bug Fix (Session 2026-04-13)
+
+This session fixed a correctness bug that was blocking the Bootstrap benchmark: mixin body
+local variables were inaccessible inside detached rulesets passed to other mixins.
+
+### Pattern being fixed
+
+```less
+#table-row-variant(@state, @background) {
+  @hover-background: darken(@background, 5%);       // local body var
+  .table-hover .table-@{state} {
+    #hover({ background-color: @hover-background; }); // closure over @hover-background
+  }
+}
+```
+
+### Root cause
+
+In `MixinCollection.evalCall`, anonymous-mixin candidates (no `name`/`params`/`guard`) are
+processed via the "anonymous mixin path". The path shallow-cloned the body (`unlocked`) and
+pushed it to `outputRules` **unevaluated**. When `Call.evalNode` later called
+`result.eval(context)` on the containing `&:hover` Ruleset, a deep-clone (from
+`evaluateCandidateOutput`'s `clonedEval` context) overwrote `unlocked.parent` via `adopt()`,
+breaking the parent chain that led back to the outer mixin body's registry where
+`@hover-background` was registered.
+
+### Fix (anonymous mixin path in `rules.ts`)
+
+Evaluate `unlocked` immediately while the call-site parent chain is intact:
+
+```typescript
+// Before: push unevaluated
+outputRules.push(unlocked);
+
+// After: evaluate immediately, push result
+const evaledUnlocked = unlocked.eval(context);
+unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
+outputRules.push(unlocked);
+```
+
+`unlocked.parent` walks up through `candidate.parent` (the args List of the outer mixin call)
+→ the outer Call → the calling mixin's body Rules → the `Ruleset` that called `#hover` →
+cbody (`Rules` of the outer mixin) — which has `@hover-background` in its registry.
+After evaluation `unlocked` is static, so the subsequent `result.eval(context)` pass is a
+no-op for it.
+
+### Tests added
+
+Two regression tests added to `mixin.test.ts`:
+
+- `resolves local mixin body variable inside a detached ruleset passed to another mixin (closure)`
+- `resolves local mixin body variable inside a detached ruleset when call is nested in a child ruleset`
+
+Both pass. Full core suite: **1165 passed, 22 skipped** (no new failures).
+
+### Reference.ts fast-path fix
+
+During this session a stale edit was found in `reference.ts` that accidentally removed the
+early return in the `findMixinFast` path:
+
+```typescript
+// Before (correct, at HEAD):
+if (fast.length > 0) {
+  return fast;  // skips MixinRegistry.find — the point of the fast path
+}
+
+// After bad edit:
+// early return removed, always fell through to MixinRegistry.find
+```
+
+Restored to original behavior. The `mixinsByName fast path (slice 7)` test verifies this.
+
+---
+
 ## Next Step
 
-Slices 1–9 complete. Mixin-param, ordinary lexical-variable, and static-named
-mixin lookup hot paths all bypass the generic registry machinery. The `ScopeFrame`
-parent chain is live at call time, and `liveSlotsByName` is the primary param
-lookup path — `runtimeVarBindings` is now a fallback only.
+Slices 1–12b complete. The lookup stack is:
+- Mixin params: `liveSlotsByName` frame-chain walk
+- Lexical vars: `findVarDeclarationFast` → `varsByName` fast map → full registry fallback
+- Mixins: `findMixinFast` → `mixinsByName` fast map → full registry fallback
 
-Key design constraint discovered in Slice 9: **only `liveSlotsByName` is safe to
-walk via the call-site frame chain**. `declarationBucketsByName` stores lexical
-vars that follow Less definition-site semantics — using the call-site frame parent
-for those would return wrong values (call-site definitions instead of definition-site
-definitions). The frame chain is used only for params; lexical vars still go through
-`findVarDeclarationFast` / `findRuntimeVarBinding`.
+Slice 13: delete the fork/renderKey system from nodes.
 
-The next code slice (Slice 10):
+`Node.set(key, value, renderKey)`, `Node.getValue(renderKey)`, `Node._renderKey`,
+`Rules.flatRulesWithKeys()`, and all per-node fork state need to be removed. The
+callers that used renderKey to isolate mixin-call mutations now rely on the
+`ScopeFrame` / `liveSlotsByName` path. Audit every call site of `context.renderKey`
+and `node.set(..., renderKey)` to confirm there are no remaining callers that still
+need fork isolation, then delete the infrastructure.
 
-1. Remove `runtimeVarBindings` from `Rules` once all mixin-param callers are
-   confirmed to go through `liveSlotsByName`. Run full test suite to verify.
-2. Remove the fork/renderKey system — no remaining callers once the frame chain
-   is the sole param path.
-3. Delete `resolution: 'linear'` from `reference.ts` (it is guarded out of the
-   fast path already; the mode itself is vestigial).
-4. Delete the generic `DeclarationRegistry` hot path once `varsByName` and
-   `mixinsByName` cover all cases.
-5. Keep verifying with:
+After Slice 13, Slice 14: retire `DeclarationRegistry` for the `type === 'variable'` case.
+
+1. Audit what causes `findVarDeclarationFast` to bail (return `undefined`) and
+   fall through to `targetRules.find('declaration', ...)`. Add instrumentation or
+   a proof test that counts registry hits after the first cold-index pass.
+2. Make `findVarDeclarationFast` trigger `scope._indexRules()` on unindexed scopes
+   instead of bailing — this makes the fast path self-sufficient for the variable
+   lookup case and eliminates the registry fallback.
+3. Remove `targetRules.find('declaration', ..., 'VarDeclaration', ...)` for the
+   `type === 'variable'` branch. Verify with full test suite.
+4. Keep verifying with:
 
    ```sh
    pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts
@@ -456,9 +618,16 @@ node scripts/profile-less-benchmark.mjs --file=benchmark.less
 
 At the time of this handoff, the uncommitted files are:
 
-- [packages/core/src/tree/rules.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts)
-- [packages/core/src/tree/reference.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/reference.ts)
-- [packages/core/src/tree/__tests__/mixin.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/mixin.test.ts)
-- [vitest.config.ts](/Users/matthew/git/oss/jess/vitest.config.ts) — `disableConsoleIntercept` (removed in vitest 4) replaced with `onConsoleLog` direct write
-- [docs/future/performance/2026-04-13-registry-redesign-handoff.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-registry-redesign-handoff.md)
-- [docs/future/performance/2026-04-13-registry-redesign-proposal.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-registry-redesign-proposal.md) — updated with live-binding cell model, fork-free mixin invocation direction, pre-eval-elimination relationship, removal of `linear` as a concept
+- [packages/core/src/tree/rules.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts) — anonymous mixin path: immediate eval of `unlocked` for closure fix
+- [packages/core/src/tree/control.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/control.ts) — `$for` iteration bindings now populate `ScopeFrame.liveSlotsByName` instead of synthetic loop `VarDeclaration`s
+- [packages/core/src/tree/reference.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/reference.ts) — restored `findMixinFast` early return; deleted `resolution: 'linear'` (Slice 12b); extended plain `type='mixin'` static-string lookups to use `mixinsByName` on hits, but misses still must fall back to `MixinRegistry` because imported/namespaced mixins are still discovered there
+- [packages/core/src/tree/declaration.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/declaration.ts) — Slice 12b cleanup (linear-related field removal)
+- [packages/core/src/tree/__tests__/control.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/control.test.ts) — `$for` live-slot regression/proof test added
+- [packages/core/src/tree/__tests__/mixin.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/mixin.test.ts) — two closure regression tests added; Slice 12b test cleanup
+- [packages/core/src/tree/__tests__/rules.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/rules.test.ts) — Slice 12b: linear-specific test removed
+- [packages/core/src/tree/__tests__/import-style.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/import-style.test.ts) — minor test update
+- [packages/core/src/tree/call.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/call.ts) — debug cleanup
+- [docs/future/performance/2026-04-13-registry-redesign-handoff.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-registry-redesign-handoff.md) — this file
+- [docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md) — whitespace proposal refinements
+
+Test status: **1165 passed, 22 skipped** (78 files pass, 2 skip; no failures).

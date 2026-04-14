@@ -185,8 +185,8 @@ export class Call extends Node<CallValue, CallOptions> {
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
-    } else if (isNode(n, N.Collection)) {
-      // If the evaluated name is Rules or Collection (detached rulesets),
+    } else if (isNode(n, N.Rules | N.Collection)) {
+      // If the evaluated name is a Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
       if (args && args.value.length > 0) {

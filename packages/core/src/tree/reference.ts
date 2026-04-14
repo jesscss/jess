@@ -73,11 +73,10 @@ export type ReferenceOptions = {
   type?: 'index' | 'declaration' | 'property' | 'variable' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
   /**
    * Resolution strategy:
-   * - 'scope': Search in scope (Less-style, default)
-   * - 'linear': Search linearly from definition position (Sass-style for regular code)
-   * - 'call-time': Search linearly from call site position (Sass-style for mixins/functions)
+   * - 'scope': Contextual lookup — last definition in scope wins (Less semantics, default)
+   * - 'call-time': Resolve at call-site position rather than definition position
    */
-  resolution?: 'scope' | 'linear' | 'call-time';
+  resolution?: 'scope' | 'call-time';
   /**
    * Optional references just resolve to the string
    * representation if the fallback value is set to true.
@@ -112,15 +111,12 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
  * indexing and warm up `varsByName` for all visited scopes. Subsequent lookups then
  * use the fast path for the entire chain.
  *
- * Rules: last entry in varsByName wins (Less "last definition wins" semantics).
- * For positional lookups (resolution: 'linear', e.g. merge declarations `@a+:`),
- * pass `beforeIndex` to restrict matches to entries with index < beforeIndex.
+ * Last entry in varsByName wins (Less "last definition wins" / contextual semantics).
  */
 function findVarDeclarationFast(
   startRules: Rules,
   name: string,
-  filter: (n: Node) => boolean,
-  beforeIndex?: number
+  filter: (n: Node) => boolean
 ): Node | undefined {
   let cursor: Node | undefined = startRules;
   let first = true;
@@ -143,9 +139,6 @@ function findVarDeclarationFast(
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
           const candidate = candidates[i]!;
-          if (beforeIndex !== undefined && (candidate.index === undefined || candidate.index >= beforeIndex)) {
-            continue;
-          }
           if (filter(candidate)) {
             return candidate;
           }
@@ -316,9 +309,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     } else {
       w.add('$');
     }
-    if (resolution === 'linear') {
-      w.add('^');
-    } else if (resolution === 'call-time') {
+    if (resolution === 'call-time') {
       w.add('~');
     }
     switch (type) {
@@ -538,15 +529,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           if (
             !target
             && !isInterpolatedVariable
-            && this.options.resolution === 'linear'
-          ) {
-            const startIndex = getLookupStartIndex(this);
-            if (startIndex !== undefined) {
-              opts.start = startIndex;
-            }
-          } else if (
-            !target
-            && !isInterpolatedVariable
             && (
               type === 'variable'
               || type === 'property'
@@ -566,7 +548,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             if (context.rulesContext !== undefined) {
               opts.start = context.rulesContext.index;
             } else {
-              // Fall back to linear resolution if we can't find a call site
+              // Fall back to definition-site lookup if no call site is available
               const startIndex = getLookupStartIndex(this);
               if (startIndex !== undefined) {
                 opts.start = startIndex;
@@ -625,17 +607,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                       f = f.parent;
                     }
                   }
-                  // Slice 12: fast paths — walk varsByName directly, skipping the
-                  // declaration-registry machinery.
-                  //   • ignoreParentScopeStart  → no positional filter needed
-                  //   • resolution: 'linear'    → positional filter at opts.start
+                  // Fast path: walk varsByName directly, skipping the declaration-registry
+                  // machinery for the dominant contextual variable lookup case.
                   if (opts.ignoreParentScopeStart) {
                     const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter);
-                    if (fast !== undefined) {
-                      return fast;
-                    }
-                  } else if (this.options.resolution === 'linear' && opts.start !== undefined) {
-                    const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter, opts.start);
                     if (fast !== undefined) {
                       return fast;
                     }
@@ -681,7 +656,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               break;
             case 'mixin':
               if (isNode(targetRules, N.Rules)) {
-                // valueKey can be string or string[] - find() accepts both
+                if (typeof valueKey === 'string') {
+                  const fast = findMixinFast(targetRules, valueKey);
+                  if (fast !== undefined) {
+                    if (fast.length > 0) {
+                      return fast;
+                    }
+                  }
+                }
                 const mixin = targetRules.find('mixin', valueKey, 'Mixin', opts);
                 if (mixin) {
                   return mixin;

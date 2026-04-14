@@ -244,7 +244,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             const ref = new Reference({ key }, {
               type,
               fallbackValue: new Nil(),
-              resolution: 'linear',
               // Assignment normalization clears `assign` to Default, so matching by
               // assignment flag prevents later merge iterations from seeing prior values.
               // For Less-style property merges, any prior merge node participates in the chain,
@@ -276,7 +275,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 new Reference({ key }, {
                   type,
                   fallbackValue: new Nil(),
-                  resolution: 'linear',
                   // Prevent self-referential reads while normalizing this node.
                   filter: n => n !== node
                 }),

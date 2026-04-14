@@ -13,6 +13,7 @@ import { Block } from './block.js';
 import { Range } from './range.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
+import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -53,11 +54,15 @@ export type ForIterable =
   };
 
 function getBindingNames(pattern: ForPattern): string[] {
+  return getBindingDeclarations(pattern).map(entry => entry.value.name.valueOf());
+}
+
+function getBindingDeclarations(pattern: ForPattern): VarDeclaration[] {
   if (pattern.kind === 'single') {
-    return [pattern.value.value.name.valueOf()];
+    return [pattern.value];
   }
   if (pattern.kind === 'tuple') {
-    return pattern.values.map(entry => entry.value.name.valueOf());
+    return [...pattern.values];
   }
   return [];
 }
@@ -214,8 +219,9 @@ export class For extends Node<StructuredLoopValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     const { pattern, iterable } = this.value;
-    const bindingNames = getBindingNames(pattern);
-    if (bindingNames.length === 0) {
+    const bindingDecls = getBindingDeclarations(pattern);
+    const bindingNames = bindingDecls.map(entry => entry.value.name.valueOf());
+    if (bindingDecls.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
     }
     const run = async (): Promise<Node> => {
@@ -251,12 +257,19 @@ export class For extends Node<StructuredLoopValue> {
         iterationRules.inherit(originalRules);
 
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
-        for (let i = Math.min(bindingNames.length, bindings.length) - 1; i >= 0; i--) {
-          iterationRules.push(new VarDeclaration({
-            name: new Any(bindingNames[i]!, { role: 'property' }),
-            value: bindings[i]!
-          }));
+        const liveSlots = new Map<string, BindingCell>();
+        for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
+          const bindingDecl = bindingDecls[i]!;
+          liveSlots.set(bindingNames[i]!, {
+            value: bindings[i]!,
+            sourceNode: bindingDecl,
+            readonly: bindingDecl.options?.readonly
+          });
         }
+        const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
+          ? context.rulesContext.getScopeFrame()
+          : undefined;
+        iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
         for (const child of originalRules.value) {
           iterationRules.push(child);
         }
