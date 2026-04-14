@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -297,6 +297,98 @@ describe('reference', () => {
         })
       ]);
       await expect(async () => await node.eval(context)).rejects.toThrow();
+    });
+
+    it('plain lexical misses do not fall back to DeclarationRegistry.find when no child scopes are searchable', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'missing' }, { type: 'variable' })
+          })
+        ]);
+        await expect(async () => await node.eval(context)).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('plain lexical misses do not fall back when only later child rules could match', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'missing' }, { type: 'variable' })
+          }),
+          rules([
+            vardecl({
+              name: any('missing'),
+              value: any('red')
+            })
+          ], {
+            rulesVisibility: {
+              VarDeclaration: 'public'
+            }
+          })
+        ]);
+        await expect(async () => await node.eval(new Context({ leakyRules: true }))).rejects.toThrow();
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('plain lexical misses still fall back when scope contains unresolved dynamic declaration names', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({
+            name: interpolated({
+              source: '%%',
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }),
+            value: any('red')
+          }),
+          decl({
+            name: any('bar'),
+            value: ref({ key: 'missing' }, { type: 'variable' })
+          })
+        ]);
+        await expect(async () => await node.eval(context)).rejects.toThrow();
+        expect(declarationHits.length).toBeGreaterThan(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
     });
   });
 

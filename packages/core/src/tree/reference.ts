@@ -13,7 +13,7 @@ import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
-import type { MixinEntry, Rules, RuntimeVarBinding } from './rules.js';
+import type { MixinEntry, Rules, RulesOptions, RuntimeVarBinding } from './rules.js';
 import type { Mixin } from './mixin.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
@@ -116,13 +116,59 @@ const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
 function findVarDeclarationFast(
   startRules: Rules,
   name: string,
-  filter: (n: Node) => boolean
-): Node | undefined {
+  filter: (n: Node) => boolean,
+  options?: {
+    start?: number;
+    context?: Context;
+    hasTarget?: boolean;
+    local?: boolean;
+  }
+): {
+  match: Node | undefined;
+  needsRegistryFallback: boolean;
+} {
+  const hasSearchableChildVarScopes = (scope: Rules, applyStart: boolean): boolean => {
+    const childEntries = scope._rulesSet as Array<{
+      node: Rules;
+      rulesVisibility?: RulesOptions['rulesVisibility'];
+    }> | undefined;
+    if (!childEntries?.length) {
+      return false;
+    }
+    for (const entry of childEntries) {
+      const visibility = entry.rulesVisibility?.VarDeclaration
+        ?? entry.node.options.rulesVisibility?.VarDeclaration;
+      if (visibility !== 'public' && visibility !== 'optional') {
+        continue;
+      }
+      if (entry.node.options?.isMixinOutput === true && options?.hasTarget !== true) {
+        continue;
+      }
+      if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
+        continue;
+      }
+      if (options?.local && entry.node.options?.local) {
+        continue;
+      }
+      if (
+        applyStart
+        && options?.start !== undefined
+        && !(entry.node.index !== undefined && entry.node.index < options.start)
+      ) {
+        continue;
+      }
+      return true;
+    }
+    return false;
+  };
+
   let cursor: Node | undefined = startRules;
   let first = true;
+  let needsRegistryFallback = false;
   while (cursor) {
     if (isNode(cursor, N.Rules)) {
       const scope = cursor as Rules;
+      const applyCurrentScopeStart = first;
       if (!first) {
         // Stop at non-classic-import boundaries (same as DeclarationRegistry.find)
         const sn = scope.sourceNode;
@@ -132,12 +178,15 @@ function findVarDeclarationFast(
       }
       first = false;
       const frame = scope.getScopeFrame();
+      if (hasSearchableChildVarScopes(scope, applyCurrentScopeStart) || frame.pendingDynamicDecls.length > 0) {
+        needsRegistryFallback = true;
+      }
       const candidates = frame.declarationBucketsByName.get(name);
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
           const candidate = candidates[i]!;
           if (filter(candidate.sourceNode)) {
-            return candidate.sourceNode;
+            return { match: candidate.sourceNode, needsRegistryFallback };
           }
         }
       }
@@ -145,7 +194,7 @@ function findVarDeclarationFast(
     }
     cursor = cursor.parent ?? cursor.sourceParent;
   }
-  return undefined;
+  return { match: undefined, needsRegistryFallback };
 }
 /**
  * Fast parent-chain walk for static-named Mixin lookup.
@@ -607,9 +656,17 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                   // Fast path: walk varsByName directly, skipping the declaration-registry
                   // machinery for the dominant contextual variable lookup case.
                   if (opts.ignoreParentScopeStart) {
-                    const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter);
-                    if (fast !== undefined) {
-                      return fast;
+                    const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter, {
+                      start: opts.start,
+                      context,
+                      hasTarget,
+                      local: opts.local
+                    });
+                    if (fast.match !== undefined) {
+                      return fast.match;
+                    }
+                    if (!fast.needsRegistryFallback) {
+                      return undefined;
                     }
                   }
                 }

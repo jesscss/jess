@@ -263,7 +263,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           cursor = cursor.parent ?? cursor.sourceParent;
         }
       }
-      this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent);
+      const pendingDynamicDecls = this.value.filter((node): node is VarDeclaration => {
+        return isNode(node, N.VarDeclaration) && !this._hasStaticName(node);
+      });
+      this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent, undefined, pendingDynamicDecls);
     }
     return this.scopeFrame;
   }
@@ -877,27 +880,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       this.register('declaration', node);
       if (isNode(node, N.VarDeclaration)) {
-        const name = (node as VarDeclaration).value.name.valueOf();
-        const map = (this.varsByName ??= new Map());
-        let arr = map.get(name);
-        if (!arr) {
-          map.set(name, arr = []);
-        }
-        arr.push(node as VarDeclaration);
-        if (this.scopeFrame && !this._indexing) {
-          let bucket = this.scopeFrame.declarationBucketsByName.get(name);
-          if (!bucket) {
-            this.scopeFrame.declarationBucketsByName.set(name, bucket = []);
+        if (this._hasStaticName(node)) {
+          const name = (node as VarDeclaration).value.name.valueOf();
+          const map = (this.varsByName ??= new Map());
+          let arr = map.get(name);
+          if (!arr) {
+            map.set(name, arr = []);
           }
-          if (!bucket.some(entry => entry.sourceNode === node)) {
-            bucket.push({
-              cell: {
-                value: (node as VarDeclaration).value.value,
-                sourceNode: node,
-                readonly: node.options?.readonly
-              },
-              sourceNode: node as VarDeclaration
-            });
+          arr.push(node as VarDeclaration);
+          if (this.scopeFrame && !this._indexing) {
+            let bucket = this.scopeFrame.declarationBucketsByName.get(name);
+            if (!bucket) {
+              this.scopeFrame.declarationBucketsByName.set(name, bucket = []);
+            }
+            if (!bucket.some(entry => entry.sourceNode === node)) {
+              bucket.push({
+                cell: {
+                  value: (node as VarDeclaration).value.value,
+                  sourceNode: node,
+                  readonly: node.options?.readonly
+                },
+                sourceNode: node as VarDeclaration
+              });
+            }
+          }
+        } else if (this.scopeFrame && !this._indexing) {
+          if (!this.scopeFrame.pendingDynamicDecls.includes(node as VarDeclaration)) {
+            this.scopeFrame.pendingDynamicDecls.push(node as VarDeclaration);
           }
         }
       }
@@ -2790,9 +2799,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // detached-ruleset call) are reachable now via unlocked.parent → cbody.
         // After evaluation the node is static so subsequent re-processing in
         // Call.evalNode's result.eval() path finds no live references to re-resolve.
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const evaledUnlocked = unlocked.eval(context);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
         outputRules.push(unlocked);
         continue;

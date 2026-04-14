@@ -97,7 +97,8 @@ export function buildScopeFrame(
   varsByName: Map<string, VarDeclaration[]> | undefined,
   rulesNode: object,
   parent: ScopeFrame | undefined,
-  liveSlots?: Map<string, BindingCell>
+  liveSlots?: Map<string, BindingCell>,
+  pendingDynamicDecls?: VarDeclaration[]
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
 
@@ -119,7 +120,7 @@ export function buildScopeFrame(
     parent,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
-    pendingDynamicDecls: [],  // dynamic-key decls — populated in a later slice
+    pendingDynamicDecls: pendingDynamicDecls ?? [],
     rulesNode
   };
 }
