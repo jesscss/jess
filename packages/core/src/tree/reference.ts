@@ -535,8 +535,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               || type === 'declaration'
             )
           ) {
-            // Ordinary refs are contextual by default: they should not carry
-            // a source-order cutoff into outward scope walks.
+            const startIndex = getLookupStartIndex(this);
+            if (startIndex !== undefined) {
+              // Contextual refs still respect the current scope cursor, but
+              // must not carry that cutoff outward into parent scopes.
+              opts.start = startIndex;
+              opts.ignoreParentScopeStart = true;
+            }
           } else if (this.options.resolution === 'live' && !isInterpolatedVariable) {
             // Live lookup uses the call site's position rather than the
             // definition position.
