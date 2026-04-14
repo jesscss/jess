@@ -131,16 +131,13 @@ function findVarDeclarationFast(
         }
       }
       first = false;
-      if (!scope.varsByName) {
-        // Scope not yet indexed — bail so the full registry path runs and warms it up
-        return undefined;
-      }
-      const candidates = scope.varsByName.get(name);
+      const frame = scope.getScopeFrame();
+      const candidates = frame.declarationBucketsByName.get(name);
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
           const candidate = candidates[i]!;
-          if (filter(candidate)) {
-            return candidate;
+          if (filter(candidate.sourceNode)) {
+            return candidate.sourceNode;
           }
         }
       }

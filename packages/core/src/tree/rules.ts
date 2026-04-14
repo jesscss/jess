@@ -246,6 +246,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   getScopeFrame(parent?: ScopeFrame): ScopeFrame {
     if (!this.scopeFrame) {
+      if (this.varsByName === undefined) {
+        this._indexRules();
+      }
       let resolvedParent = parent;
       if (resolvedParent === undefined) {
         let cursor = this.parent ?? this.sourceParent;
@@ -881,6 +884,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           map.set(name, arr = []);
         }
         arr.push(node as VarDeclaration);
+        if (this.scopeFrame && !this._indexing) {
+          let bucket = this.scopeFrame.declarationBucketsByName.get(name);
+          if (!bucket) {
+            this.scopeFrame.declarationBucketsByName.set(name, bucket = []);
+          }
+          if (!bucket.some(entry => entry.sourceNode === node)) {
+            bucket.push({
+              cell: {
+                value: (node as VarDeclaration).value.value,
+                sourceNode: node,
+                readonly: node.options?.readonly
+              },
+              sourceNode: node as VarDeclaration
+            });
+          }
+        }
       }
     } else if (isNode(node, N.Ruleset)) {
       // Register to 'mixin' for mixin calls

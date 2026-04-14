@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit docs`)
+Checkpoint commit: `caf1d6d6` (`Update obsolete Less compression fixture exclusion`)
 
 ## Work Checklist
 
@@ -22,6 +22,7 @@ Checkpoint commit: `51291e2f` (`Add registry and benchmark performance audit doc
 - [x] Slice 13b — Wire `$for` loop iteration variables through `ScopeFrame` / `liveSlotsByName` (same as mixin params, Slices 8–11). `$for` no longer materializes synthetic loop `VarDeclaration`s just to transport `value` / `key` / `index`; per-iteration wrapper `Rules` now get a `scopeFrame` with those bindings in `liveSlotsByName`, and loop-var references resolve without declaration-registry lookup. The loop body still uses renderKey for shared-node mutation isolation, so this slice removes declaration-shaped binding transport but does **not** make `$for` fully fork-free by itself.
 - [ ] Slice 13c — Wire `@import` scope isolation through `ScopeFrame`. Imported files share their parsed AST across call sites; any per-call-site mutations (currently handled by renderKey forks) must migrate to context-local evaluation. This is closely related to Track 5 (buffered render) — the full fix may depend on `render(node, ctx)` giving each import its own output surface. Track here so it is not assumed free after the renderKey deletion in Slice 13.
 - [ ] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
+  Current status: `findVarDeclarationFast` now reads per-scope `ScopeFrame.declarationBucketsByName` instead of `Rules.varsByName`, while still walking outward via the `Rules` parent/sourceParent chain (not `frame.parent`, which is reserved for live slots). `getScopeFrame()` now auto-indexes previously untouched scopes, and `registerNode()` keeps existing frame buckets in sync for runtime-added `VarDeclaration`s. The declaration-registry fallback still exists for misses/dynamic cases, so Slice 14 is not complete yet.
 - [ ] Slice 15 — Retire `MixinRegistry` hot path; `findMixinFast` already covers static-name Mixin lookups; verify no Ruleset-as-mixin gaps, then drop the `targetRules.find('mixin', ...)` fallback for the static-string case
 - [ ] Slice 16 — Retire `RulesetRegistry`; design and add `rulesetsBySelector` fast map; drop `RulesetRegistry`
 - [ ] `FunctionRegistry` optimization — keep as plugin API but change granularity from per-`Rules` to per-stylesheet: one global registry for built-ins/plugins; one stylesheet-level registry created on demand when `registerFunction()` is called within a stylesheet; stylesheet registry falls through to global; `@compose` children see only the global (not the parent stylesheet registry); `@import` children see the parent stylesheet registry; O(1) lookup in common case (no stylesheet-local functions), O(depth of stylesheet registries between call site and global) otherwise — in practice 1-2 hops, never the full Rules-node depth
@@ -618,16 +619,8 @@ node scripts/profile-less-benchmark.mjs --file=benchmark.less
 
 At the time of this handoff, the uncommitted files are:
 
-- [packages/core/src/tree/rules.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts) — anonymous mixin path: immediate eval of `unlocked` for closure fix
-- [packages/core/src/tree/control.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/control.ts) — `$for` iteration bindings now populate `ScopeFrame.liveSlotsByName` instead of synthetic loop `VarDeclaration`s
-- [packages/core/src/tree/reference.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/reference.ts) — restored `findMixinFast` early return; deleted `resolution: 'linear'` (Slice 12b); extended plain `type='mixin'` static-string lookups to use `mixinsByName` on hits, but misses still must fall back to `MixinRegistry` because imported/namespaced mixins are still discovered there
-- [packages/core/src/tree/declaration.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/declaration.ts) — Slice 12b cleanup (linear-related field removal)
-- [packages/core/src/tree/__tests__/control.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/control.test.ts) — `$for` live-slot regression/proof test added
-- [packages/core/src/tree/__tests__/mixin.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/mixin.test.ts) — two closure regression tests added; Slice 12b test cleanup
-- [packages/core/src/tree/__tests__/rules.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/rules.test.ts) — Slice 12b: linear-specific test removed
-- [packages/core/src/tree/__tests__/import-style.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/import-style.test.ts) — minor test update
-- [packages/core/src/tree/call.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/call.ts) — debug cleanup
-- [docs/future/performance/2026-04-13-registry-redesign-handoff.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-registry-redesign-handoff.md) — this file
-- [docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md) — whitespace proposal refinements
+- [packages/core/src/tree/rules.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts) — `getScopeFrame()` now auto-indexes previously untouched scopes; runtime `VarDeclaration` registration keeps existing `declarationBucketsByName` buckets in sync without duplicating entries
+- [packages/core/src/tree/reference.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/reference.ts) — `findVarDeclarationFast` now reads per-scope `ScopeFrame.declarationBucketsByName` instead of `Rules.varsByName`, while preserving outward walk on the `Rules` parent/sourceParent chain
+- [packages/core/src/tree/__tests__/mixin.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/__tests__/mixin.test.ts) — tightened proof test: lexical contextual variable lookups no longer touch `DeclarationRegistry.find`
 
-Test status: **1165 passed, 22 skipped** (78 files pass, 2 skip; no failures).
+Test status: **1167 passed, 22 skipped** (78 files pass, 2 skip; no failures).

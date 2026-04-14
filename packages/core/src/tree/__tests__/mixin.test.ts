@@ -760,11 +760,9 @@ describe('Mixin', () => {
             outline-color: steelblue;
           }
         `);
-        // After the first lookup warms up varsByName, subsequent lookups for
-        // the same lexical variable bypass DeclarationRegistry.find entirely.
-        // The first lookup may trigger one full-registry call to index the scope;
-        // subsequent lookups (2nd and 3rd) must hit 0.
-        expect(declarationHits.length).toBeLessThanOrEqual(1);
+        // Lexical contextual lookups should now resolve from ScopeFrame buckets
+        // without touching DeclarationRegistry.find at all.
+        expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;
       }
