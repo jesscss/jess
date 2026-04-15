@@ -13,7 +13,7 @@ import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
-import type { Rules, RuntimeVarBinding } from './rules.js';
+import type { Rules, RuntimeVarBinding, MixinEntry } from './rules.js';
 import type { Mixin } from './mixin.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
@@ -25,6 +25,7 @@ import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
+import { getOrderedSelectorKeys } from './util/registry-utils.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -128,7 +129,6 @@ function findVarDeclarationFast(
   }
 ): {
   match: Node | undefined;
-  matchKind: 'public' | 'optional' | undefined;
 } {
   const selectBucketCandidate = (
     bucket: BindingEntry[] | undefined,
@@ -339,17 +339,15 @@ function findVarDeclarationFast(
   }
   if (publicMatch !== undefined) {
     return {
-      match: publicMatch,
-      matchKind: 'public'
+      match: publicMatch
     };
   }
   if (optionalMatch !== undefined) {
     return {
-      match: optionalMatch,
-      matchKind: 'optional'
+      match: optionalMatch
     };
   }
-  return { match: undefined, matchKind: undefined };
+  return { match: undefined };
 }
 
 const { isArray } = Array;
@@ -371,19 +369,15 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    return (selector.value as Node[]).map(node => String(node.valueOf()));
+    return getOrderedSelectorKeys(selector);
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    const path: string[] = [];
-
     for (const node of selector.value as Node[]) {
-      if (isNode(node, N.BasicSelector) || node.type === 'InterpolatedSelector') {
-        path.push(String(node.valueOf()));
-        continue;
-      }
-      if (isNode(node, N.CompoundSelector)) {
-        path.push(...(node.value as Node[]).map(child => String(child.valueOf())));
+      if (
+        isNode(node, N.BasicSelector | N.CompoundSelector)
+        || node.type === 'InterpolatedSelector'
+      ) {
         continue;
       }
       if (isNode(node, N.Combinator) && (node.value === '>' || node.value === ' ')) {
@@ -392,6 +386,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
       return selector.valueOf();
     }
 
+    const path = getOrderedSelectorKeys(selector);
     if (path.length > 0) {
       return path;
     }
@@ -421,6 +416,322 @@ function getLookupStartIndex(node: Node): number | undefined {
   }
 
   return startIndex;
+}
+
+type LookupType = NonNullable<ReferenceOptions['type']>;
+type NormalizedLookupKey = string | string[] | number;
+type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
+
+type RulesLookupAdapterEnv = {
+  context: Context;
+  keyNode: ReferenceValue['key'];
+  hasTarget: boolean;
+  inCall: boolean;
+  isInterpolatedVariable: boolean;
+  filter: (n: Node) => boolean;
+};
+
+type RulesLookupAdapter = {
+  applyContextualStart: boolean;
+  lookup: (
+    targetRules: Rules,
+    valueKey: NormalizedLookupKey,
+    opts: FindOptions,
+    env: RulesLookupAdapterEnv
+  ) => RulesLookupResult;
+};
+
+function getLookupKeyString(valueKey: NormalizedLookupKey): string {
+  return Array.isArray(valueKey) ? (valueKey[0] ?? '') : `${valueKey}`;
+}
+
+function getLookupKeyDisplay(valueKey: NormalizedLookupKey): string {
+  return Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+}
+
+function buildReferenceFilter(
+  originalFilter: ReferenceOptions['filter'] | undefined,
+  context: Context
+): (n: Node) => boolean {
+  const passesOriginal = originalFilter ?? (() => true);
+  const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
+    const sourceParamParent = paramParent?.sourceNode as Node | undefined;
+    let cursor: Node | undefined = activeRules;
+    while (cursor) {
+      const sourceCursor = cursor.sourceNode as Node | undefined;
+      if (
+        cursor === paramParent
+        || cursor === sourceParamParent
+        || sourceCursor === paramParent
+        || (sourceCursor && sourceParamParent && sourceCursor === sourceParamParent)
+      ) {
+        return true;
+      }
+      cursor = cursor.parent ?? cursor.sourceParent;
+    }
+    return false;
+  };
+
+  return (n: Node) => {
+    const blockedParamVar = isNode(n, N.VarDeclaration)
+      && Boolean(n.options?.paramVar)
+      && !isWithinParamVarScope(n.parent, context.rulesContext);
+    const blockedBySearchScope = context.searchScope.has(n);
+    return passesOriginal(n) && !blockedBySearchScope && !blockedParamVar;
+  };
+}
+
+function buildReferenceLookupOptions(args: {
+  referenceNode: Reference;
+  target: ReferenceValue['target'];
+  targetRules: Rules;
+  resolution: ReferenceOptions['resolution'];
+  isInterpolatedVariable: boolean;
+  filter: (n: Node) => boolean;
+  context: Context;
+  hasTarget: boolean;
+  adapter: RulesLookupAdapter;
+}): FindOptions {
+  const {
+    referenceNode,
+    target,
+    targetRules,
+    resolution,
+    isInterpolatedVariable,
+    filter,
+    context,
+    hasTarget,
+    adapter
+  } = args;
+  const opts: FindOptions = { filter, context, hasTarget, renderKey: context.renderKey };
+
+  if (!target && targetRules.options?.isMixinOutput === true) {
+    opts.local = true;
+  }
+
+  if (!target && !isInterpolatedVariable && adapter.applyContextualStart) {
+    const startIndex = getLookupStartIndex(referenceNode);
+    if (startIndex !== undefined) {
+      opts.start = startIndex;
+      opts.ignoreParentScopeStart = true;
+    }
+  } else if (resolution === 'live' && !isInterpolatedVariable) {
+    if (context.rulesContext !== undefined) {
+      opts.start = context.rulesContext.index;
+    } else {
+      const startIndex = getLookupStartIndex(referenceNode);
+      if (startIndex !== undefined) {
+        opts.start = startIndex;
+      }
+    }
+  }
+
+  return opts;
+}
+
+function lookupRuntimeVarBinding(
+  targetRules: Rules,
+  key: string,
+  context: Context
+): RuntimeVarBinding | undefined {
+  const frame = targetRules.getScopeFrame();
+  let f = frame;
+  while (f) {
+    const live = f.liveSlotsByName.get(key);
+    if (live) {
+      const src = live.sourceNode as Node | undefined;
+      if (!src || !context.searchScope.has(src)) {
+        return {
+          kind: 'runtime-var-binding',
+          value: live.value,
+          readonly: live.readonly,
+          sourceNode: src
+        } satisfies RuntimeVarBinding;
+      }
+    }
+    f = f.parent;
+  }
+  return undefined;
+}
+
+const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
+  index: {
+    applyContextualStart: false,
+    lookup(targetRules, valueKey, opts, env) {
+      if (typeof valueKey === 'number') {
+        return targetRules.at(valueKey);
+      }
+      const keyStr = getLookupKeyString(valueKey);
+      const indexFilterType = isNode(env.keyNode, N.Quoted) ? 'Declaration' as const : 'VarDeclaration' as const;
+      return targetRules.find('declaration', keyStr, indexFilterType, opts);
+    }
+  },
+  property: {
+    applyContextualStart: true,
+    lookup(targetRules, valueKey, opts) {
+      return targetRules.find('declaration', getLookupKeyString(valueKey), 'Declaration', opts);
+    }
+  },
+  variable: {
+    applyContextualStart: true,
+    lookup(targetRules, valueKey, opts, env) {
+      const keyStr = getLookupKeyString(valueKey);
+      const live = lookupRuntimeVarBinding(targetRules, keyStr, env.context);
+      if (live) {
+        return live;
+      }
+      const fast = findVarDeclarationFast(targetRules, keyStr, env.filter, {
+        start: opts.start,
+        context: env.context,
+        hasTarget: env.hasTarget,
+        local: opts.local
+      });
+      return fast.match;
+    }
+  },
+  declaration: {
+    applyContextualStart: true,
+    lookup(targetRules, valueKey, opts) {
+      return targetRules.find('declaration', getLookupKeyString(valueKey), undefined, opts);
+    }
+  },
+  function: {
+    applyContextualStart: false,
+    lookup(targetRules, valueKey, opts, env) {
+      const keyStr = getLookupKeyString(valueKey);
+      if (env.inCall) {
+        return (
+          targetRules.find('function', keyStr, undefined, opts)
+          ?? targetRules.find('declaration', keyStr, undefined, opts)
+        );
+      }
+      return (
+        targetRules.find('declaration', keyStr, undefined, opts)
+        ?? targetRules.find('function', keyStr, undefined, opts)
+      );
+    }
+  },
+  mixin: {
+    applyContextualStart: false,
+    lookup(targetRules, valueKey, opts, env) {
+      const callable = targetRules.find('mixin', valueKey, 'Mixin', opts);
+      if (callable) {
+        return callable;
+      }
+      if (env.inCall) {
+        return targetRules.find('function', getLookupKeyString(valueKey), undefined, opts);
+      }
+      return undefined;
+    }
+  },
+  'mixin-ruleset': {
+    applyContextualStart: false,
+    lookup(targetRules, valueKey, opts, env) {
+      const callable = targetRules.find('mixin', valueKey, undefined, opts);
+      if (callable) {
+        return callable;
+      }
+      if (env.inCall) {
+        return targetRules.find('function', getLookupKeyString(valueKey), undefined, opts);
+      }
+      return undefined;
+    }
+  }
+};
+
+function lookupAcrossRulesScopes(
+  scopes: Array<Rules | Node | undefined>,
+  performLookup: (scope: Rules) => RulesLookupResult
+): MaybePromise<RulesLookupResult> {
+  const walk = (index: number): MaybePromise<RulesLookupResult> => {
+    for (let i = index; i < scopes.length; i++) {
+      const scope = scopes[i];
+      if (!isNode(scope, N.Rules)) {
+        continue;
+      }
+      const result = performLookup(scope);
+      if (isThenable(result)) {
+        return (result as Promise<RulesLookupResult>).then((resolved) => {
+          if (resolved !== undefined) {
+            return resolved;
+          }
+          return walk(i + 1);
+        });
+      }
+      if (result !== undefined) {
+        return result;
+      }
+    }
+    return undefined;
+  };
+
+  return walk(0);
+}
+
+function lookupReferenceTarget(args: {
+  resolvedTarget: Node | undefined;
+  lookupType: LookupType;
+  valueKey: NormalizedLookupKey;
+  keyNode: ReferenceValue['key'];
+  context: Context;
+  rulesParent: Rules | undefined;
+  sourceRulesParent: Rules | undefined;
+  performRulesLookup: (scope: Rules) => RulesLookupResult;
+}): MaybePromise<RulesLookupResult> {
+  const {
+    resolvedTarget,
+    lookupType,
+    valueKey,
+    keyNode,
+    context,
+    rulesParent,
+    sourceRulesParent,
+    performRulesLookup
+  } = args;
+
+  if (!isNode(resolvedTarget, N.Rules)) {
+    return lookupDirectTarget(resolvedTarget, lookupType, valueKey, keyNode);
+  }
+
+  const lookupScopes = context.leakyRules
+    ? [resolvedTarget, rulesParent, sourceRulesParent]
+    : [resolvedTarget];
+  return lookupAcrossRulesScopes(lookupScopes, performRulesLookup);
+}
+
+function lookupDirectTarget(
+  targetNode: Node | undefined,
+  lookupType: LookupType,
+  valueKey: NormalizedLookupKey,
+  keyNode: ReferenceValue['key']
+): RulesLookupResult {
+  if (lookupType !== 'index' || !targetNode) {
+    return undefined;
+  }
+  if (typeof valueKey === 'number') {
+    if (isNode(targetNode, N.JsArray)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return atIndex((targetNode as any).value, valueKey);
+    }
+    return undefined;
+  }
+  const keyStr = getLookupKeyString(valueKey);
+  if (isNode(targetNode, N.JsObject)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return (targetNode as any).value[keyStr];
+  }
+  if (isNode(targetNode, N.Rules)) {
+    const indexFilterType = isNode(keyNode, N.Quoted) ? 'Declaration' as const : 'VarDeclaration' as const;
+    return targetNode.find('declaration', keyStr, indexFilterType);
+  }
+  return undefined;
+}
+
+function getReferenceNotFoundError(type: LookupType, keyDisplay: string): ReferenceError {
+  if (type === 'mixin' || type === 'mixin-ruleset') {
+    return new ReferenceError(`No matching mixins found for '${keyDisplay}'`);
+  }
+  return new ReferenceError(`'${keyDisplay}' is not defined`);
 }
 
 /**
@@ -518,6 +829,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     let { target, key } = this.value;
     let { type, fallbackValue, filter: originalFilter } = this.options;
+    const lookupType = (type ?? 'variable') as LookupType;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
     // Prefer the *current* evaluation rules context (mixin live scope) over the lexical rulesParent.
@@ -639,278 +951,65 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return [resolvedTarget, valueKey] as [Node, string | string[]];
       },
       ([resolvedTarget, valueKey]) => {
-        originalFilter ??= () => true;
         const isInterpolatedVariable =
-          this.options.type === 'variable'
+          lookupType === 'variable'
           && this.parent?.type === 'Interpolated';
-        const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
-          const sourceParamParent = paramParent?.sourceNode as Node | undefined;
-          let cursor: Node | undefined = activeRules;
-          while (cursor) {
-            const sourceCursor = cursor.sourceNode as Node | undefined;
-            if (
-              cursor === paramParent
-              || cursor === sourceParamParent
-              || sourceCursor === paramParent
-              || (sourceCursor && sourceParamParent && sourceCursor === sourceParamParent)
-            ) {
-              return true;
-            }
-            cursor = cursor.parent ?? cursor.sourceParent;
-          }
-          return false;
-        };
-        const filter = (n: Node) => {
-          const passesOriginal = originalFilter!(n);
-          const blockedParamVar = isNode(n, N.VarDeclaration)
-            && Boolean(n.options?.paramVar)
-            && !isWithinParamVarScope(n.parent, context.rulesContext);
-          const blockedBySearchScope = context.searchScope.has(n);
-          return passesOriginal && !blockedBySearchScope && !blockedParamVar;
-        };
+        const filter = buildReferenceFilter(originalFilter, context);
         const hasTarget = !!target;
-
-        const performLookup = (targetRules: Rules | Node | undefined): any => {
-          if (!targetRules) {
-            return undefined;
-          }
-          const opts: FindOptions = { filter, context, hasTarget, renderKey: context.renderKey };
-          if (!target && targetRules.options?.isMixinOutput === true) {
-            opts.local = true;
-          }
-
-          if (
-            !target
-            && !isInterpolatedVariable
-            && (
-              type === 'variable'
-              || type === 'property'
-              || type === 'declaration'
-            )
-          ) {
-            const startIndex = getLookupStartIndex(this);
-            if (startIndex !== undefined) {
-              // Contextual refs still respect the current scope cursor, but
-              // must not carry that cutoff outward into parent scopes.
-              opts.start = startIndex;
-              opts.ignoreParentScopeStart = true;
-            }
-          } else if (this.options.resolution === 'live' && !isInterpolatedVariable) {
-            // Live lookup uses the call site's position rather than the
-            // definition position.
-            if (context.rulesContext !== undefined) {
-              opts.start = context.rulesContext.index;
-            } else {
-              // Fall back to the local node position if no call-site scope is active.
-              const startIndex = getLookupStartIndex(this);
-              if (startIndex !== undefined) {
-                opts.start = startIndex;
-              }
-            }
-          }
-          switch (type) {
-            case 'index':
-              if (typeof valueKey === 'number') {
-                if (isNode(targetRules, N.Rules)) {
-                  return targetRules.at(valueKey);
-                } else if (isNode(targetRules, N.JsArray)) {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  return atIndex((targetRules as any).value, valueKey);
-                }
-              } else {
-                const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                if (isNode(targetRules, N.Rules)) {
-                  const indexFilterType = isNode(this.value.key, N.Quoted) ? 'Declaration' as const : 'VarDeclaration' as const;
-                  return targetRules.find('declaration', `${keyStr}`, indexFilterType, opts);
-                } else if (isNode(targetRules, N.JsObject)) {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  return (targetRules as any).value[keyStr];
-                }
-              }
-              break;
-            case 'property':
-            case 'variable':
-              if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                if (type === 'variable') {
-                  // Slice 9/10/11: walk the frame chain for mixin param bindings
-                  // (liveSlotsByName only — declarationBucketsByName follows
-                  // definition-site semantics and must not be walked via the
-                  // call-site chain).  getScopeFrame() now auto-wires parent
-                  // frames so inner rules nodes within a mixin body correctly
-                  // inherit outerRules.scopeFrame as their parent.
-                  {
-                    const frame = isNode(targetRules, N.Rules)
-                      ? (targetRules as Rules).getScopeFrame()
-                      : undefined;
-                    let f = frame;
-                    while (f) {
-                      const live = f.liveSlotsByName.get(`${keyStr}`);
-                      if (live) {
-                        const src = live.sourceNode as Node | undefined;
-                        if (!src || !context.searchScope.has(src)) {
-                          return {
-                            kind: 'runtime-var-binding' as const,
-                            value: live.value,
-                            readonly: live.readonly,
-                            sourceNode: src
-                          } satisfies RuntimeVarBinding;
-                        }
-                      }
-                      f = f.parent;
-                    }
-                  }
-                  // Fast path: walk varsByName directly, skipping the declaration-registry
-                  // machinery for the dominant contextual variable lookup case.
-                  {
-                    const fast = findVarDeclarationFast(targetRules, `${keyStr}`, filter, {
-                      start: opts.start,
-                      context,
-                      hasTarget,
-                      local: opts.local
-                    });
-                    return fast.match;
-                  }
-                }
-                const declarationType = type === 'property' ? 'Declaration' : 'VarDeclaration';
-                const found = targetRules.find('declaration', `${keyStr}`, declarationType, opts);
-                if (found !== undefined) {
-                  return found;
-                }
-                return undefined;
-              }
-              break;
-            case 'declaration':
-              if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                const found = targetRules.find('declaration', `${keyStr}`, undefined, opts);
-                if (found !== undefined) {
-                  return found;
-                }
-                return undefined;
-              }
-              break;
-            case 'function':
-              if (isNode(targetRules, N.Rules)) {
-                const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                const inCall = isNode(this.parent, N.Call);
-                // When called (e.g. `ns.func(...)`), prefer function lookup first, then fall back to a declaration.
-                // When not called, parsers should generally use `index`/`variable` references for `ns.func` so
-                // declarations win; but if we are here, keep behavior predictable.
-                if (inCall) {
-                  return (
-                    targetRules.find('function', `${keyStr}`, undefined, opts)
-                    ?? targetRules.find('declaration', `${keyStr}`, undefined, opts)
-                  );
-                }
-                // Not in call: prefer declaration first, then function.
-                return (
-                  targetRules.find('declaration', `${keyStr}`, undefined, opts)
-                  ?? targetRules.find('function', `${keyStr}`, undefined, opts)
-                );
-              }
-              break;
-            case 'mixin':
-            case 'mixin-ruleset':
-              if (isNode(targetRules, N.Rules)) {
-                const mixinFilterType = type === 'mixin' ? 'Mixin' : undefined;
-                const callable = targetRules.find('mixin', valueKey, mixinFilterType, opts);
-                if (callable) {
-                  return callable;
-                }
-                if (isNode(this.parent, N.Call)) {
-                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                  return targetRules.find('function', `${keyStr}`, undefined, opts);
-                }
-                return undefined;
-              }
-              break;
-          }
-          return undefined;
+        const adapter = RULES_LOOKUP_ADAPTERS[lookupType];
+        const lookupEnv: RulesLookupAdapterEnv = {
+          context,
+          keyNode: this.value.key,
+          hasTarget,
+          inCall: isNode(this.parent, N.Call),
+          isInterpolatedVariable,
+          filter
         };
 
-        // Lookup is driven by the resolved target scope.
-        // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
-        // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
-        let returnVal: any;
-        if (isNode(resolvedTarget, N.Rules)) {
-          returnVal = performLookup(resolvedTarget);
-          if (isThenable(returnVal)) {
-            return (returnVal as Promise<any>).then((asyncReturnVal) => {
-              if (asyncReturnVal !== undefined || !context.leakyRules) {
-                return { returnVal: asyncReturnVal, valueKey };
-              }
-              let callerLookup = performLookup(this.rulesParent);
-              if (isThenable(callerLookup)) {
-                return (callerLookup as Promise<any>).then((callerReturnVal) => {
-                  if (callerReturnVal !== undefined) {
-                    return { returnVal: callerReturnVal, valueKey };
-                  }
-                  let sourceLookup = performLookup(this.sourceRulesParent);
-                  if (isThenable(sourceLookup)) {
-                    return (sourceLookup as Promise<any>).then(sourceReturnVal => ({
-                      returnVal: sourceReturnVal,
-                      valueKey
-                    }));
-                  }
-                  return { returnVal: sourceLookup, valueKey };
-                });
-              }
-              if (callerLookup !== undefined) {
-                return { returnVal: callerLookup, valueKey };
-              }
-              let sourceLookup = performLookup(this.sourceRulesParent);
-              if (isThenable(sourceLookup)) {
-                return (sourceLookup as Promise<any>).then(sourceReturnVal => ({
-                  returnVal: sourceReturnVal,
-                  valueKey
-                }));
-              }
-              return { returnVal: sourceLookup, valueKey };
-            });
-          }
-          // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
-          if (returnVal === undefined && context.leakyRules) {
-            returnVal = performLookup(this.rulesParent);
-            if (isThenable(returnVal)) {
-              return (returnVal as Promise<any>).then((asyncReturnVal) => {
-                if (asyncReturnVal !== undefined) {
-                  return { returnVal: asyncReturnVal, valueKey };
-                }
-                let sourceLookup = performLookup(this.sourceRulesParent);
-                if (isThenable(sourceLookup)) {
-                  return (sourceLookup as Promise<any>).then(sourceReturnVal => ({
-                    returnVal: sourceReturnVal,
-                    valueKey
-                  }));
-                }
-                return { returnVal: sourceLookup, valueKey };
-              });
-            }
-            if (returnVal === undefined) {
-              returnVal = performLookup(this.sourceRulesParent);
-            }
-          }
+        const performLookup = (scope: Rules): RulesLookupResult => {
+          const opts = buildReferenceLookupOptions({
+            referenceNode: this,
+            target,
+            targetRules: scope,
+            resolution: this.options.resolution,
+            isInterpolatedVariable,
+            filter,
+            context,
+            hasTarget,
+            adapter
+          });
+          return adapter.lookup(scope, valueKey as NormalizedLookupKey, opts, lookupEnv);
+        };
+
+        const returnVal = lookupReferenceTarget({
+          resolvedTarget,
+          lookupType,
+          valueKey: valueKey as NormalizedLookupKey,
+          keyNode: this.value.key,
+          context,
+          rulesParent: this.rulesParent,
+          sourceRulesParent: this.sourceRulesParent,
+          performRulesLookup: performLookup
+        });
+        if (isThenable(returnVal)) {
+          return (returnVal as Promise<RulesLookupResult>).then((resolved) => ({
+            returnVal: resolved,
+            valueKey
+          }));
         }
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
-        const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
+        const valueKeyStr2 = getLookupKeyDisplay(valueKey as NormalizedLookupKey);
         if (returnVal === undefined) {
           if (!fallbackValue) {
             if (
-              (type === 'mixin' || type === 'mixin-ruleset')
+              (lookupType === 'mixin' || lookupType === 'mixin-ruleset')
               && isInsideSelectorCapture(this)
             ) {
               return new Any(valueKeyStr2, { role: 'ident' });
             }
-            switch (type) {
-              case 'mixin':
-                throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
-              case 'mixin-ruleset':
-                throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
-            }
-            throw new ReferenceError(`'${valueKeyStr2}' is not defined`);
+            throw getReferenceNotFoundError(lookupType, valueKeyStr2);
           }
           if (fallbackValue === true) {
             const any = new Any(`${valueKey}`);

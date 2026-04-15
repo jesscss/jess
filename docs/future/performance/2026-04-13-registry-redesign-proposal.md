@@ -158,6 +158,44 @@ evalCtx.frame for the .mixin() invocation:
 The mixin body node's `.parent` pointer is never consulted. It is document
 structure, not runtime scope. Those are different things.
 
+### One Lookup Algorithm, Multiple Surfaces
+
+The redesign is about **storage** and **lookup surfaces**, not about inventing
+separate lookup algorithms per reference type.
+
+A `Reference` should follow one shared search shape:
+
+1. resolve `target` and `key`
+2. choose the resolution mode (`contextual` or `live`)
+3. walk the active lookup surfaces in the correct order
+4. ask the type-specific surface adapter whether a match exists
+5. return the matched binding/node and continue normal evaluation
+
+What varies by reference type is only:
+
+- which surface is queried (`declarationBucketsByName`, `liveSlotsByName`,
+  callable mixin surface, function surface, etc.)
+- which node kinds are accepted
+- how the resolved match is turned back into a value
+
+What should **not** vary radically by type:
+
+- scope-walk order
+- caller/source fallback behavior
+- retry ownership
+- whether lookup itself becomes a scheduler
+
+This means the long-term shape is:
+
+- one shared lookup walk in `Reference`
+- small type-specific adapters for variable/property/declaration/function/callable lookup
+- runtime bindings treated as a general lookup surface, not a variable-only special case
+
+Today `liveSlotsByName` carries mixin params / loop vars as value bindings.
+Future callable runtime bindings, if they are needed, should participate
+through the same runtime-surface idea rather than by adding more ad hoc
+lookup branches to `Reference`.
+
 ---
 
 ## Why Forks Disappear
@@ -1381,6 +1419,35 @@ The practical boundary: transitive `_hasExtends` is the optimization you get for
 `@import`. Per-file independent rendering and caching require `@compose`. For
 users who need incremental builds, migrating from `@import` to `@compose` is the
 correct path — not attempting deeper static analysis of Less import semantics.
+
+### Open question (exploratory): priority queue vs linear render with deferred misses
+
+The shape above assumes the existing priority queue in `Rules.evalNode()`
+continues to stage evaluation (imports → calls → declarations →
+mixins/rulesets → extends → at-rules). That is one of two plausible shapes
+for the render pass and should be chosen empirically before this track
+hardens.
+
+- **Shape A — Priority queue.** Classify children into buckets, evaluate in
+  bucket order, requeue blocked nodes when dependencies resolve. Semantic
+  staging is explicit; priority ordering is a second source of truth for
+  evaluation order separate from source order.
+- **Shape B — Linear render with deferred misses.** Walk `Rules.value` in
+  source order, stream into the segmented buffer, and when a reference cannot
+  resolve push a `PendingRefSlot` placeholder segment (same mechanism as
+  `RulesetBlock` / `HoistBlock` / `MergeSlot`) and record the miss. At the
+  end of the `Rules` walk, drain the miss list; anything unresolved after a
+  fixed-point pass is a real error. The placeholder machinery is already
+  required for extends / `@media` bubbling / reference imports, so this is a
+  new segment type, not new machinery. With static buckets pre-populated from
+  `_indexRules`, most forward references are expected to resolve on first
+  touch, making the miss list small or empty in the common case.
+
+A hybrid — Shape B as default, Shape A only where it provably costs less — is
+likely the right final answer. See
+[pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
+("Open Question: Priority Queue vs Linear Render With Deferred Misses") for
+the full tradeoff and the measurements to take before committing.
 
 ### Post-step
 

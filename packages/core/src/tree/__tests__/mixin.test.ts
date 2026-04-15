@@ -1239,6 +1239,110 @@ describe('Mixin', () => {
       }
     });
 
+    it('namespace fast path: type=mixin ignores compound-prefix ruleset ambiguity', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+            rules: rules([
+              mixin({
+                name: any('.colors'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('red') })
+                ])
+              })
+            ])
+          }),
+        ]);
+        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+          context
+        });
+        expect(found).toHaveLength(1);
+        expect(found?.[0]?.type).toBe('Mixin');
+        expect((found?.[0] as Mixin).value.name?.valueOf()).toBe('.colors');
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('namespace fast path: type=mixin misses ignore callable ruleset starts', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('#theme'),
+            rules: rules([
+              ruleset({
+                selector: el('.dark'),
+                rules: rules([
+                  ruleset({
+                    selector: el('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('red') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+          context
+        });
+        expect(found).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
     it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

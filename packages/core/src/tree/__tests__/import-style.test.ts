@@ -25,6 +25,7 @@ import { Rules as RulesClass } from '../index.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
+import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
@@ -1261,6 +1262,57 @@ describe('Style import', () => {
           was: included;
         }
       `);
+    });
+
+    it('import-reference: namespaced reference-imported ruleset array-path lookups skip MixinRegistry.find', async () => {
+      const referencedPath = resolve(process.cwd(), 'simple-mixin-array-fast.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: el('.mixin'),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#Namespace') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: el('#Namespace'),
+            rules: rules([
+              style({ path: quoted(any('simple-mixin-array-fast.jess')) }, { type: 'import', importOptions: { reference: true } })
+            ])
+          }),
+          ruleset({
+            selector: el('#used-namespaced-mixin'),
+            rules: rules([
+              call({
+                name: ref({ key: ['#Namespace', '.mixin'] }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          #used-namespaced-mixin {
+            was: included;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
     });
 
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
