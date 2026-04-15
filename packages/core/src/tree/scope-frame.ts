@@ -74,12 +74,10 @@ export interface ScopeFrame {
    * variable-variable, etc.).  Resolved lazily at first lookup.
    *
    * Current note: parser frontends still mostly emit static VarDeclaration
-   * names. Lookup now promotes entries out of this list once their names have
-   * become static on-node, and can resolve both synchronously- and
-   * asynchronously-computable names directly during lookup. In practice this is
-   * now mostly a conservative queue for hand-built/API nodes whose names have
-   * not settled yet, not a reason to fall back to DeclarationRegistry on the
-   * reference-evaluation hot path.
+   * names. Lookup only promotes entries out of this list once their names have
+   * already become static on-node. If a name is still dynamic at reference
+   * time, lookup does not try to resolve it; the surrounding Rules eval queue
+   * is responsible for retrying later if/when that declaration settles.
    */
   pendingDynamicDecls: VarDeclaration[];
 

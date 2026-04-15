@@ -2,17 +2,6 @@ import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, c
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { Node, defineType } from '../node.js';
-import type { Node as NodeType } from '../node.js';
-
-class AsyncResolvedNameNode extends Node<string> {
-  override eval(): Promise<NodeType> {
-    return Promise.resolve(any(this.value));
-  }
-}
-
-const asyncResolvedName = defineType(AsyncResolvedNameNode, 'AsyncResolvedNameNode', 'async-name');
-
 let context: Context;
 
 describe('reference', () => {
@@ -557,7 +546,7 @@ describe('reference', () => {
       }
     });
 
-    it('resolves synchronously-computable pending dynamic names without declaration-registry fallback', async () => {
+    it('ignores still-dynamic pending names even when they would be synchronously computable', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -589,8 +578,7 @@ describe('reference', () => {
 
         const frame = node.getScopeFrame();
         context.rulesContext = node;
-        const resolved = await node.at(2)!.eval(context);
-        expect(`${resolved}`).toBe('bar: red');
+        await expect(async () => await node.at(2)!.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
         expect(frame.pendingDynamicDecls).toHaveLength(1);
       } finally {
@@ -599,7 +587,7 @@ describe('reference', () => {
       }
     });
 
-    it('resolves asynchronously-computable pending dynamic names without declaration-registry fallback', async () => {
+    it('rejects when pending dynamic names are still asynchronously unresolved', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -613,7 +601,10 @@ describe('reference', () => {
       try {
         const node = rules([
           vardecl({
-            name: asyncResolvedName('x'),
+            name: interpolated({
+              source: '%%',
+              replacements: [call({ name: ref({ key: 'async-name' }, { type: 'function' }) })]
+            }),
             value: any('red')
           }),
           decl({
@@ -621,11 +612,11 @@ describe('reference', () => {
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
+        node.getRegistry('function').add('async-name', async () => any('x'));
 
         const frame = node.getScopeFrame();
         context.rulesContext = node;
-        const resolved = await node.at(1)!.eval(context);
-        expect(`${resolved}`).toBe('bar: red');
+        await expect(async () => await node.at(1)!.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
         expect(frame.pendingDynamicDecls).toHaveLength(1);
       } finally {
@@ -1262,6 +1253,85 @@ describe('reference', () => {
       }
     });
 
+    it('does not fall back for unrelated rulesets that only share the first namespace segment', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.warning')]),
+            rules: rules([
+              mixin({
+                name: any('.palette'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('orange') })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
     it('fast-paths terminal rulesets under pure nested no-arg mixin namespaces without MixinRegistry.find', async () => {
       const originalFind = Registries.MixinRegistry.prototype.find;
       const mixinRegistryHits: string[] = [];
@@ -1330,80 +1400,7 @@ describe('reference', () => {
       }
     });
 
-    it('fast-paths resolved interpolated terminal rulesets under pure namespaces without MixinRegistry.find', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const dynamicClass = interpolated({
-          source: '.' + INTERPOLATION_PLACEHOLDER,
-          replacements: [any('colors')]
-        }, { role: 'ident' });
-
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      ruleset({
-                        selector: interpolatedSelector(dynamicClass),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.output'),
-            rules: rules([
-              vardecl({
-                name: 'colors',
-                value: call({
-                  name: ref({
-                    key: ['#theme', '.dark', '.navbar', '.colors']
-                  }, { type: 'mixin-ruleset' })
-                })
-              }),
-              decl({
-                name: 'background',
-                value: ref({
-                  target: ref({ key: 'colors' }, { type: 'variable' }),
-                  key: 'primary'
-                }, { type: 'declaration' })
-              })
-            ])
-          })
-        ]);
-
-        const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
-          .output {
-            background: cyan;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
-    });
-
-    it('falls back to MixinRegistry when an intermediate namespace hop has required params', async () => {
+    it('falls back to MixinRegistry when a required-arg intermediate hop is also ambiguous with a compound-prefix ruleset', async () => {
       const originalFind = Registries.MixinRegistry.prototype.find;
       const mixinRegistryHits: string[] = [];
       Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -1478,6 +1475,107 @@ describe('reference', () => {
           }
         `);
         expect(mixinRegistryHits.length).toBeGreaterThan(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('treats required-arg intermediate namespace hops as definite misses when no compound-prefix ruleset is involved', () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                params: list([any('mode', { role: 'property' })]),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        context.root = node;
+        context.rulesContext = node;
+
+        const result = node.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
+          context
+        });
+
+        expect(result).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('fast-paths definite namespace array-path misses without MixinRegistry.find', () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        context.root = node;
+        context.rulesContext = node;
+
+        const result = node.find('mixin', ['#theme', '.dark', '.missing', '.colors'], undefined, {
+          context
+        });
+
+        expect(result).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
       } finally {
         Registries.MixinRegistry.prototype.find = originalFind;
       }

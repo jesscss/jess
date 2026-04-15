@@ -972,6 +972,104 @@ describe('Mixin', () => {
       }
     });
 
+    it('mixinsByName fast path: type=mixin resolved interpolated name skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: interpolated({
+            source: '.' + INTERPOLATION_PLACEHOLDER,
+            replacements: [any('fast-mixin')]
+          }, { role: 'name' }),
+          rules: rules([decl({ name: 'color', value: any('orange') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: orange;
+          }
+        `);
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset resolved interpolated simple name skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.foo') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const dynamicClass = interpolated({
+          source: '.' + INTERPOLATION_PLACEHOLDER,
+          replacements: [any('foo')]
+        }, { role: 'ident' });
+        const root = rules([
+          ruleset({
+            selector: interpolatedSelector(dynamicClass),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.out'),
+            rules: rules([
+              call({
+                name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .foo {
+            color: red;
+          }
+          .out {
+            color: red;
+          }
+        `);
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
     it('mixinsByName fast path (slice 15): type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
@@ -1011,6 +1109,130 @@ describe('Mixin', () => {
             content: .missing-mixin;
           }
         `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset simple-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.missing-ruleset-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.other-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([
+              decl({
+                name: 'content',
+                value: ref({ key: '.missing-ruleset-mixin' }, { type: 'mixin-ruleset', fallbackValue: true })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            content: .missing-ruleset-mixin;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: unresolved dynamic simple-name candidates do not trigger MixinRegistry.find', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.missing-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: interpolated({
+              source: '.' + INTERPOLATION_PLACEHOLDER,
+              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+            }, { role: 'name' }),
+            rules: rules([decl({ name: 'color', value: any('orange') })])
+          })
+        ]);
+
+        const found = root.find('mixin', '.missing-mixin');
+        expect(found).toBeUndefined();
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('namespace fast path: unresolved dynamic namespace segments do not trigger MixinRegistry.find', () => {
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: interpolated({
+                  source: INTERPOLATION_PLACEHOLDER,
+                  replacements: [ref({ key: 'segment' }, { type: 'variable' })]
+                }, { role: 'name' }),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          })
+        ]);
+
+        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
+          context
+        });
+        expect(found).toBeUndefined();
         expect(mixinRegistryHits).toHaveLength(0);
       } finally {
         MixinRegistry.prototype.find = originalFind;

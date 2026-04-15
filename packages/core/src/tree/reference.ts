@@ -129,7 +129,6 @@ function findVarDeclarationFast(
 ): {
   match: Node | undefined;
   matchKind: 'public' | 'optional' | undefined;
-  needsAsyncProbe: boolean;
 } {
   const selectBucketCandidate = (
     bucket: BindingEntry[] | undefined,
@@ -170,35 +169,6 @@ function findVarDeclarationFast(
       return a.parent || !b.parent ? a : b;
     }
     return position !== undefined && position <= 0 ? b : a;
-  };
-
-  const unresolvedDynamicCouldBeat = (
-    scope: Rules,
-    pendingDynamicDecls: readonly VarDeclaration[],
-    currentBest: Node | undefined
-  ): VarDeclaration[] => {
-    const candidates: VarDeclaration[] = [];
-    for (const decl of pendingDynamicDecls) {
-      if (decl.parent !== scope) {
-        continue;
-      }
-      if (!filter(decl)) {
-        continue;
-      }
-      if (!currentBest) {
-        candidates.push(decl);
-        continue;
-      }
-      if (!currentBest.parent) {
-        candidates.push(decl);
-        continue;
-      }
-      const position = comparePosition(currentBest, decl);
-      if (position === undefined || position <= 0) {
-        candidates.push(decl);
-      }
-    }
-    return candidates;
   };
 
   const promoteResolvedPendingDecls = (
@@ -262,13 +232,11 @@ function findVarDeclarationFast(
   ): {
     publicMatch: Node | undefined;
     optionalMatch: Node | undefined;
-    needsAsyncProbe: boolean;
   } => {
     if (visited.has(scope)) {
       return {
         publicMatch: undefined,
-        optionalMatch: undefined,
-        needsAsyncProbe: false
+        optionalMatch: undefined
       };
     }
     visited.add(scope);
@@ -280,7 +248,6 @@ function findVarDeclarationFast(
     promoteResolvedPendingDecls(scope, frame);
     let publicMatch: Node | undefined;
     let optionalMatch: Node | undefined;
-    let needsAsyncProbe = false;
 
     const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
     if (currentCandidate) {
@@ -296,48 +263,12 @@ function findVarDeclarationFast(
       }
     }
 
-    const pendingCandidates = unresolvedDynamicCouldBeat(scope, frame.pendingDynamicDecls, publicMatch ?? optionalMatch);
-    if (pendingCandidates.length > 0) {
-      for (let i = pendingCandidates.length - 1; i >= 0; i--) {
-        const decl = pendingCandidates[i]!;
-        let resolvedName: unknown;
-        options.context.searchScope.add(decl);
-        try {
-          resolvedName = decl.value.name.eval(options.context);
-        } catch {
-          options.context.searchScope.delete(decl);
-          continue;
-        }
-        if (isThenable(resolvedName)) {
-          options.context.searchScope.delete(decl);
-          needsAsyncProbe = true;
-          continue;
-        }
-        options.context.searchScope.delete(decl);
-        const resolvedKey = isNode(resolvedName) ? `${resolvedName.valueOf()}` : `${resolvedName}`;
-        if (resolvedKey !== name) {
-          continue;
-        }
-        const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
-        const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
-        const isOptionalCurrentScope = visibilityOverride === undefined
-          ? scopeVisibility === 'optional' && !isRulesetBodyScope
-          : scopeVisibility === 'optional';
-        if (isOptionalCurrentScope) {
-          optionalMatch = laterOf(optionalMatch, decl);
-        } else {
-          publicMatch = laterOf(publicMatch, decl);
-        }
-        break;
-      }
-    }
-
     const childEntries = scope._rulesSet as Array<{
       node: Rules;
       rulesVisibility?: RulesOptions['rulesVisibility'];
     }> | undefined;
     if (!childEntries?.length) {
-      return { publicMatch, optionalMatch, needsAsyncProbe };
+      return { publicMatch, optionalMatch };
     }
 
     for (let i = childEntries.length - 1; i >= 0; i--) {
@@ -370,17 +301,15 @@ function findVarDeclarationFast(
         visited,
         visibility
       );
-      needsAsyncProbe ||= childResult.needsAsyncProbe;
       publicMatch = laterOf(publicMatch, childResult.publicMatch);
       optionalMatch = laterOf(optionalMatch, childResult.optionalMatch);
     }
 
-    return { publicMatch, optionalMatch, needsAsyncProbe };
+    return { publicMatch, optionalMatch };
   };
 
   let cursor: Node | undefined = startRules;
   let first = true;
-  let needsAsyncProbe = false;
   let publicMatch: Node | undefined;
   let optionalMatch: Node | undefined;
   while (cursor) {
@@ -402,7 +331,6 @@ function findVarDeclarationFast(
         options.local,
         new Set<Rules>()
       );
-      needsAsyncProbe ||= result.needsAsyncProbe;
       publicMatch = laterOf(publicMatch, result.publicMatch);
       optionalMatch = laterOf(optionalMatch, result.optionalMatch);
       // No match at this scope; continue up the chain
@@ -412,228 +340,18 @@ function findVarDeclarationFast(
   if (publicMatch !== undefined) {
     return {
       match: publicMatch,
-      matchKind: 'public',
-      needsAsyncProbe
+      matchKind: 'public'
     };
   }
   if (optionalMatch !== undefined) {
     return {
       match: optionalMatch,
-      matchKind: 'optional',
-      needsAsyncProbe
+      matchKind: 'optional'
     };
   }
-  return { match: undefined, matchKind: undefined, needsAsyncProbe };
+  return { match: undefined, matchKind: undefined };
 }
 
-async function resolvePendingDynamicVarMatchAsync(
-  startRules: Rules,
-  name: string,
-  filter: (n: Node) => boolean,
-  options: {
-    start?: number;
-    context: Context;
-    hasTarget?: boolean;
-    local?: boolean;
-  },
-  baselineMatch: Node | undefined,
-  baselineKind: 'public' | 'optional' | undefined
-): Promise<Node | undefined> {
-  const laterOf = <T extends Node>(a: T | undefined, b: T | undefined): T | undefined => {
-    if (!a) {
-      return b;
-    }
-    if (!b) {
-      return a;
-    }
-    if (!a.parent && b.parent) {
-      return b;
-    }
-    if (a.parent && !b.parent) {
-      return a;
-    }
-    let position: ReturnType<typeof comparePosition>;
-    try {
-      position = comparePosition(a, b);
-    } catch {
-      return a.parent || !b.parent ? a : b;
-    }
-    return position !== undefined && position <= 0 ? b : a;
-  };
-
-  const unresolvedDynamicCouldBeat = (
-    scope: Rules,
-    pendingDynamicDecls: readonly VarDeclaration[],
-    currentBest: Node | undefined
-  ): VarDeclaration[] => {
-    const candidates: VarDeclaration[] = [];
-    for (const decl of pendingDynamicDecls) {
-      if (decl.parent !== scope) {
-        continue;
-      }
-      if (!filter(decl)) {
-        continue;
-      }
-      if (!currentBest || !currentBest.parent) {
-        candidates.push(decl);
-        continue;
-      }
-      const position = comparePosition(currentBest, decl);
-      if (position === undefined || position <= 0) {
-        candidates.push(decl);
-      }
-    }
-    return candidates;
-  };
-
-  const classifyVisibility = (
-    scope: Rules,
-    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration']
-  ): 'public' | 'optional' => {
-    const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
-    const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
-    const isOptionalCurrentScope = visibilityOverride === undefined
-      ? scopeVisibility === 'optional' && !isRulesetBodyScope
-      : scopeVisibility === 'optional';
-    return isOptionalCurrentScope ? 'optional' : 'public';
-  };
-
-  const probeScopeSurface = async (
-    scope: Rules,
-    scopeStart: number | undefined,
-    localContext: boolean | undefined,
-    visited: Set<Rules>,
-    currentPublicMatch: Node | undefined,
-    currentOptionalMatch: Node | undefined,
-    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration']
-  ): Promise<{
-    publicMatch: Node | undefined;
-    optionalMatch: Node | undefined;
-  }> => {
-    if (visited.has(scope)) {
-      return {
-        publicMatch: currentPublicMatch,
-        optionalMatch: currentOptionalMatch
-      };
-    }
-    visited.add(scope);
-
-    const frame = scope.getScopeFrame();
-    const pendingCandidates = unresolvedDynamicCouldBeat(scope, frame.pendingDynamicDecls, currentPublicMatch ?? currentOptionalMatch);
-    for (let i = pendingCandidates.length - 1; i >= 0; i--) {
-      const decl = pendingCandidates[i]!;
-      let resolvedName: unknown;
-      options.context.searchScope.add(decl);
-      try {
-        resolvedName = decl.value.name.eval(options.context);
-      } catch {
-        options.context.searchScope.delete(decl);
-        continue;
-      }
-      if (isThenable(resolvedName)) {
-        try {
-          resolvedName = await resolvedName;
-        } catch {
-          options.context.searchScope.delete(decl);
-          continue;
-        }
-      }
-      options.context.searchScope.delete(decl);
-      const resolvedKey = isNode(resolvedName) ? `${resolvedName.valueOf()}` : `${resolvedName}`;
-      if (resolvedKey !== name) {
-        continue;
-      }
-      if (classifyVisibility(scope, visibilityOverride) === 'optional') {
-        currentOptionalMatch = laterOf(currentOptionalMatch, decl);
-      } else {
-        currentPublicMatch = laterOf(currentPublicMatch, decl);
-      }
-    }
-
-    const childEntries = scope._rulesSet as Array<{
-      node: Rules;
-      rulesVisibility?: RulesOptions['rulesVisibility'];
-    }> | undefined;
-    if (!childEntries?.length) {
-      return {
-        publicMatch: currentPublicMatch,
-        optionalMatch: currentOptionalMatch
-      };
-    }
-
-    for (let i = childEntries.length - 1; i >= 0; i--) {
-      const entry = childEntries[i]!;
-      const visibility = entry.rulesVisibility?.VarDeclaration
-        ?? entry.node.options.rulesVisibility?.VarDeclaration;
-      if (visibility !== 'public' && visibility !== 'optional') {
-        continue;
-      }
-      if (entry.node.options?.isMixinOutput === true && options.hasTarget !== true) {
-        continue;
-      }
-      if (options.context.rulesContext === scope && entry.node.options?.forward) {
-        continue;
-      }
-      if (localContext && entry.node.options?.local) {
-        continue;
-      }
-      if (
-        scopeStart !== undefined
-        && !(entry.node.index !== undefined && entry.node.index < scopeStart)
-      ) {
-        continue;
-      }
-      const childResult = await probeScopeSurface(
-        entry.node,
-        scopeStart,
-        localContext || Boolean(entry.node.options?.local),
-        visited,
-        currentPublicMatch,
-        currentOptionalMatch,
-        visibility
-      );
-      currentPublicMatch = childResult.publicMatch;
-      currentOptionalMatch = childResult.optionalMatch;
-    }
-
-    return {
-      publicMatch: currentPublicMatch,
-      optionalMatch: currentOptionalMatch
-    };
-  };
-
-  let cursor: Node | undefined = startRules;
-  let first = true;
-  let publicMatch = baselineKind === 'public' ? baselineMatch : undefined;
-  let optionalMatch = baselineKind === 'optional' ? baselineMatch : undefined;
-
-  while (cursor) {
-    if (isNode(cursor, N.Rules)) {
-      const scope = cursor as Rules;
-      const scopeStart = first ? options.start : undefined;
-      if (!first) {
-        const sn = scope.sourceNode;
-        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
-          break;
-        }
-      }
-      first = false;
-      const result = await probeScopeSurface(
-        scope,
-        scopeStart,
-        options.local,
-        new Set<Rules>(),
-        publicMatch,
-        optionalMatch
-      );
-      publicMatch = result.publicMatch;
-      optionalMatch = result.optionalMatch;
-    }
-    cursor = cursor.parent ?? cursor.sourceParent;
-  }
-
-  return publicMatch ?? optionalMatch;
-}
 const { isArray } = Array;
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
@@ -1051,22 +769,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                       hasTarget,
                       local: opts.local
                     });
-                    if (!fast.needsAsyncProbe) {
-                      return fast.match;
-                    }
-                    return resolvePendingDynamicVarMatchAsync(
-                      targetRules,
-                      `${keyStr}`,
-                      filter,
-                      {
-                        start: opts.start,
-                        context,
-                        hasTarget,
-                        local: opts.local
-                      },
-                      fast.match,
-                      fast.matchKind
-                    );
+                    return fast.match;
                   }
                 }
                 const declarationType = type === 'property' ? 'Declaration' : 'VarDeclaration';
