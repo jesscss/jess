@@ -45,14 +45,6 @@ function getMixinWithContext(context: Context, n: Rules, key: string, opts: Find
   return n.find('mixin', key, 'Mixin', opts);
 }
 
-function getRulesetWithContext(context: Context, n: Rules, keys: string | string[], opts: FindOptions = {}) {
-  context.rulesContext = n;
-  opts.context ??= context;
-  opts.searchParents = true;
-  const keySet = typeof keys === 'string' ? [keys] : keys;
-  return n.find('ruleset', keySet, undefined, opts);
-}
-
 describe('Style import', () => {
   beforeAll(() => {
     Node.prototype.fullRender = true;
@@ -395,102 +387,6 @@ describe('Style import', () => {
       const importedRuleset = importedRules.at(0);
       expect(importedRuleset).toBeDefined();
       expect(`${importedRuleset}`).toContainString('.imported');
-    });
-
-    it('non-mutable import makes rulesets private', async () => {
-      const protectedPath = resolve(process.cwd(), 'protected.jess');
-      context.sourceTrees.set(protectedPath, rules([
-        ruleset({
-          selector: sellist([sel([el('.protected')])]),
-          rules: rules([
-            decl({ name: any('color'), value: any('green') })
-          ])
-        })
-      ]));
-
-      const node = rules([
-        style({
-          path: quoted(any('protected.jess'))
-        }, {
-          type: 'import',
-          importOptions: { mutable: false }
-        })
-      ]);
-
-      const evald = await node.eval(context);
-      const importedRules = evald.at(0) as Rules;
-      // Ruleset should still exist but be private
-      const protectedRuleset = importedRules.at(0);
-      expect(protectedRuleset).toBeDefined();
-      // But it should not be findable via registry lookup
-      const found = getRulesetWithContext(context, evald, '.protected');
-      expect(found).toBeUndefined();
-    });
-
-    it('import type rulesets are visible to parent through ruleset child surfaces', async () => {
-      const importedPath = resolve(process.cwd(), 'rulesets-visible.jess');
-      context.sourceTrees.set(importedPath, rules([
-        ruleset({
-          selector: sellist([sel([el('.visible')])]),
-          rules: rules([
-            decl({ name: any('color'), value: any('green') })
-          ])
-        })
-      ]));
-
-      const node = rules([
-        style({
-          path: quoted(any('rulesets-visible.jess'))
-        }, {
-          type: 'import'
-        })
-      ]);
-
-      const evald = await node.eval(context);
-      const found = getRulesetWithContext(context, evald, '.visible');
-      expect(found).toBeDefined();
-      expect(found).toHaveLength(1);
-      expect(`${found![0]}`).toContainString('.visible');
-    });
-
-    it('import type rulesets visible to parent do not ask Rules.getRegistry for rulesets', async () => {
-      const importedPath = resolve(process.cwd(), 'rulesets-fast.jess');
-      context.sourceTrees.set(importedPath, rules([
-        ruleset({
-          selector: sellist([sel([el('.fast-visible')])]),
-          rules: rules([
-            decl({ name: any('color'), value: any('green') })
-          ])
-        })
-      ]));
-
-      const originalGetRegistry = RulesClass.prototype.getRegistry;
-      const rulesetRegistryHits: string[] = [];
-      RulesClass.prototype.getRegistry = function(...args: Parameters<typeof originalGetRegistry>) {
-        const [type] = args;
-        if (type === 'ruleset') {
-          rulesetRegistryHits.push(type);
-        }
-        return originalGetRegistry.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          style({
-            path: quoted(any('rulesets-fast.jess'))
-          }, {
-            type: 'import'
-          })
-        ]);
-
-        const evald = await node.eval(context);
-        const found = getRulesetWithContext(context, evald, '.fast-visible');
-        expect(found).toBeDefined();
-        expect(found).toHaveLength(1);
-        expect(rulesetRegistryHits).toHaveLength(0);
-      } finally {
-        RulesClass.prototype.getRegistry = originalGetRegistry;
-      }
     });
 
     it('reference import makes rulesets optional', async () => {

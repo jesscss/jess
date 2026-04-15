@@ -13,7 +13,7 @@ import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
-import type { MixinEntry, Rules, RulesOptions, RuntimeVarBinding } from './rules.js';
+import type { Rules, RuntimeVarBinding } from './rules.js';
 import type { Mixin } from './mixin.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
@@ -73,7 +73,7 @@ export type ReferenceOptions = {
   /**
    * What kind of lookup are we doing?
    */
-  type?: 'index' | 'declaration' | 'property' | 'variable' | 'function' | 'mixin' | 'ruleset' | 'mixin-ruleset';
+  type?: 'index' | 'declaration' | 'property' | 'variable' | 'function' | 'mixin' | 'mixin-ruleset';
   /**
    * Resolution strategy:
    * - 'contextual': Contextual lookup (default)
@@ -634,112 +634,6 @@ async function resolvePendingDynamicVarMatchAsync(
 
   return publicMatch ?? optionalMatch;
 }
-/**
- * Fast parent-chain walk for static-named Mixin lookup.
- *
- * Mirrors findVarDeclarationFast: only covers Mixin nodes whose name was
- * indexed into mixinsByName (non-interpolated Any name). Ruleset-as-mixin
- * and interpolated-name mixins still go through the full MixinRegistry.
- *
- * Returns an array of Mixin candidates (all matching entries across scopes)
- * or undefined if any scope in the chain is not yet indexed (triggering
- * full-registry fallback which warms it up).
- */
-function findMixinFast(
-  startRules: Rules,
-  key: string,
-  options?: {
-    context?: Context;
-    hasTarget?: boolean;
-    local?: boolean;
-  }
-  ): Mixin[] | undefined {
-    const findMixinsWithinScopeSurface = (
-      scope: Rules,
-      localContext: boolean | undefined,
-      visited: Set<Rules>
-  ): Mixin[] | undefined => {
-    if (visited.has(scope)) {
-      return [];
-    }
-    visited.add(scope);
-
-    if (scope.rulesIndexed < scope.value.length) {
-      scope._indexRules();
-    }
-    scope.mixinsByName ??= new Map();
-
-    const results: Mixin[] = [];
-    const candidates = scope.mixinsByName.get(key);
-    if (candidates) {
-      for (let i = candidates.length - 1; i >= 0; i--) {
-        results.push(candidates[i]!);
-      }
-    }
-
-    const childEntries = scope._rulesSet as Array<{
-      node: Rules;
-      rulesVisibility?: RulesOptions['rulesVisibility'];
-    }> | undefined;
-    if (!childEntries?.length) {
-      return results;
-    }
-
-    for (let i = childEntries.length - 1; i >= 0; i--) {
-      const entry = childEntries[i]!;
-      const visibility = entry.rulesVisibility?.Mixin
-        ?? entry.node.options.rulesVisibility?.Mixin;
-      if (visibility !== 'public' && visibility !== 'optional') {
-        continue;
-      }
-      if (entry.node.options?.isMixinOutput === true && options?.hasTarget !== true) {
-        continue;
-      }
-      if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
-        continue;
-      }
-      if (localContext && entry.node.options?.local) {
-        continue;
-      }
-
-      const childResult = findMixinsWithinScopeSurface(
-        entry.node,
-        localContext || Boolean(entry.node.options?.local),
-        visited
-      );
-      if (childResult === undefined) {
-        return undefined;
-      }
-      results.push(...childResult);
-    }
-
-    return results;
-  };
-
-  const results: Mixin[] = [];
-  let cursor: Node | undefined = startRules;
-  let first = true;
-  while (cursor) {
-    if (isNode(cursor, N.Rules)) {
-      const scope = cursor as Rules;
-      if (!first) {
-        const sn = scope.sourceNode;
-        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
-          break;
-        }
-      }
-      first = false;
-      const scopeResults = findMixinsWithinScopeSurface(scope, options?.local, new Set<Rules>());
-      if (scopeResults === undefined) {
-        return undefined;
-      }
-      results.push(...scopeResults);
-    }
-    cursor = cursor.parent ?? cursor.sourceParent;
-  }
-  return results;
-}
-
 const { isArray } = Array;
 
 function isInsideSelectorCapture(node: Node | undefined): boolean {
@@ -887,11 +781,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       case 'mixin':
         w.add(' > ');
         emitKey(printableKey);
-        break;
-      case 'ruleset':
-        w.add(' > *[');
-        emitKey(printableKey);
-        w.add(']');
         break;
       case 'mixin-ruleset':
         w.add(' > *');
@@ -1219,62 +1108,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
               break;
             case 'mixin':
-              if (isNode(targetRules, N.Rules)) {
-                if (typeof valueKey === 'string') {
-                  const fast = findMixinFast(targetRules, valueKey, {
-                    context,
-                    hasTarget,
-                    local: opts.local
-                  });
-                  if (fast !== undefined) {
-                    if (fast.length > 0) {
-                      return fast;
-                    }
-                    if (isNode(this.parent, N.Call)) {
-                      return targetRules.find('function', `${valueKey}`, undefined, opts);
-                    }
-                    return undefined;
-                  }
-                }
-                const mixin = targetRules.find('mixin', valueKey, 'Mixin', opts);
-                if (mixin) {
-                  return mixin;
-                }
-                // Some Less built-ins are invoked in mixin-like call positions.
-                // If a mixin lookup misses during a Call, allow function fallback.
-                if (isNode(this.parent, N.Call)) {
-                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                  return targetRules.find('function', `${keyStr}`, undefined, opts);
-                }
-                return undefined;
-              }
-              break;
             case 'mixin-ruleset':
               if (isNode(targetRules, N.Rules)) {
-                // Fast path: single static string key → check mixinsByName before full registry.
-                // Only covers Mixin nodes (not Ruleset-as-mixin); falls through for:
-                //   - array keys (compound/namespace paths like .a > .b)
-                //   - interpolated names (not in mixinsByName at all)
-                //   - any scope not yet indexed (mixinsByName === undefined)
-                if (typeof valueKey === 'string') {
-                  const fast = findMixinFast(targetRules, valueKey, {
-                    context,
-                    hasTarget,
-                    local: opts.local
-                  });
-                  if (fast !== undefined) {
-                    // fast is an array; if non-empty, return it (same shape as full registry result).
-                    // If empty, fall through — there may be Ruleset-as-mixin candidates in the registry.
-                    if (fast.length > 0) {
-                      return fast;
-                    }
-                    // Empty fast result + all scopes indexed: no static Mixin candidates.
-                    // Still fall through to full registry in case Rulesets match.
-                  }
-                }
-                const mixinOrRuleset = targetRules.find('mixin', valueKey, undefined, opts);
-                if (mixinOrRuleset) {
-                  return mixinOrRuleset;
+                const mixinFilterType = type === 'mixin' ? 'Mixin' : undefined;
+                const callable = targetRules.find('mixin', valueKey, mixinFilterType, opts);
+                if (callable) {
+                  return callable;
                 }
                 if (isNode(this.parent, N.Call)) {
                   const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
@@ -1365,8 +1204,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             switch (type) {
               case 'mixin':
                 throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
-              case 'ruleset':
-                throw new ReferenceError(`No matching rulesets found for '${valueKeyStr2}'`);
               case 'mixin-ruleset':
                 throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
             }

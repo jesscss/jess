@@ -40,11 +40,6 @@ describe('reference', () => {
       expect(`${node}`).toBe('$ > foo');
     });
 
-    it('should serialize a ruleset reference', () => {
-      let node = ref({ key: 'foo' }, { type: 'ruleset' });
-      expect(`${node}`).toBe('$ > *[foo]');
-    });
-
     it('should serialize a mixin-ruleset reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin-ruleset' });
       expect(`${node}`).toBe('$ > *foo');
@@ -938,6 +933,70 @@ describe('reference', () => {
       `);
     });
 
+    it('should prefer a compound-prefix ruleset when a longer string array can continue inside it', async () => {
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
+              })
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        .output {
+          background: red;
+        }
+      `);
+    });
+
     it('should resolve a mixin-ruleset call keyed by BasicSelector', async () => {
       const node = rules([
         mixin({
@@ -1045,7 +1104,7 @@ describe('reference', () => {
       `);
     });
 
-    it('should prefer compound ruleset over nested mixin lookup', async () => {
+    it('should resolve nested mixin-ruleset reference chains through nested mixins', async () => {
       // #theme {
       //   .dark {
       //     .navbar() {
@@ -1064,7 +1123,8 @@ describe('reference', () => {
       //   @colors: #theme.dark.navbar.colors();
       //   background: @colors[primary];
       // }
-      // Should use the compound ruleset (#theme.dark.navbar) which has .colors() with primary: red
+      // Because this is a nested reference chain, it should keep traversing the
+      // nested mixin namespace and resolve primary: cyan.
       const node = rules([
         mixin({
           name: any('#theme'),

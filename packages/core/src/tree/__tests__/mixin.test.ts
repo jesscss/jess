@@ -1,6 +1,7 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
+import { MixinRegistry } from '../util/registry-utils.js';
 
 let context: Context;
 
@@ -807,76 +808,16 @@ describe('Mixin', () => {
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
-    it('mixinsByName fast path (slice 7): static-named mixin skips MixinRegistry.find', async () => {
-      context.treeContext = new TreeContext({
-        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
-      });
-
-      // Intercept Rules.find to detect when the full registry is consulted for 'mixin' type
-      const originalFind = RulesClass.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [type, key] = args;
-        if (type === 'mixin' && typeof key === 'string' && key === '.fast-mixin') {
-          mixinRegistryHits.push(key);
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const mixinDef = mixin({
-          name: any('.fast-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
-        });
-
-        const root = rules([
-          mixinDef,
-          ruleset({
-            selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
-          }),
-          ruleset({
-            selector: el('.b'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
-          }),
-          ruleset({
-            selector: el('.c'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
-          })
-        ]);
-        context.root = root;
-
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
-          .a {
-            color: green;
-          }
-          .b {
-            color: green;
-          }
-          .c {
-            color: green;
-          }
-        `);
-
-        // All 3 calls should resolve via mixinsByName fast path.
-        // The first call warms up mixinsByName; subsequent calls skip the registry entirely.
-        expect(mixinRegistryHits.length).toBe(0);
-      } finally {
-        RulesClass.prototype.find = originalFind;
-      }
-    });
-
     it('mixinsByName fast path (slice 7): type=mixin static-name lookup skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = MixinRegistry.prototype.find;
       const mixinRegistryHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [type, key] = args;
-        if (type === 'mixin' && typeof key === 'string' && key === '.fast-mixin') {
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-mixin') {
           mixinRegistryHits.push(key);
         }
         return originalFind.apply(this, args);
@@ -919,7 +860,115 @@ describe('Mixin', () => {
         `);
         expect(mixinRegistryHits.length).toBe(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-mixin') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const mixinDef = mixin({
+          name: any('.fast-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+
+        const root = rules([
+          mixinDef,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.c'),
+            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .a {
+            color: green;
+          }
+          .b {
+            color: green;
+          }
+          .c {
+            color: green;
+          }
+        `);
+
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('mixinsByName fast path: type=mixin-ruleset simple Ruleset hit skips MixinRegistry.find', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFind = MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.fast-ruleset') {
+          mixinRegistryHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('.fast-ruleset'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          }),
+          ruleset({
+            selector: el('.b'),
+            rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        expect(evald.toString()).toBeString(`
+          .fast-ruleset {
+            color: green;
+          }
+          .a {
+            color: green;
+          }
+          .b {
+            color: green;
+          }
+        `);
+
+        expect(mixinRegistryHits.length).toBe(0);
+      } finally {
+        MixinRegistry.prototype.find = originalFind;
       }
     });
 
@@ -928,11 +977,11 @@ describe('Mixin', () => {
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFind = RulesClass.prototype.find;
+      const originalFind = MixinRegistry.prototype.find;
       const mixinRegistryHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [type, key] = args;
-        if (type === 'mixin' && typeof key === 'string' && key === '.missing-mixin') {
+      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (typeof key === 'string' && key === '.missing-mixin') {
           mixinRegistryHits.push(key);
         }
         return originalFind.apply(this, args);
@@ -964,7 +1013,7 @@ describe('Mixin', () => {
         `);
         expect(mixinRegistryHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        MixinRegistry.prototype.find = originalFind;
       }
     });
 
