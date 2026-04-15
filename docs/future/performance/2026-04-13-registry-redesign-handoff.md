@@ -2,7 +2,44 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `caf1d6d6` (`Update obsolete Less compression fixture exclusion`)
+Checkpoint commit: `e698f139` (`Split declaration reference finalization helpers`)
+
+## Priority Reset
+
+Recent work cleaned up `reference.ts`, but that is **not** the highest-leverage
+performance frontier anymore.
+
+The benchmark and architecture audits still point to four larger cost centers:
+
+1. **renderKey / fork removal (Slice 13, Slice 13c)** — shared nodes still use
+   render-keyed eval-time mutation in `interpolated.ts`, `operation.ts`,
+   `selector-pseudo.ts`, `selector-attr.ts`, `ampersand.ts`, `mixin.ts`,
+   `rules.ts`, and serialization helpers. This is still the main architectural
+   blocker to the proposal's "one canonical tree, no forks" target.
+2. **serializer backtracking / buffered render (Track 5)** — the audit shows
+   `OutputWriter.mark/getSince/restore/capture` are still huge runtime costs.
+   Moving toward typed render buffers and deferred selector finalization is a
+   higher priority than more `Reference` cleanup.
+3. **clone / copy / materialization pressure** — `Node.clone` / `Node.copy`
+   remain hot in the benchmark and should be treated as architectural debt, not
+   acceptable runtime infrastructure.
+4. **remaining generic registry/query overhead in `Rules` / registries** — the
+   lookup fast paths were worth building, but further performance wins should
+   now live primarily in `rules.ts`, `registry-utils.ts`, and render/storage
+   ownership, not in more local `Reference` grooming.
+
+Practical rule for the next agent:
+
+- do **not** keep iterating on `reference.ts` unless it directly unblocks one of
+  the four items above
+- prefer planning / narrowing Slice 13 and Track 5 against the actual hot files
+  (`serialize-helper.ts`, `print.ts`, renderKey-bearing eval nodes) before
+  spending more time on lookup-node cleanup
+- use the benchmark evidence in
+  [2026-04-13-less-benchmark-audit.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-less-benchmark-audit.md)
+  and
+  [2026-04-13-registry-architecture-audit.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-registry-architecture-audit.md)
+  to justify the next slice
 
 ## Work Checklist
 
@@ -30,7 +67,14 @@ Checkpoint commit: `caf1d6d6` (`Update obsolete Less compression fixture exclusi
 - [x] Slice 16 — Retire `RulesetRegistry` and remove the speculative standalone ruleset lookup surface
   Current status: `RulesetRegistry` is gone, and the speculative standalone ruleset lookup surface was removed with it. Extend roots keep their own per-root `Ruleset` sets directly, while callable ruleset-shaped things continue to resolve only through the mixin/callable surface (`mixin-ruleset` -> `find('mixin', ...)`). There is no separate `Rules.find('ruleset', ...)` path anymore.
 - [ ] Cleanup slice — Extract the shared `Reference` lookup algorithm and move type-specific logic behind lookup-surface adapters
-  Current status: `Reference` still contains too much type-specific branching (`variable` / `declaration` / `function` / `mixin` / `mixin-ruleset`) even though the redesign intent is mostly about storage and indexing, not separate lookup algorithms. The target shape is: one shared lookup walk (target resolution, contextual/live start policy, caller/source fallback, result plumbing), with small adapters that answer "how do I query this surface?" and "how do I interpret the result?". Runtime bindings should be thought of as a general lookup surface, not as a variable-only special case owned by `Reference`. Immediate cleanup goal: simplify `reference.ts` around shared lookup abstractions without changing behavior; later follow-on can widen runtime binding support beyond declarations if needed.
+  Current status: this cleanup progressed far enough that `Reference.evalNode()`
+  is now mostly orchestration over extracted helpers/adapters rather than a
+  single giant type-switch. That cleanup was worthwhile, but it is now
+  **de-prioritized** relative to Slice 13 / 13c and Track 5. The remaining
+  `Reference` work should happen only when it directly supports shared
+  lookup-surface ownership in `Rules`, runtime binding generalization, or the
+  renderKey/buffered-render transition. Do not keep polishing `reference.ts`
+  just because it is locally tractable.
 - [ ] `FunctionRegistry` optimization — keep as plugin API but change granularity from per-`Rules` to per-stylesheet: one global registry for built-ins/plugins; one stylesheet-level registry created on demand when `registerFunction()` is called within a stylesheet; stylesheet registry falls through to global; `@compose` children see only the global (not the parent stylesheet registry); `@import` children see the parent stylesheet registry; O(1) lookup in common case (no stylesheet-local functions), O(depth of stylesheet registries between call site and global) otherwise — in practice 1-2 hops, never the full Rules-node depth
 
 ### Track 2 — Node Shape: Direct Instance Fields
@@ -133,6 +177,13 @@ no AST traversal. Straightforward to test in isolation.
 
 - [ ] **Decide eval shape** (priority queue vs linear render with deferred misses — see Open design question above). Spike both against the Less benchmark and jess corpus; gate the rest of this checklist on the result. If Shape B (linear + `PendingRefSlot`) wins, revise the segment and post-step sections accordingly before implementation.
 - [ ] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
+  Current status: `Rules` now carries local structural `_hasExtends` and `_hasReferenceImports`
+  flags as Track 5 prep. They are maintained during `registerNode(...)`, survive
+  evaluated import wrapping, and currently reflect the local `Rules` surface
+  (e.g. direct extend nodes, direct reference-mode child wrappers / reference
+  imports). This is enough to start gating later render work on a per-container
+  basis, but it is **not yet** the full transitive import-graph / whole-file
+  segmented-render decision described below.
   - **`@compose`**: flags are per-file, set at that file's own index time — each file is a
     closed rendering unit; children cannot affect parents at all (parents pass state *down*
     to children only via `mutable: true`); flat/segmented decision is independent per file

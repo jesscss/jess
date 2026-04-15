@@ -278,6 +278,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
     };
+    out._hasReferenceImports = isReferenceMode || evaluatedRules._hasReferenceImports;
     // Forwarded modules should never render output at this scope.
     if (isForward) {
       out.removeFlag(F_VISIBLE);

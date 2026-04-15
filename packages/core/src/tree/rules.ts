@@ -170,6 +170,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * undefined until first accessed via getScopeFrame().
    */
   scopeFrame: ScopeFrame | undefined;
+  /**
+   * Track whether this Rules subtree contains extend instructions.
+   * Prep work for Track 5 segmented render selection.
+   */
+  _hasExtends = false;
+  /**
+   * Track whether this Rules subtree contains any reference-import render
+   * surfaces (`referenceMode` wrappers or reference/dedupe style imports).
+   * Used to skip serializer-time reference-origin work when impossible.
+   */
+  _hasReferenceImports = false;
 
   rulesIndexed = 0;
   _indexing = false;
@@ -180,6 +191,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     this._indexing = true;
     try {
+      if (this.rulesIndexed === 0) {
+        this._hasExtends = false;
+        this._hasReferenceImports = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+      }
       // Initialize fast maps so the hot-path can distinguish
       // "indexed (nothing found)" from "not yet indexed" (undefined).
       this.varsByName ??= new Map();
@@ -223,6 +238,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules._rulesSet = undefined;
     newRules.varsByName = undefined;
     newRules.mixinsByName = undefined;
+    newRules._hasExtends = false;
+    newRules._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's parent/sourceParent chain. Reusing an empty frame from
@@ -1552,6 +1569,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   registerNode(node: Node, options?: Record<string, any>, _context?: Context) {
+    if (node.type === 'Extend' || node.type === 'ExtendList') {
+      this._hasExtends = true;
+    }
+    if (node.type === 'StyleImport') {
+      const importOptions = 'importOptions' in node.options
+        ? node.options.importOptions
+        : undefined;
+      if (importOptions?.reference === true || importOptions?._dedupe === true) {
+        this._hasReferenceImports = true;
+      }
+    }
     if (isNode(node, N.Rules)) {
       // Use options if provided, otherwise use node's settings, otherwise empty
       // Then merge with node's settings to preserve any values not in options
@@ -1576,6 +1604,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         rulesVisibility,
         readonly
       });
+      if (node._hasExtends) {
+        this._hasExtends = true;
+      }
+      if ((node.options as { referenceMode?: boolean } | undefined)?.referenceMode === true || node._hasReferenceImports) {
+        this._hasReferenceImports = true;
+      }
 
       // Note: Imported child Rules still contribute their own rules/rulesets after
       // evaluation completes, when the surrounding tree/root context is available.

@@ -56,6 +56,40 @@ describe('Style import', () => {
   });
 
   describe('variable visibility', () => {
+    it('tracks reference-import presence on evaluated Rules wrappers', async () => {
+      const importedPath = resolve(process.cwd(), 'tracked-reference-import.jess');
+      context.sourceTrees.set(importedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.tracked')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const plainNode = rules([
+        style({
+          path: quoted(any('tracked-reference-import.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+      const referenceNode = rules([
+        style({
+          path: quoted(any('tracked-reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+
+      const plainEvald = await plainNode.eval(context);
+      const referenceEvald = await referenceNode.eval(context);
+
+      expect((plainEvald.at(0) as Rules)._hasReferenceImports).toBe(false);
+      expect((referenceEvald.at(0) as Rules)._hasReferenceImports).toBe(true);
+    });
+
     it('import type can see parent rules variables', async () => {
       // Set up imported file - use absolute path
       const importedPath = resolve(process.cwd(), 'imported.jess');
