@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, Rules as RulesClass } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -2486,6 +2486,59 @@ describe('Mixin', () => {
       expect(css).toContain('.two-suffix');
       expect(css).not.toContain('.one.one-suffix');
       expect(css).not.toContain('.two.two-suffix');
+    });
+
+    it('keeps at-rule preludes isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: false,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-media'),
+          params: list([any('mode', { role: 'property' })]),
+          rules: rules([
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: ref({ key: 'mode' }, { type: 'variable' }),
+              rules: rules([
+                decl({
+                  name: 'value',
+                  value: ref({ key: 'mode' }, { type: 'variable' })
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-media' }, { type: 'mixin' }),
+              args: list([any('screen')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-media' }, { type: 'mixin' }),
+              args: list([any('print')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: false });
+
+      expect(css).toContain('.one {\n  @media screen {\n    value: screen;');
+      expect(css).toContain('.two {\n  @media print {\n    value: print;');
+      expect(css).not.toContain('.one {\n  @media print');
+      expect(css).not.toContain('.two {\n  @media screen');
     });
 
     it('should resolve nested mixin-ruleset lookups for local ampersand descendant keys', async () => {

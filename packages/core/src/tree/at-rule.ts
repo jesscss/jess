@@ -77,14 +77,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * Means: can bubble ruleset parents to children.
    */
   isNestable() {
-    return NESTABLE_AT_RULES.includes(this.value.name.valueOf() as (typeof NESTABLE_AT_RULES)[number]);
+    const atRuleName = this.value.name.valueOf();
+    return NESTABLE_AT_RULES.some(name => name === atRuleName);
   }
 
   /**
    * For legacy collapseNesting, will push ruleset to root silently.
    */
   isRootOnly() {
-    return ROOT_ONLY_AT_RULES.includes(this.value.name.valueOf() as (typeof ROOT_ONLY_AT_RULES)[number]);
+    const atRuleName = this.value.name.valueOf();
+    return ROOT_ONLY_AT_RULES.some(name => name === atRuleName);
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
@@ -93,7 +95,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    return serializeRulesContainer(this, options as FinalPrintOptions);
+    return serializeRulesContainer(this, options);
   }
 
   /**
@@ -112,12 +114,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (name && name instanceof Interpolated) {
         const maybeKey = name.eval(context);
         if (isThenable(maybeKey)) {
-          return (maybeKey as Promise<Any<'atkeyword'>>).then((key) => {
+          return Promise.resolve(maybeKey).then((key) => {
+            if (!(key instanceof Any)) {
+              throw new TypeError('Expected interpolated at-rule name to resolve to Any');
+            }
             node.value.name = key;
             return this._preEvalPrelude(node, context);
           });
         }
-        node.value.name = maybeKey as Any<'atkeyword'>;
+        if (!(maybeKey instanceof Any)) {
+          throw new TypeError('Expected interpolated at-rule name to resolve to Any');
+        }
+        node.value.name = maybeKey;
       }
 
       return this._preEvalPrelude(node, context);
@@ -231,7 +239,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    let { name, prelude, rules } = this.getValue(options.renderKey) as AtRuleValue;
+    let { name, prelude, rules } = this.value;
 
     let idt = indent(options.depth);
     let out = idt;
@@ -387,14 +395,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           context.rulesContext = liftedRulesContext;
           const out = prelude.eval(context);
           context.rulesContext = savedRulesContext;
-          const rk = context.renderKey;
           if (isThenable(out)) {
             return (out as Promise<Node>).then((n) => {
-              node.set('prelude', n, rk);
+              node.value.prelude = n;
               return undefined;
             });
           }
-          node.set('prelude', out as Node, rk);
+          node.value.prelude = out as Node;
         }
       },
       () => {

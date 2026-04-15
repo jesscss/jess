@@ -370,6 +370,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const isSerializerRenderKeyIndependentLeaf = (
       (isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration))
       || isNode(nn, N.Extend)
+      || isLeafAtRule
     );
     let leafChildOptions: FinalPrintOptions = {
       ...options,
