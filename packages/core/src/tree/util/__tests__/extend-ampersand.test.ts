@@ -1,6 +1,7 @@
 import { el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../extend.js';
+import { addImplicitAmpersand } from '../selector-utils.js';
 
 // Helper to create ampersand with resolved selector (snapshot container for tests)
 function ampWithSelector(selector: any): Ampersand {
@@ -206,5 +207,42 @@ describe('Extend Ampersand Handling Tests', () => {
 
     expect(output).toContain('&');
     expect(output).not.toContain('&&');
+  });
+
+  it('keeps copied implicit ampersands connected to the live parent selector container', () => {
+    const parentContainer = { selector: el('.aa') };
+    const selector = addImplicitAmpersand(
+      el('.dd'),
+      false,
+      { value: parentContainer }
+    );
+
+    const result = extendSelector(selector, el('.dd'), el('.ee'), true);
+    const ampersands = [...result.nodes(true)].filter((node): node is Ampersand => node instanceof Ampersand);
+
+    expect(ampersands.length).toBeGreaterThan(0);
+    expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.aa');
+
+    parentContainer.selector = el('.bb');
+
+    expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.bb');
+  });
+
+  it('preserves stored ampersand selector snapshots separately from live selector resolution', () => {
+    const parentContainer = { selector: el('.aa') };
+    const original = Ampersand.create({ selectorContainer: parentContainer }) as Ampersand;
+    const cloned = original.clone(false) as Ampersand;
+
+    expect(original.getStoredSelector()?.valueOf()).toBe('.aa');
+    expect(cloned.getStoredSelector()?.valueOf()).toBe('.aa');
+    expect(original.getResolvedSelector()?.valueOf()).toBe('.aa');
+    expect(cloned.getResolvedSelector()?.valueOf()).toBe('.aa');
+
+    parentContainer.selector = el('.bb');
+
+    expect(original.getStoredSelector()?.valueOf()).toBe('.aa');
+    expect(cloned.getStoredSelector()?.valueOf()).toBe('.aa');
+    expect(original.getResolvedSelector()?.valueOf()).toBe('.bb');
+    expect(cloned.getResolvedSelector()?.valueOf()).toBe('.bb');
   });
 });

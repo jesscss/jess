@@ -165,7 +165,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * view (SelectorList gets wrapped for implicit-& use).
    */
   getStoredSelector(): Selector | Nil | undefined {
-    return this._selectorContainer?.selector;
+    return this._storedSelector ?? this._selectorContainer?.selector;
   }
 
   /**
@@ -391,8 +391,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       return result;
     }
 
-    const amp: Ampersand = this.maybeClone(context);
     let frame = atIndex(context.rulesetFrames, -1);
+    let amp: Ampersand = this;
     /**
      * Attach the current context selector if we need it later, for extends and such.
      * The frame is constant, so we can use the selector directly.
@@ -400,6 +400,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      * preserve it instead of overwriting with the frame selector.
      */
     if (!amp._selectorContainer && frame && frame.selector) {
+      amp = this.clone(false) as Ampersand;
       amp._selectorContainer = frame;
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
@@ -424,6 +425,9 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const newNode = super.clone(deep, cloneFn) as this;
     if (this._selectorContainer) {
       newNode._selectorContainer = this._selectorContainer;
+    }
+    if (this._storedSelector) {
+      newNode._storedSelector = this._storedSelector;
     }
     return newNode;
   }

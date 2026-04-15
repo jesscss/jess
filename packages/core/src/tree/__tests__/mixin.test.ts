@@ -2488,6 +2488,52 @@ describe('Mixin', () => {
       expect(css).not.toContain('.two.two-suffix');
     });
 
+    it('keeps bare ampersand selectors isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-amp-self'),
+          rules: rules([
+            ruleset({
+              selector: sel([amp()]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  color: red;\n}');
+      expect(css).toContain('.two {\n  color: red;\n}');
+      expect(css.match(/\.one \{\n  color: red;\n\}/g)).toHaveLength(1);
+      expect(css.match(/\.two \{\n  color: red;\n\}/g)).toHaveLength(1);
+    });
+
     it('keeps at-rule preludes isolated across repeated mixin calls', async () => {
       context = new Context({
         collapseNesting: false,

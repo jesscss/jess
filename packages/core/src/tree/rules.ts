@@ -1207,7 +1207,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    this.processPrePost('pre', '', options);
     const bodyMark = w.mark();
     const bodyStr = this.toTrimmedString(options);
     const bodyEmitted = w.getSince(bodyMark);

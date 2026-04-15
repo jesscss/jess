@@ -21,7 +21,6 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
-import { ensureRulesetTraceId, getOptionalRulesetTraceId } from './util/ruleset-trace.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -524,6 +523,26 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
   }
 
+  private static needsVisibleSelectorClone(sel: Selector | Nil): boolean {
+    if (!sel || sel instanceof Nil || typeof (sel as Node).hasFlag !== 'function') {
+      return false;
+    }
+    const n = sel as Node;
+    if (!(isNode(sel, N.Ampersand) && n.hasFlag(F_IMPLICIT_AMPERSAND)) && !n.hasFlag(F_VISIBLE)) {
+      return true;
+    }
+    if (isNode(sel, N.SelectorList)) {
+      const list = sel as SelectorList;
+      return Array.isArray(list.value) && list.value.some(item => Ruleset.needsVisibleSelectorClone(item));
+    }
+    if (isNode(sel, N.ComplexSelector)) {
+      const comps = (sel as ComplexSelector).value;
+      return Array.isArray(comps) && comps.some(c => Ruleset.needsVisibleSelectorClone(c as Selector));
+    }
+    const v = (sel as Selector & { value?: Selector[] }).value;
+    return Array.isArray(v) && v.some(c => Ruleset.needsVisibleSelectorClone(c));
+  }
+
   private static materializeHoistedImplicitAmpersands(sel: Selector | Nil): Selector | Nil {
     if (!sel || sel instanceof Nil) {
       return sel;
@@ -776,21 +795,24 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (renderSelector instanceof Nil) {
         return '';
       }
-      this.value.selector = renderSelector as typeof selector;
-      this.invalidateSelectorValueCache();
     }
-    const prevReferenceFilterTargets = options.referenceFilterTargets === true;
-    options.referenceFilterTargets = (
+    const renderOptions = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
-    );
+    )
+      ? { ...options, referenceFilterTargets: true }
+      : options;
+    if (
+      !(renderSelector instanceof Nil)
+      && (
+        renderOptions.referenceFilterTargets
+        || Ruleset.needsVisibleSelectorClone(renderSelector as Selector)
+      )
+    ) {
+      renderSelector = renderSelector.copy(true) as typeof renderSelector;
+    }
     Ruleset.ensureSelectorVisible(renderSelector);
-    const rulesetId = ensureRulesetTraceId(this as unknown as Ruleset);
-    let out = withoutComments ? '' : w.capture(() => this.processPrePost('pre', undefined, options));
-    let selOut = w.capture(() => renderSelector.toString(options));
-    options.referenceFilterTargets = prevReferenceFilterTargets;
-    /** Normalize single spacing */
-    out += selOut.replace(/[ \t]+/g, ' ');
+    let selOut = w.capture(() => renderSelector.toString(renderOptions));
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
 

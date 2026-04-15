@@ -748,6 +748,25 @@ describe('Style import extend behavior', () => {
       expect(css).not.toContain('.visible .visible {');
     });
 
+    it('reference-mode serialization does not rewrite stored selectors on referenced rulesets', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
+      const referencedTree = createReferencedZTree();
+      localContext.sourceTrees.set(referencedPath, referencedTree);
+      const firstRuleset = referencedTree.value[0] as { value: { selector: Selector } };
+      const storedSelector = firstRuleset.value.selector;
+
+      const evald = await createReferenceExtendNode().eval(localContext);
+      const css = evald.toString({ context: localContext });
+      const cssAgain = evald.toString({ context: localContext });
+
+      expect(css).toContain('.visible {');
+      expect(cssAgain).toBe(css);
+      expect(firstRuleset.value.selector).toBe(storedSelector);
+      expect(firstRuleset.value.selector.valueOf()).toBe('.z');
+    });
+
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {
       const localContext = createTestContext();
       localContext.opts.collapseNesting = true;

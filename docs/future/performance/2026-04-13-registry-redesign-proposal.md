@@ -248,6 +248,31 @@ Future callable runtime bindings, if they are needed, should participate
 through the same runtime-surface idea rather than by adding more ad hoc
 lookup branches to `Reference`.
 
+### `&` Is A Live Selector Binding
+
+`&` should be thought of as a **live contextual binding**, not as cached
+selector state on the node.
+
+It is analogous to a live variable reference:
+
+- ordinary live variable binding source: `frame.liveSlotsByName`
+- `&` binding source: the current live selector context / parent ruleset selector
+
+That selector binding is special only in *what* it reads, not in *how* it
+should be modeled. The important consequences are:
+
+- the canonical `Ampersand` node should keep only the authored shape
+- the current parent selector should come from live context, not be written
+  onto the canonical source node
+- `&` must resolve against the **current** selector view, because extends can
+  change the effective parent selector later
+- any evaluated/derived node used for an `&` expansion should be short-lived
+  and local to the current eval/render step
+
+So if the runtime needs to remember "what selector does `&` currently mean?",
+that belongs in captured live context or a local derived node, not in persistent
+AST node state.
+
 ---
 
 ## Why Forks Disappear

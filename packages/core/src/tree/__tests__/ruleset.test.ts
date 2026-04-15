@@ -1,5 +1,7 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '..';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '../index.js';
 import { Context } from '../../context.js';
+import { F_VISIBLE } from '../node.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 
 let context: Context;
 
@@ -24,6 +26,41 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
+  });
+
+  it('getHeaderString keeps reference target filtering render-local', () => {
+    const node = ruleset({
+      selector: sellist([sel([el('.foo')])]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      referenceMode: true,
+      referenceRenderEnabled: true,
+      referenceFilterTargets: false
+    });
+
+    const header = node.getHeaderString(options);
+
+    expect(header).toContain('.foo');
+    expect(options.referenceFilterTargets).toBe(false);
+  });
+
+  it('getHeaderString keeps selector visibility forcing render-local', () => {
+    const selector = el('.foo');
+    selector.removeFlag(F_VISIBLE);
+    const node = ruleset({
+      selector,
+      rules: rules([])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter()
+    });
+
+    const header = node.getHeaderString(options);
+
+    expect(header).toContain('.foo');
+    expect(selector.hasFlag(F_VISIBLE)).toBe(false);
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

@@ -115,7 +115,7 @@ import { SelectorList } from '../selector-list.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
-import { Ampersand, type AmpersandValue } from '../ampersand.js';
+import { Ampersand } from '../ampersand.js';
 import { Nil } from '../nil.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
@@ -875,12 +875,10 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               const origAmp = originalFirst as Ampersand;
               const resolved = origAmp.getResolvedSelector();
               const parentSel = resolved ?? undefined;
-              const origAmpValue = origAmp.value as AmpersandValue;
-              const amp = Ampersand.create(
-                origAmpValue.selectorContainer
-                  ? { selectorContainer: origAmpValue.selectorContainer }
-                  : parentSel ? { selectorContainer: { selector: parentSel.copy(true) } } : {}
-              );
+              let amp = origAmp.clone(false) as Ampersand;
+              if (!origAmp.getStoredSelector() && parentSel) {
+                amp = Ampersand.create({ selectorContainer: { selector: parentSel.copy(true) } });
+              }
               amp.addFlag(F_IMPLICIT_AMPERSAND);
               amp.removeFlag(F_VISIBLE);
               const combCopy = maybeCombinator.copy(true) as any;
