@@ -74,7 +74,8 @@ describe('BitSets and selectors', () => {
   });
 
   test('deep :is with selector list excludes alternatives from requiredKeySet', async () => {
-    let selector = sel([pseudo({ name: ':is', arg: sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })] as any) })]);
+    const inner = sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })]);
+    let selector = sel([pseudo({ name: ':is', arg: inner })]);
     await selector.eval(context);
     expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
@@ -131,12 +132,12 @@ describe('Fast-reject in selectorMatch', () => {
     patched.keySetLibrary = context.selectorBits;
 
     const find = sel([
-      amp({ selectorContainer: clonedParent as any }),
+      amp({ selectorContainer: clonedParent.value }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = context.selectorBits;
-    for (const child of find.value as any[]) {
+    for (const child of find.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = context.selectorBits;
       }
@@ -144,7 +145,7 @@ describe('Fast-reject in selectorMatch', () => {
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = context.selectorBits;
-    for (const child of target.value as any[]) {
+    for (const child of target.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = context.selectorBits;
       }
@@ -173,12 +174,12 @@ describe('Fast-reject in selectorMatch', () => {
     patched.keySetLibrary = contextA.selectorBits;
 
     const find = sel([
-      amp({ selectorContainer: clonedParent as any }),
+      amp({ selectorContainer: clonedParent.value }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = contextB.selectorBits;
-    for (const child of find.value as any[]) {
+    for (const child of find.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = contextB.selectorBits;
       }
@@ -186,7 +187,7 @@ describe('Fast-reject in selectorMatch', () => {
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = contextA.selectorBits;
-    for (const child of target.value as any[]) {
+    for (const child of target.value) {
       if ('keySetLibrary' in child) {
         child.keySetLibrary = contextA.selectorBits;
       }
