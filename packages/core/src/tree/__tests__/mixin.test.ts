@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, Rules as RulesClass } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -1790,6 +1790,702 @@ describe('Mixin', () => {
           color: red;
         }
       `);
+    });
+
+    it('keeps pseudo selector args isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicPseudoArg = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: compound([
+                pseudo({
+                  name: ':is',
+                  arg: interpolatedSelector(dynamicPseudoArg)
+                })
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one :is(.foo)');
+      expect(css).toContain('.two :is(.bar)');
+      expect(css).not.toContain('.two :is(.foo)');
+      expect(css).not.toContain('.one :is(.bar)');
+    });
+
+    it('keeps calc-wrapped operation operands isolated across repeated mixin calls', async () => {
+      context = new Context({
+        leakyRules: true,
+        unitMode: 'preserve'
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-op'),
+          params: list([any('scale', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'width',
+              value: op([
+                dimension([10, 'px']),
+                '*',
+                ref({ key: 'scale' }, { type: 'variable' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-op' }, { type: 'mixin' }),
+              args: list([dimension([2, 'em'])])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-op' }, { type: 'mixin' }),
+              args: list([dimension([3, 'em'])])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.one {\n  width: calc(20 * 1px * 1em);');
+      expect(css).toContain('.two {\n  width: calc(30 * 1px * 1em);');
+      expect(css).not.toContain('.two {\n  width: calc(20 * 1px * 1em);');
+      expect(css).not.toContain('.one {\n  width: calc(30 * 1px * 1em);');
+    });
+
+    it('keeps interpolated selector replacements isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-interpolated'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: interpolatedSelector(dynamicClass),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .foo');
+      expect(css).toContain('.two .bar');
+      expect(css).not.toContain('.one .bar');
+      expect(css).not.toContain('.two .foo');
+    });
+
+    it('keeps compound selector components isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-compound'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: compound([
+                el('.base'),
+                interpolatedSelector(dynamicClass)
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .base.foo');
+      expect(css).toContain('.two .base.bar');
+      expect(css).not.toContain('.one .base.bar');
+      expect(css).not.toContain('.two .base.foo');
+    });
+
+    it('keeps complex selector components isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-complex'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: sel([
+                el('.base'),
+                co(' '),
+                interpolatedSelector(dynamicClass)
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .base .foo');
+      expect(css).toContain('.two .base .bar');
+      expect(css).not.toContain('.one .base .bar');
+      expect(css).not.toContain('.two .base .foo');
+    });
+
+    it('keeps selector-list items isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      }, { role: 'ident' });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-list'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            ruleset({
+              selector: sellist([
+                pseudo({
+                  name: ':is',
+                  arg: sellist([
+                    interpolatedSelector(dynamicClass),
+                    el('.static')
+                  ])
+                })
+              ]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-list' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-list' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one .foo');
+      expect(css).toContain('.two .bar');
+      expect(css).toContain('.one .static');
+      expect(css).toContain('.two .static');
+      expect(css).not.toContain('.one .bar');
+      expect(css).not.toContain('.two .foo');
+    });
+
+    it('keeps paren values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicValue = interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-paren'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'value',
+              value: paren(dynamicValue)
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: (foo);');
+      expect(css).toContain('.two {\n  value: (bar);');
+      expect(css).not.toContain('.one {\n  value: (bar);');
+      expect(css).not.toContain('.two {\n  value: (foo);');
+    });
+
+    it('keeps quoted values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-quoted'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'value',
+              value: quoted(ref({ key: 'name' }, { type: 'variable' }))
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: "foo";');
+      expect(css).toContain('.two {\n  value: "bar";');
+      expect(css).not.toContain('.one {\n  value: "bar";');
+      expect(css).not.toContain('.two {\n  value: "foo";');
+    });
+
+    it('keeps sequence values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-sequence'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: 'value',
+              value: seq([ref({ key: 'name' }, { type: 'variable' }), any('tail')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: foo tail;');
+      expect(css).toContain('.two {\n  value: bar tail;');
+      expect(css).not.toContain('.one {\n  value: bar tail;');
+      expect(css).not.toContain('.two {\n  value: foo tail;');
+    });
+
+    it('keeps declaration values isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-decl-value'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: any('value'),
+              value: ref({ key: 'name' }, { type: 'variable' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  value: foo;');
+      expect(css).toContain('.two {\n  value: bar;');
+      expect(css).not.toContain('.one {\n  value: bar;');
+      expect(css).not.toContain('.two {\n  value: foo;');
+    });
+
+    it('keeps interpolated declaration names isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicName = interpolated({
+        source: 'prop-' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-decl-name'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            decl({
+              name: dynamicName,
+              value: any('ok')
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one {\n  prop-foo: ok;');
+      expect(css).toContain('.two {\n  prop-bar: ok;');
+      expect(css).not.toContain('.one {\n  prop-bar: ok;');
+      expect(css).not.toContain('.two {\n  prop-foo: ok;');
+    });
+
+    it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const dynamicMixinName = interpolated({
+        source: '.inner-' + INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-nested-mixin'),
+          params: list([any('name', { role: 'property' })]),
+          rules: rules([
+            mixin({
+              name: dynamicMixinName,
+              rules: rules([
+                decl({
+                  name: any('value'),
+                  value: ref({ key: 'name' }, { type: 'variable' })
+                })
+              ])
+            }),
+            call({
+              name: ref({ key: dynamicMixinName }, { type: 'mixin' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
+              args: list([any('foo')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
+              args: list([any('bar')])
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.inner-foo()');
+      expect(css).toContain('.inner-bar()');
+      expect(css).toContain('.one {\n  .inner-foo() {\n    value: $name;\n  }\n  value: foo;');
+      expect(css).toContain('.two {\n  .inner-bar() {\n    value: $name;\n  }\n  value: bar;');
+      expect(css).not.toContain('.one {\n  .inner-bar()');
+      expect(css).not.toContain('.two {\n  .inner-foo()');
+    });
+
+    it('keeps ampersand append selectors isolated across repeated mixin calls', async () => {
+      context = new Context({
+        collapseNesting: true,
+        leakyRules: true
+      });
+
+      const node = rules([
+        mixin({
+          name: any('.emit-amp-append'),
+          rules: rules([
+            ruleset({
+              selector: sel([amp('-suffix')]),
+              rules: rules([
+                decl({ name: 'color', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.one'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.two'),
+          rules: rules([
+            call({
+              name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
+            })
+          ])
+        })
+      ]);
+      context.root = node;
+
+      const evald = await node.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('.one-suffix');
+      expect(css).toContain('.two-suffix');
+      expect(css).not.toContain('.one.one-suffix');
+      expect(css).not.toContain('.two.two-suffix');
     });
 
     it('should resolve nested mixin-ruleset lookups for local ampersand descendant keys', async () => {

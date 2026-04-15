@@ -5,8 +5,6 @@ import type { Context } from '../context.js';
 import { Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
-
-import { isNode } from './util/is-node.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -19,6 +17,14 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 /** Anything other than type (element) or universal, which must come first */
 const nonElementRegex = /^[.#:[]/;
 export class CompoundSelector extends Selector<SimpleSelector[]> {
+  private withComponents(value: Selector[]): this {
+    const node = this.clone();
+    // @ts-expect-error compound normalization can temporarily carry selector-like
+    // children produced by ampersand flattening before later collapse steps.
+    node.set(null, value);
+    return node;
+  }
+
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -69,7 +75,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     options = getPrintOptions(options);
     const value = this.value;
     for (let i = 0; i < value.length - 1; i++) {
-      (value[i] as any).post = undefined;
+      value[i]!.post = undefined;
     }
     // Set ampersandFirst for each component so Ampersand knows its position
     const w = options.writer!;
@@ -87,26 +93,26 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return pipe(
       () => {
         const sel = this;
-        let { value } = sel;
-        const maybe = serialForEach(value, (item, i) => {
+        const currentValue = sel.value;
+        const evaluatedValue: Array<Selector | Nil> = [...currentValue];
+        const maybe = serialForEach(evaluatedValue, (item, i) => {
           const out = item.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<SimpleSelector>).then((res) => {
-              value[i] = res as SimpleSelector;
+            return out.then((res) => {
+              evaluatedValue[i] = res;
               return undefined;
             });
           }
-          value[i] = out as SimpleSelector;
+          evaluatedValue[i] = out;
           return undefined;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => sel);
+          return (maybe as Promise<void>).then(() => [sel, currentValue, evaluatedValue] as const);
         }
-        return sel;
+        return [sel, currentValue, evaluatedValue] as const;
       },
-      (sel) => {
-        let { value } = sel;
-        value = value.filter(n => n && !(n instanceof Nil));
+      ([sel, currentValue, evaluatedValue]) => {
+        let value = evaluatedValue.filter((n): n is Selector => n && !(n instanceof Nil));
         value = value.sort((a, b) => {
           let aIsElement = !nonElementRegex.test(a.valueOf());
           let bIsElement = !nonElementRegex.test(b.valueOf());
@@ -121,13 +127,14 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (value.length === 1) {
           return value[0]!.inherit(this) as Selector;
         }
-        // Clear post on all components except the last one
-        // Components in a compound selector are joined without spaces
-        for (let i = 0; i < value.length - 1; i++) {
-          (value[i] as any).post = undefined;
+        const changed = (
+          value.length !== currentValue.length
+          || value.some((part, idx) => part !== currentValue[idx])
+        );
+        if (!changed) {
+          return sel;
         }
-        sel.set(null, value, context.renderKey);
-        return sel;
+        return sel.withComponents(value);
       }
     );
   }

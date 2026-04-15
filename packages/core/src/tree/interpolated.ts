@@ -4,7 +4,6 @@ import type { Context } from '../context.js';
 import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
 import type { Selector } from './selector.js';
-import type { Reference } from './reference.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -24,7 +23,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = (replacement as { value: Node }).value;
+    const arg = replacement.value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -33,7 +32,10 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    return (replacement as { value: Node }).value;
+    const value = replacement.value;
+    if (value instanceof Node) {
+      return value;
+    }
   }
   return replacement;
 }
@@ -223,29 +225,32 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
     const node = this;
-    const { renderKey } = context;
-    let { replacements } = node.value;
+    const currentReplacements = node.value.replacements;
+    const evaluatedReplacements = [...currentReplacements];
+    const finalize = () => {
+      const changed = evaluatedReplacements.some((replacement, idx) => replacement !== currentReplacements[idx]);
+      if (!changed) {
+        return node;
+      }
+      const next = node.clone();
+      next.value.replacements = evaluatedReplacements;
+      return next;
+    };
 
-    if (renderKey !== undefined) {
-      const forkedReplacements = [...(node.getValue(renderKey) as InterpolatedValue).replacements];
-      node.set('replacements', forkedReplacements, renderKey);
-      replacements = forkedReplacements;
-    }
-
-    let maybe = serialForEach(replacements, (n, idx) => {
+    let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
       const out = n.eval(context);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          replacements[idx] = result;
+          evaluatedReplacements[idx] = result;
         });
       }
-      replacements[idx] = out as Node;
+      evaluatedReplacements[idx] = out as Node;
       return undefined;
     });
     if (isThenable(maybe)) {
-      return maybe.then(() => node);
+      return maybe.then(() => finalize());
     }
-    return node;
+    return finalize();
   }
 }
 

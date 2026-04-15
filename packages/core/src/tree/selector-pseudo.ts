@@ -61,7 +61,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this.getValue(options.renderKey) as PseudoSelectorValue;
+    let { name, arg } = this.value;
     const mark = w.mark();
     if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
       let out = w.capture(() => arg.toString(options));
@@ -161,9 +161,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
     attachSelectorBitLibrary(this, context.selectorBits);
     const currentArg = this.value.arg;
-    const node = this;
     if (!currentArg) {
-      return node;
+      return this;
     }
     return pipe(
       () => {
@@ -172,7 +171,12 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node.set('arg', evaluatedArg, context.renderKey);
+        if (evaluatedArg === currentArg) {
+          return this;
+        }
+        const node = this.clone();
+        node.value.arg = evaluatedArg;
+        attachSelectorBitLibrary(node, context.selectorBits);
         return node;
       }
     );

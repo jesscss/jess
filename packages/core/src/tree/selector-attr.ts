@@ -1,7 +1,6 @@
 import { defineType, type LocationInfo, type Node } from './node.js';
 import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
-import { compare } from './util/compare.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
@@ -27,11 +26,15 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
+  private createResolvedValueNode(value: Node): this {
+    const node = this.clone();
+    node.value.value = quoted(String(value.valueOf()));
+    return node;
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     return pipe(
-      () => {
-        return super.evalNode(context) as any;
-      },
+      () => super.evalNode(context),
       () => {
         const { value } = this.value;
         // Handle Less interpolation that the parser may have left as a raw token in selectors:
@@ -50,19 +53,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
                 const out = decl.value.value.eval(context);
                 if (isThenable(out)) {
                   return (out as Promise<Node>).then((evaluated) => {
-                    this.set('value', quoted(String(evaluated.valueOf())), context.renderKey);
-                    this._valueOf = undefined;
-                    this._keySet = undefined;
-                    this._visibleKeySet = undefined;
-                    this._requiredKeySet = undefined;
-                    return this;
+                    return this.createResolvedValueNode(evaluated);
                   });
                 }
-                this.set('value', quoted(String((out as Node).valueOf())), context.renderKey);
-                this._valueOf = undefined;
-                this._keySet = undefined;
-                this._visibleKeySet = undefined;
-                this._requiredKeySet = undefined;
+                return this.createResolvedValueNode(out as Node);
               }
             }
           }
@@ -76,7 +70,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this.getValue(options.renderKey) as AttributeSelectorValue;
+    const { name, op, value, mod } = this.value;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);

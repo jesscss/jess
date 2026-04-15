@@ -11,6 +11,22 @@ The desired future shape is not "do the same work inside `evalNode()`". It is:
 - let `Rules.evalNode()` drive registration and evaluation together
 - reduce retries to the smallest set of nodes that are actually blocked
 
+One important guardrail for the later buffered-render model:
+
+- do **not** replace eval with direct string emission that bypasses the
+  evaluated-node boundary entirely
+- do **not** build and retain a whole evaluated tree before serialization
+
+The intended shape is local and streaming:
+
+1. evaluate one node in context
+2. produce the immediate evaluated/derived node for that step
+3. allow a visitor/rewrite hook to replace it
+4. serialize it immediately
+
+So "single pass" means "no retained eval tree", not "no intermediate evaluated
+node exists at all".
+
 This note is exploratory. It is not an implementation plan.
 
 ## Why `Rules` Is The Choke Point

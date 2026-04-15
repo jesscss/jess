@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_STATIC  } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -22,6 +22,12 @@ export type OperationValue = [
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
+  private withOperands(left: Node, right: Node): this {
+    const node = this.clone();
+    node.set(null, [left, this.value[1], right]);
+    return node;
+  }
+
   constructor(value: OperationValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Operations are always non-static, but can inherit may_async from children
@@ -50,8 +56,10 @@ export class Operation extends Node<OperationValue> {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode.
-          n.set(null, [l, op, r], context.renderKey);
-          return n;
+          if (l === left && r === right) {
+            return n;
+          }
+          return n.withOperands(l, r);
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
@@ -66,13 +74,14 @@ export class Operation extends Node<OperationValue> {
           } catch (error) {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
-              // Update the existing operation with evaluated nodes and mark as evaluated
-              n.set(null, [l, op, r], context.renderKey);
-              n.evaluated = true;
+              const operationNode = (l === left && r === right)
+                ? n
+                : n.withOperands(l, r);
+              operationNode.evaluated = true;
               // Mark child nodes as evaluated too
               l.evaluated = true;
               r.evaluated = true;
-              const calcCall = new Call({ name: 'calc', args: list([n]) });
+              const calcCall = new Call({ name: 'calc', args: list([operationNode]) });
               calcCall.pre = left.pre;
               calcCall.post = right.post;
               return calcCall;
@@ -92,8 +101,10 @@ export class Operation extends Node<OperationValue> {
         out.post = right.post;
         return out;
       }
-      n.set(null, [l, op, r], context.renderKey);
-      return n;
+      if (l === left && r === right) {
+        return n;
+      }
+      return n.withOperands(l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
       const maybeRight = right.eval(context);

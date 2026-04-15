@@ -72,6 +72,16 @@ export type AmpersandValue = {
   selectorContainer?: { selector?: Selector | Nil | undefined };
 };
 
+const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
+  if (isNode(node, N.Ampersand)) {
+    return true;
+  }
+  if (isNode(node, N.ComplexSelector) || isNode(node, N.CompoundSelector)) {
+    return node.value.length === 1 && isNode(node.value[0], N.Ampersand);
+  }
+  return false;
+};
+
 /**
  * The '&' selector element
  */
@@ -350,7 +360,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
               /** Find the last simple selector and attempt to append */
               if (isNode(s, N.SimpleSelector)) {
                 if (typeof s.value === 'string') {
-                  s.set(null, s.value + appendValue, context.renderKey);
+                  s.set(null, s.value + appendValue);
                   appended = true;
                   break;
                 }
@@ -393,19 +403,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       amp._selectorContainer = frame;
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
-      const isBareWrapperAmp = (
-        isNode(parentSelector as any, N.Ampersand)
-        || (
-          isNode(parentSelector as any, N.ComplexSelector)
-          && (parentSelector as any).value?.length === 1
-          && isNode((parentSelector as any).value?.[0], N.Ampersand)
-        )
-        || (
-          isNode(parentSelector as any, N.CompoundSelector)
-          && (parentSelector as any).value?.length === 1
-          && isNode((parentSelector as any).value?.[0], N.Ampersand)
-        )
-      );
+      const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
       if (!isBareWrapperAmp) {
         const file = amp.treeContext?.file;
         const selectorText = String(amp.parent?.valueOf?.() ?? '&');

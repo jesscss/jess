@@ -99,7 +99,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.getValue(options.renderKey) as MixinValue;
+    let { name, rules, params, guard } = this.value;
     const mark = w.mark();
     w.add(name ? `${name}` : '@');
     if (name || params || guard) {
@@ -129,11 +129,14 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    let node = this.maybeClone(context);
+    let node = this.clone(false) as this;
     node.preEvaluated = true;
     node.sourceNode ??= this;
 
     let { name, rules } = node.value;
+    const localRules = rules.clone(false);
+    node.set('rules', localRules);
+    rules = localRules;
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope

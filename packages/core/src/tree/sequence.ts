@@ -25,6 +25,12 @@ export type SequenceOptions = {
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
+  private withValue(value: Node[]): this {
+    const node = this.clone(false) as this;
+    node.value = value;
+    return node;
+  }
+
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
@@ -138,27 +144,31 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     return pipe(
       () => {
-        const node = this;
-        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
+        const values = new Array<Node>(this.value.length);
+        const maybe = serialForEach(this.value.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              node.value[i] = res;
+              values[i] = res;
             });
           }
-          node.value[i] = out as Node;
+          values[i] = out as Node;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => node);
+          return (maybe as Promise<void>).then(() => values);
         }
-        return node;
+        return values;
       },
-      (node) => {
-        node.set(null, node.value.filter(n => n && !(n instanceof Nil)), context.renderKey);
-        if (node.value.length === 1 && !node.options.preserveWhitespace) {
-          return node.value[0]!;
+      (values) => {
+        const filtered = values.filter(n => n && !(n instanceof Nil));
+        if (filtered.length === 1 && !this.options.preserveWhitespace) {
+          return filtered[0]!;
         }
-        return node;
+        const unchanged = (
+          filtered.length === this.value.length
+          && filtered.every((node, index) => node === this.value[index])
+        );
+        return unchanged ? this : this.withValue(filtered);
       }
     );
   }

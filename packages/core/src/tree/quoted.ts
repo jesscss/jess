@@ -19,6 +19,12 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
  * to avoid conflict with the built-in `String` class.
  */
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
+  private withValue(value: string | Any | Interpolated): this {
+    const node = this.clone(false) as this;
+    node.value = value;
+    return node;
+  }
+
   constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     if (typeof value === 'string' && !options?.escaped) {
@@ -49,7 +55,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
-    if (other.type === 'Quoted' && !this.options?.escaped && !(other as any).options?.escaped) {
+    if (other instanceof Quoted && !this.options?.escaped && !other.options?.escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');
       if (left === right) {
@@ -57,23 +63,23 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       }
       return left > right ? 1 : -1;
     }
-    return (other as any).toString && this.toString() === (other as any).toString() ? 0 : undefined;
+    return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
   }
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    let { value } = this;
-    const cont = (v: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
-      value = v as any;
+    const cont = (value: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
       if (this.options.escaped) {
         if (value instanceof Node) {
-          return value as Node as Quoted | Any | Interpolated;
+          return value;
         }
-        return new Any(value as string);
+        return new Any(value);
       }
-      let quoted = this.maybeClone(context);
-      quoted.set(null, value as any, context.renderKey);
-      return quoted;
+      if (value === this.value) {
+        return this;
+      }
+      return this.withValue(value);
     };
+    const { value } = this;
     if (value instanceof Node) {
       const out = value.eval(context);
       if (isThenable(out)) {

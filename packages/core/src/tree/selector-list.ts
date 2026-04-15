@@ -14,6 +14,12 @@ import { selectorCompare } from './util/compare.js';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
+  private withSelectors(value: Selector[]): this {
+    const node = this.clone();
+    node.set(null, value);
+    return node;
+  }
+
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -115,7 +121,7 @@ export class SelectorList extends Selector<Selector[]> {
 
   override compare(b: Selector): 0 | 1 | -1 | undefined {
     if (!isNode(b, N.Selector)) {
-      return super.compare(b as unknown as Selector);
+      return super.compare(b);
     }
     const semantic = selectorCompare(this, b);
     if (semantic.isEquivalent) {
@@ -129,29 +135,33 @@ export class SelectorList extends Selector<Selector[]> {
     return pipe(
       () => {
         const list = this;
-        const { value } = list;
-        const maybe = serialForEach(value, (item, i) => {
+        const currentValue = list.value;
+        const evaluatedValue = [...currentValue];
+        const maybe = serialForEach(evaluatedValue, (item, i) => {
           const out = item.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Selector>).then((res) => {
-              value[i] = res as Selector;
+            return Promise.resolve(out).then((res) => {
+              if (isNode(res, N.Selector)) {
+                evaluatedValue[i] = res;
+              }
               return undefined;
             });
           }
-          value[i] = out as Selector;
+          if (isNode(out, N.Selector)) {
+            evaluatedValue[i] = out;
+          }
           return undefined;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => list);
+          return (maybe as Promise<void>).then(() => [list, currentValue, evaluatedValue] as const);
         }
-        return list;
+        return [list, currentValue, evaluatedValue] as const;
       },
-      (list) => {
-        const { value } = list;
+      ([list, currentValue, evaluatedValue]) => {
         // Flatten top-level `:is(a, b)` items into the selector list.
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
-        for (const item of value) {
+        for (const item of evaluatedValue) {
           if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
             const arg = item.value.arg;
             if (arg && isNode(arg, N.SelectorList)) {
@@ -181,13 +191,17 @@ export class SelectorList extends Selector<Selector[]> {
           }
           flattened.push(item);
         }
-        if (flattened.length !== value.length) {
-          list.set(null, flattened, context.renderKey);
+        if (flattened.length === 1) {
+          return flattened[0]!;
         }
-        if (value.length === 1) {
-          return value[0]!;
+        const changed = (
+          flattened.length !== currentValue.length
+          || flattened.some((item, idx) => item !== currentValue[idx])
+        );
+        if (!changed) {
+          return list;
         }
-        return list;
+        return list.withSelectors(flattened);
       }
     );
   }

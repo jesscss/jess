@@ -2458,29 +2458,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _coalesceMergedDeclarations(rules: Rules): void {
     type DeclOccurrence = {
       node: Node;
-      renderKey: RenderKey | undefined;
       ownerRules: Rules;
     };
     const isMergedAssign = (assign: unknown): boolean => (
       assign === '+:' || assign === '&,:' || assign === '&_:'
     );
-    const getDeclValue = (decl: Node, renderKey?: RenderKey) => {
+    const getDeclValue = (decl: Node) => {
       if (!isNode(decl, N.Declaration)) {
         return undefined;
       }
-      return renderKey !== undefined
-        ? decl.getValue(renderKey)
-        : decl.value;
+      return decl.value;
     };
-    const setDeclValue = (decl: Node, value: Node, renderKey?: RenderKey): void => {
+    const setDeclValue = (decl: Node, value: Node): void => {
       if (!isNode(decl, N.Declaration)) {
         return;
       }
-      if (renderKey !== undefined) {
-        decl.set('value', value, renderKey);
-      } else {
-        decl.value.value = value;
-      }
+      decl.value.value = value;
     };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
       const priorCopy = priorValue.copy(true, freezeChildren);
@@ -2533,49 +2526,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     const composeMergedValue = (
       decl: Node,
-      declRenderKey: RenderKey | undefined,
       prior: Node,
-      priorRenderKey: RenderKey | undefined,
       assign: string,
       priorAccumulatedValue?: Node
     ): Node | undefined => {
       if (!isNode(decl, N.Declaration) || !isNode(prior, N.Declaration)) {
         return undefined;
       }
-      const nextDeclValue = getDeclValue(decl, declRenderKey);
+      const nextDeclValue = getDeclValue(decl);
       if (!nextDeclValue) {
         return undefined;
       }
       const basePriorValue = priorAccumulatedValue
         ? priorAccumulatedValue.copy(true, freezeChildren)
-        : getDeclValue(prior, priorRenderKey)?.value.copy(true, freezeChildren);
+        : getDeclValue(prior)?.value.copy(true, freezeChildren);
       if (!basePriorValue) {
         return undefined;
       }
       const mergedValue = mergeDeclarationValues(basePriorValue, nextDeclValue.value, assign);
-      setDeclValue(decl, mergedValue, declRenderKey);
-      normalizeMergedDeclarationValue(decl, declRenderKey);
-      const declImportant = declRenderKey !== undefined
-        ? decl.getValue(declRenderKey).important
-        : decl.value.important;
-      const priorImportant = priorRenderKey !== undefined
-        ? prior.getValue(priorRenderKey).important
-        : prior.value.important;
+      setDeclValue(decl, mergedValue);
+      normalizeMergedDeclarationValue(decl);
+      const declImportant = decl.value.important;
+      const priorImportant = prior.value.important;
       if (!declImportant && priorImportant) {
-        if (declRenderKey !== undefined) {
-          decl.getValue(declRenderKey).important = priorImportant;
-        } else {
-          decl.value.important = priorImportant;
-        }
+        decl.value.important = priorImportant;
       }
-      const mergedDeclValue = getDeclValue(decl, declRenderKey);
+      const mergedDeclValue = getDeclValue(decl);
       return mergedDeclValue?.value.copy(true, freezeChildren);
     };
-    const normalizeMergedDeclarationValue = (node: Node, renderKey?: RenderKey): void => {
+    const normalizeMergedDeclarationValue = (node: Node): void => {
       if (!isNode(node, N.Declaration)) {
         return;
       }
-      const declValue = getDeclValue(node, renderKey);
+      const declValue = getDeclValue(node);
       if (!declValue) {
         return;
       }
@@ -2602,40 +2585,39 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (rest.length === 0) {
-        setDeclValue(node, new Nil(), renderKey);
+        setDeclValue(node, new Nil());
         return;
       }
       if (rest.length === 1) {
-        setDeclValue(node, rest[0]!.copy(true, freezeChildren), renderKey);
+        setDeclValue(node, rest[0]!.copy(true, freezeChildren));
         return;
       }
-      setDeclValue(node, new List(rest.map(item => item.copy(true, freezeChildren))), renderKey);
+      setDeclValue(node, new List(rest.map(item => item.copy(true, freezeChildren))));
     };
 
     const lastVisibleByName = new Map<string, DeclOccurrence>();
     const mergedAnchorByName = new Map<string, DeclOccurrence>();
     const accumulatedValueByName = new Map<string, Node>();
     const stream: DeclOccurrence[] = [];
-    const collectDeclarationStream = (node: Node, inheritedRenderKey: RenderKey | undefined, ownerRules: Rules): void => {
+    const collectDeclarationStream = (node: Node, ownerRules: Rules): void => {
       if (isNode(node, N.Declaration)) {
-        stream.push({ node, renderKey: inheritedRenderKey, ownerRules });
+        stream.push({ node, ownerRules });
         return;
       }
       if (!isNode(node, N.Rules)) {
         return;
       }
-      const effectiveRenderKey = node._renderKey ?? inheritedRenderKey;
       for (const child of node.value) {
-        collectDeclarationStream(child, effectiveRenderKey, node);
+        collectDeclarationStream(child, node);
       }
     };
 
     for (const node of rules.value) {
-      collectDeclarationStream(node, rules._renderKey, rules);
+      collectDeclarationStream(node, rules);
     }
 
     for (const occurrence of stream) {
-      const { node, renderKey, ownerRules } = occurrence;
+      const { node, ownerRules } = occurrence;
       if (!isNode(node, N.Declaration)) {
         continue;
       }
@@ -2651,21 +2633,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         continue;
       }
-      normalizeMergedDeclarationValue(node, renderKey);
-      let currentAccumulatedValue = getDeclValue(node, renderKey)?.value.copy(true, freezeChildren);
+      normalizeMergedDeclarationValue(node);
+      let currentAccumulatedValue = getDeclValue(node)?.value.copy(true, freezeChildren);
 
       const prior = lastVisibleByName.get(name);
       const needsCrossScopeCompose = prior
-        && (
-          prior.ownerRules !== ownerRules
-          || prior.renderKey !== renderKey
-        );
+        && prior.ownerRules !== ownerRules;
       if (prior && needsCrossScopeCompose) {
         currentAccumulatedValue = composeMergedValue(
           node,
-          renderKey,
           prior.node,
-          prior.renderKey,
           assign,
           accumulatedValueByName.get(name)
         ) ?? currentAccumulatedValue;
@@ -2674,7 +2651,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && isNode(existingAnchor.node, N.Declaration)) {
         const anchorIsSameOccurrence = existingAnchor.node === node
-          && existingAnchor.renderKey === renderKey
           && existingAnchor.ownerRules === ownerRules;
         if (!anchorIsSameOccurrence) {
           if (existingAnchor.node === node && existingAnchor.ownerRules !== ownerRules) {

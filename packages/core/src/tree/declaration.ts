@@ -85,6 +85,18 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override allowRuleRoot = true;
 
+  private withValue(value: Node): this {
+    const node = this.clone(false) as this;
+    node.value.value = value;
+    return node;
+  }
+
+  private withImportant(important: Any<'flag'>): this {
+    const node = this.clone(false) as this;
+    node.value.important = important;
+    return node;
+  }
+
   private formatNonCustomValue(valOut: string, _options: PrintOptions) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
@@ -199,8 +211,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       this.evaluated = false;
     }
 
-    /** We need to clone declarations, because we alter their options */
-    let node = this.maybeClone(context);
+    /** We need a derived declaration, because pre-eval normalization mutates name/value/options. */
+    let node = this.clone(false) as this;
     node.preEvaluated = true;
     // Index should already be assigned by parent Rules
     return this._applyAssignmentNormalization(node, context);
@@ -208,12 +220,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
     let { name, value } = node.value;
-    const { renderKey } = context;
     const setName = (newName: Any<'property'>) => {
-      node.set('name', newName, renderKey);
+      node.set('name', newName);
+      name = newName;
     };
     const setValue = (newValue: Node) => {
-      node.set('value', newValue, renderKey);
+      node.set('value', newValue);
       value = newValue;
     };
 
@@ -315,6 +327,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
 
     if (name instanceof Interpolated) {
+      const { renderKey } = context;
       if (renderKey !== undefined && name._renderKey !== undefined && name._renderKey !== renderKey) {
         name.getValue(CANONICAL);
       }
@@ -339,9 +352,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
-        const rk = context.renderKey;
         const setVal = (newValue: Node) => {
-          node.set('value', newValue, rk);
+          if (node.value.value !== newValue) {
+            node = node.withValue(newValue);
+          }
+        };
+        const setImportant = (important: Any<'flag'>) => {
+          if (node.value.important !== important) {
+            node = node.withImportant(important);
+          }
         };
         const normalizeMergedLeadingPlaceholder = () => {
           const normalizedAssign = node.options.normalizedFromAssign;
@@ -404,7 +423,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               setVal(newValue);
               normalizeMergedLeadingPlaceholder();
               if (context.hasImportantSource && !node.value.important) {
-                node.set('important', any('!important', { role: 'flag' }), rk);
+                setImportant(any('!important', { role: 'flag' }));
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
@@ -419,7 +438,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           setVal(maybeNewValue as Node);
           normalizeMergedLeadingPlaceholder();
           if (context.hasImportantSource && !node.value.important) {
-            node.set('important', any('!important', { role: 'flag' }), rk);
+            setImportant(any('!important', { role: 'flag' }));
           }
           if (context.hasImportantSource) {
             context.popImportantSource();

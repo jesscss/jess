@@ -108,6 +108,41 @@ Where `ctx` carries:
 - the current **selector context** (what selector prefix this output belongs to)
 - the **output buffer** (where CSS output goes)
 
+### Important Guardrail: No Whole Evaluated Tree
+
+The target is **not** "skip evaluated nodes entirely and print strings straight
+from source nodes." There is still a useful semantic boundary between:
+
+1. evaluating a source node in context
+2. producing the immediate evaluated/derived node for that one step
+3. allowing a visitor or rewrite hook to replace that node
+4. serializing the result immediately into the output buffer
+
+What goes away is the **retained full evaluated tree**.
+
+The runtime should not:
+
+- evaluate the whole stylesheet into a second AST
+- store per-placement eval results back onto shared source nodes
+- keep evaluated nodes alive longer than the local render step requires, unless
+  a deferred structure truly needs them
+
+So the long-term shape is:
+
+```ts
+source node -> evaluated/derived node -> optional visitor/replace -> serialize now
+```
+
+not:
+
+```ts
+source tree -> full evaluated tree -> serialize later
+```
+
+This distinction matters because Track 5 should preserve a real node boundary
+for future visitors/transforms while still eliminating the architectural cost of
+building and retaining a second tree.
+
 ---
 
 ## How Scope Works: Frame Chain vs Node Parent Chain

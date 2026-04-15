@@ -333,16 +333,16 @@ describe('Fast-reject in selectorMatch', () => {
 
   test('does not reject nested :is when target matches an inner alternative', async () => {
     // find = :is(:is(.a, .b), .c), target = .b
-    let find = pseudo({
+    const sourceFind = pseudo({
       name: ':is',
       arg: sellist([
         pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) }),
         el('.c')
       ])
     });
-    let target = el('.b');
-    await find.eval(context);
-    await target.eval(context);
+    const sourceTarget = el('.b');
+    const find = await sourceFind.eval(context);
+    const target = await sourceTarget.eval(context);
     let result = matchSelectors(target, find);
     expect(result.hasFullMatch).toBe(true);
   });

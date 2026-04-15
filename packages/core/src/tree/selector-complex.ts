@@ -20,6 +20,14 @@ export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combi
 // type SelectorValue = Component[]
 export type ComplexSelectorValue = ComplexSelectorComponent[];
 
+const isUnresolvedAmpersand = (part: ComplexSelectorComponent | Nil): part is Ampersand => {
+  return isNode(part, N.Ampersand) && !part.getResolvedSelector();
+};
+
+const isComplexSelectorComponent = (part: ComplexSelectorComponent | Nil): part is ComplexSelectorComponent => {
+  return !isNode(part, N.Nil);
+};
+
 /**
  * Selectors with combinators.
  *
@@ -30,6 +38,12 @@ export type ComplexSelectorValue = ComplexSelectorComponent[];
  * relative selector, which means it may start with a combinator.
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
+  private withComponents(value: ComplexSelectorValue): this {
+    const node = this.clone();
+    node.set(null, value);
+    return node;
+  }
+
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
@@ -39,7 +53,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     if (!Array.isArray(this.value)) {
       // Attempt to repair a malformed ComplexSelector that holds a single component directly.
       // We treat the current `value` as a single component.
-      (this as any).value = [(this as any).value];
+      const malformedValue = Reflect.get(this, 'value');
+      Reflect.set(this, 'value', [malformedValue]);
     }
     return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
   }
@@ -121,30 +136,27 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = this;
-        let { value } = selector;
-        const maybe = serialForEach(value, (sel, i) => {
+        const currentValue = selector.value;
+        const evaluatedValue: Array<ComplexSelectorComponent | Nil> = [...currentValue];
+        const maybe = serialForEach(evaluatedValue, (sel, i) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              value[i] = res as ComplexSelectorComponent;
+              evaluatedValue[i] = res as ComplexSelectorComponent | Nil;
               return undefined;
             });
           }
-          value[i] = out as ComplexSelectorComponent;
+          evaluatedValue[i] = out as ComplexSelectorComponent | Nil;
           return undefined;
         });
         if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => {
-            return selector;
-          });
+          return (maybe as Promise<void>).then(() => [selector, currentValue, evaluatedValue] as const);
         }
-        return selector;
+        return [selector, currentValue, evaluatedValue] as const;
       },
-      (selector) => {
-        let { value } = selector;
-        const unresolvedAmpersands = value.filter((part) => {
-          return isNode(part, N.Ampersand) && !(part as Ampersand).getResolvedSelector();
-        }) as Ampersand[];
+      ([selector, currentValue, evaluatedValue]) => {
+        let value = [...evaluatedValue];
+        const unresolvedAmpersands = value.filter(isUnresolvedAmpersand);
         const hasOtherSelectorParts = value.some((part) => {
           return !isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand);
         });
@@ -165,7 +177,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           if (isNode(part, N.Nil)) {
             return false;
           }
-          if (hasOtherSelectorParts && isNode(part, N.Ampersand) && !(part as Ampersand).getResolvedSelector()) {
+          if (hasOtherSelectorParts && isUnresolvedAmpersand(part)) {
             return false;
           }
           return true;
@@ -187,12 +199,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (value.length === 1) {
           const only = value[0]!.inherit(selector);
           if (selector.hoistToRoot) {
-            (only as any).hoistToRoot = true;
+            Reflect.set(only, 'hoistToRoot', true);
           }
           return only;
         }
-        selector.set(null, value, context.renderKey);
-        return selector;
+        const changed = (
+          value.length !== currentValue.length
+          || value.some((part, idx) => part !== currentValue[idx])
+        );
+        if (!changed) {
+          return selector;
+        }
+        return selector.withComponents(value.filter(isComplexSelectorComponent));
       }
     );
   }
