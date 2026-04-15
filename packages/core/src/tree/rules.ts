@@ -339,6 +339,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       hasTarget?: boolean;
       local?: boolean;
       includeRulesets?: boolean;
+      searchParents?: boolean;
     }
   ): MixinEntry[] {
     const findWithinScopeSurface = (
@@ -419,8 +420,178 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         results.push(...findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
       }
       cursor = cursor.parent ?? cursor.sourceParent;
+      if (options?.searchParents === false) {
+        break;
+      }
     }
     return results;
+  }
+
+  private hasPendingDynamicCallableNames(): boolean {
+    for (const node of this.value) {
+      if ((isNode(node, N.Mixin) || isNode(node, N.Ruleset)) && !this._hasStaticName(node)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private hasVisibleCallableRulesetStart(
+    segment: string,
+    options?: {
+      context?: Context;
+      hasTarget?: boolean;
+      local?: boolean;
+      searchParents?: boolean;
+    }
+  ): boolean {
+    const searchSurface = (
+      scope: Rules,
+      localContext: boolean | undefined,
+      visited: Set<Rules>
+    ): boolean => {
+      if (visited.has(scope)) {
+        return false;
+      }
+      visited.add(scope);
+
+      if (scope.rulesIndexed < scope.value.length) {
+        scope._indexRules();
+      }
+
+      if (scope.hasPendingDynamicCallableNames()) {
+        return true;
+      }
+
+      for (let i = scope.value.length - 1; i >= 0; i--) {
+        const candidate = scope.value[i]!;
+        if (!isNode(candidate, N.Ruleset)) {
+          continue;
+        }
+        const keys = Registries.getOrderedSelectorKeys(candidate.value.selector);
+        if (keys[0] === segment) {
+          return true;
+        }
+      }
+
+      const childEntries = scope._rulesSet as Array<{
+        node: Rules;
+        rulesVisibility?: RulesOptions['rulesVisibility'];
+      }> | undefined;
+      if (!childEntries?.length) {
+        return false;
+      }
+
+      for (let i = childEntries.length - 1; i >= 0; i--) {
+        const entry = childEntries[i]!;
+        const visibility = entry.rulesVisibility?.Mixin
+          ?? entry.node.options.rulesVisibility?.Mixin;
+        if (visibility !== 'public' && visibility !== 'optional') {
+          continue;
+        }
+        if (entry.node.options?.isMixinOutput === true && options?.hasTarget !== true) {
+          continue;
+        }
+        if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
+          continue;
+        }
+        if (localContext && entry.node.options?.local) {
+          continue;
+        }
+        if (searchSurface(
+          entry.node,
+          localContext || Boolean(entry.node.options?.local),
+          visited
+        )) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    let cursor: Node | undefined = this;
+    let first = true;
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        const scope = cursor as Rules;
+        if (!first) {
+          const sn = scope.sourceNode;
+          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+            break;
+          }
+        }
+        first = false;
+        if (searchSurface(scope, options?.local, new Set<Rules>())) {
+          return true;
+        }
+      }
+      if (options?.searchParents === false) {
+        break;
+      }
+      cursor = cursor.parent ?? cursor.sourceParent;
+    }
+    return false;
+  }
+
+  findMixinNamespacePathFast(
+    keys: string[],
+    filterType: 'Mixin' | undefined,
+    options: Registries.FindOptions = {}
+  ): MixinEntry[] | undefined {
+    if (keys.length < 2) {
+      return undefined;
+    }
+
+    const walk = (
+      scope: Rules,
+      path: string[],
+      searchParents: boolean
+    ): MixinEntry[] | undefined => {
+      const [segment, ...rest] = path;
+      if (!segment) {
+        return undefined;
+      }
+      if (rest.length > 0 && scope.hasVisibleCallableRulesetStart(segment, {
+        context: options.context,
+        hasTarget: options.hasTarget,
+        local: options.local,
+        searchParents
+      })) {
+        return undefined;
+      }
+
+      const matches = scope.findMixinsFast(segment, {
+        context: options.context,
+        hasTarget: options.hasTarget,
+        local: options.local,
+        includeRulesets: rest.length === 0 && filterType !== 'Mixin',
+        searchParents
+      });
+
+      if (matches.length === 0) {
+        return undefined;
+      }
+      if (rest.length === 0) {
+        return matches;
+      }
+
+      const nestedResults: MixinEntry[] = [];
+      for (const match of matches) {
+        if (!isNode(match, N.Mixin) || !mixinHasNoRequiredParams(match)) {
+          return undefined;
+        }
+        const resolved = walk(match.value.rules, rest, false);
+        if (resolved === undefined) {
+          return undefined;
+        }
+        nestedResults.push(...resolved);
+      }
+
+      return nestedResults.length > 0 ? nestedResults : undefined;
+    };
+
+    return walk(this, keys, true);
   }
 
   /**
@@ -449,6 +620,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (filterType === 'Mixin') {
         return undefined;
+      }
+    } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
+      const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
+      const fast = this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+      if (fast !== undefined) {
+        return fast;
       }
     }
     let registry = this.getRegistry(type);
@@ -2317,6 +2494,29 @@ interface RulesEntry {
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
 export type MixinEntry = Mixin | Ruleset;
+
+function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
+  const params = mixinNode.value.params;
+  if (!params || params.length === 0) {
+    return true;
+  }
+  for (const param of params.value) {
+    if (param.type === 'Rest') {
+      continue;
+    }
+    if (isNode(param, N.VarDeclaration)) {
+      if (param.value.value instanceof Nil) {
+        return false;
+      }
+      continue;
+    }
+    if (isNode(param, N.Any) && param.options.role === 'property') {
+      return false;
+    }
+    return false;
+  }
+  return true;
+}
 
 function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
   const selector = ruleset.value.selector;

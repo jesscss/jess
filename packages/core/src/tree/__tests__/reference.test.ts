@@ -1193,5 +1193,221 @@ describe('reference', () => {
         }
       `);
     });
+
+    it('fast-paths pure nested no-arg mixin namespace array paths without MixinRegistry.find', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('fast-paths terminal rulesets under pure nested no-arg mixin namespaces without MixinRegistry.find', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      ruleset({
+                        selector: el('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('falls back to MixinRegistry when an intermediate namespace hop has required params', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                params: list([any('mode', { role: 'property' })]),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      mixin({
+                        name: any('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+            rules: rules([
+              mixin({
+                name: any('.colors'),
+                rules: rules([
+                  decl({ name: 'primary', value: any('red') })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: red;
+          }
+        `);
+        expect(mixinRegistryHits.length).toBeGreaterThan(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
   });
 });
