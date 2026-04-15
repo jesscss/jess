@@ -665,8 +665,7 @@ function lookupIndexReference(
     return targetRules.at(valueKey);
   }
   const keyStr = getLookupKeyString(valueKey);
-  const indexFilterType = isNode(env.keyNode, N.Quoted) ? 'Declaration' as const : 'VarDeclaration' as const;
-  return targetRules.find('declaration', keyStr, indexFilterType, opts);
+  return targetRules.find('declaration', keyStr, getIndexReferenceFilterType(env.keyNode), opts);
 }
 
 function lookupPropertyReference(
@@ -741,39 +740,35 @@ function lookupCallableReference(
   return undefined;
 }
 
+function getIndexReferenceFilterType(
+  keyNode: ReferenceValue['key']
+): 'Declaration' | 'VarDeclaration' {
+  return isNode(keyNode, N.Quoted) ? 'Declaration' : 'VarDeclaration';
+}
+
+function createRulesLookupAdapter(
+  applyContextualStart: boolean,
+  lookup: RulesLookupAdapter['lookup']
+): RulesLookupAdapter {
+  return { applyContextualStart, lookup };
+}
+
+function createCallableLookupAdapter(
+  filterType?: 'Mixin'
+): RulesLookupAdapter {
+  return createRulesLookupAdapter(false, (targetRules, valueKey, opts, env) => (
+    lookupCallableReference(targetRules, valueKey, opts, env, filterType)
+  ));
+}
+
 const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
-  index: {
-    applyContextualStart: false,
-    lookup: lookupIndexReference
-  },
-  property: {
-    applyContextualStart: true,
-    lookup: lookupPropertyReference
-  },
-  variable: {
-    applyContextualStart: true,
-    lookup: lookupVariableReference
-  },
-  declaration: {
-    applyContextualStart: true,
-    lookup: lookupDeclarationReference
-  },
-  function: {
-    applyContextualStart: false,
-    lookup: lookupFunctionReference
-  },
-  mixin: {
-    applyContextualStart: false,
-    lookup(targetRules, valueKey, opts, env) {
-      return lookupCallableReference(targetRules, valueKey, opts, env, 'Mixin');
-    }
-  },
-  ['mixin-ruleset']: {
-    applyContextualStart: false,
-    lookup(targetRules, valueKey, opts, env) {
-      return lookupCallableReference(targetRules, valueKey, opts, env);
-    }
-  }
+  index: createRulesLookupAdapter(false, lookupIndexReference),
+  property: createRulesLookupAdapter(true, lookupPropertyReference),
+  variable: createRulesLookupAdapter(true, lookupVariableReference),
+  declaration: createRulesLookupAdapter(true, lookupDeclarationReference),
+  function: createRulesLookupAdapter(false, lookupFunctionReference),
+  mixin: createCallableLookupAdapter('Mixin'),
+  ['mixin-ruleset']: createCallableLookupAdapter()
 };
 
 function lookupAcrossRulesScopes(
@@ -1235,18 +1230,31 @@ function finalizeDirectReferenceResult(
   context: Context
 ): Node {
   if (isArray(returnVal)) {
-    const callableItems: MixinEntry[] = [];
-    for (const item of returnVal) {
-      item.sourceParent = referenceNode;
-      if (!isNode(item, N.Mixin | N.Ruleset)) {
-        return cast(undefined);
-      }
-      callableItems.push(item);
-    }
-    return new MixinCollection(callableItems);
+    return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
+  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context);
+}
 
-  const result = cast(returnVal);
+function createDirectCallableReferenceResult(
+  referenceNode: Reference,
+  returnVal: unknown[]
+): Node {
+  const callableItems: MixinEntry[] = [];
+  for (const item of returnVal) {
+    item.sourceParent = referenceNode;
+    if (!isNode(item, N.Mixin | N.Ruleset)) {
+      return cast(undefined);
+    }
+    callableItems.push(item);
+  }
+  return new MixinCollection(callableItems);
+}
+
+function finalizeDirectNodeReferenceResult(
+  referenceNode: Reference,
+  result: Node,
+  context: Context
+): Node {
   context.popReference();
   result.sourceParent = referenceNode;
   return result;
@@ -1302,56 +1310,73 @@ function finalizeDeclarationReferenceResult(
     ? declaration.options?.normalizedFromAssign
     : undefined;
   const isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
-  const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';
-  const normalizeMergedAssignResult = (node: Node): Node => {
-    if (!isMergedAssign || !isNode(node, N.List)) {
-      return node;
-    }
-    const mergedItems: Node[] = [];
-    const collect = (child: Node): void => {
-      if (isNode(child, N.List)) {
-        for (const item of child.value) {
-          collect(item as Node);
-        }
-        return;
-      }
-      const isEmptyPlaceholder = (
-        isNode(child, N.Nil)
-        || String(child.valueOf?.() ?? '') === ''
-      );
-      if (!isEmptyPlaceholder) {
-        mergedItems.push(child.copy(true, freezeChildren));
-      }
-    };
-    collect(node);
-    if (mergedItems.length === 0) {
-      return new Nil();
-    }
-    if (mergedItems.length === 1) {
-      return mergedItems[0]!;
-    }
-    return new List(mergedItems);
-  };
   return pipe(
-    () => {
-      if (hasImportant) {
-        context.pushImportantSource();
-      }
-      declValue.frozen = true;
-      if (isMixinRef) {
-        return declValue;
-      }
-      return declValue.eval(context);
-    },
+    () => evaluateDeclarationReferenceValue({
+      declValue,
+      hasImportant,
+      context
+    }),
     (evald) => {
       context.searchScope.delete(declaration);
       return applyReferenceResultMetadata(
         referenceNode,
-        normalizeMergedAssignResult(cloneReferenceResultNode(referenceNode, evald)),
+        normalizeMergedAssignReferenceResult(
+          cloneReferenceResultNode(referenceNode, evald),
+          isMergedAssign
+        ),
         { frozen: true }
       );
     }
   );
+}
+
+function evaluateDeclarationReferenceValue(args: {
+  declValue: Node;
+  hasImportant: boolean;
+  context: Context;
+}): MaybePromise<Node> {
+  const { declValue, hasImportant, context } = args;
+  if (hasImportant) {
+    context.pushImportantSource();
+  }
+  declValue.frozen = true;
+  if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
+    return declValue;
+  }
+  return declValue.eval(context);
+}
+
+function normalizeMergedAssignReferenceResult(
+  node: Node,
+  isMergedAssign: boolean
+): Node {
+  if (!isMergedAssign || !isNode(node, N.List)) {
+    return node;
+  }
+  const mergedItems: Node[] = [];
+  const collect = (child: Node): void => {
+    if (isNode(child, N.List)) {
+      for (const item of child.value) {
+        collect(item as Node);
+      }
+      return;
+    }
+    const isEmptyPlaceholder = (
+      isNode(child, N.Nil)
+      || String(child.valueOf?.() ?? '') === ''
+    );
+    if (!isEmptyPlaceholder) {
+      mergedItems.push(child.copy(true, freezeChildren));
+    }
+  };
+  collect(node);
+  if (mergedItems.length === 0) {
+    return new Nil();
+  }
+  if (mergedItems.length === 1) {
+    return mergedItems[0]!;
+  }
+  return new List(mergedItems);
 }
 
 function classifyReferenceLookupResult(returnVal: RulesLookupResult | unknown): ReferenceLookupResultKind {
