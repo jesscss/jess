@@ -367,11 +367,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
     /** Re-widen type after accumulated isNode narrowing above */
     const nn = n as Node;
-    const isDeclarationLeaf = isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration);
+    const isSerializerRenderKeyIndependentLeaf = (
+      (isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration))
+      || isNode(nn, N.Extend)
+    );
     let leafChildOptions: FinalPrintOptions = {
       ...options,
       depth: options.depth + 1,
-      renderKey: isDeclarationLeaf ? undefined : effectiveRenderKey
+      renderKey: isSerializerRenderKeyIndependentLeaf ? undefined : effectiveRenderKey
     };
     if (isNode(nn, N.Rules)) {
       const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
