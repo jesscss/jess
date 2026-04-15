@@ -1298,36 +1298,85 @@ function finalizeRuntimeVarBindingResult(
   return finalizeRuntimeBinding(evaluatedBinding);
 }
 
+function withReferenceSearchScope<T>(
+  context: Context,
+  node: Node,
+  work: () => MaybePromise<T>
+): MaybePromise<T> {
+  context.searchScope.add(node);
+  const cleanup = () => {
+    context.searchScope.delete(node);
+  };
+  try {
+    const result = work();
+    if (isThenable(result)) {
+      return Promise.resolve(result).then(
+        (resolved) => {
+          cleanup();
+          return resolved;
+        },
+        (error) => {
+          cleanup();
+          throw error;
+        }
+      );
+    }
+    cleanup();
+    return result;
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
+function hasImportantDeclarationValue(
+  declaration: Declaration | VarDeclaration
+): boolean {
+  return isNode(declaration, N.Declaration) && !!declaration.value.important;
+}
+
+function isMergedAssignDeclaration(
+  declaration: Declaration | VarDeclaration
+): boolean {
+  if (!isNode(declaration, N.Declaration)) {
+    return false;
+  }
+  const normalizedAssign = declaration.options?.normalizedFromAssign;
+  return normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
+}
+
+function finalizeEvaluatedDeclarationReference(
+  referenceNode: Reference,
+  evaluatedNode: Node,
+  isMergedAssign: boolean
+): Node {
+  return applyReferenceResultMetadata(
+    referenceNode,
+    normalizeMergedAssignReferenceResult(
+      cloneReferenceResultNode(referenceNode, evaluatedNode),
+      isMergedAssign
+    ),
+    { frozen: true }
+  );
+}
+
 function finalizeDeclarationReferenceResult(
   referenceNode: Reference,
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  context.searchScope.add(declaration);
-  const hasImportant = isNode(declaration, N.Declaration) && !!declaration.value.important;
-  const declValue = declaration.value.value;
-  const normalizedAssign = isNode(declaration, N.Declaration)
-    ? declaration.options?.normalizedFromAssign
-    : undefined;
-  const isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
-  return pipe(
+  return withReferenceSearchScope(context, declaration, () => pipe(
     () => evaluateDeclarationReferenceValue({
-      declValue,
-      hasImportant,
+      declValue: declaration.value.value,
+      hasImportant: hasImportantDeclarationValue(declaration),
       context
     }),
-    (evald) => {
-      context.searchScope.delete(declaration);
-      return applyReferenceResultMetadata(
-        referenceNode,
-        normalizeMergedAssignReferenceResult(
-          cloneReferenceResultNode(referenceNode, evald),
-          isMergedAssign
-        ),
-        { frozen: true }
-      );
-    }
-  );
+    evaluatedNode => finalizeEvaluatedDeclarationReference(
+      referenceNode,
+      evaluatedNode,
+      isMergedAssignDeclaration(declaration)
+    )
+  ));
 }
 
 function evaluateDeclarationReferenceValue(args: {
