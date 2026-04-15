@@ -108,6 +108,23 @@ Where `ctx` carries:
 - the current **selector context** (what selector prefix this output belongs to)
 - the **output buffer** (where CSS output goes)
 
+### Selector Bitset Guardrail
+
+`attachSelectorBitLibrary(...)` is a transitional helper, not target
+architecture.
+
+If selector bitsets are designed correctly, selector nodes should usually pick
+up their `keySetLibrary` automatically from parent/source/tree context as they
+are adopted into the canonical tree or evaluated in context. Needing to
+manually reattach selector bit libraries after `copy()` / `create()` is a sign
+that some selector fragments are still being used in a detached state before
+normal context inheritance has re-established itself.
+
+Do not treat `attachSelectorBitLibrary(...)` as a pattern to expand. It is
+acceptable as a temporary bridge in existing selector/extend utilities, but the
+long-term goal is to reduce or eliminate these manual reattachment points as
+selector construction becomes more contextual and less detached.
+
 ### Important Guardrail: No Whole Evaluated Tree
 
 The target is **not** "skip evaluated nodes entirely and print strings straight

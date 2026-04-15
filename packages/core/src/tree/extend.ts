@@ -4,7 +4,7 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Ruleset } from './ruleset.js';
 import { Nil } from './nil.js';
-import { ComplexSelector } from './selector-complex.js';
+import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -59,7 +59,7 @@ export class Extend extends Node<ExtendValue> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { target, selector, flag, namespace } = this.getValue(options.renderKey) as ExtendValue;
+    let { target, selector, flag, namespace } = this.value;
     const mark = w.mark();
     w.add('$extend');
     if (selector) {
@@ -129,15 +129,15 @@ export class Extend extends Node<ExtendValue> {
         // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
         // selector (e.g. .issue-2586-somepage .content not just .content).
         if (currentFrame && isNode(currentFrame, N.Ruleset)) {
-          const rs = currentFrame as Ruleset;
+          const rs = currentFrame;
           const fullSel = rs.value?.selector;
           let usedParentListComposition = false;
           if (!this.value.selector) {
-            const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+            const ownSel = getRulesetOwnSelector(rs);
             const parentFrame = context.rulesetFrames.at(-2);
             const parentSel = (
               parentFrame && isNode(parentFrame, N.Ruleset)
-                ? (parentFrame as Ruleset).value?.selector
+                ? parentFrame.value?.selector
                 : undefined
             );
             if (
@@ -148,47 +148,46 @@ export class Extend extends Node<ExtendValue> {
             ) {
               const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
                 name: ':is',
-                arg: (parentSel as Selector).copy(true)
+                arg: parentSel.copy(true)
               }), selectorBits);
               parentIs.generated = true;
               resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
                 parentIs,
                 Combinator.create(' '),
                 ownSel.copy(true)
-              ]) as unknown as Selector, selectorBits);
+              ]), selectorBits);
               usedParentListComposition = true;
             }
           }
           if (!this.value.selector && !usedParentListComposition) {
             if (fullSel && !(fullSel instanceof Nil)) {
-              resolvedSel = fullSel as Selector;
+              resolvedSel = fullSel;
             } else {
               // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
               // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
               if (isNode(currentFrame, N.Ruleset)) {
-                const parentSel = (currentFrame as Ruleset).value?.selector;
-                if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+                const parentSel = currentFrame.value?.selector;
+                if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
                   resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                    (parentSel as Selector).copy(true),
+                    parentSel.copy(true),
                     Combinator.create(' '),
                     resolvedSel.copy(true)
-                  ]) as unknown as Selector, selectorBits);
+                  ]), selectorBits);
                 }
               }
             }
           }
         }
-        const beforeMaterialize = resolvedSel.valueOf();
         resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
         attachSelectorBitLibrary(resolvedSel, selectorBits);
-        const rs = currentFrame as Ruleset;
+        const rs = currentFrame;
         const docOrder = getDocumentOrderForExtend(rs, context);
-        const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
+        const extendRootOptions = extendRoot.options;
         // Extends declared while traversing a reference branch are tagged so the
         // extend resolver can keep them non-side-effecting outside that branch.
         const fromReferenceScope = (
           context.inReferenceImportScope
-          || extendRootOptions.referenceMode === true
+          || ('referenceMode' in extendRootOptions && extendRootOptions.referenceMode === true)
         );
         context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
         return new Nil();
@@ -209,15 +208,15 @@ export class Extend extends Node<ExtendValue> {
     // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
     // selector (e.g. .issue-2586-somepage .content not just .content).
     if (currentFrame && isNode(currentFrame, N.Ruleset)) {
-      const rs = currentFrame as Ruleset;
+      const rs = currentFrame;
       const fullSel = rs.value?.selector;
       let usedParentListComposition = false;
       if (!this.value.selector) {
-        const ownSel = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
+        const ownSel = getRulesetOwnSelector(rs);
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = (
           parentFrame && isNode(parentFrame, N.Ruleset)
-            ? (parentFrame as Ruleset).value?.selector
+            ? parentFrame.value?.selector
             : undefined
         );
         if (
@@ -228,50 +227,59 @@ export class Extend extends Node<ExtendValue> {
         ) {
           const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
             name: ':is',
-            arg: (parentSel as Selector).copy(true)
+            arg: parentSel.copy(true)
           }), selectorBits);
           parentIs.generated = true;
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             parentIs,
             Combinator.create(' '),
             ownSel.copy(true)
-          ]) as unknown as Selector, selectorBits);
+          ]), selectorBits);
           usedParentListComposition = true;
         }
       }
       if (!this.value.selector && !usedParentListComposition) {
         if (fullSel && !(fullSel instanceof Nil)) {
-          resolvedSel = fullSel as Selector;
+          resolvedSel = fullSel;
         } else {
           // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
           // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
           if (isNode(currentFrame, N.Ruleset)) {
-            const parentSel = (currentFrame as Ruleset).value?.selector;
-            if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== (parentSel as Selector).valueOf()) {
+            const parentSel = currentFrame.value?.selector;
+            if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
               resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                (parentSel as Selector).copy(true),
+                parentSel.copy(true),
                 Combinator.create(' '),
                 resolvedSel.copy(true)
-              ]) as unknown as Selector, selectorBits);
+              ]), selectorBits);
             }
           }
         }
       }
     }
-    const beforeMaterialize = resolvedSel.valueOf();
     resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
     attachSelectorBitLibrary(resolvedSel, selectorBits);
-    const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame as Ruleset : undefined;
+    const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame : undefined;
     const docOrder = getDocumentOrderForExtend(rs, context);
-    const extendRootOptions = extendRoot.options as { referenceMode?: boolean };
+    const extendRootOptions = extendRoot.options;
     // Same reference-scope tagging for sync path.
     const fromReferenceScope = (
       context.inReferenceImportScope
-      || extendRootOptions.referenceMode === true
+      || ('referenceMode' in extendRootOptions && extendRootOptions.referenceMode === true)
     );
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
     return new Nil();
   }
+}
+
+function getRulesetOwnSelector(ruleset: Ruleset): Selector | undefined {
+  const { options } = ruleset;
+  const ownSelector = options && 'ownSelector' in options ? options.ownSelector : undefined;
+  return ownSelector instanceof Nil ? undefined : ownSelector;
+}
+
+function isSelectorNode(node: unknown): node is Selector {
+  return node instanceof Selector;
 }
 
 function materializeImplicitAmpersands(
@@ -281,9 +289,8 @@ function materializeImplicitAmpersands(
   const library = selector.keySetLibrary;
   const materialize = (node: Selector): Selector => {
     if (isNode(node, N.Ampersand)) {
-      const amp = node as Ampersand;
-      const n = amp as unknown as Node;
-      if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      const amp = node;
+      if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
         const resolved = amp.getResolvedSelector();
         if (
           resolved
@@ -297,13 +304,12 @@ function materializeImplicitAmpersands(
     }
 
     if (isNode(node, N.ComplexSelector)) {
-      const complex = node as ComplexSelector;
-      const parts: Selector[] = [];
-      for (const part of complex.value as unknown as Selector[]) {
+      const complex = node;
+      const parts: ComplexSelectorComponent[] = [];
+      for (const part of complex.value) {
         if (isNode(part, N.Ampersand)) {
-          const amp = part as Ampersand;
-          const n = amp as unknown as Node;
-          if (n.hasFlag(F_IMPLICIT_AMPERSAND)) {
+          const amp = part;
+          if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
             const resolved = amp.getResolvedSelector();
             if (
               resolved
@@ -312,28 +318,28 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(attachSelectorBitLibrary(resolved.copy(true) as Selector, library));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...((repl as ComplexSelector).value as unknown as Selector[]).map(x => x.copy(true) as Selector));
+                parts.push(...repl.value.map(item => item.copy(true)));
               } else {
-                parts.push(repl);
+                parts.push(repl.copy(true) as ComplexSelectorComponent);
               }
               continue;
             }
           }
         }
         const repl = materialize(part);
-        parts.push(repl);
+        parts.push(repl.copy(true) as ComplexSelectorComponent);
       }
-      return attachSelectorBitLibrary(ComplexSelector.create(parts as any).inherit(node) as Selector, library);
+      return attachSelectorBitLibrary(ComplexSelector.create(parts).inherit(node), library);
     }
 
-    const value = (node as Selector & { value?: Selector[] }).value;
+    const value = Reflect.get(node, 'value');
     if (Array.isArray(value)) {
-      const cloned = attachSelectorBitLibrary(node.copy(true) as Selector & { value?: Selector[] }, library);
-      cloned.value = value.map(item => materialize(item as Selector));
-      return cloned as Selector;
+      const cloned = attachSelectorBitLibrary(node.copy(true), library);
+      Reflect.set(cloned, 'value', value.map(item => isSelectorNode(item) ? materialize(item) : item));
+      return cloned;
     }
 
-    return attachSelectorBitLibrary(node.copy(true) as Selector, library);
+    return attachSelectorBitLibrary(node.copy(true), library);
   };
 
   return attachSelectorBitLibrary(materialize(selector), library);

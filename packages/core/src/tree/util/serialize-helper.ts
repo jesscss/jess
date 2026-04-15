@@ -83,7 +83,7 @@ function getHoistedRulesetCarrier(
   if (!atRule.isNestable() || atRule.isRootOnly() || !atRule.isHoisted(options)) {
     return undefined;
   }
-  const rulesetFrames = (atRule.frames ?? []).filter((frame) => isNode(frame, N.Ruleset)) as Ruleset[];
+  const rulesetFrames = (atRule.frames ?? []).filter(frame => isNode(frame, N.Ruleset));
   if (rulesetFrames.length === 0) {
     return undefined;
   }
@@ -146,7 +146,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       && options.referenceRenderEnabled === true
       && rawParentComposed
     )
-      ? Ruleset.filterExtendedForReferenceCompose(rawParentComposed as Selector) ?? rawParentComposed
+      ? Ruleset.filterExtendedForReferenceCompose(rawParentComposed) ?? rawParentComposed
       : rawParentComposed;
     const sel = rs.value.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
@@ -156,13 +156,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const rk = options.renderKey;
       let cached = rs.getComposedSelector(rk);
       if (!cached && sel && !(sel instanceof Nil)) {
-        const ownSelector = (rs.options as { ownSelector?: Selector } | undefined)?.ownSelector;
-        const structuralParent = (
-          rs.hoistToRoot === true
-          && rs.parent?.parent
-          && isNode(rs.parent.parent, N.Ruleset)
-        )
-          ? ((rs.parent.parent as Ruleset).value.selector as Selector | Nil)
+        const ownSelector = rs.options?.ownSelector;
+        const structuralParentFrame = rs.hoistToRoot === true ? rs.parent?.parent : undefined;
+        const structuralParent = isNode(structuralParentFrame, N.Ruleset)
+          ? structuralParentFrame.value.selector
           : null;
         const composeParent = parentComposed ?? (
           structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
@@ -170,9 +167,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const hasExtendedComposeContext = Boolean(
           rulesetHasExtendedTopLevelSelector(rs)
           || (composeParent && !(composeParent instanceof Nil) && (
-            (composeParent as Selector).hasFlag(F_EXTENDED)
-            || (isNode(composeParent as Selector, N.SelectorList)
-              && (composeParent as SelectorList).value.some(item => item.hasFlag(F_EXTENDED)))
+            composeParent.hasFlag(F_EXTENDED)
+            || (isNode(composeParent, N.SelectorList)
+              && composeParent.value.some(item => item.hasFlag(F_EXTENDED)))
           ))
         );
         const composeInput = (
@@ -182,15 +179,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           && composeParent
           && hasExtendedComposeContext
         )
-          ? (ownSelector as Selector)
-          : (sel as Selector);
+          ? ownSelector
+          : sel;
         cached = composeParent
-          ? (rs.constructor as typeof Ruleset).composeSelector(composeInput, composeParent as Selector)
+          ? Ruleset.composeSelector(composeInput, composeParent)
           : composeInput;
         rs.setComposedSelector(cached, rk);
       }
       if (cached) {
-        (options.composedSelectorStack ??= []).push(cached as Selector);
+        (options.composedSelectorStack ??= []).push(cached);
         pushedComposed = true;
       }
     }
@@ -204,28 +201,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   const mark = w.mark();
   const previousReferenceMode = options.referenceMode === true;
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
-  const isInMixinOutputScope = (): boolean => {
-    const seen = new Set<any>();
-    const queue: any[] = [(node as any).parent, (node as any).sourceParent];
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (!current || seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      if (current.options?.isMixinOutput === true) {
-        return true;
-      }
-      queue.push(current.parent, current.sourceParent);
-    }
-    return false;
-  };
   const ownReferenceMode = Boolean(
-    (node as any).options?.referenceMode === true
+    node.options
+    && 'referenceMode' in node.options
+    && node.options.referenceMode === true
   );
   const inReferenceMode = previousReferenceMode || ownReferenceMode;
   const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
-  const nodeExtendsReference = node.type === 'Ruleset' && rulesetHasExtendedTopLevelSelector(node as Ruleset);
+  const nodeExtendsReference = isNode(node, N.Ruleset) && rulesetHasExtendedTopLevelSelector(node);
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
   options.referenceMode = inReferenceMode;
@@ -289,12 +272,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       continue;
     }
     const declWriter = new OutputWriter();
-    const entryRenderKey = rulesRenderKeys[i];
     const declOptions = getPrintOptions({
       ...options,
       writer: declWriter,
-      depth: options.depth + 1,
-      renderKey: entryRenderKey ?? options.renderKey
+      depth: options.depth + 1
     });
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(i, declOut);
@@ -386,7 +367,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
     /** Re-widen type after accumulated isNode narrowing above */
     const nn = n as Node;
-    let leafChildOptions: FinalPrintOptions = { ...options, depth: options.depth + 1, renderKey: effectiveRenderKey };
+    const isDeclarationLeaf = isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration);
+    let leafChildOptions: FinalPrintOptions = {
+      ...options,
+      depth: options.depth + 1,
+      renderKey: isDeclarationLeaf ? undefined : effectiveRenderKey
+    };
     if (isNode(nn, N.Rules)) {
       const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
       const childReferenceMode = inReferenceMode || ownReferenceMode;
