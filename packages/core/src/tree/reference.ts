@@ -737,12 +737,7 @@ function evaluateReferenceKey(
   resolvedTarget: unknown,
   context: Context
 ): MaybePromise<[unknown, NormalizedLookupKey]> {
-  let out: unknown;
-  try {
-    out = isNode(key) ? key.eval(context) : key;
-  } catch (err: unknown) {
-    throw err;
-  }
+  const out = isNode(key) ? key.eval(context) : key;
 
   const finalizeKey = (resolvedKey: unknown): [unknown, NormalizedLookupKey] => {
     if (isNode(resolvedKey, N.Selector)) {
@@ -764,14 +759,12 @@ function evaluateReferenceKey(
   return finalizeKey(out);
 }
 
-function resolveReferenceTargetValue(args: {
+function resolveAmbiguousReferenceTarget(args: {
   referenceNode: Reference;
   resolvedTarget: unknown;
-  valueKey: NormalizedLookupKey;
   context: Context;
-}): MaybePromise<[unknown, NormalizedLookupKey]> {
-  const { referenceNode, context, valueKey } = args;
-  let { resolvedTarget } = args;
+}): MaybePromise<unknown> {
+  const { referenceNode, context, resolvedTarget } = args;
 
   if (resolvedTarget instanceof Node) {
     if (!(resolvedTarget instanceof MixinCollection) && !isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
@@ -781,16 +774,24 @@ function resolveReferenceTargetValue(args: {
       if (typeof targetKey === 'string') {
         const refNode = new Reference(targetKey, { type: 'mixin-ruleset' });
         referenceNode.adopt(refNode);
-        return Promise.all([
-          refNode.eval(context),
-          valueKey
-        ]);
+        return refNode.eval(context);
       }
     }
   }
 
+  return resolvedTarget;
+}
+
+function materializeReferenceTarget(args: {
+  resolvedTarget: unknown;
+  valueKey: NormalizedLookupKey;
+  context: Context;
+}): MaybePromise<[unknown, NormalizedLookupKey]> {
+  const { context, valueKey } = args;
+  let { resolvedTarget } = args;
+
   if (resolvedTarget instanceof MixinCollection) {
-    return resolvedTarget.evalCall(context).then((r: unknown) => [r, valueKey]);
+    return Promise.resolve(resolvedTarget.evalCall(context)).then(r => [r, valueKey]);
   }
   if (isNode(resolvedTarget, N.JsFunction)) {
     const jsResult = resolvedTarget.value.call(context);
@@ -812,6 +813,23 @@ function resolveReferenceTargetValue(args: {
   }
 
   return [resolvedTarget, valueKey];
+}
+
+function resolveReferenceTargetValue(args: {
+  referenceNode: Reference;
+  resolvedTarget: unknown;
+  valueKey: NormalizedLookupKey;
+  context: Context;
+}): MaybePromise<[unknown, NormalizedLookupKey]> {
+  const { valueKey } = args;
+  return pipe(
+    () => resolveAmbiguousReferenceTarget(args),
+    resolvedTarget => materializeReferenceTarget({
+      resolvedTarget,
+      valueKey,
+      context: args.context
+    })
+  );
 }
 
 function finalizeRuntimeVarBindingResult(
