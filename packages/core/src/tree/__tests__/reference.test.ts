@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, Rules as RulesClass } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -1286,6 +1286,79 @@ describe('reference', () => {
                     rules: rules([
                       ruleset({
                         selector: el('.colors'),
+                        rules: rules([
+                          decl({ name: 'primary', value: any('cyan') })
+                        ])
+                      })
+                    ])
+                  })
+                ])
+              })
+            ])
+          }),
+          ruleset({
+            selector: el('.output'),
+            rules: rules([
+              vardecl({
+                name: 'colors',
+                value: call({
+                  name: ref({
+                    key: ['#theme', '.dark', '.navbar', '.colors']
+                  }, { type: 'mixin-ruleset' })
+                })
+              }),
+              decl({
+                name: 'background',
+                value: ref({
+                  target: ref({ key: 'colors' }, { type: 'variable' }),
+                  key: 'primary'
+                }, { type: 'declaration' })
+              })
+            ])
+          })
+        ]);
+
+        const evald = await node.eval(context);
+        expect(`${evald}`).toBeString(`
+          .output {
+            background: cyan;
+          }
+        `);
+        expect(mixinRegistryHits).toHaveLength(0);
+      } finally {
+        Registries.MixinRegistry.prototype.find = originalFind;
+      }
+    });
+
+    it('fast-paths resolved interpolated terminal rulesets under pure namespaces without MixinRegistry.find', async () => {
+      const originalFind = Registries.MixinRegistry.prototype.find;
+      const mixinRegistryHits: string[] = [];
+      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [key] = args;
+        if (Array.isArray(key) && key[0] === '#theme') {
+          mixinRegistryHits.push(key.join(' '));
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const dynamicClass = interpolated({
+          source: '.' + INTERPOLATION_PLACEHOLDER,
+          replacements: [any('colors')]
+        }, { role: 'ident' });
+
+        const node = rules([
+          mixin({
+            name: any('#theme'),
+            rules: rules([
+              mixin({
+                name: any('.dark'),
+                rules: rules([
+                  mixin({
+                    name: any('.navbar'),
+                    rules: rules([
+                      ruleset({
+                        selector: interpolatedSelector(dynamicClass),
                         rules: rules([
                           decl({ name: 'primary', value: any('cyan') })
                         ])
