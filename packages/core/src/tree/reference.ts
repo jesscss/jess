@@ -14,10 +14,8 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RuntimeVarBinding, MixinEntry } from './rules.js';
-import type { Mixin } from './mixin.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
-import type { Ruleset } from './ruleset.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { List } from './list.js';
@@ -624,7 +622,7 @@ const RULES_LOOKUP_ADAPTERS: Record<LookupType, RulesLookupAdapter> = {
       return undefined;
     }
   },
-  'mixin-ruleset': {
+  ['mixin-ruleset']: {
     applyContextualStart: false,
     lookup(targetRules, valueKey, opts, env) {
       const callable = targetRules.find('mixin', valueKey, undefined, opts);
@@ -651,7 +649,7 @@ function lookupAcrossRulesScopes(
       }
       const result = performLookup(scope);
       if (isThenable(result)) {
-        return (result as Promise<RulesLookupResult>).then((resolved) => {
+        return Promise.resolve(result).then((resolved) => {
           if (resolved !== undefined) {
             return resolved;
           }
@@ -732,6 +730,250 @@ function getReferenceNotFoundError(type: LookupType, keyDisplay: string): Refere
     return new ReferenceError(`No matching mixins found for '${keyDisplay}'`);
   }
   return new ReferenceError(`'${keyDisplay}' is not defined`);
+}
+
+function evaluateReferenceKey(
+  key: ReferenceValue['key'],
+  resolvedTarget: unknown,
+  context: Context
+): MaybePromise<[unknown, NormalizedLookupKey]> {
+  let out: unknown;
+  try {
+    out = isNode(key) ? key.eval(context) : key;
+  } catch (err: unknown) {
+    throw err;
+  }
+
+  const finalizeKey = (resolvedKey: unknown): [unknown, NormalizedLookupKey] => {
+    if (isNode(resolvedKey, N.Selector)) {
+      return [resolvedTarget, normalizeSelectorReferenceKey(resolvedKey)];
+    }
+    if (Array.isArray(resolvedKey)) {
+      return [resolvedTarget, resolvedKey.map(String)];
+    }
+    const normalizedKey = isNode(resolvedKey) ? resolvedKey.valueOf() : resolvedKey;
+    if (typeof normalizedKey === 'string' || typeof normalizedKey === 'number') {
+      return [resolvedTarget, normalizedKey];
+    }
+    return [resolvedTarget, String(normalizedKey)];
+  };
+
+  if (isThenable(out)) {
+    return Promise.resolve(out).then(finalizeKey);
+  }
+  return finalizeKey(out);
+}
+
+function resolveReferenceTargetValue(args: {
+  referenceNode: Reference;
+  resolvedTarget: unknown;
+  valueKey: NormalizedLookupKey;
+  context: Context;
+}): MaybePromise<[unknown, NormalizedLookupKey]> {
+  const { referenceNode, context, valueKey } = args;
+  let { resolvedTarget } = args;
+
+  if (resolvedTarget instanceof Node) {
+    if (!(resolvedTarget instanceof MixinCollection) && !isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
+      const targetKey = isNode(resolvedTarget, N.Color)
+        ? String((resolvedTarget as Color).value.node)
+        : resolvedTarget.valueOf();
+      if (typeof targetKey === 'string') {
+        const refNode = new Reference(targetKey, { type: 'mixin-ruleset' });
+        referenceNode.adopt(refNode);
+        return Promise.all([
+          refNode.eval(context),
+          valueKey
+        ]);
+      }
+    }
+  }
+
+  if (resolvedTarget instanceof MixinCollection) {
+    return resolvedTarget.evalCall(context).then((r: unknown) => [r, valueKey]);
+  }
+  if (isNode(resolvedTarget, N.JsFunction)) {
+    const jsResult = resolvedTarget.value.call(context);
+    if (isThenable(jsResult)) {
+      return Promise.resolve(jsResult).then(result => [result, valueKey]);
+    }
+    return [jsResult, valueKey];
+  }
+  if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
+    const mixinResult = resolvedTarget.value.rules.eval(context);
+    const finalizeRules = (rules: Rules): [Rules, NormalizedLookupKey] => {
+      rules.inherit(resolvedTarget.value.rules);
+      return [rules, valueKey];
+    };
+    if (isThenable(mixinResult)) {
+      return Promise.resolve(mixinResult).then(finalizeRules);
+    }
+    return finalizeRules(mixinResult);
+  }
+
+  return [resolvedTarget, valueKey];
+}
+
+function finalizeRuntimeVarBindingResult(
+  referenceNode: Reference,
+  binding: RuntimeVarBinding,
+  context: Context
+): MaybePromise<Node> {
+  const bindingSource = binding.sourceNode;
+  if (bindingSource) {
+    context.searchScope.add(bindingSource);
+  }
+  const finalizeRuntimeBinding = (evald: Node) => {
+    if (bindingSource) {
+      context.searchScope.delete(bindingSource);
+    }
+    const out = evald.copy(true, freezeChildren).inherit(evald);
+    out.frozen = true;
+    out.pre = referenceNode.pre;
+    out.post = referenceNode.post;
+    out.sourceParent = referenceNode;
+    return out;
+  };
+  const evaluatedBinding = (() => {
+    binding.value.frozen = true;
+    try {
+      return binding.value.eval(context);
+    } catch (error) {
+      if (bindingSource) {
+        context.searchScope.delete(bindingSource);
+      }
+      throw error;
+    }
+  })();
+  if (isThenable(evaluatedBinding)) {
+    return Promise.resolve(evaluatedBinding)
+      .then(finalizeRuntimeBinding, (error) => {
+        if (bindingSource) {
+          context.searchScope.delete(bindingSource);
+        }
+        throw error;
+      });
+  }
+  return finalizeRuntimeBinding(evaluatedBinding);
+}
+
+function finalizeDeclarationReferenceResult(
+  referenceNode: Reference,
+  declaration: Declaration | VarDeclaration,
+  context: Context
+): MaybePromise<Node> {
+  context.searchScope.add(declaration);
+  const hasImportant = isNode(declaration, N.Declaration) && !!declaration.value.important;
+  const declValue = declaration.value.value;
+  const normalizedAssign = isNode(declaration, N.Declaration)
+    ? declaration.options?.normalizedFromAssign
+    : undefined;
+  const isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
+  const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';
+  return pipe(
+    () => {
+      if (hasImportant) {
+        context.pushImportantSource();
+      }
+      declValue.frozen = true;
+      if (isMixinRef) {
+        return declValue;
+      }
+      return declValue.eval(context);
+    },
+    (evald) => {
+      context.searchScope.delete(declaration);
+      let out: Node = evald.copy(true, freezeChildren).inherit(evald);
+      if (isMergedAssign && isNode(out, N.List)) {
+        const mergedItems: Node[] = [];
+        const collect = (child: Node): void => {
+          if (isNode(child, N.List)) {
+            for (const item of child.value) {
+              collect(item as Node);
+            }
+            return;
+          }
+          const isEmptyPlaceholder = (
+            isNode(child, N.Nil)
+            || String(child.valueOf?.() ?? '') === ''
+          );
+          if (!isEmptyPlaceholder) {
+            mergedItems.push(child.copy(true, freezeChildren));
+          }
+        };
+        collect(out);
+        if (mergedItems.length === 0) {
+          out = new Nil();
+        } else if (mergedItems.length === 1) {
+          out = mergedItems[0]!;
+        } else {
+          out = new List(mergedItems);
+        }
+      }
+      out.frozen = true;
+      out.pre = referenceNode.pre;
+      out.post = referenceNode.post;
+      out.sourceParent = referenceNode;
+      return out;
+    }
+  );
+}
+
+function finalizeReferenceLookupResult(args: {
+  referenceNode: Reference;
+  returnVal: RulesLookupResult | unknown;
+  valueKey: NormalizedLookupKey;
+  lookupType: LookupType;
+  fallbackValue: ReferenceOptions['fallbackValue'];
+  context: Context;
+}): MaybePromise<Node> {
+  const { referenceNode, returnVal, valueKey, lookupType, fallbackValue, context } = args;
+  const valueKeyStr = getLookupKeyDisplay(valueKey);
+
+  if (returnVal === undefined) {
+    if (!fallbackValue) {
+      if (
+        (lookupType === 'mixin' || lookupType === 'mixin-ruleset')
+        && isInsideSelectorCapture(referenceNode)
+      ) {
+        return new Any(valueKeyStr, { role: 'ident' });
+      }
+      throw getReferenceNotFoundError(lookupType, valueKeyStr);
+    }
+    if (fallbackValue === true) {
+      const any = new Any(`${valueKey}`);
+      any.options.role = referenceNode.options.role;
+      return any;
+    }
+    const out = fallbackValue.eval(context);
+    if (isThenable(out)) {
+      return Promise.resolve(out).then(node => node);
+    }
+    return out;
+  }
+
+  if (isRuntimeVarBinding(returnVal)) {
+    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context);
+  }
+
+  if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
+    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
+  }
+
+  if (isArray(returnVal)) {
+    for (const item of returnVal) {
+      item.sourceParent = referenceNode;
+      if (!isNode(item, N.Mixin | N.Ruleset)) {
+        return cast(undefined);
+      }
+    }
+    return new MixinCollection(returnVal as MixinEntry[]);
+  }
+
+  const result = cast(returnVal);
+  context.popReference();
+  result.sourceParent = referenceNode;
+  return result;
 }
 
 /**
@@ -844,112 +1086,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         }
         return resolvedTarget;
       },
-      (resolvedTarget) => {
-        let out: any;
-        try {
-          out = isNode(key) ? key.eval(context) : key;
-        } catch (err: any) {
-          throw err;
-        }
-        if (isThenable(out)) {
-          return out.then((k: any) => {
-            if (isNode(k, N.Selector)) {
-              return [resolvedTarget, normalizeSelectorReferenceKey(k)] as [any, string | string[]];
-            }
-            if (Array.isArray(k)) {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-              return [resolvedTarget, k] as [any, string[]];
-            }
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            return [resolvedTarget, k.valueOf()] as [any, string];
-          });
-        }
-        if (isNode(out, N.Selector)) {
-          return [resolvedTarget, normalizeSelectorReferenceKey(out)] as [any, string | string[]];
-        }
-        if (Array.isArray(out)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          return [resolvedTarget, out] as [any, string[]];
-        }
-        const normalizedKey = isNode(out) ? out.valueOf() : out;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        return [resolvedTarget, normalizedKey] as [any, string];
-      },
-      ([resolvedTarget, valueKey]) => {
-        /**
-         * If we don't have rules yet, assume that this node
-         * was an ambiguous reference to a mixin (such as a valid color
-         * or an interpolated identifier). In that case, try to resolve
-         * it as a reference to a mixin.
-         *
-         * (We have to do this for Less.)
-         */
-        if (resolvedTarget instanceof Node) {
-          if (!(resolvedTarget instanceof MixinCollection) && !isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
-            let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color).value.node) : (resolvedTarget as Node).valueOf();
-            if (typeof targetKey === 'string') {
-              let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
-              this.adopt(ref);
-              return Promise.all([
-                ref.eval(context),
-                valueKey
-              ]);
-            }
-          }
-        }
-        return [resolvedTarget, valueKey] as [any, string | string[]];
-      },
-      ([resolvedTarget, valueKey]) => {
-        /**
-         * If we're looking something up on a function, we presume
-         * it needs to be called first, and that it has no arguments.
-         */
-        if (resolvedTarget instanceof MixinCollection) {
-          return resolvedTarget.evalCall(context).then((r: any) => {
-            return [r, valueKey] as [any, string | string[]];
-          });
-        }
-        if (isNode(resolvedTarget, N.JsFunction)) {
-          const jsResult = resolvedTarget.value.call(context);
-          if (isThenable(jsResult)) {
-            return (jsResult as Promise<any>).then((result) => {
-              return [result, valueKey] as [any, string | string[]];
-            });
-          } else {
-            resolvedTarget = jsResult;
-            return [resolvedTarget, valueKey] as [any, string | string[]];
-          }
-        }
-
-        /**
-         * If we're looking something up on a mixin or ruleset (namespace lookup),
-         * we need to evaluate its rules to get the Rules node first.
-         *
-         * Before evaluating, check if this Ruleset/Mixin has matched keys from a previous partial match
-         * (for chained calls like .jo.ki() where .jo finds .jo.ki with matched keys [".jo"])
-         * We accumulate the new key and use registry lookup to verify the compound match
-         */
-        if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const mixinResult = (resolvedTarget as Ruleset).value.rules.eval(context);
-          if (isThenable(mixinResult)) {
-            return (mixinResult as Promise<Rules>).then((rules) => {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-              rules.inherit((resolvedTarget as Ruleset).value.rules);
-              return [rules, valueKey] as [Node, string | string[]];
-            });
-          } else {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            mixinResult.inherit((resolvedTarget as Ruleset).value.rules);
-            resolvedTarget = mixinResult as Rules;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            return [resolvedTarget, valueKey] as [Node, string | string[]];
-          }
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        return [resolvedTarget, valueKey] as [Node, string | string[]];
-      },
+      resolved => evaluateReferenceKey(key, resolved, context),
+      ([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
+        referenceNode: this,
+        resolvedTarget,
+        valueKey,
+        context
+      }),
       ([resolvedTarget, valueKey]) => {
         const isInterpolatedVariable =
           lookupType === 'variable'
@@ -992,162 +1135,21 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           performRulesLookup: performLookup
         });
         if (isThenable(returnVal)) {
-          return (returnVal as Promise<RulesLookupResult>).then((resolved) => ({
+          return Promise.resolve(returnVal).then(resolved => ({
             returnVal: resolved,
             valueKey
           }));
         }
         return { returnVal, valueKey };
       },
-      ({ returnVal, valueKey }) => {
-        const valueKeyStr2 = getLookupKeyDisplay(valueKey as NormalizedLookupKey);
-        if (returnVal === undefined) {
-          if (!fallbackValue) {
-            if (
-              (lookupType === 'mixin' || lookupType === 'mixin-ruleset')
-              && isInsideSelectorCapture(this)
-            ) {
-              return new Any(valueKeyStr2, { role: 'ident' });
-            }
-            throw getReferenceNotFoundError(lookupType, valueKeyStr2);
-          }
-          if (fallbackValue === true) {
-            const any = new Any(`${valueKey}`);
-            any.options.role = this.options.role;
-            return any;
-          }
-          // Evaluate the fallbackValue if it's a Node
-          let out = fallbackValue.eval(context);
-          if (isThenable(out)) {
-            return (out as Promise<Node>).then(node => node);
-          }
-          return out;
-        }
-        if (isRuntimeVarBinding(returnVal)) {
-          const bindingSource = returnVal.sourceNode;
-          if (bindingSource) {
-            context.searchScope.add(bindingSource);
-          }
-          const finalizeRuntimeBinding = (evald: Node) => {
-            if (bindingSource) {
-              context.searchScope.delete(bindingSource);
-            }
-            const out = evald.copy(true, freezeChildren).inherit(evald);
-            out.frozen = true;
-            out.pre = this.pre;
-            out.post = this.post;
-            out.sourceParent = this;
-            return out;
-          };
-          const evaluatedBinding = (() => {
-            returnVal.value.frozen = true;
-            try {
-              return returnVal.value.eval(context);
-            } catch (error) {
-              if (bindingSource) {
-                context.searchScope.delete(bindingSource);
-              }
-              throw error;
-            }
-          })();
-          if (isThenable(evaluatedBinding)) {
-            return (evaluatedBinding as Promise<Node>)
-              .then(finalizeRuntimeBinding, (error) => {
-                if (bindingSource) {
-                  context.searchScope.delete(bindingSource);
-                }
-                throw error;
-              });
-          }
-          return pipe(
-            () => evaluatedBinding,
-            (evald) => {
-              return finalizeRuntimeBinding(evald as Node);
-            }
-          );
-        }
-        if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          context.searchScope.add(returnVal as Node);
-          const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).value.important;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const declValue = (returnVal as Declaration).value.value;
-          const normalizedAssign = isNode(returnVal, N.Declaration)
-            ? returnVal.options?.normalizedFromAssign
-            : undefined;
-          const isMergedAssign = normalizedAssign === '+:' || normalizedAssign === '&,:' || normalizedAssign === '&_:';
-          // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
-          // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
-          const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';
-          return pipe(
-            () => {
-              // Track that this value came from an important declaration
-              // We push here but DON'T pop - let the consuming Declaration pop it
-              if (hasImportant) {
-                context.pushImportantSource();
-              }
-              declValue.frozen = true;
-              if (isMixinRef) {
-                return declValue;
-              }
-              return declValue.eval(context);
-            },
-            (evald) => {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-              context.searchScope.delete(returnVal as Node);
-              // DON'T pop important source here - let the consuming Declaration pop it
-              // after it has checked and merged the important flag
-              let out = evald.copy(true, freezeChildren).inherit(evald);
-              if (isMergedAssign && isNode(out, N.List)) {
-                const mergedItems: Node[] = [];
-                const collect = (child: Node): void => {
-                  if (isNode(child, N.List)) {
-                    for (const item of child.value) {
-                      collect(item as Node);
-                    }
-                    return;
-                  }
-                  const isEmptyPlaceholder = (
-                    isNode(child, N.Nil)
-                    || String(child.valueOf?.() ?? '') === ''
-                  );
-                  if (!isEmptyPlaceholder) {
-                    mergedItems.push(child.copy(true, freezeChildren));
-                  }
-                };
-                collect(out);
-                if (mergedItems.length === 0) {
-                  out = new Nil();
-                } else if (mergedItems.length === 1) {
-                  out = mergedItems[0]!;
-                } else {
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-                  out = new List(mergedItems) as unknown as typeof out;
-                }
-              }
-              out.frozen = true;
-              out.pre = this.pre;
-              out.post = this.post;
-              out.sourceParent = this;
-              return out;
-            }
-          );
-        } else if (isArray(returnVal)) {
-          for (let item of returnVal) {
-            item.sourceParent = this;
-            if (!isNode(item, N.Mixin | N.Ruleset)) {
-              return cast(undefined);
-            }
-          }
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          return new MixinCollection(returnVal as MixinEntry[]);
-        }
-        const result = cast(returnVal);
-        // Pop reference and clear remainders if we're at the outermost level
-        context.popReference();
-        result.sourceParent = this;
-        return result;
-      }
+      ({ returnVal, valueKey }) => finalizeReferenceLookupResult({
+        referenceNode: this,
+        returnVal,
+        valueKey: valueKey as NormalizedLookupKey,
+        lookupType,
+        fallbackValue,
+        context
+      })
     );
     if (isThenable(result)) {
       return (result as Promise<Node>).then(

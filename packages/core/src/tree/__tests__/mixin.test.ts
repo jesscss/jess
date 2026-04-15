@@ -1283,14 +1283,15 @@ describe('Mixin', () => {
                 ])
               })
             ])
-          }),
+          })
         ]);
         const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
           context
         });
         expect(found).toHaveLength(1);
         expect(found?.[0]?.type).toBe('Mixin');
-        expect((found?.[0] as Mixin).value.name?.valueOf()).toBe('.colors');
+        const mixinHit = found?.[0];
+        expect(mixinHit?.type === 'Mixin' ? mixinHit.value.name?.valueOf() : undefined).toBe('.colors');
         expect(mixinRegistryHits).toHaveLength(0);
       } finally {
         MixinRegistry.prototype.find = originalFind;

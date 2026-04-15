@@ -923,7 +923,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         hasTarget: options.hasTarget,
         local: options.local,
         includeRulesets: false,
-          searchParents
+        searchParents
       }).length > 0) {
         return undefined;
       }
@@ -963,28 +963,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
         const resolved = remainder.length === 1
           ? (() => {
-            const segment = remainder[0]!;
-            const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
-              context: options.context,
-              hasTarget: options.hasTarget,
-              local: options.local,
-              includeRulesets: true,
-              searchParents: false
-            });
-            if (simpleCallableMatches.length > 0) {
-              return simpleCallableMatches;
-            }
-            const simpleCallableRulesets = ruleset.value.rules.findVisibleExactCallableRulesetPath([segment], {
-              hasTarget: options.hasTarget,
-              local: options.local,
-              searchParents: false
-            });
-            return simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
-          })()
+              const segment = remainder[0]!;
+              const simpleCallableMatches = ruleset.value.rules.findMixinsFast(segment, {
+                context: options.context,
+                hasTarget: options.hasTarget,
+                local: options.local,
+                includeRulesets: true,
+                searchParents: false
+              });
+              if (simpleCallableMatches.length > 0) {
+                return simpleCallableMatches;
+              }
+              const simpleCallableRulesets = ruleset.value.rules.findVisibleExactCallableRulesetPath([segment], {
+                hasTarget: options.hasTarget,
+                local: options.local,
+                searchParents: false
+              });
+              return simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
+            })()
           : ruleset.value.rules.find('mixin', remainder, undefined, {
-            ...options,
-            searchParents: false
-          });
+              ...options,
+              searchParents: false
+            });
         if (resolved?.length) {
           return resolved;
         }
