@@ -3174,11 +3174,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             signatureNodes[paramIndex] = boundValue;
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
-            const rest = nodeArgs.slice(argPos).map((restArg) => {
-              const cloned = restArg.copy(true, freezeChildren);
-              cloned.frozen = true;
-              return cloned;
-            });
+            const rest = nodeArgs.slice(argPos).map(restArg => cloneBoundValue(restArg));
             const restValue = new Sequence(rest);
             const restName = param.value ? `${param.value}` : `rest${i}`;
             bindingRecordsByIndex.set(paramIndex, {
