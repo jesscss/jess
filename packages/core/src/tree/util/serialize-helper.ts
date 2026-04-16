@@ -276,7 +276,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return w.getSince(mark);
     }
 
-    const rulesToRender = flattenVisibleRulesForRender(rules, options.context?.renderKey ?? rules._renderKey);
+    const rulesToRender = flattenVisibleRulesForRender(rules, options.context?.renderKey);
     const declarationOutputCache = new Map<number, string>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
