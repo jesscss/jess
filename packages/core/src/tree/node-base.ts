@@ -958,7 +958,7 @@ export abstract class Node<
   */
   preEval(context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
-      let node = this.maybeClone(context);
+      const node = this;
       node.preEvaluated = true;
 
       // Note: Rules nodes handle index assignment for themselves and their children
