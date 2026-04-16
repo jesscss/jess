@@ -201,8 +201,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (isBareAmp && !parentComposed) {
       isTransparentWrapper = true;
     } else {
-      const rk = options.context?.renderKey;
-      let cached = getCachedComposedSelector(options, rs, rk);
+      let cached = getCachedComposedSelector(options, rs);
       if (!cached && sel && !(sel instanceof Nil)) {
         const ownSelector = rs.options?.ownSelector;
         const structuralParentFrame = rs.hoistToRoot === true ? rs.parent?.parent : undefined;
@@ -233,7 +232,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           ? Ruleset.composeSelector(composeInput, composeParent)
           : composeInput;
         if (composeParent) {
-          setCachedComposedSelector(options, rs, rk, cached);
+          setCachedComposedSelector(options, rs, cached);
         }
       }
       if (cached) {

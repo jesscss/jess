@@ -723,7 +723,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const composeParent = parentComposed ?? (
         structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
       );
-      let cached = getCachedComposedSelector(options, this, undefined);
+      let cached = getCachedComposedSelector(options, this);
       if (!cached) {
         const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
         const hasExtendedComposeContext = Boolean(
@@ -748,7 +748,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             )
           : composeInput;
         if (composeParent) {
-          setCachedComposedSelector(options, this, undefined, cached as Selector);
+          setCachedComposedSelector(options, this, cached as Selector);
         }
       }
       renderSelector = cached as typeof selector;

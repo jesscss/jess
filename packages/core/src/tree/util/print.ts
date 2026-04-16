@@ -2,7 +2,6 @@ import type { Context } from '../../context.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
-import type { RenderKey } from '../node-base.js';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -27,8 +26,8 @@ export type PrintOptions = {
   referenceFilterTargets?: boolean;
   /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
-  /** Session-local composed selector cache keyed by rendered ruleset and active render key. */
-  composedSelectorCache?: WeakMap<Ruleset, Map<RenderKey | undefined, Selector>>;
+  /** Session-local composed selector cache keyed by rendered ruleset. */
+  composedSelectorCache?: WeakMap<Ruleset, Selector>;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
 };
@@ -202,24 +201,17 @@ export function restoreArrayState<T>(
 
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
-  ruleset: Ruleset,
-  renderKey: RenderKey | undefined
+  ruleset: Ruleset
 ): Selector | undefined {
-  return options.composedSelectorCache?.get(ruleset)?.get(renderKey);
+  return options.composedSelectorCache?.get(ruleset);
 }
 
 export function setCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset,
-  renderKey: RenderKey | undefined,
   selector: Selector
 ): void {
-  let byKey = options.composedSelectorCache?.get(ruleset);
-  if (!byKey) {
-    byKey = new Map<RenderKey | undefined, Selector>();
-    options.composedSelectorCache?.set(ruleset, byKey);
-  }
-  byKey.set(renderKey, selector);
+  options.composedSelectorCache?.set(ruleset, selector);
 }
 
 export class OutputWriter implements OutputWriter {
