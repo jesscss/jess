@@ -293,9 +293,6 @@ export abstract class Node<
    */
   frozen = false;
 
-  /** The render keys of this node */
-  declare _renderKey?: RenderKey;
-
   /**
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
@@ -304,19 +301,7 @@ export abstract class Node<
   declare readonly parent: Node | undefined;
   declare sourceParent: Node | undefined;
 
-  /** Returns cached parent if no render key specified */
-  getParent(renderKey?: RenderKey) {
-    if (renderKey === undefined) {
-      return this.parent;
-    }
-    const forked = this._parentForks?.get(renderKey);
-    if (forked !== undefined) {
-      return forked;
-    }
-    // No fork entry for this renderKey — fall back to the canonical parent.
-    // Canonical nodes walked under a fresh renderKey (e.g. during a mixin
-    // call, where bodies are deep-cloned so children carry `.parent` only)
-    // still need to resolve scope walks via their canonical parent chain.
+  getParent() {
     return this.parent;
   }
 
@@ -444,22 +429,8 @@ export abstract class Node<
   }
 
   adopt(node: Node) {
-    let thisRenderKey = this._renderKey;
-    let childRenderKey = node._renderKey;
-
     /** The only place we should do this */
     if (!node.frozen) {
-      if (thisRenderKey !== childRenderKey) {
-        const forks: Map<RenderKey, NodeValue> = node._parentForks ??= new Map();
-        let currentParent = node.parent;
-        if (!forks.has(CANONICAL) && currentParent) {
-          /** Store the canonical parent */
-          forks.set(CANONICAL, currentParent);
-        }
-        if (thisRenderKey !== undefined && thisRenderKey !== CANONICAL) {
-          forks.set(thisRenderKey, this);
-        }
-      }
       (node as any).parent = this;
     }
     if (node.hasFlag(F_NON_STATIC)) {
@@ -626,8 +597,8 @@ export abstract class Node<
   //   }
   // }
 
+  declare _renderKey?: RenderKey;
   declare _childForks?: Map<RenderKey, NodeValue>;
-  declare _parentForks?: Map<RenderKey, NodeValue>;
 
   /**
    * Static factory method to create a generated node.

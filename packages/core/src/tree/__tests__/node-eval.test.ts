@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rules, ruleset, sel, el, decl, spaced, paren, any, EVAL, CANONICAL } from '../index.js';
+import { paren, any, EVAL, CANONICAL } from '../index.js';
 
 describe('Node Eval', () => {
   it('should fork a node correctly', () => {
@@ -37,11 +37,9 @@ describe('Node Eval', () => {
     const child = any('10px');
     const node = paren(child);
     expect(child.getParent()).toBe(node);
-    expect(child.getParent(EVAL)).toBe(node);
-    expect(child.getParent(CANONICAL)).toBe(node);
   });
 
-  it('should get the parent node dynamically', () => {
+  it('should update parent node dynamically', () => {
     const child = any('10px');
     const parent1 = paren(child);
     /** I guess we can't just pass it in the constructor */
@@ -49,18 +47,6 @@ describe('Node Eval', () => {
     parent2.set(null, child, 1);
 
     expect(child.getParent()).toBe(parent2);
-    expect(child.getParent(CANONICAL)).toBe(parent1);
-    expect(child.getParent(1)).toBe(parent2);
-  });
-
-  it('should preserve parent forks for renderKey 0', () => {
-    const child = any('10px');
-    const parent1 = paren(child);
-    const parent2 = paren();
-    parent2.set(null, child, 0);
-
-    expect(child.getParent()).toBe(parent2);
-    expect(child.getParent(CANONICAL)).toBe(parent1);
-    expect(child.getParent(0)).toBe(parent2);
+    expect(parent1.value).toBe(child);
   });
 });
