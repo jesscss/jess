@@ -314,10 +314,11 @@ export class Context {
   popRenderKey(): void {
     const stack = this._renderKeyStack;
     if (stack && stack.length > 0) {
-      stack.pop();
-      if (stack.length === 0) {
+      if (stack.length === 1) {
         this._renderKeyStack = undefined;
+        return;
       }
+      stack.pop();
     }
   }
 
