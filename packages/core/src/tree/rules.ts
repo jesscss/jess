@@ -1377,12 +1377,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       markEmitted(n);
     };
+    const renderContext = options.context;
+    const activeRenderKey = renderContext?.renderKey;
     const saved = savePrintState(options, ['referenceMode']);
-    const pushedRenderKey = options.context
+    const pushedRenderKey = renderContext
       && this._renderKey !== undefined
-      && this._renderKey !== options.context.renderKey;
+      && this._renderKey !== activeRenderKey;
     if (pushedRenderKey) {
-      options.context.pushRenderKey(this._renderKey!);
+      renderContext.pushRenderKey(this._renderKey!);
     }
     if (
       (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
@@ -1481,7 +1483,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       frameHeaders.pop();
     }
     if (pushedRenderKey) {
-      options.context!.popRenderKey();
+      renderContext!.popRenderKey();
     }
     restorePrintState(options, saved);
   }
