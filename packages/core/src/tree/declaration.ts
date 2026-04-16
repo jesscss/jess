@@ -1,6 +1,5 @@
 import {
   Node,
-  CANONICAL,
   F_STATIC,
   defineType,
   type LocationInfo
@@ -190,8 +189,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    Node.reconcileRenderKeyState(this, context, this.preEvaluated);
-
     /** We need a derived declaration, because pre-eval normalization mutates name/value/options. */
     let node = this.clone(false) as this;
     node.preEvaluated = true;
@@ -308,7 +305,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
 
     if (name instanceof Interpolated) {
-      Node.reconcileRenderKeyState(name, context, false);
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {

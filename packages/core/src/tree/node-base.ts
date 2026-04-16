@@ -1106,7 +1106,7 @@ export abstract class Node<
      * Also re-evaluate when the context renderKey differs from the node's —
      * the node was evaluated in a different fork.
      */
-    const needsReeval = Node.reconcileRenderKeyState(node, context, node.evaluated);
+    const needsReeval = false;
 
     if (!node.hasFlag(F_MAY_ASYNC)) {
       return Node._evalStaticSync(node, context, needsReeval);
@@ -1166,10 +1166,6 @@ export abstract class Node<
       evald.inherit(preEvaluatedNode);
     }
     return evald;
-  }
-
-  static reconcileRenderKeyState(_node: Node, _context: Context, _shouldGateReeval: boolean): boolean {
-    return false;
   }
 
   /**
