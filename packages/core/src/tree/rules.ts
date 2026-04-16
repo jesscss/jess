@@ -3067,6 +3067,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
     };
     const cloneBoundValue = (value: Node): Node => {
+      if (!isNode(value, N.List | N.Sequence)) {
+        value.frozen = true;
+        return value;
+      }
       const boundValue = value.copy(true, freezeChildren);
       boundValue.frozen = true;
       normalizeBoundLeadingItemWhitespace(boundValue);
