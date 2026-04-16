@@ -502,22 +502,8 @@ export abstract class Node<
     this._options = options;
   }
 
-  getValue(renderKey?: RenderKey) {
-    if (renderKey === undefined) {
-      return this.value;
-    }
-    const thisKey = this._renderKey;
-    const forks = this._childForks;
-    if (
-      thisKey === undefined
-      || thisKey === renderKey
-      || !forks
-      || !forks.has(renderKey)
-    ) {
-      return this.value;
-    }
-    this._renderKey = renderKey;
-    return ((this as Mutable<Node>).value = forks.get(renderKey)! as Data);
+  getValue() {
+    return this.value;
   }
 
   set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>, renderKey?: RenderKey): void;
