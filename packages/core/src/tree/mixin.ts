@@ -134,9 +134,6 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     node.sourceNode ??= this;
 
     let { name, rules } = node.value;
-    const localRules = rules.clone(false);
-    node.set('rules', localRules);
-    rules = localRules;
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope
