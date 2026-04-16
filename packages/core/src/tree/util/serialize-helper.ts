@@ -387,7 +387,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const pushedRenderKey = options.context && effectiveRenderKey !== undefined;
+          const pushedRenderKey = options.context
+            && effectiveRenderKey !== undefined
+            && effectiveRenderKey !== options.context.renderKey;
           if (pushedRenderKey) {
             options.context.pushRenderKey(effectiveRenderKey);
           }
@@ -424,7 +426,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.depth = options.depth + 1;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const pushedRenderKey = options.context && leafRenderKey !== undefined;
+          const pushedRenderKey = options.context
+            && leafRenderKey !== undefined
+            && leafRenderKey !== options.context.renderKey;
           if (pushedRenderKey) {
             options.context.pushRenderKey(leafRenderKey);
           }
@@ -526,7 +530,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.depth = leafDepth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const pushedRenderKey = options.context && leafRenderKey !== undefined;
+        const pushedRenderKey = options.context
+          && leafRenderKey !== undefined
+          && leafRenderKey !== options.context.renderKey;
         if (pushedRenderKey) {
           options.context.pushRenderKey(leafRenderKey);
         }
