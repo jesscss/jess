@@ -3026,9 +3026,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               const restValue = evald.value;
               if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
                 for (const restArg of restValue.value) {
-                  const frozenRestArg = restArg.copy(true, freezeChildren);
-                  frozenRestArg.frozen = true;
-                  nodeArgs.push(frozenRestArg);
+                  nodeArgs.push(cloneBoundValue(restArg));
                 }
                 continue;
               }
@@ -3051,7 +3049,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    const normalizeBoundLeadingItemWhitespace = (node: Node): void => {
+    function normalizeBoundLeadingItemWhitespace(node: Node): void {
       if (!isNode(node, N.List | N.Sequence)) {
         return;
       }
@@ -3065,8 +3063,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
           normalizeBoundLeadingItemWhitespace(item as Node);
         }
       }
-    };
-    const cloneBoundValue = (value: Node): Node => {
+    }
+    function cloneBoundValue(value: Node): Node {
       if (!isNode(value, N.List | N.Sequence)) {
         value.frozen = true;
         return value;
@@ -3075,7 +3073,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       boundValue.frozen = true;
       normalizeBoundLeadingItemWhitespace(boundValue);
       return boundValue;
-    };
+    }
     const resolvedParamBindings = new WeakMap<Mixin, {
       bindings: RuntimeVarBindingRecord[];
       signature: List<Node> | undefined;
