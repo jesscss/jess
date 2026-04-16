@@ -507,8 +507,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             // [new injected variables (not found in imported), ...all nodes from modified imported rules (with replacements)]
             // Injected variables that aren't found should be at the TOP so they're found first
             // for linear lookup ($^var)
-            // We flatten the structure so all variables are in the same Rules scope
-            const finalRules = Rules.create([]);
+            // Keep the configured import on a shallow-cloned Rules container so
+            // the replacement surface is still a real imported Rules scope
+            // instead of a fully synthetic top-level wrapper.
+            const finalRules = rules.clone(false) as Rules;
+            finalRules.value = [];
             // First, add new injected variables that weren't found in imported rules (at the top)
             for (const newNode of newVariables) {
               finalRules.adopt(newNode);
