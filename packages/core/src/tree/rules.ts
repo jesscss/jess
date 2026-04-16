@@ -1754,24 +1754,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override preEval(context: Context) {
     if (!this.preEvaluated) {
       context.depth++;
-      let rules = this.maybeClone(context);
-      // When this is the nestable at-rule wrapper (one child Ruleset(&)), do not clone so
-      // inner rulesets register to the same object we push and register as extend root.
+      const rules = this;
       const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
       const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
       const isNestableAtRuleBody =
         parentAtRule
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         && nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
-      const first = rules.value?.[0];
-      const isWrapper =
-        isNestableAtRuleBody
-        && rules.value?.length === 1
-        && isNode(first, N.Ruleset)
-        && isNode((first as Ruleset).value?.selector, N.Ampersand);
-      if (isWrapper) {
-        rules = this;
-      }
       rules.preEvaluated = true;
       // Save current context and set up new context for variable lookups during preEval
       const saved = this._snapshotContext(context);
@@ -1790,18 +1779,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         let n = rules.value[i]!;
         n.index = i;
       }
-      // Preserve parent when cloning - if this Rules is inside a ruleset, maintain the parent relationship
-      if (this.parent && !rules.parent) {
-        this.parent.adopt(rules);
-      }
-
       // Set context.root if not already set (needed for preEval visitors)
       if (!context.root) {
-        context.root = rules;
-      }
-      // When getTree() set context.root to the original Rules but we're processing a clone,
-      // use the clone as context.root so registerRoot/pushExtendRoot run and rulesets register to the clone (extend fix).
-      if (context.root === this && this !== rules) {
         context.root = rules;
       }
 
