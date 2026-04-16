@@ -682,10 +682,11 @@ export abstract class Node<
    */
   private forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, context: Context) {
     const renderKey = context.renderKey;
+    const writeToActiveForkDirectly = renderKey !== undefined && this._renderKey === renderKey;
     if (!this.hasFlag(F_MAY_ASYNC)) {
       this._visitEntries((node, key, coll, idx) => {
         const result = func(node, idx) as Node;
-        if (result !== node && renderKey !== undefined) {
+        if (result !== node && renderKey !== undefined && !writeToActiveForkDirectly) {
           (this as Node).set(key as any, result, renderKey);
         } else {
           coll[key] = result;
@@ -701,7 +702,7 @@ export abstract class Node<
       const out = func(value, idx);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          if (result !== value && renderKey !== undefined) {
+          if (result !== value && renderKey !== undefined && !writeToActiveForkDirectly) {
             (this as Node).set(key as any, result, renderKey);
           } else {
             collection[key] = result;
@@ -709,7 +710,7 @@ export abstract class Node<
         });
       }
       const result = out as Node;
-      if (result !== value && renderKey !== undefined) {
+      if (result !== value && renderKey !== undefined && !writeToActiveForkDirectly) {
         (this as Node).set(key as any, result, renderKey);
       } else {
         collection[key] = result;
