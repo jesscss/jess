@@ -15,7 +15,7 @@ import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions, savePrintState, applyPrintState, restorePrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export const enum AssignmentType {
@@ -153,7 +153,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
-      applyPrintState(options, { inCustom: true });
+      options.inCustom = true;
       // Preserve custom value text, but normalize boundary artifacts:
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.

@@ -21,7 +21,6 @@ import {
   type PrintOptions,
   getPrintOptions,
   savePrintState,
-  applyPrintState,
   restorePrintState,
   pushActiveRenderKey,
   popActiveRenderKey
@@ -1284,7 +1283,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     w.add('{');
     w.add('\n');
     const saved = savePrintState(opts, ['depth']);
-    applyPrintState(opts, { depth: depth + 1 });
+    opts.depth = depth + 1;
     this._emitRulesBody(opts);
     restorePrintState(opts, saved);
     // ensure closing brace is on its own properly indented line
@@ -1415,11 +1414,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
         const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-        applyPrintState(options, {
-          depth,
-          referenceMode: childReferenceMode,
-          referenceRenderEnabled: childReferenceRenderEnabled
-        });
+        options.depth = depth;
+        options.referenceMode = childReferenceMode;
+        options.referenceRenderEnabled = childReferenceRenderEnabled;
         const previewOut = w.capture(() => n.toTrimmedString(options));
         let childRule: string | undefined;
         if (previewOut) {
@@ -1441,11 +1438,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         emitBoundaryIfNeeded(n);
         const mark = w.mark();
         const containerSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-        applyPrintState(options, {
-          depth,
-          referenceMode,
-          referenceRenderEnabled
-        });
+        options.depth = depth;
+        options.referenceMode = referenceMode;
+        options.referenceRenderEnabled = referenceRenderEnabled;
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(options));
         const emitted = w.getSince(mark);
@@ -1462,11 +1457,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       closeRenderedFramesToBaseline();
       const leafSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-      applyPrintState(options, {
-        depth,
-        referenceMode,
-        referenceRenderEnabled
-      });
+      options.depth = depth;
+      options.referenceMode = referenceMode;
+      options.referenceRenderEnabled = referenceRenderEnabled;
       const capturedRule = w.capture(() => n.toTrimmedString(options));
       const rule = capturedRule || undefined;
       restorePrintState(options, leafSaved);

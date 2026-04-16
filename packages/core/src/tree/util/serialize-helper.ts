@@ -5,7 +5,6 @@ import {
   type FinalPrintOptions,
   OutputWriter,
   savePrintState,
-  applyPrintState,
   restorePrintState,
   saveArrayState,
   restoreArrayState,
@@ -281,10 +280,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       const declWriter = new OutputWriter();
       const declSaved = savePrintState(options, ['writer', 'depth']);
-      applyPrintState(options, {
-        writer: declWriter,
-        depth: options.depth + 1
-      });
+      options.writer = declWriter;
+      options.depth = options.depth + 1;
       const declOut = node.toTrimmedString(options);
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
@@ -380,11 +377,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             'referenceMode',
             'referenceRenderEnabled'
           ]);
-          applyPrintState(options, {
-            depth: options.depth + 1,
-            referenceMode: childReferenceMode,
-            referenceRenderEnabled: childReferenceRenderEnabled
-          });
+          options.depth = options.depth + 1;
+          options.referenceMode = childReferenceMode;
+          options.referenceRenderEnabled = childReferenceRenderEnabled;
           const previousRenderKey = pushActiveRenderKey(options, leafRenderKey);
           const previewOut = w.capture(() => nn.toTrimmedString(options));
           popActiveRenderKey(options, previousRenderKey);
@@ -474,17 +469,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
                 : true
             )
           : renderEnabled;
-        const leafRenderState = {
-          depth: leafDepth,
-          referenceMode: childReferenceMode,
-          referenceRenderEnabled: childReferenceRenderEnabled
-        };
         const leafSaved = savePrintState(options, [
           'depth',
           'referenceMode',
           'referenceRenderEnabled'
         ]);
-        applyPrintState(options, leafRenderState);
+        options.depth = leafDepth;
+        options.referenceMode = childReferenceMode;
+        options.referenceRenderEnabled = childReferenceRenderEnabled;
         const previousRenderKey = pushActiveRenderKey(options, leafRenderKey);
         const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
         const out = isNode(nn, N.Declaration)
