@@ -1,4 +1,4 @@
-import { CANONICAL, Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -686,12 +686,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const renderKey = options.context?.renderKey;
-    const { selector } = (
-      renderKey === undefined || this._renderKey === undefined || this._renderKey === CANONICAL
-        ? this.value
-        : this.getValue(renderKey)
-    ) as RulesetValue;
+    const { selector } = this.value as RulesetValue;
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
@@ -728,8 +723,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const composeParent = parentComposed ?? (
         structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
       );
-      const rk = options.context?.renderKey;
-      let cached = getCachedComposedSelector(options, this, rk);
+      let cached = getCachedComposedSelector(options, this, undefined);
       if (!cached) {
         const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
         const hasExtendedComposeContext = Boolean(
@@ -754,7 +748,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             )
           : composeInput;
         if (composeParent) {
-          setCachedComposedSelector(options, this, rk, cached as Selector);
+          setCachedComposedSelector(options, this, undefined, cached as Selector);
         }
       }
       renderSelector = cached as typeof selector;

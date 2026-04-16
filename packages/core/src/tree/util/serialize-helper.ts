@@ -1,7 +1,7 @@
 import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
-import { CANONICAL, F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
+import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
@@ -129,16 +129,11 @@ function getHoistedRulesetCarrier(
   if (rulesetFrames.length === 0) {
     return undefined;
   }
-  const renderKey = options.context?.renderKey;
   const frame = rulesetFrames[rulesetFrames.length - 1]!;
   let carriedSelector: Selector | undefined;
   for (let i = 0; i < rulesetFrames.length; i++) {
     const currentFrame = rulesetFrames[i]!;
-    const currentSelector = (
-      renderKey === undefined || currentFrame._renderKey === undefined || currentFrame._renderKey === CANONICAL
-        ? currentFrame.value
-        : currentFrame.getValue(renderKey)
-    ).selector;
+    const currentSelector = currentFrame.value.selector;
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
     }
