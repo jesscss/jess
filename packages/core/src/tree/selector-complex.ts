@@ -217,7 +217,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     );
   }
   // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
-  //   let selector: ComplexSelector = this.maybeClone(context)
   //   let elements = [...selector.value] as ComplexSelectorValue
   //   selector.value = elements
 

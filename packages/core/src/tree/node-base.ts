@@ -789,33 +789,6 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  /**
-   * @todo
-   * Write tests that make sure that a maybe clone without preserveOriginalNodes
-   * does not clone the nodes, but a maybeClone with preserveOriginalNodes
-   * does clone the nodes all through the tree.
-   */
-  maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.preserveOriginalNodes) {
-      return this.clone(deep, cloneFn);
-    }
-    return this;
-  }
-
-  clonedEval(context: Context): MaybePromise<Node> {
-    let preserveNodes = context.preserveOriginalNodes;
-    context.preserveOriginalNodes = true;
-    let out = this.eval(context);
-    if (isThenable(out)) {
-      return (out as Promise<Node>).then((result) => {
-        context.preserveOriginalNodes = preserveNodes;
-        return result;
-      });
-    }
-    context.preserveOriginalNodes = preserveNodes;
-    return out;
-  }
-
   cloneValue<V extends NodeValue | Data>(value: V): V {
     if (isArray(value)) {
       return [...value] as V;

@@ -99,9 +99,10 @@ Practical rule for the next agent:
   stay on the canonical node.
   Additional narrowing: the base `Node.preEval()` fallback no longer routes
   through `maybeClone(...)`; `AtRule.preEval()`, `Ruleset.preEval()`, and
-  `Rules.preEval()` now stay on canonical nodes instead of routing through the
-  legacy session-gated clone switch; the remaining clone-before-mutate seam is
-  the `clonedEval(...)`-driven argument path.
+  `Rules.preEval()` now stay on canonical nodes, mixin arguments now evaluate
+  through ordinary eval/binding flow instead of `clonedEval(...)`, and the
+  legacy `maybeClone(...)` / `clonedEval(...)` / `preserveOriginalNodes`
+  helpers are deleted from the runtime.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Current status: `findVarDeclarationFast` now reads per-scope `ScopeFrame.declarationBucketsByName` instead of `Rules.varsByName`, while still walking outward via the `Rules` parent/sourceParent chain (not `frame.parent`, which is reserved for live slots). `getScopeFrame()` now auto-indexes previously untouched scopes, `registerNode()` keeps existing frame buckets in sync for runtime-added static `VarDeclaration`s, and the fast path now recurses through static parent-visible child `Rules` surfaces instead of punting all such lookups to `DeclarationRegistry`. Core proofs now cover import/compose child-scope hits without `DeclarationRegistry.find`.
   Current parser reality: both the current Jess parser and the Less parser still emit static `VarDeclaration` names for normal syntax; dynamic-name `VarDeclaration`s appear to be hand-built/API-only right now rather than a common frontend path. `findVarDeclarationFast` only promotes `pendingDynamicDecls` entries into the static buckets when their names have already become static on the node. If a dynamic declaration name is still dynamic at reference time, lookup does not try to resolve it; the reference stays synchronous, misses normally, and retry ownership remains with the surrounding `Rules` eval queue. The remaining direct `Rules.find('declaration', ..., 'VarDeclaration')` uses are outside the `Reference(type='variable')` hot path.

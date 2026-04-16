@@ -441,9 +441,6 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  /** A flag to clone nodes before mutating */
-  preserveOriginalNodes: boolean | undefined;
-
   _leakyRules: boolean | undefined;
   get leakyRules() {
     return this._leakyRules ?? this.treeContext?.leakyRules ?? false;

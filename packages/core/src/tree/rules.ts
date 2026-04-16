@@ -216,10 +216,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Rules are often cloned during `preEval()` when `context.preserveOriginalNodes`
-   * is enabled. If callers register functions/mixins/declarations on the parsed tree
-   * before evaluation (e.g. via visitors), those registries must survive cloning so
-   * lookups during evaluation work as expected.
+   * Rules clones still need to preserve function registry state so visitor/plugin
+   * registrations survive the explicit clone sites that remain outside the hot path.
    */
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newRules = super.clone(deep, cloneFn);
@@ -3023,7 +3021,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             continue;
           }
           try {
-            const evald = await arg.clonedEval(thisContext);
+            const evald = await arg.eval(thisContext);
             if (evald.type === 'Rest') {
               const restValue = evald.value;
               if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
