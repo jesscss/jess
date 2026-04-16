@@ -98,9 +98,9 @@ Practical rule for the next agent:
   route through `maybeClone(...)` just to mark `preEvaluated`; those paths now
   stay on the canonical node.
   Additional narrowing: the base `Node.preEval()` fallback no longer routes
-  through `maybeClone(...)`; `AtRule.preEval()` now stays on the canonical node
-  instead of routing through the legacy session-gated clone switch; only the
-  remaining context-sensitive overrides (`Rules`, `Ruleset`, and
+  through `maybeClone(...)`; `AtRule.preEval()` and `Ruleset.preEval()` now
+  stay on canonical nodes instead of routing through the legacy session-gated
+  clone switch; only the remaining context-sensitive overrides (`Rules` and
   `clonedEval(...)`-driven paths) still sit behind the old clone-before-mutate
   model.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`

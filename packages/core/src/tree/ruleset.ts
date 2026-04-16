@@ -791,10 +791,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
-      const node = this.maybeClone(context);
+      const node = this;
       node.preEvaluated = true;
-      // Index should already be assigned by parent Rules
-      node.sourceNode ??= this;
       let { selector, rules, guard } = node.value;
       const { selectorBits } = context;
       // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
