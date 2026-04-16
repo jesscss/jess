@@ -19,6 +19,17 @@ describe('AtRule', () => {
     context = new Context();
   });
 
+  it('keeps static leaf at-rules canonical in preEval', async () => {
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: seq([any('svg')])
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald).toBe(node);
+  });
+
   describe('nested @media rules', () => {
     it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }

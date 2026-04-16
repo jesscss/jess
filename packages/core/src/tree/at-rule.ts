@@ -104,6 +104,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
+      if (!(this.value.name instanceof Interpolated) && !this.value.rules) {
+        this.preEvaluated = true;
+        return this._preEvalPrelude(this, context);
+      }
       const node = this.clone(false) as AtRule;
       node.preEvaluated = true;
       node.sourceNode ??= this;
@@ -224,12 +228,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           const frame = context.frames[i]!;
           const frameContainsNode = Boolean(
             isNode(frame, N.AtRule)
-            && frame.value.rules?.value?.some((child) => (
+            && frame.value.rules?.value?.some(child =>
               child === node
               || child === node.sourceNode
               || child.sourceNode === node
               || child.sourceNode === node.sourceNode
-            ))
+            )
           );
           if (isNode(frame, N.AtRule) && frame.value.name?.toTrimmedString?.() === '@layer' && frameContainsNode) {
             parentLayerName = context.extendRoots.getLayerName(frame);
