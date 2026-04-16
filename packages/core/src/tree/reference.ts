@@ -578,7 +578,6 @@ function buildReferenceLookupOptions(args: {
     filter,
     context,
     hasTarget,
-    renderKey: context.renderKey,
     ...(shouldUseLocalReferenceLookup({ target, targetRules }) ? { local: true } : {}),
     ...getContextualReferenceLookupStart({
       referenceNode,

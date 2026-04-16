@@ -116,6 +116,10 @@ export type FindOptions = DeclarationFindOptions & {
   renderKey?: RenderKey;
 };
 
+function getLookupRenderKey(options?: FindOptions): RenderKey | undefined {
+  return options?.context?.renderKey ?? options?.renderKey;
+}
+
 export abstract class Registry<
   Type extends Node,
   IndexType extends Type | Set<Type> | Array<{
@@ -1021,7 +1025,7 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       do {
-        const rk = options?.renderKey;
+        const rk = getLookupRenderKey(options);
         rules = (rk ? rules?.getParent(rk) : rules?.parent) as Rules;
         const rulesParent = rk ? rules?.getParent(rk) : rules?.parent;
         if (findRoot && rules.type === 'Rules' && rulesParent === undefined) {
