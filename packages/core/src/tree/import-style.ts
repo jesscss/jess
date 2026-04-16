@@ -260,23 +260,28 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       (type === 'import' && (importOptions?._dedupe === true || reference))
       || (type === 'compose' && reference)
     );
+    // Import type: variables are visible and re-exported (not local)
+    // Compose type: variables are visible to parent but not transitive by default (`local: true`)
+    // Forward: not visible locally but *is* transitive (`local: false`)
+    const isLocal = type === 'compose' && !isForward;
+    const readonly = importOptions!.readonly ?? (type === 'compose' ? true : false);
+    const canReuseEvaluatedRules = !isProtected && !isReferenceMode && !isLocal && !isForward && !readonly;
+    if (canReuseEvaluatedRules) {
+      this.adopt(evaluatedRules);
+      return evaluatedRules;
+    }
     // Shallow clone the Rules wrapper. The children are shared with the
     // canonical evaluated tree — per-render options (visibility, reference
     // mode) are set on the wrapper below; downstream serialization propagates
     // `referenceMode` via PrintOptions, so we don't need to mutate every
     // child's `options.referenceMode`.
     let out = evaluatedRules.clone() as Rules;
-    // Import type: variables are visible and re-exported (not local)
-    // Compose type: variables are visible to parent but not transitive by default (`local: true`)
-    // Forward: not visible locally but *is* transitive (`local: false`)
-    const isLocal = type === 'compose' && !isForward;
-
     out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
       forward: isForward,
       referenceMode: isReferenceMode,
-      readonly: importOptions!.readonly ?? (type === 'compose' ? true : false)
+      readonly
     };
     out._hasReferenceImports = isReferenceMode || evaluatedRules._hasReferenceImports;
     // Forwarded modules should never render output at this scope.
