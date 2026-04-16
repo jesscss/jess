@@ -129,11 +129,15 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,
     // but do NOT call super.preEval() which would pre-evaluate children.
-    let node = this.clone(false) as this;
-    node.preEvaluated = true;
-    node.sourceNode ??= this;
-
+    let node = this;
     let { name, rules } = node.value;
+    if (name && name instanceof Interpolated) {
+      node = this.clone(false) as this;
+      node.sourceNode ??= this;
+      name = node.value.name;
+      rules = node.value.rules;
+    }
+    node.preEvaluated = true;
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope
