@@ -681,16 +681,10 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   private forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, context: Context) {
-    const renderKey = context.renderKey;
-    const writeToActiveForkDirectly = renderKey !== undefined && this._renderKey === renderKey;
     if (!this.hasFlag(F_MAY_ASYNC)) {
       this._visitEntries((node, key, coll, idx) => {
         const result = func(node, idx) as Node;
-        if (result !== node && renderKey !== undefined && !writeToActiveForkDirectly) {
-          (this as Node).set(key as any, result, renderKey);
-        } else {
-          coll[key] = result;
-        }
+        coll[key] = result;
       });
       return;
     }
@@ -702,19 +696,11 @@ export abstract class Node<
       const out = func(value, idx);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          if (result !== value && renderKey !== undefined && !writeToActiveForkDirectly) {
-            (this as Node).set(key as any, result, renderKey);
-          } else {
-            collection[key] = result;
-          }
+          collection[key] = result;
         });
       }
       const result = out as Node;
-      if (result !== value && renderKey !== undefined && !writeToActiveForkDirectly) {
-        (this as Node).set(key as any, result, renderKey);
-      } else {
-        collection[key] = result;
-      }
+      collection[key] = result;
     });
   }
 
@@ -1091,10 +1077,8 @@ export abstract class Node<
    * Mostly this is overridden to resolve names before registering.
    *
    * @todo - Update preEval / eval to use static evaluation based on flags.
-   */
+  */
   preEval(context: Context): MaybePromise<Node> {
-    const needsReeval = Node.reconcileRenderKeyState(this, context, this.preEvaluated);
-
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
       node.preEvaluated = true;
@@ -1213,29 +1197,8 @@ export abstract class Node<
     return evald;
   }
 
-  static reconcileRenderKeyState(node: Node, context: Context, shouldGateReeval: boolean): boolean {
-    const renderKey = context.renderKey;
-    if (renderKey === undefined) {
-      return false;
-    }
-
-    const nodeRenderKey = node._renderKey;
-    const needsReeval = shouldGateReeval
-      && (
-        nodeRenderKey === undefined
-        || nodeRenderKey !== renderKey
-      );
-
-    if (nodeRenderKey !== undefined && nodeRenderKey !== CANONICAL && nodeRenderKey !== renderKey) {
-      node.getValue(CANONICAL);
-    }
-
-    if (needsReeval) {
-      node.preEvaluated = false;
-      node.evaluated = false;
-    }
-
-    return needsReeval;
+  static reconcileRenderKeyState(_node: Node, _context: Context, _shouldGateReeval: boolean): boolean {
+    return false;
   }
 
   /**
