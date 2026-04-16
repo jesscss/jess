@@ -391,10 +391,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             throw error;
           }
         }
-        // Set sourceNode immediately after getting the Rules, before any evaluation
-        // This ensures that when preEval clones the Rules, the cloned Rules will have sourceNode set
-        // and registerNode can detect this is an imported Rules
-        rules.sourceNode = node;
+        // Bind imported-rule provenance once before evaluation so wrapper/local
+        // descendants can still see the import boundary without rewriting the
+        // canonical source tree on every import site.
+        rules.sourceNode ??= node;
         let evaldRules = context.evaldTrees.get(resolvedPath);
 
         // Compose caching semantics:
@@ -564,7 +564,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // surface, which still preserves referenced-selector identity.
           if (needsImportLocalClone) {
             rules = rules.clone(true) as Rules;
-            rules.sourceNode = node;
+            rules.sourceNode ??= node;
           }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
