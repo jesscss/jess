@@ -3662,18 +3662,23 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = candidate.value.guard
-        ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
-        : undefined;
+      let guard: Condition | Bool | undefined = hasDefault
+        ? candidate.value.guard
+        : candidate.value.guard
+          ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
+          : undefined;
       let passes = true;
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
       thisContext.rulesContext = outerRules ?? rules;
       try {
         if (guard) {
-          outerRules ??= Rules.create([]);
-          outerRules.adopt(guard);
-          candidate.parent!.adopt(outerRules);
+          const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
+          if (guardNeedsOuterRules) {
+            outerRules ??= Rules.create([]);
+            outerRules.adopt(guard);
+            candidate.parent!.adopt(outerRules);
+          }
           /** Allow lookup on the inherited rules */
           passes = false;
           let guardPasses = false;
@@ -3687,7 +3692,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
               if (!probeGuard) {
                 return false;
               }
-              outerRules!.adopt(probeGuard);
+              if (!probeGuard.hasFlag(F_STATIC)) {
+                outerRules ??= Rules.create([]);
+                outerRules.adopt(probeGuard);
+                candidate.parent!.adopt(outerRules);
+              }
               thisContext.isDefault = isDefaultValue;
               const probeResult = await probeGuard.eval(thisContext);
               return probeResult instanceof Bool && probeResult.value === true;
