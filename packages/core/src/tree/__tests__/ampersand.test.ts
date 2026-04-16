@@ -5,6 +5,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_VISIBLE } from '../node.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -69,6 +70,22 @@ describe('Ampersand', () => {
         }
       }`
     );
+  });
+
+  it('keeps composed selector stack render-local when serializing bare ampersands', () => {
+    const parentSelector = sel([el('.foo')]);
+    const composedSelectorStack = [parentSelector];
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true,
+      composedSelectorStack
+    });
+
+    const out = amp().toTrimmedString(options);
+
+    expect(out).toBe('.foo');
+    expect(options.composedSelectorStack).toBe(composedSelectorStack);
+    expect(options.composedSelectorStack).toEqual([parentSelector]);
   });
 
   it('should collapse selectors when in collapsing mode #1', async () => {

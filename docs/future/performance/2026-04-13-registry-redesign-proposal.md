@@ -108,6 +108,25 @@ Where `ctx` carries:
 - the current **selector context** (what selector prefix this output belongs to)
 - the **output buffer** (where CSS output goes)
 
+`PrintOptions` is therefore not target architecture. It is a transitional
+serializer-era bag of flags that currently carries pieces of live render state
+such as `referenceMode`, `depth`, `inFrames`, composed-selector state, and
+temporary header/visibility toggles. As eval and serialization merge, that
+live render state should migrate onto the single active session context and be
+managed there with explicit save/restore discipline.
+
+The long-term model is:
+
+- one singleton eval/render session context
+- no cloned `Context`
+- no cloned `PrintOptions`
+- temporary render state managed by push/pop or save/restore on the live
+  session surfaces
+
+Local child-specific values can still exist, but they should become explicit
+render-frame/session state rather than ad hoc copied options objects threaded
+through serializer calls.
+
 ### Selector Bitset Guardrail
 
 `attachSelectorBitLibrary(...)` is a transitional helper, not target
@@ -310,6 +329,14 @@ type EvalContext = {
   leaky: boolean;               // whether this invocation exports bindings to caller
 };
 ```
+
+As Track 5 advances, this session context should absorb the remaining live
+render state that is still leaking through `PrintOptions`. If a serializer or
+evaluator needs a mutable options flag, stack, or temporary mode bit, that is
+usually evidence that the state belongs on the session context instead. The
+constraint is the same as for scope: one active session object, explicit
+save/restore, no cloned context objects, and eventually no separate cloned
+options layer either.
 
 ### ScopeFrame
 

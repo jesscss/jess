@@ -6,7 +6,7 @@ import { Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, withSavedPrintState } from './util/print.js';
 
 /**
  * @example
@@ -80,11 +80,13 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     // Set ampersandFirst for each component so Ampersand knows its position
     const w = options.writer!;
     const mark = w.mark();
-    for (let i = 0; i < value.length; i++) {
-      options.ampersandFirst = (i === 0);
-      const out = w.capture(() => value[i]!.toString(options));
-      w.add(out.trim(), value[i]!);
-    }
+    withSavedPrintState(options, ['ampersandFirst'], () => {
+      for (let i = 0; i < value.length; i++) {
+        options.ampersandFirst = (i === 0);
+        const out = w.capture(() => value[i]!.toString(options));
+        w.add(out.trim(), value[i]!);
+      }
+    });
     return w.getSince(mark);
   }
 

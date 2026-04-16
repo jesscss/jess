@@ -24,6 +24,7 @@ import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 
 let context: Context;
 
@@ -98,6 +99,28 @@ describe('Rules', () => {
     index = (node.at(2) as Rules).at(1)?.index ?? index;
     expect((node.at(2) as Rules).at(2)?.index).toBeGreaterThan(index);
     expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
+  });
+
+  it('keeps Rules render flags and renderKey render-local', () => {
+    const renderKey = Symbol('outer-render');
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ], {
+      referenceMode: true
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      referenceMode: false,
+      referenceRenderEnabled: true,
+      renderKey
+    });
+
+    const out = node.toTrimmedString(options);
+
+    expect(out).toBe('color: red;');
+    expect(options.referenceMode).toBe(false);
+    expect(options.referenceRenderEnabled).toBe(true);
+    expect(options.renderKey).toBe(renderKey);
   });
 
   describe('Scope / lookups', () => {

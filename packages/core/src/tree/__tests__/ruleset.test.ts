@@ -2,6 +2,7 @@ import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '../index.js
 import { Context } from '../../context.js';
 import { F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import { serializeRulesContainer } from '../util/serialize-helper.js';
 
 let context: Context;
 
@@ -61,6 +62,67 @@ describe('Rule', () => {
 
     expect(header).toContain('.foo');
     expect(selector.hasFlag(F_VISIBLE)).toBe(false);
+  });
+
+  it('serializeRulesContainer keeps reference render flags render-local', () => {
+    const node = ruleset({
+      selector: sellist([sel([el('.foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    }, {
+      referenceMode: true
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      referenceMode: false,
+      referenceRenderEnabled: true
+    });
+
+    const out = serializeRulesContainer(node, options);
+
+    expect(out).toBe('');
+    expect(options.referenceMode).toBe(false);
+    expect(options.referenceRenderEnabled).toBe(true);
+  });
+
+  it('serializeRulesContainer keeps composed selector stack render-local', () => {
+    const parentSelector = sel([el('.parent')]);
+    const composedSelectorStack = [parentSelector];
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true,
+      composedSelectorStack
+    });
+
+    const out = serializeRulesContainer(node, options);
+
+    expect(out).toContain('.parent .child');
+    expect(options.composedSelectorStack).toBe(composedSelectorStack);
+    expect(options.composedSelectorStack).toEqual([parentSelector]);
+  });
+
+  it('getHeaderString does not cache uncomposed selectors onto the ruleset', () => {
+    const node = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true,
+      renderKey: Symbol('test-render')
+    });
+
+    const header = node.getHeaderString(options);
+
+    expect(header).toContain('.foo');
+    expect(node.getComposedSelector(options.renderKey)).toBeUndefined();
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

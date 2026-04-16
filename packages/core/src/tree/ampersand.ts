@@ -9,7 +9,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, withPoppedStackItem } from './util/print.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
   /**
@@ -201,9 +201,8 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       w.add(')');
     } else if (options.collapseNesting && options.composedSelectorStack?.length) {
       // Temporarily pop the top so any nested Ampersand inside the parent
-      // resolves to the grandparent (not self — which would infinite-loop).
-      const parent = options.composedSelectorStack.pop()!;
-      try {
+      // resolves to the grandparent, then restore it after rendering.
+      withPoppedStackItem(options.composedSelectorStack, (parent) => {
         if (options.ampersandFirst !== false) {
           parent.toString(options);
         } else {
@@ -211,9 +210,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           parent.toString(options);
           w.add(')');
         }
-      } finally {
-        options.composedSelectorStack.push(parent);
-      }
+      });
     } else {
       w.add('&', this);
     }

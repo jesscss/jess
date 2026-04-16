@@ -11,7 +11,7 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, withSavedPrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
 
@@ -93,38 +93,40 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let length = value.length;
     const mark = w.mark();
     let isFirstSelector = true;
-    for (let i = 0; i < length; i++) {
-      let component = value[i]!;
-      if (!isNode(component, N.Combinator)) {
-        options.ampersandFirst = isFirstSelector;
-        isFirstSelector = false;
-      }
-      /** Add some combinator spacing */
-      if (isNode(component, N.Combinator)) {
-        /** Skip spacing if the previous node is a Nil */
-        if (isNode(value[i - 1], N.Nil)) {
-          continue;
+    withSavedPrintState(options, ['ampersandFirst'], () => {
+      for (let i = 0; i < length; i++) {
+        let component = value[i]!;
+        if (!isNode(component, N.Combinator)) {
+          options.ampersandFirst = isFirstSelector;
+          isFirstSelector = false;
         }
-        let co = component.value;
-        if (co !== ' ') {
-          // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
-          // pre spacing (default to single space when no explicit pre)
-          let out = w.capture(() => component.toString(options));
-          /** Namespace combinator traditionally written without spacing */
-          if (out !== '|') {
-            w.add(` ${out.trim()} `, component);
+        /** Add some combinator spacing */
+        if (isNode(component, N.Combinator)) {
+          /** Skip spacing if the previous node is a Nil */
+          if (isNode(value[i - 1], N.Nil)) {
+            continue;
+          }
+          let co = component.value;
+          if (co !== ' ') {
+            // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
+            // pre spacing (default to single space when no explicit pre)
+            let out = w.capture(() => component.toString(options));
+            /** Namespace combinator traditionally written without spacing */
+            if (out !== '|') {
+              w.add(` ${out.trim()} `, component);
+            } else {
+              w.add(out.trim(), component);
+            }
           } else {
-            w.add(out.trim(), component);
+            let out = w.capture(() => component.toString(options));
+            w.add(` ${out.trim()}`, component);
           }
         } else {
           let out = w.capture(() => component.toString(options));
-          w.add(` ${out.trim()}`, component);
+          w.add(out.trim(), component);
         }
-      } else {
-        let out = w.capture(() => component.toString(options));
-        w.add(out.trim(), component);
       }
-    }
+    });
     return w.getSince(mark);
   }
 

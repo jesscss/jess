@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions, type RenderKey } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -15,7 +15,7 @@ import { CompoundSelector } from './selector-compound.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
-import { type PrintOptions, type FinalPrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, type FinalPrintOptions, getPrintOptions, withSavedPrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
@@ -778,7 +778,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
                 : Ruleset.composeSelector(composeInput, composeParent as Selector)
             )
           : composeInput;
-        this.setComposedSelector(cached as Selector, rk);
+        if (composeParent) {
+          this.setComposedSelector(cached as Selector, rk);
+        }
       }
       renderSelector = cached as typeof selector;
     }
@@ -796,24 +798,26 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return '';
       }
     }
-    const renderOptions = (
-      options.referenceMode === true
-      && options.referenceRenderEnabled === true
-    )
-      ? { ...options, referenceFilterTargets: true }
-      : options;
-    if (
-      !(renderSelector instanceof Nil)
-      && (
-        renderOptions.referenceFilterTargets
-        || Ruleset.needsVisibleSelectorClone(renderSelector as Selector)
-      )
-    ) {
-      renderSelector = renderSelector.copy(true) as typeof renderSelector;
-    }
-    Ruleset.ensureSelectorVisible(renderSelector);
-    let selOut = w.capture(() => renderSelector.toString(renderOptions));
-    return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
+    return withSavedPrintState(options, ['referenceFilterTargets'], () => {
+      if (
+        options.referenceMode === true
+        && options.referenceRenderEnabled === true
+      ) {
+        options.referenceFilterTargets = true;
+      }
+      if (
+        !(renderSelector instanceof Nil)
+        && (
+          options.referenceFilterTargets
+          || Ruleset.needsVisibleSelectorClone(renderSelector as Selector)
+        )
+      ) {
+        renderSelector = renderSelector.copy(true) as typeof renderSelector;
+      }
+      Ruleset.ensureSelectorVisible(renderSelector);
+      let selOut = w.capture(() => renderSelector.toString(options));
+      return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
+    });
   }
 
   override preEval(context: Context): MaybePromise<this> {

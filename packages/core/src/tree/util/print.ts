@@ -42,6 +42,47 @@ export type FinalPrintOptions = PrintOptions & {
   lastRenderedFrames: (Ruleset | AtRule)[];
 };
 
+type RestorablePrintStateKey =
+  | 'ampersandFirst'
+  | 'collapseNesting'
+  | 'composedSelectorStack'
+  | 'depth'
+  | 'inCustom'
+  | 'inFrames'
+  | 'referenceFilterTargets'
+  | 'referenceMode'
+  | 'referenceRenderEnabled'
+  | 'renderKey'
+  | 'writer';
+
+type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
+
+const RESTORABLE_PRINT_STATE_KEYS: readonly RestorablePrintStateKey[] = [
+  'ampersandFirst',
+  'collapseNesting',
+  'composedSelectorStack',
+  'depth',
+  'inCustom',
+  'inFrames',
+  'referenceFilterTargets',
+  'referenceMode',
+  'referenceRenderEnabled',
+  'renderKey',
+  'writer'
+];
+
+function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
+  options.depth ??= 0;
+  options.writer ??= new OutputWriter();
+  options.inFrames ??= [];
+  options.frameHeaders ??= [];
+  options.treeFrames ??= [];
+  options.lastRenderedFrames ??= [];
+  options.referenceMode ??= false;
+  options.referenceRenderEnabled ??= true;
+  options.referenceFilterTargets ??= false;
+}
+
 export interface OutputWriter {
   add(text: string, origin?: unknown): void;
   addSpacer(text: string): void;
@@ -70,23 +111,92 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
+type SourceMapOrigin = {
+  location?: unknown;
+  treeContext?: {
+    file?: {
+      fullPath?: string;
+      path?: string;
+      name?: string;
+    };
+  };
+};
+
+const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
+  return typeof value === 'object' && value !== null;
+};
+
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
-  options = options ?? {};
-  options.depth ??= 0;
-  options.writer ??= new OutputWriter();
+  const resolved = options ?? {};
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
-  if (options.collapseNesting === undefined && options.context?.opts?.collapseNesting !== undefined) {
-    options.collapseNesting = Boolean(options.context.opts.collapseNesting);
+  if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
+    resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
   }
   // Always ensure frameState exists - nodes should not need to check for it
-  options.inFrames ??= [];
-  options.frameHeaders ??= [];
-  options.treeFrames ??= [];
-  options.lastRenderedFrames ??= [];
-  options.referenceMode ??= false;
-  options.referenceRenderEnabled ??= true;
-  options.referenceFilterTargets ??= false;
-  return options as FinalPrintOptions;
+  ensureFinalPrintOptions(resolved);
+  return resolved;
+}
+
+export function withSavedPrintState<T>(
+  options: FinalPrintOptions,
+  keys: readonly RestorablePrintStateKey[],
+  fn: () => T
+): T {
+  const saved = new Map<RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]>();
+  for (const key of keys) {
+    saved.set(key, options[key]);
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of keys) {
+      options[key] = saved.get(key)!;
+    }
+  }
+}
+
+export function withTemporaryPrintState<T>(
+  options: FinalPrintOptions,
+  overrides: Partial<RestorablePrintState>,
+  fn: () => T
+): T {
+  const keys = RESTORABLE_PRINT_STATE_KEYS.filter(key => Object.hasOwn(overrides, key));
+  return withSavedPrintState(options, keys, () => {
+    for (const key of keys) {
+      options[key] = overrides[key];
+    }
+    return fn();
+  });
+}
+
+export function withArraySnapshot<T, R>(
+  array: T[] | undefined,
+  fn: (array: T[] | undefined) => R
+): R {
+  const snapshot = array?.slice();
+  try {
+    return fn(array);
+  } finally {
+    if (!array) {
+      return;
+    }
+    array.splice(0, array.length, ...(snapshot ?? []));
+  }
+}
+
+export function withPoppedStackItem<T, R>(
+  stack: T[] | undefined,
+  fn: (item: T) => R
+): R | undefined {
+  if (!stack?.length) {
+    return undefined;
+  }
+  const item = stack.pop()!;
+  try {
+    return fn(item);
+  } finally {
+    stack.push(item);
+  }
 }
 
 export class OutputWriter implements OutputWriter {
@@ -141,8 +251,8 @@ export class OutputWriter implements OutputWriter {
     }
 
     // Record a mapping segment if we have origin location info
-    const origin: any = originParam as any;
-    const loc: any = origin && origin.location;
+    const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
+    const loc = origin?.location;
     if (loc && Array.isArray(loc) && loc.length === 6) {
       const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
       const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
