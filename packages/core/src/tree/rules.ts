@@ -1,5 +1,4 @@
 import {
-  CANONICAL,
   Node,
   defineType,
   type NodeOptions,
@@ -1378,16 +1377,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       markEmitted(n);
     };
-    const renderContext = options.context;
-    const activeRenderKey = renderContext?.renderKey;
     const saved = savePrintState(options, ['referenceMode']);
-    const pushedRenderKey = renderContext
-      && this._renderKey !== undefined
-      && this._renderKey !== CANONICAL
-      && this._renderKey !== activeRenderKey;
-    if (pushedRenderKey) {
-      renderContext.pushRenderKey(this._renderKey!);
-    }
     if (
       (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
       && options.referenceMode !== true
@@ -1483,9 +1473,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       w.add(indent(depthToClose) + '}\n');
       lastRenderedFrames.pop();
       frameHeaders.pop();
-    }
-    if (pushedRenderKey) {
-      renderContext!.popRenderKey();
     }
     restorePrintState(options, saved);
   }
