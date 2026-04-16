@@ -5,7 +5,7 @@ describe('Node Eval', () => {
   it('should fork a node correctly', () => {
     /** Canonical node value */
     const node = paren(any('10px'));
-    node.set(null, any('20px'));
+    node.set(null, any('20px'), EVAL);
     expect(String(node.getValue())).toBe('20px');
     expect(String(node.getValue(EVAL))).toBe('20px');
     expect(String(node.getValue(CANONICAL))).toBe('10px');
@@ -41,7 +41,7 @@ describe('Node Eval', () => {
     expect(child.getParent(CANONICAL)).toBe(node);
   });
 
-  it.only('should get the parent node dynamically', () => {
+  it('should get the parent node dynamically', () => {
     const child = any('10px');
     const parent1 = paren(child);
     /** I guess we can't just pass it in the constructor */
@@ -51,5 +51,16 @@ describe('Node Eval', () => {
     expect(child.getParent()).toBe(parent2);
     expect(child.getParent(CANONICAL)).toBe(parent1);
     expect(child.getParent(1)).toBe(parent2);
+  });
+
+  it('should preserve parent forks for renderKey 0', () => {
+    const child = any('10px');
+    const parent1 = paren(child);
+    const parent2 = paren();
+    parent2.set(null, child, 0);
+
+    expect(child.getParent()).toBe(parent2);
+    expect(child.getParent(CANONICAL)).toBe(parent1);
+    expect(child.getParent(0)).toBe(parent2);
   });
 });

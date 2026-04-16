@@ -456,7 +456,7 @@ export abstract class Node<
           /** Store the canonical parent */
           forks.set(CANONICAL, currentParent);
         }
-        if (thisRenderKey && thisRenderKey !== CANONICAL) {
+        if (thisRenderKey !== undefined && thisRenderKey !== CANONICAL) {
           forks.set(thisRenderKey, this);
         }
       }
