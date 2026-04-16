@@ -156,11 +156,9 @@ export const F_DEFAULT = F_VISIBLE;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
 
-/** Base render keys */
-export const EVAL: unique symbol = Symbol('EVAL');
 export const CANONICAL: unique symbol = Symbol('CANONICAL');
 
-export type RenderKey = number | typeof EVAL | typeof CANONICAL;
+export type RenderKey = number | typeof CANONICAL;
 
 export type Mutable<T extends { value: unknown }> =
   Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
