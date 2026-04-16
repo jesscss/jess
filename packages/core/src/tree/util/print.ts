@@ -233,9 +233,7 @@ export function setCachedComposedSelector(
 export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey | undefined): RenderKey | undefined {
   const context = options.context;
   if (context) {
-    if (renderKey !== undefined) {
-      context.renderKeyStack.push(renderKey);
-    }
+    context.pushRenderKey(renderKey);
     return undefined;
   }
   const previous = options.renderKey;
@@ -246,9 +244,7 @@ export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey 
 export function popActiveRenderKey(options: PrintOptions, previous: RenderKey | undefined): void {
   const context = options.context;
   if (context) {
-    if (context.renderKey !== undefined) {
-      context.renderKeyStack.pop();
-    }
+    context.popRenderKey();
     return;
   }
   options.renderKey = previous;

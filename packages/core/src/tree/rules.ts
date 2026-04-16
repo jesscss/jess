@@ -3543,7 +3543,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       } else {
         rules._renderKey = renderKey;
       }
-      thisContext.renderKeyStack.push(renderKey);
+      thisContext.pushRenderKey(renderKey);
       try {
         let newRules: Rules;
         if (!outerRules) {
@@ -3584,7 +3584,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (currentCall) {
           thisContext.callMap.delete(currentCall);
         }
-        thisContext.renderKeyStack.pop();
+        thisContext.popRenderKey();
       }
     };
 
@@ -3613,11 +3613,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
         rules.sourceParent = sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
-        thisContext.renderKeyStack.push(renderKey);
+        thisContext.pushRenderKey(renderKey);
         try {
           rules = await rules.eval(thisContext);
         } finally {
-          thisContext.renderKeyStack.pop();
+          thisContext.popRenderKey();
           thisContext.rulesContext = originalContext;
         }
         rules._renderKey = renderKey;

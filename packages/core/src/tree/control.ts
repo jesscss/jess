@@ -274,9 +274,9 @@ export class For extends Node<StructuredLoopValue> {
           iterationRules.push(child);
         }
         counter++;
-        context.renderKeyStack.push(renderKey);
+        context.pushRenderKey(renderKey);
         const result = await iterationRules.eval(context);
-        context.renderKeyStack.pop();
+        context.popRenderKey();
 
         if (isNode(result, N.Rules)) {
           result._renderKey = renderKey;

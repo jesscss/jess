@@ -310,6 +310,18 @@ export class Context {
     return this.renderKeyStack[this.renderKeyStack.length - 1];
   }
 
+  pushRenderKey(renderKey: RenderKey | undefined): void {
+    if (renderKey !== undefined) {
+      this.renderKeyStack.push(renderKey);
+    }
+  }
+
+  popRenderKey(): void {
+    if (this.renderKey !== undefined) {
+      this.renderKeyStack.pop();
+    }
+  }
+
   private _printState: PrintOptions | undefined;
   get printState() {
     return (this._printState ??= { context: this });
