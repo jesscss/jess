@@ -200,10 +200,6 @@ export function restoreArrayState<T>(
   array.splice(0, array.length, ...(saved ?? []));
 }
 
-export function getActiveRenderKey(options: PrintOptions): RenderKey | undefined {
-  return options.context?.renderKey;
-}
-
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset,
@@ -224,22 +220,6 @@ export function setCachedComposedSelector(
     options.composedSelectorCache?.set(ruleset, byKey);
   }
   byKey.set(renderKey, selector);
-}
-
-export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey | undefined): boolean {
-  const context = options.context;
-  if (context && renderKey !== undefined) {
-    context.pushRenderKey(renderKey);
-    return true;
-  }
-  return false;
-}
-
-export function popActiveRenderKey(options: PrintOptions, pushed: boolean): void {
-  const context = options.context;
-  if (context && pushed) {
-    context.popRenderKey();
-  }
 }
 
 export class OutputWriter implements OutputWriter {

@@ -21,7 +21,6 @@ import {
   getPrintOptions,
   savePrintState,
   restorePrintState,
-  getActiveRenderKey,
   getCachedComposedSelector,
   setCachedComposedSelector
 } from './util/print.js';
@@ -687,7 +686,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const { selector } = this.getValue(getActiveRenderKey(options)) as RulesetValue;
+    const { selector } = this.getValue(options.context?.renderKey) as RulesetValue;
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
@@ -724,7 +723,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const composeParent = parentComposed ?? (
         structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
       );
-      const rk = getActiveRenderKey(options);
+      const rk = options.context?.renderKey;
       let cached = getCachedComposedSelector(options, this, rk);
       if (!cached) {
         const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
@@ -940,7 +939,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
      * key constraints to the class generic `T`.
      */
     const setOnRuleset = (key: 'guard' | 'selector' | 'rules', value: any) => {
-      (this as Ruleset).setForContext(key as any, value, context);
+      (this as Ruleset).set(key as any, value, context.renderKey);
     };
 
     // Store frames snapshot for collapseNesting serialization

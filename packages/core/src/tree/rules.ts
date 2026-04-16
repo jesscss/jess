@@ -20,9 +20,7 @@ import {
   type PrintOptions,
   getPrintOptions,
   savePrintState,
-  restorePrintState,
-  pushActiveRenderKey,
-  popActiveRenderKey
+  restorePrintState
 } from './util/print.js';
 
 import { atIndex } from './util/collections.js';
@@ -1380,7 +1378,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       markEmitted(n);
     };
     const saved = savePrintState(options, ['referenceMode']);
-    const previousRenderKey = pushActiveRenderKey(options, this._renderKey);
+    const pushedRenderKey = options.context && this._renderKey !== undefined;
+    if (pushedRenderKey) {
+      options.context.pushRenderKey(this._renderKey!);
+    }
     if (
       (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
       && options.referenceMode !== true
@@ -1477,7 +1478,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastRenderedFrames.pop();
       frameHeaders.pop();
     }
-    popActiveRenderKey(options, previousRenderKey);
+    if (pushedRenderKey) {
+      options.context!.popRenderKey();
+    }
     restorePrintState(options, saved);
   }
 

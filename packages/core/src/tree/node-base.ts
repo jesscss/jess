@@ -6,7 +6,7 @@ import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
 import type { Comment } from './comment.js';
-import { type PrintOptions, getPrintOptions, prepareContextPrintState, getActiveRenderKey } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareContextPrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -678,7 +678,8 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, renderKey?: RenderKey) {
+  private forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, context: Context) {
+    const renderKey = context.renderKey;
     if (!this.hasFlag(F_MAY_ASYNC)) {
       this._visitEntries((node, key, coll, idx) => {
         const result = func(node, idx) as Node;
@@ -721,10 +722,9 @@ export abstract class Node<
    */
   private _visitValues(
     cb: (value: unknown) => void,
-    reverse?: boolean,
-    renderKey?: RenderKey
+    reverse?: boolean
   ) {
-    const data = renderKey !== undefined ? this.getValue(renderKey) : this.value;
+    const data = this.value;
     if (isArray(data)) {
       if (reverse) {
         for (let i = data.length - 1; i >= 0; i--) {
@@ -1100,7 +1100,7 @@ export abstract class Node<
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNodeForContext(n => n.preEval(context), context);
+        out = node.forEachNode(n => n.preEval(context), context);
       } catch (error: unknown) {
         throw error;
       }
@@ -1124,7 +1124,7 @@ export abstract class Node<
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    let out = this.forEachNodeForContext((n: Node) => {
+    let out = this.forEachNode((n: Node) => {
       return n.eval(context);
     }, context);
     if (isThenable(out)) {
@@ -1234,21 +1234,6 @@ export abstract class Node<
     }
 
     return needsReeval;
-  }
-
-  protected forEachNodeForContext(
-    func: (n: Node, idx?: number) => MaybePromise<Node>,
-    context: Context
-  ) {
-    return this.forEachNode(func, context.renderKey);
-  }
-
-  protected setForContext<K extends NodeSetKey<Data>>(
-    key: K,
-    value: NodeSetValue<Data, K>,
-    context: Context
-  ): void {
-    this.set(key, value, context.renderKey);
   }
 
   /**
@@ -1455,7 +1440,7 @@ export abstract class Node<
           w.add(s, this);
         }
       }
-    }, false, getActiveRenderKey(options));
+    }, false);
     return w.getSince(mark);
   }
 

@@ -299,26 +299,22 @@ export class Context {
   }
 
   private _renderKeyStack: RenderKey[] | undefined;
-  get renderKeyStack() {
-    return (this._renderKeyStack ??= []);
-  }
-
   get renderKey() {
-    if (!this._renderKeyStack) {
+    const stack = this._renderKeyStack;
+    if (!stack || stack.length === 0) {
       return undefined;
     }
-    return this.renderKeyStack[this.renderKeyStack.length - 1];
+    return stack[stack.length - 1];
   }
 
-  pushRenderKey(renderKey: RenderKey | undefined): void {
-    if (renderKey !== undefined) {
-      this.renderKeyStack.push(renderKey);
-    }
+  pushRenderKey(renderKey: RenderKey): void {
+    (this._renderKeyStack ??= []).push(renderKey);
   }
 
   popRenderKey(): void {
-    if (this.renderKey !== undefined) {
-      this.renderKeyStack.pop();
+    const stack = this._renderKeyStack;
+    if (stack && stack.length > 0) {
+      stack.pop();
     }
   }
 
