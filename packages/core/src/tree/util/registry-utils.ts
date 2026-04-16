@@ -13,6 +13,7 @@ import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet } from './bitset.js';
+import { getActiveRenderKey } from './print.js';
 
 const { isArray } = Array;
 
@@ -946,7 +947,8 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        rules = (options?.renderKey ? rules?.getParent(options.renderKey) : rules?.parent) as Rules;
+        const activeRenderKey = options ? getActiveRenderKey(options) : undefined;
+        rules = (activeRenderKey ? rules?.getParent(activeRenderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -1345,7 +1347,8 @@ export class DeclarationRegistry extends Registry<Declaration> {
         while (containingNode?.parent && !isNode(containingNode.parent, N.Rules)) {
           containingNode = containingNode.parent;
         }
-        rules = (options?.renderKey ? rules?.getParent(options.renderKey) : rules?.parent) as Rules;
+        const activeRenderKey = options ? getActiveRenderKey(options) : undefined;
+        rules = (activeRenderKey ? rules?.getParent(activeRenderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports

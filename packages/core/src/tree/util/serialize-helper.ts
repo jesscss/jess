@@ -8,7 +8,10 @@ import {
   applyPrintState,
   restorePrintState,
   saveArrayState,
-  restoreArrayState
+  restoreArrayState,
+  getActiveRenderKey,
+  pushActiveRenderKey,
+  popActiveRenderKey
 } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -95,7 +98,7 @@ function getHoistedRulesetCarrier(
   if (rulesetFrames.length === 0) {
     return undefined;
   }
-  const renderKey = options.renderKey;
+  const renderKey = getActiveRenderKey(options);
   const frame = rulesetFrames[rulesetFrames.length - 1]!;
   let carriedSelector: Selector | undefined;
   for (let i = 0; i < rulesetFrames.length; i++) {
@@ -167,7 +170,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (isBareAmp && !parentComposed) {
       isTransparentWrapper = true;
     } else {
-      const rk = options.renderKey;
+      const rk = getActiveRenderKey(options);
       let cached = rs.getComposedSelector(rk);
       if (!cached && sel && !(sel instanceof Nil)) {
         const ownSelector = rs.options?.ownSelector;
@@ -322,7 +325,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         // in mixin call / $for output, this is the call's renderKey. Used to
         // read the matching fork when serializing shared body nodes.
         const entryRenderKey = rulesRenderKeys[idx];
-        const effectiveRenderKey = (entryRenderKey ?? options.renderKey) as RenderKey | undefined;
+        const effectiveRenderKey = (entryRenderKey ?? getActiveRenderKey(options)) as RenderKey | undefined;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
         if (!n.visible && !n.fullRender) {
@@ -348,12 +351,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const childSaved = savePrintState(options, ['renderKey']);
-          applyPrintState(options, {
-            renderKey: effectiveRenderKey
-          });
+          const previousRenderKey = pushActiveRenderKey(options, effectiveRenderKey);
           const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
-          restorePrintState(options, childSaved);
+          popActiveRenderKey(options, previousRenderKey);
           if (!childOut) {
             continue;
           }
@@ -377,17 +377,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             : true;
           const previewSaved = savePrintState(options, [
             'depth',
-            'renderKey',
             'referenceMode',
             'referenceRenderEnabled'
           ]);
           applyPrintState(options, {
             depth: options.depth + 1,
-            renderKey: leafRenderKey,
             referenceMode: childReferenceMode,
             referenceRenderEnabled: childReferenceRenderEnabled
           });
+          const previousRenderKey = pushActiveRenderKey(options, leafRenderKey);
           const previewOut = w.capture(() => nn.toTrimmedString(options));
+          popActiveRenderKey(options, previousRenderKey);
           restorePrintState(options, previewSaved);
           if (!previewOut) {
             continue;
@@ -476,21 +476,21 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           : renderEnabled;
         const leafRenderState = {
           depth: leafDepth,
-          renderKey: leafRenderKey,
           referenceMode: childReferenceMode,
           referenceRenderEnabled: childReferenceRenderEnabled
         };
         const leafSaved = savePrintState(options, [
           'depth',
-          'renderKey',
           'referenceMode',
           'referenceRenderEnabled'
         ]);
         applyPrintState(options, leafRenderState);
+        const previousRenderKey = pushActiveRenderKey(options, leafRenderKey);
         const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
         const out = isNode(nn, N.Declaration)
           ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
           : w.capture(() => nn.toTrimmedString(options));
+        popActiveRenderKey(options, previousRenderKey);
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (

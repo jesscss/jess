@@ -15,7 +15,7 @@ import { CompoundSelector } from './selector-compound.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
-import { type PrintOptions, type FinalPrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { type PrintOptions, type FinalPrintOptions, getPrintOptions, savePrintState, restorePrintState, getActiveRenderKey } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
@@ -716,7 +716,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
-    const { selector } = this.getValue(options.renderKey) as RulesetValue;
+    const { selector } = this.getValue(getActiveRenderKey(options)) as RulesetValue;
     const idt = indent(options.depth);
 
     // Should never be called for Nil selectors (serializeRulesContainer guards this),
@@ -753,7 +753,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       const composeParent = parentComposed ?? (
         structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
       );
-      const rk = options.renderKey;
+      const rk = getActiveRenderKey(options);
       let cached = this.getComposedSelector(rk);
       if (!cached) {
         const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;

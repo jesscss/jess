@@ -17,7 +17,15 @@ import { type Ruleset } from './ruleset.js';
 import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
-import { type PrintOptions, getPrintOptions, savePrintState, applyPrintState, restorePrintState } from './util/print.js';
+import {
+  type PrintOptions,
+  getPrintOptions,
+  savePrintState,
+  applyPrintState,
+  restorePrintState,
+  pushActiveRenderKey,
+  popActiveRenderKey
+} from './util/print.js';
 
 import { atIndex } from './util/collections.js';
 import type { Condition } from './condition.js';
@@ -1373,10 +1381,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       markEmitted(n);
     };
-    const saved = savePrintState(options, ['renderKey', 'referenceMode']);
-    if (this._renderKey !== undefined) {
-      options.renderKey = this._renderKey;
-    }
+    const saved = savePrintState(options, ['referenceMode']);
+    const previousRenderKey = pushActiveRenderKey(options, this._renderKey);
     if (
       (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
       && options.referenceMode !== true
@@ -1479,6 +1485,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastRenderedFrames.pop();
       frameHeaders.pop();
     }
+    popActiveRenderKey(options, previousRenderKey);
     restorePrintState(options, saved);
   }
 

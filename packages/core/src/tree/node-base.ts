@@ -6,7 +6,7 @@ import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
 import type { Comment } from './comment.js';
-import { type PrintOptions, getPrintOptions, savePrintState, applyPrintState, restorePrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions, savePrintState, applyPrintState, restorePrintState, getActiveRenderKey } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -1462,7 +1462,7 @@ export abstract class Node<
           w.add(s, this);
         }
       }
-    }, false, options.renderKey);
+    }, false, getActiveRenderKey(options));
     return w.getSince(mark);
   }
 

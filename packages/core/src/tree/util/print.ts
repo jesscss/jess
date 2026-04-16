@@ -186,6 +186,34 @@ export function restoreArrayState<T>(
   array.splice(0, array.length, ...(saved ?? []));
 }
 
+export function getActiveRenderKey(options: PrintOptions): RenderKey | undefined {
+  return options.context?.renderKey ?? options.renderKey;
+}
+
+export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey | undefined): RenderKey | undefined {
+  const context = options.context;
+  if (context) {
+    if (renderKey !== undefined) {
+      context.renderKeyStack.push(renderKey);
+    }
+    return undefined;
+  }
+  const previous = options.renderKey;
+  options.renderKey = renderKey;
+  return previous;
+}
+
+export function popActiveRenderKey(options: PrintOptions, previous: RenderKey | undefined): void {
+  const context = options.context;
+  if (context) {
+    if (context.renderKey !== undefined) {
+      context.renderKeyStack.pop();
+    }
+    return;
+  }
+  options.renderKey = previous;
+}
+
 export class OutputWriter implements OutputWriter {
   private chunks: string[] = [];
   private _length = 0;
