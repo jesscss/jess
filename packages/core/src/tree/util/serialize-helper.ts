@@ -140,7 +140,12 @@ function getHoistedRulesetCarrier(
   const frame = rulesetFrames[rulesetFrames.length - 1]!;
   let carriedSelector: Selector | undefined;
   for (let i = 0; i < rulesetFrames.length; i++) {
-    const currentSelector = rulesetFrames[i]!.getValue(renderKey).selector;
+    const currentFrame = rulesetFrames[i]!;
+    const currentSelector = (
+      renderKey === undefined
+        ? currentFrame.value
+        : currentFrame.getValue(renderKey)
+    ).selector;
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
     }
