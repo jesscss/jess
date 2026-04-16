@@ -1,4 +1,5 @@
 import {
+  CANONICAL,
   Node,
   defineType,
   type NodeOptions,
@@ -1382,6 +1383,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const saved = savePrintState(options, ['referenceMode']);
     const pushedRenderKey = renderContext
       && this._renderKey !== undefined
+      && this._renderKey !== CANONICAL
       && this._renderKey !== activeRenderKey;
     if (pushedRenderKey) {
       renderContext.pushRenderKey(this._renderKey!);
