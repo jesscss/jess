@@ -5,7 +5,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import type { Mixin } from '../mixin.js';
 import { Nil } from '../nil.js';
-import { Node, type RenderKey } from '../node.js';
+import { Node } from '../node.js';
 import { JsFunction } from '../js-function.js';
 import type { Func } from '../function.js';
 import type { Declaration } from '../declaration.js';
@@ -112,10 +112,6 @@ export type FindOptions = DeclarationFindOptions & {
    */
   hasTarget?: boolean;
 };
-
-function getLookupRenderKey(options?: FindOptions): RenderKey | undefined {
-  return options?.context?.renderKey;
-}
 
 export abstract class Registry<
   Type extends Node,
@@ -948,8 +944,7 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        const activeRenderKey = getLookupRenderKey(options);
-        rules = (activeRenderKey ? rules?.getParent(activeRenderKey) : rules?.parent) as Rules;
+        rules = rules?.parent as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
@@ -1022,9 +1017,8 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
       }
 
       do {
-        const rk = getLookupRenderKey(options);
-        rules = (rk ? rules?.getParent(rk) : rules?.parent) as Rules;
-        const rulesParent = rk ? rules?.getParent(rk) : rules?.parent;
+        rules = rules?.parent as Rules;
+        const rulesParent = rules?.parent;
         if (findRoot && rules.type === 'Rules' && rulesParent === undefined) {
           /** We're at the root */
           break;
@@ -1348,8 +1342,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         while (containingNode?.parent && !isNode(containingNode.parent, N.Rules)) {
           containingNode = containingNode.parent;
         }
-        const activeRenderKey = getLookupRenderKey(options);
-        rules = (activeRenderKey ? rules?.getParent(activeRenderKey) : rules?.parent) as Rules;
+        rules = rules?.parent as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
          * which means these rules can reach into the parent file that imports
