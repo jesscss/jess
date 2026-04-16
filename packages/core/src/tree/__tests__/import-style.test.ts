@@ -855,6 +855,37 @@ describe('Style import', () => {
       expect(`${derivedColorValue}`).toBe('cyan');
     });
 
+    it('reuses imported rules when "with" produces no effective changes', async () => {
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      const importedRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.box')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('black') })
+          ])
+        })
+      ]);
+      context.sourceTrees.set(libraryPath, importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([]),
+            type: 'with'
+          }
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const imported = evald.at(0) as Rules;
+
+      expect(imported).toBe(importedRules);
+      expect(imported.toString()).toContain('.box');
+    });
+
     it('throws if "set" is used more than once', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([

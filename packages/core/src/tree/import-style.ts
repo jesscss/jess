@@ -488,25 +488,29 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
           }
 
-          // Create the final rules structure:
-          // [new injected variables (not found in imported), ...all nodes from modified imported rules (with replacements)]
-          // Injected variables that aren't found should be at the TOP so they're found first
-          // for linear lookup ($^var)
-          // We flatten the structure so all variables are in the same Rules scope
-          const finalRules = Rules.create([]);
-          // First, add new injected variables that weren't found in imported rules (at the top)
-          for (const newNode of newVariables) {
-            finalRules.adopt(newNode);
-            finalRules.value.push(newNode);
+          if (newVariables.length === 0 && replacementsByIndex.size === 0) {
+            // No effective configuration change; keep the imported Rules tree.
+          } else {
+            // Create the final rules structure:
+            // [new injected variables (not found in imported), ...all nodes from modified imported rules (with replacements)]
+            // Injected variables that aren't found should be at the TOP so they're found first
+            // for linear lookup ($^var)
+            // We flatten the structure so all variables are in the same Rules scope
+            const finalRules = Rules.create([]);
+            // First, add new injected variables that weren't found in imported rules (at the top)
+            for (const newNode of newVariables) {
+              finalRules.adopt(newNode);
+              finalRules.value.push(newNode);
+            }
+            // Then, add all nodes from the imported rules (flattened, with replacements)
+            for (let index = 0; index < rules.value.length; index++) {
+              const originalNode = rules.value[index]!;
+              const nextNode = replacementsByIndex.get(index) ?? originalNode;
+              finalRules.adopt(nextNode);
+              finalRules.value.push(nextNode);
+            }
+            rules = finalRules;
           }
-          // Then, add all nodes from the imported rules (flattened, with replacements)
-          for (let index = 0; index < rules.value.length; index++) {
-            const originalNode = rules.value[index]!;
-            const nextNode = replacementsByIndex.get(index) ?? originalNode;
-            finalRules.adopt(nextNode);
-            finalRules.value.push(nextNode);
-          }
-          rules = finalRules;
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root
