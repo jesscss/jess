@@ -270,6 +270,12 @@ export class For extends Node<StructuredLoopValue> {
           outputRules.push(result);
         }
       }
+      if (outputRules.length === 0) {
+        return Rules.create([]);
+      }
+      if (outputRules.length === 1) {
+        return outputRules[0]!;
+      }
       const output = Rules.create([]);
       output.inherit(originalRules);
       for (const r of outputRules) {

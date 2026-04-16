@@ -73,13 +73,21 @@ function normalizePattern(pattern: any) {
   }
   if (pattern instanceof Block && pattern.value instanceof List) {
     const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
-    return { kind: 'tuple' as const, values: values as [VarDeclaration, ...VarDeclaration[]] };
+    const [first, ...rest] = values;
+    if (!first) {
+      throw new Error('Expected at least one binding in block pattern');
+    }
+    return { kind: 'tuple' as const, values: [first, ...rest] };
   }
   if (isPatternNodeTuple(pattern)) {
     const values = pattern.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+    const [first, ...rest] = values;
+    if (!first) {
+      throw new Error('Expected at least one binding in tuple pattern');
+    }
     return values.length === 1
-      ? { kind: 'single' as const, value: values[0]! }
-      : { kind: 'tuple' as const, values: values as [VarDeclaration, ...VarDeclaration[]] };
+      ? { kind: 'single' as const, value: first }
+      : { kind: 'tuple' as const, values: [first, ...rest] };
   }
   throw new Error('Unexpected test pattern shape');
 }
@@ -184,6 +192,22 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toContain('item: a');
   });
 
+  it('collapses single-iteration $for output without an extra Rules wrapper', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+    const firstChild = loopOutput instanceof Rules ? loopOutput.value[0] : undefined;
+
+    expect(loopOutput).toBeInstanceOf(Rules);
+    expect(firstChild).not.toBeInstanceOf(Rules);
+    expect(`${evald}`).toContain('item: a');
+  });
+
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
     const registryHits: string[] = [];
@@ -223,8 +247,12 @@ describe('Control Nodes', () => {
     const ifNode = new If({
       branches: [{ condition: new Any('true', { role: 'any' }), rules: privateRules }]
     });
+    const singlePattern = makePattern(['value'], 'single');
+    if (!(singlePattern instanceof VarDeclaration)) {
+      throw new Error('Expected single var pattern');
+    }
     const forNode = new For({
-      pattern: { kind: 'single', value: makePattern(['value'], 'single') as VarDeclaration },
+      pattern: { kind: 'single', value: singlePattern },
       iterable: { kind: 'node', value: list([new Any('a')]) },
       rules: rules([], {
         rulesVisibility: {
