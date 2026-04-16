@@ -122,7 +122,7 @@ describe('Rule', () => {
     const header = node.getHeaderString(options);
 
     expect(header).toContain('.foo');
-    expect(node.getComposedSelector(options.renderKey)).toBeUndefined();
+    expect(node._composedSelector).toBeUndefined();
   });
 
   it('getHeaderString keeps composed selector cache off the ruleset node', () => {
@@ -141,7 +141,7 @@ describe('Rule', () => {
     const header = node.getHeaderString(options);
 
     expect(header).toContain('.parent .child');
-    expect(node.getComposedSelector(renderKey)).toBeUndefined();
+    expect(node._composedSelector).toBeUndefined();
   });
   // it('should serialize to a module', () => {
   //   let node = rule({

@@ -73,46 +73,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override allowRoot = true;
   // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
   frames: (Ruleset | AtRule)[] | undefined;
-  /**
-   * Cached composed (parent-merged) selector per render key. Mixin calls and
-   * $for iterations adopt shared body Rulesets into distinct per-call wrapper
-   * Rules; the composed selector differs by call because the effective parent
-   * chain differs. Keyed by the serializer's `options.renderKey` with
-   * `undefined` treated as the canonical slot.
-   */
-  private _composedSelectorByKey: Map<number | symbol | undefined, Selector> | undefined;
-
-  /** Read a cached composed selector for the given renderKey. */
-  getComposedSelector(renderKey?: number | symbol): Selector | undefined {
-    return this._composedSelectorByKey?.get(renderKey);
-  }
-
-  /** Store a cached composed selector for the given renderKey. */
-  setComposedSelector(selector: Selector, renderKey?: number | symbol): void {
-    (this._composedSelectorByKey ??= new Map()).set(renderKey, selector);
-  }
-
-  /** Clear all cached composed selectors (used by extend post-processing). */
-  clearComposedSelectorCache(): void {
-    this._composedSelectorByKey = undefined;
-  }
-
-  /**
-   * Back-compat shim for call sites that haven't been converted to the
-   * renderKey-aware get/set yet. Reads/writes the canonical slot only.
-   * Prefer `getComposedSelector(rk)` / `setComposedSelector(sel, rk)`.
-   */
-  get _composedSelector(): Selector | undefined {
-    return this._composedSelectorByKey?.get(undefined);
-  }
-
-  set _composedSelector(selector: Selector | undefined) {
-    if (selector === undefined) {
-      this._composedSelectorByKey?.delete(undefined);
-      return;
-    }
-    (this._composedSelectorByKey ??= new Map()).set(undefined, selector);
-  }
+  /** Legacy canonical composed selector slot still used by extend post-processing. */
+  declare _composedSelector?: Selector;
 
   get selector() {
     return this.value.selector;
@@ -470,7 +432,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    */
   invalidateSelectorValueCache(): void {
     this._valueOf = undefined;
-    this.clearComposedSelectorCache();
+    this._composedSelector = undefined;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
