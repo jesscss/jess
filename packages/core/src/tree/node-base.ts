@@ -306,7 +306,7 @@ export abstract class Node<
 
   /** Returns cached parent if no render key specified */
   getParent(renderKey?: RenderKey) {
-    if (!renderKey) {
+    if (renderKey === undefined) {
       return this.parent;
     }
     const forked = this._parentForks?.get(renderKey);
