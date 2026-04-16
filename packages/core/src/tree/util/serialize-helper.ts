@@ -126,9 +126,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   const w = options.writer;
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
-  let savedComposedSelectorStack: Selector[] | undefined;
-  let savedComposedSelectorStackItems: Selector[] | undefined;
-  let resetComposedSelectorStack = false;
 
   if (isNode(node, N.Ruleset) && (node as Ruleset).value.selector instanceof Nil) {
     return '';
@@ -136,6 +133,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
   let pushedComposed = false;
+  let pushedComposedSelector: Selector | undefined;
   // A bare `&` selector with no real parent on the stack is a generated
   // wrapper (e.g. synthetic `& { ... }` wrapping @media body when hoisted).
   // It must be fully transparent: don't compose, don't push, don't emit as a
@@ -197,41 +195,27 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         }
       }
       if (cached) {
-        (options.composedSelectorStack ??= []).push(cached);
         pushedComposed = true;
+        pushedComposedSelector = cached;
       }
     }
   }
-  if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
-    savedComposedSelectorStack = options.composedSelectorStack;
-    savedComposedSelectorStackItems = savedComposedSelectorStack?.slice();
-    if (savedComposedSelectorStack) {
-      savedComposedSelectorStack.length = 0;
-    } else {
-      options.composedSelectorStack = [];
-    }
-    resetComposedSelectorStack = true;
-  }
-  // let header = node.getHeaderString(options);
-
-  const mark = w.mark();
-  const previousReferenceMode = options.referenceMode === true;
-  const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
-  const previousDepth = options.depth;
-  const previousInFrames = options.inFrames;
-  const ownReferenceMode = Boolean(
-    node.options
-    && 'referenceMode' in node.options
-    && node.options.referenceMode === true
-  );
-  const inReferenceMode = previousReferenceMode || ownReferenceMode;
-  const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
-  const nodeExtendsReference = isNode(node, N.Ruleset) && rulesetHasExtendedTopLevelSelector(node);
-  const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
-  const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
-  options.referenceMode = inReferenceMode;
-  options.referenceRenderEnabled = renderEnabled;
-  try {
+  const run = () => {
+    const mark = w.mark();
+    const previousReferenceMode = options.referenceMode === true;
+    const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
+    const ownReferenceMode = Boolean(
+      node.options
+      && 'referenceMode' in node.options
+      && node.options.referenceMode === true
+    );
+    const inReferenceMode = previousReferenceMode || ownReferenceMode;
+    const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
+    const nodeExtendsReference = isNode(node, N.Ruleset) && rulesetHasExtendedTopLevelSelector(node);
+    const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
+    const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
+    options.referenceMode = inReferenceMode;
+    options.referenceRenderEnabled = renderEnabled;
     const rules = node.value.rules;
     if (!rules) {
       if (inReferenceMode && !renderEnabled) {
@@ -362,16 +346,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
       const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
       if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-        const previousRenderKey = options.renderKey;
-        options.renderKey = effectiveRenderKey;
-        try {
-          const childMark = w.mark();
-          const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
-          if (!w.getSince(childMark) && !childOut) {
-            continue;
-          }
-        } finally {
-          options.renderKey = previousRenderKey;
+        const childOut = withTemporaryPrintState(options, {
+          renderKey: effectiveRenderKey
+        }, () => serializeRulesContainerInternal(n as AtRule | Ruleset, options, false));
+        if (!childOut) {
+          continue;
         }
         continue;
       }
@@ -570,23 +549,39 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
     return w.getSince(mark);
-  } finally {
-    if (pushedComposed) {
-      options.composedSelectorStack!.pop();
-    }
-    if (resetComposedSelectorStack) {
-      if (savedComposedSelectorStack) {
-        savedComposedSelectorStack.splice(0, savedComposedSelectorStack.length, ...(savedComposedSelectorStackItems ?? []));
-        options.composedSelectorStack = savedComposedSelectorStack;
-      } else {
-        options.composedSelectorStack = undefined;
+  };
+
+  return withSavedPrintState(options, [
+    'referenceMode',
+    'referenceRenderEnabled',
+    'depth',
+    'inFrames',
+    'composedSelectorStack'
+  ], () => {
+    const runWithCurrentComposedStack = () => {
+      if (!pushedComposed || !pushedComposedSelector) {
+        return run();
       }
+      const stack = options.composedSelectorStack ?? (options.composedSelectorStack = []);
+      return withArraySnapshot(stack, (snapshotStack) => {
+        snapshotStack!.push(pushedComposedSelector!);
+        return run();
+      });
+    };
+    if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
+      const currentStack = options.composedSelectorStack;
+      if (currentStack) {
+        return withArraySnapshot(currentStack, (stack) => {
+          stack!.length = 0;
+          options.composedSelectorStack = stack;
+          return runWithCurrentComposedStack();
+        });
+      }
+      options.composedSelectorStack = [];
+      return runWithCurrentComposedStack();
     }
-    options.referenceMode = previousReferenceMode;
-    options.referenceRenderEnabled = previousReferenceRenderEnabled;
-    options.depth = previousDepth;
-    options.inFrames = previousInFrames;
-  }
+    return runWithCurrentComposedStack();
+  });
 }
 
 /**
