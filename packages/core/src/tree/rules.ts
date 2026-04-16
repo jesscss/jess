@@ -1378,7 +1378,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       markEmitted(n);
     };
     const saved = savePrintState(options, ['referenceMode']);
-    const pushedRenderKey = options.context && this._renderKey !== undefined;
+    const pushedRenderKey = options.context
+      && this._renderKey !== undefined
+      && this._renderKey !== options.context.renderKey;
     if (pushedRenderKey) {
       options.context.pushRenderKey(this._renderKey!);
     }
