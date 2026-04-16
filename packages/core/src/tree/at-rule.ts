@@ -104,9 +104,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
-      if (!(this.value.name instanceof Interpolated) && !this.value.rules) {
-        this.preEvaluated = true;
-        return this._preEvalPrelude(this, context);
+      if (!(this.value.name instanceof Interpolated)) {
+        return this._preEvalPrelude(this, context, this);
       }
       const node = this.clone(false) as AtRule;
       node.preEvaluated = true;
@@ -122,7 +121,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               throw new TypeError('Expected interpolated at-rule name to resolve to Any');
             }
             node.value.name = key;
-            return this._preEvalPrelude(node, context);
+            return this._preEvalPrelude(node, context, this);
           });
         }
         if (!(maybeKey instanceof Any)) {
@@ -131,12 +130,24 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         node.value.name = maybeKey;
       }
 
-      return this._preEvalPrelude(node, context);
+      return this._preEvalPrelude(node, context, this);
     }
     return this;
   }
 
-  private _preEvalPrelude(node: AtRule, context: Context): MaybePromise<AtRule | Nil> {
+  private _preEvalPrelude(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {
+    const ensureDerived = (): AtRule => {
+      if (node === original) {
+        node = original.clone(false) as AtRule;
+        node.sourceNode ??= original;
+      }
+      node.preEvaluated = true;
+      return node;
+    };
+    const finalize = (): AtRule => {
+      node.preEvaluated = true;
+      return node;
+    };
     const { prelude, rules } = node.value;
     // Preserve @import prelude as-authored (including comments). Evaluation here can
     // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
@@ -170,6 +181,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           topImports.push(node);
         }
       }
+      node.preEvaluated = true;
       return new Nil();
     }
     // Defer prelude evaluation to evalNode so variable lookups happen in the correct
@@ -203,8 +215,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (pushedExtendRootForPreEval) {
             context.extendRoots.popExtendRoot();
           }
-          node.value.rules = evaldRules;
-          return node;
+          if (evaldRules !== rules) {
+            ensureDerived().value.rules = evaldRules;
+          }
+          return finalize();
         });
       }
       if (savedRulesetFramesForPreEval !== undefined) {
@@ -213,9 +227,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (pushedExtendRootForPreEval) {
         context.extendRoots.popExtendRoot();
       }
-      node.value.rules = preEvaldRules as Rules;
+      if (preEvaldRules !== rules) {
+        ensureDerived().value.rules = preEvaldRules as Rules;
+      }
     }
-    return node;
+    return finalize();
   }
 
   private _extractAndStoreLayerName(node: AtRule, context: Context): void {

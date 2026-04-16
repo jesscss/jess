@@ -30,6 +30,22 @@ describe('AtRule', () => {
     expect(preEvald).toBe(node);
   });
 
+  it('keeps static at-rules canonical in preEval when child rules are already preEvaluated', async () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    body.preEvaluated = true;
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: body
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald).toBe(node);
+  });
+
   describe('nested @media rules', () => {
     it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }
