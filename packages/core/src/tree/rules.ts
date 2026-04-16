@@ -3515,9 +3515,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
           outerRules.push(...rules.value);
           newRules = await outerRules.eval(thisContext);
         }
-        if (newRules !== outerRules && newRules !== rules) {
-          newRules._renderKey = renderKey;
-        }
         candidate.parent!.adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
