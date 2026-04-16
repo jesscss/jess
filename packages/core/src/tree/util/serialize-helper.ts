@@ -42,9 +42,6 @@ function flattenVisibleRulesForRender(
 ): RenderRuleEntry[] {
   const entries: RenderRuleEntry[] = [];
   const iterateRules = (current: Rules, inherited: RenderKey | undefined) => {
-    const effectiveKey = current._renderKey === CANONICAL
-      ? inherited
-      : current._renderKey ?? inherited;
     for (const child of current.value) {
       if (isNode(child, N.Rules)) {
         if (!child.visible && !child.fullRender) {
@@ -53,17 +50,17 @@ function flattenVisibleRulesForRender(
         if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
           entries.push({
             node: child,
-            renderKey: effectiveKey
+            renderKey: inherited
           });
           continue;
         }
-        iterateRules(child, effectiveKey);
+        iterateRules(child, inherited);
         continue;
       }
       if (child.visible || child.fullRender) {
         entries.push({
           node: child,
-          renderKey: effectiveKey
+          renderKey: inherited
         });
       }
     }
@@ -367,9 +364,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       for (let idx = 0; idx < rulesToRender.length; idx++) {
         const entry = rulesToRender[idx]!;
         let n = entry.node;
-        // Per-leaf renderKey: for leaves pulled up from nested Rules(_renderKey=X)
-        // in mixin call / $for output, this is the call's renderKey. Used to
-        // read the matching fork when serializing shared body nodes.
+        // Per-leaf renderKey follows the active inherited render context for
+        // this flattened render walk.
         const effectiveRenderKey = entry.renderKey;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
