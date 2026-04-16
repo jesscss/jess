@@ -426,12 +426,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           if (withValues.type === 'set' && evaldRules) {
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // Shallow-clone the imported rules wrapper so injected variables
-          // (line-by-line array splices + declaration registry mutations)
-          // don't mutate the shared canonical tree. Children are still
-          // referenced from the original, which is safe because `withValues`
-          // only replaces/adds declarations — it doesn't touch deeper nodes.
-          let modifiedRules = rules.clone(false) as Rules;
           // withValues.node might be a Reference, so evaluate it first to get Rules
           let withRulesNode = withValues.node;
           if (isNode(withRulesNode, N.Reference)) {
@@ -445,19 +439,23 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // withRules don't need to be cloned because they are used once
           let withRules = withRulesNode as Rules;
 
-          // Build the declaration registry for efficient lookups
-          // This avoids O(n*m) complexity when we have many injected variables
-          // First, register all nodes in modifiedRules so they're in the registry
-          for (const node of modifiedRules.value) {
-            modifiedRules.registerNode(node);
+          const firstVarIndexByName = new Map<string, number>();
+          for (let index = 0; index < rules.value.length; index++) {
+            const existingNode = rules.value[index]!;
+            if (!isNode(existingNode, N.VarDeclaration)) {
+              continue;
+            }
+            const existingName = existingNode.value.name?.toString();
+            if (existingName && !firstVarIndexByName.has(existingName)) {
+              firstVarIndexByName.set(existingName, index);
+            }
           }
-          const declarationRegistry = modifiedRules.getRegistry('declaration');
-          declarationRegistry.indexPendingItems();
 
           // Separate injected variables into two groups:
           // 1. Variables that replace existing ones (found in imported rules)
           // 2. Variables that are new (not found in imported rules)
           const newVariables: Node[] = [];
+          const replacementsByIndex = new Map<number, Node>();
 
           // For each injected variable, find and replace the first matching declaration
           // in the imported rules, OR if not found, add it to newVariables to inject at the top.
@@ -469,32 +467,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             if (isNode(injectedNode, N.VarDeclaration)) {
               const varName = injectedNode.value.name?.toString();
               if (varName) {
-              // Use the registry for efficient lookup instead of linear search
-                const declarations = declarationRegistry.index.get(varName);
-                if (declarations) {
-                // Find the first VarDeclaration in the set (sorted by index)
-                  const existingDecl = Array.from(declarations).find(decl => isNode(decl, N.VarDeclaration));
-
-                  if (existingDecl) {
-                  // Remove the old declaration from the registry
-                    declarations.delete(existingDecl);
-                    // Find its index in the array and replace it
-                    const index = modifiedRules.value.indexOf(existingDecl);
-                    if (index !== -1) {
-                    // Adopt the new node and replace in array
-                      modifiedRules.adopt(injectedNode);
-                      modifiedRules.value[index] = injectedNode;
-                      // Add the new declaration to the registry
-                      declarations.add(injectedNode);
-                      // Register the new node so it's properly indexed
-                      modifiedRules.registerNode(injectedNode);
-                    }
-                  } else {
-                  // Not found, add to newVariables to inject at the top
-                    newVariables.push(injectedNode);
-                  }
+                const existingIndex = firstVarIndexByName.get(varName);
+                if (existingIndex !== undefined) {
+                  replacementsByIndex.set(existingIndex, injectedNode);
                 } else {
-                // Not found in registry, add to newVariables to inject at the top
                   newVariables.push(injectedNode);
                 }
               } else {
@@ -518,10 +494,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             finalRules.adopt(newNode);
             finalRules.value.push(newNode);
           }
-          // Then, add all nodes from the modified imported rules (flattened, with replacements)
-          for (const node of modifiedRules.value) {
-            finalRules.adopt(node);
-            finalRules.value.push(node);
+          // Then, add all nodes from the imported rules (flattened, with replacements)
+          for (let index = 0; index < rules.value.length; index++) {
+            const originalNode = rules.value[index]!;
+            const nextNode = replacementsByIndex.get(index) ?? originalNode;
+            finalRules.adopt(nextNode);
+            finalRules.value.push(nextNode);
           }
           rules = finalRules;
         }
