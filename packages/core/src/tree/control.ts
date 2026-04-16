@@ -203,11 +203,10 @@ export class For extends Node<StructuredLoopValue> {
     makeDirectiveRulesPublic(value.rules);
   }
 
-  override preEval(context: Context): MaybePromise<Node> {
+  override preEval(_context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
-      const node = this.maybeClone(context) as For;
-      node.preEvaluated = true;
-      return node;
+      this.preEvaluated = true;
+      return this;
     }
     return this;
   }

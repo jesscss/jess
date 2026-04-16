@@ -28,13 +28,12 @@ export class Collection extends Rules {
     return this;
   }
 
-  override preEval(context: Context): this | Promise<this> {
+  override preEval(_context: Context): this | Promise<this> {
     if (this.preEvaluated) {
       return this;
     }
-    const node = this.maybeClone(context) as this;
-    node.preEvaluated = true;
-    return node;
+    this.preEvaluated = true;
+    return this;
   }
 }
 
