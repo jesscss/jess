@@ -3577,7 +3577,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       let rules = candidate.value.rules;
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(true);
+      rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
       // Mixin body vars should follow the same leaky/non-leaky visibility model as
       // rulesets: visible outside only in Less/leaky mode, while remaining available
       // as same-scope siblings during body evaluation either way.
