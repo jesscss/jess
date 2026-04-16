@@ -534,13 +534,15 @@ export abstract class Node<
   }
 
   getValue(renderKey?: RenderKey) {
+    if (renderKey === undefined) {
+      return this.value;
+    }
     const thisKey = this._renderKey;
     const forks = this._childForks;
     if (
       thisKey === undefined
       || thisKey === renderKey
       || !forks
-      || renderKey === undefined
       || !forks.has(renderKey)
     ) {
       return this.value;
