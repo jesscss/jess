@@ -945,7 +945,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
      * key constraints to the class generic `T`.
      */
     const setOnRuleset = (key: 'guard' | 'selector' | 'rules', value: any) => {
-      if (activeRenderKey === undefined) {
+      if (activeRenderKey === undefined || this._renderKey === activeRenderKey) {
         (this as Ruleset).set(key as any, value);
         return;
       }
