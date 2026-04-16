@@ -103,22 +103,22 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return w.getSince(mark);
   }
 
-  override operate(b: Node, op: string, context: Context): Sequence | List {
+  override operate(b: Node, op: string, _context: Context): Sequence | List {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`);
     }
-    let newSequence = this.maybeClone(context);
+    const newSequence = this.clone();
     if (b instanceof List) {
       return new List([newSequence, ...b.value]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.value.map(v => v.maybeClone(context));
+      const values = b.value.map(v => v.clone(true));
       if (values.length) {
         values[0]!.pre = 1;
       }
       newSequence.value.push(...values);
     } else {
-      b = b.maybeClone(context);
+      b = b.clone(true);
       b.pre = 1;
       newSequence.value.push(b);
     }

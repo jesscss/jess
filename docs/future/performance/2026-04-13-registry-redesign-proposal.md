@@ -234,6 +234,43 @@ evalCtx.frame for the .mixin() invocation:
 The mixin body node's `.parent` pointer is never consulted. It is document
 structure, not runtime scope. Those are different things.
 
+### One Binding-Frame Architecture
+
+Mixins, `@import`, and `$for` should converge on the same runtime shape:
+
+1. create a local binding frame for this evaluation step
+2. install the runtime bindings relevant to that construct
+3. chain that frame to the correct parent frame
+4. evaluate the canonical body/template against that frame
+
+What differs between them is only **which bindings are installed** and **which
+parent frame is chosen**:
+
+- mixins install params, rest args, and `@arguments`
+- `$for` installs loop bindings such as `value`, `key`, `index`, or pattern
+  bindings
+- imports/modules install configured module bindings (`with` / `set`), plus
+  namespace/export visibility at the wrapper boundary
+
+What should **not** differ:
+
+- separate cloning stories for each construct
+- separate mutation-isolation hacks for each construct
+- separate evaluation models for mixins vs imports vs loops
+
+They are all the same class of problem: evaluate a canonical tree against a
+runtime binding frame.
+
+Because of that, the following are legacy debt, not target architecture:
+
+- `clonedEval(...)`
+- `preserveOriginalNodes`
+- `maybeClone(...)`
+
+Those APIs belong to the older model where locality was simulated by cloning
+before mutation. The redesign should keep deleting them as binding-frame-based
+evaluation takes over.
+
 ### One Lookup Algorithm, Multiple Surfaces
 
 The redesign is about **storage** and **lookup surfaces**, not about inventing

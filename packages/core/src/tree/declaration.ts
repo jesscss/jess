@@ -218,7 +218,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       if (assign) {
         const normalizedAssign = assign;
-        value = value.maybeClone(context);
         /** Reference type */
         let type: 'declaration' | 'variable' =
           node.type === 'Declaration' ? 'declaration' : 'variable';

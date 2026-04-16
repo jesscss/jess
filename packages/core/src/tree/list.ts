@@ -84,16 +84,16 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return undefined;
   }
 
-  override operate(b: Node, op: Operator, context: Context): List<T> {
+  override operate(b: Node, op: Operator, _context: Context): List<Node> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    let newList = this.maybeClone(context);
+    const newList = new List<Node>([...this.value], this._options ? { ...this._options } : undefined);
+    newList.inherit(this);
     if (b instanceof List) {
       newList.value.push(...b.value);
     } else {
-      /** @todo - do we need to verify the list type? */
-      newList.value.push(b as T);
+      newList.value.push(b);
     }
     return newList;
   }
