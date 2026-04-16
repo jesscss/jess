@@ -3662,7 +3662,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = candidate.value.guard?.copy(true);
+      let guard: Condition | Bool | undefined = candidate.value.guard
+        ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
+        : undefined;
       let passes = true;
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
@@ -3679,7 +3681,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = candidate.value.guard?.copy(true);
+              const probeGuard = candidate.value.guard
+                ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
+                : undefined;
               if (!probeGuard) {
                 return false;
               }
