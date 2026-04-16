@@ -291,264 +291,267 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const hoisted = node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
-    const prevTreeFrames = hoisted && !isTransparentWrapper ? treeFrames.slice() : undefined;
-    if (isTransparentWrapper) {
-    // Transparent `&` wrapper: don't add self as a frame, just render children
-    // using the parent frame context.
-      options.inFrames = inFrames = treeFrames!;
-    } else if (hoisted) {
-    // When hoisting, we must reset the active frame stack to at-rules only.
-    // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
-    // in `treeFrames` and cause nested output like:
-    //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
-    // even though the current node is hoisted to root.
-      const atRulesOnly = treeFrames.filter(f => isNode(f, N.AtRule));
-      treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
-      options.inFrames = inFrames = treeFrames;
-    } else {
-      options.inFrames = inFrames = treeFrames!;
-      inFrames.push(node);
-    }
-    // Note: in the hoisted branch above, `node` is already included.
+    const renderRulesBody = () => {
+      if (isTransparentWrapper) {
+      // Transparent `&` wrapper: don't add self as a frame, just render children
+      // using the parent frame context.
+        options.inFrames = inFrames = treeFrames!;
+      } else if (!hoisted) {
+        options.inFrames = inFrames = treeFrames!;
+        inFrames.push(node);
+      }
+      // Note: in the hoisted branch above, `node` is already included.
 
-    let lastRenderedFrames = options.lastRenderedFrames;
+      let lastRenderedFrames = options.lastRenderedFrames;
 
-    /** Don't output selector yet. Let's see if any child rules need hoisting. */
-    for (let idx = 0; idx < rulesToRender.length; idx++) {
-      let n = rulesToRender[idx]!;
-      // Per-leaf renderKey: for leaves pulled up from nested Rules(_renderKey=X)
-      // in mixin call / $for output, this is the call's renderKey. Used to
-      // read the matching fork when serializing shared body nodes.
-      const entryRenderKey = rulesRenderKeys[idx];
-      const effectiveRenderKey = (entryRenderKey ?? options.renderKey) as RenderKey | undefined;
-      const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
+      /** Don't output selector yet. Let's see if any child rules need hoisting. */
+      for (let idx = 0; idx < rulesToRender.length; idx++) {
+        let n = rulesToRender[idx]!;
+        // Per-leaf renderKey: for leaves pulled up from nested Rules(_renderKey=X)
+        // in mixin call / $for output, this is the call's renderKey. Used to
+        // read the matching fork when serializing shared body nodes.
+        const entryRenderKey = rulesRenderKeys[idx];
+        const effectiveRenderKey = (entryRenderKey ?? options.renderKey) as RenderKey | undefined;
+        const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
-      if (!n.visible && !n.fullRender) {
-        continue;
-      }
-      if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
-        continue;
-      }
-      if (
-        isNode(n, N.Any)
-        && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
-        && originatesFromReferenceImport(n)
-        && !originatesFromCall(n)
-      ) {
-        continue;
-      }
-      if (inReferenceMode && !renderEnabled && !isContainer) {
-        continue;
-      }
-      if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
-        continue;
-      }
-
-      const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
-      if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-        const childOut = withTemporaryPrintState(options, {
-          renderKey: effectiveRenderKey
-        }, () => serializeRulesContainerInternal(n as AtRule | Ruleset, options, false));
-        if (!childOut) {
+        if (!n.visible && !n.fullRender) {
           continue;
         }
-        continue;
-      }
+        if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
+          continue;
+        }
+        if (
+          isNode(n, N.Any)
+          && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
+          && originatesFromReferenceImport(n)
+          && !originatesFromCall(n)
+        ) {
+          continue;
+        }
+        if (inReferenceMode && !renderEnabled && !isContainer) {
+          continue;
+        }
+        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
+          continue;
+        }
 
-      /** Re-widen type after accumulated isNode narrowing above */
-      const nn = n as Node;
-      const isSerializerRenderKeyIndependentLeaf = (
-        (isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration))
-        || isNode(nn, N.Extend)
-        || isLeafAtRule
-      );
-      const leafRenderKey = isSerializerRenderKeyIndependentLeaf ? undefined : effectiveRenderKey;
-      if (isNode(nn, N.Rules)) {
-        const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-        const childReferenceMode = inReferenceMode || ownReferenceMode;
-        const enteringReferenceMode = !inReferenceMode && ownReferenceMode;
-        const childReferenceRenderEnabled = childReferenceMode
-          ? (enteringReferenceMode ? false : renderEnabled)
-          : true;
-        const previewOut = withTemporaryPrintState(options, {
-          depth: options.depth + 1,
+        const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
+        if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
+          const childOut = withTemporaryPrintState(options, {
+            renderKey: effectiveRenderKey
+          }, () => serializeRulesContainerInternal(n as AtRule | Ruleset, options, false));
+          if (!childOut) {
+            continue;
+          }
+          continue;
+        }
+
+        /** Re-widen type after accumulated isNode narrowing above */
+        const nn = n as Node;
+        const isSerializerRenderKeyIndependentLeaf = (
+          (isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration))
+          || isNode(nn, N.Extend)
+          || isLeafAtRule
+        );
+        const leafRenderKey = isSerializerRenderKeyIndependentLeaf ? undefined : effectiveRenderKey;
+        if (isNode(nn, N.Rules)) {
+          const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+          const childReferenceMode = inReferenceMode || ownReferenceMode;
+          const enteringReferenceMode = !inReferenceMode && ownReferenceMode;
+          const childReferenceRenderEnabled = childReferenceMode
+            ? (enteringReferenceMode ? false : renderEnabled)
+            : true;
+          const previewOut = withTemporaryPrintState(options, {
+            depth: options.depth + 1,
+            renderKey: leafRenderKey,
+            referenceMode: childReferenceMode,
+            referenceRenderEnabled: childReferenceRenderEnabled
+          }, () => w.capture(() => nn.toTrimmedString(options)));
+          if (!previewOut) {
+            continue;
+          }
+        }
+        let leafFrames = inFrames;
+        const carriedRuleset = getHoistedRulesetCarrier(node, options);
+        if (carriedRuleset) {
+          leafFrames = [...inFrames, carriedRuleset.frame];
+        }
+
+        let matches = -1;
+        /** Close current frames if needed */
+        for (let i = 0; i < lastRenderedFrames.length; i++) {
+          const currentFrame = leafFrames[i];
+          const priorHeader = frameHeaders[i];
+          if (!currentFrame || priorHeader === undefined) {
+            break;
+          }
+          options.depth = i;
+          const currentHeader = (
+            carriedRuleset && i === leafFrames.length - 1 && currentFrame === carriedRuleset.frame
+          )
+            ? getCarriedRulesetHeader(carriedRuleset, options, i)
+            : currentFrame.getHeaderString(options);
+          const priorFrame = lastRenderedFrames[i];
+          const sameHeader = (
+            currentHeader === priorHeader
+            && (
+              !isNode(currentFrame, N.AtRule)
+              || currentFrame === priorFrame
+            )
+          );
+          if (!sameHeader) {
+            break;
+          }
+          matches = i;
+        }
+        for (let i = lastRenderedFrames.length - 1; i > matches; i--) {
+          w.add(indent(i) + '}\n');
+          frameHeaders.pop();
+          lastRenderedFrames.pop();
+          options.depth = i;
+        }
+
+        for (let i = matches + 1; i < leafFrames.length; i++) {
+          let s = frameHeaders[i];
+          let f = leafFrames[i]!;
+          lastRenderedFrames.push(f);
+          options.depth = i;
+          if (s === undefined) {
+            s = (
+              carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+            )
+              ? getCarriedRulesetHeader(carriedRuleset, options, i)
+              : leafFrames[i]!.getHeaderString(options);
+            frameHeaders[i] = s;
+          } else if (s === '') {
+            s = (
+              carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+            )
+              ? getCarriedRulesetHeader(carriedRuleset, options, i)
+              : leafFrames[i]!.getHeaderString(options, true);
+            frameHeaders[i] = s;
+          }
+          w.add(s!);
+        }
+
+        // if (isNode(n, N.Declaration)) {
+        const leafDepth = lastRenderedFrames.length;
+        let idt = indent(leafDepth);
+        const ownReferenceMode = isNode(nn, N.Rules)
+          && (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+        const childReferenceMode = isNode(nn, N.Rules)
+          ? (inReferenceMode || ownReferenceMode)
+          : inReferenceMode;
+        const enteringChildReferenceMode = isNode(nn, N.Rules)
+          ? (!inReferenceMode && ownReferenceMode)
+          : false;
+        const childReferenceRenderEnabled = isNode(nn, N.Rules)
+          ? (
+              childReferenceMode
+                ? (enteringChildReferenceMode ? false : renderEnabled)
+                : true
+            )
+          : renderEnabled;
+        const leafRenderState = {
+          depth: leafDepth,
           renderKey: leafRenderKey,
           referenceMode: childReferenceMode,
           referenceRenderEnabled: childReferenceRenderEnabled
-        }, () => w.capture(() => nn.toTrimmedString(options)));
-        if (!previewOut) {
+        };
+        const { pre, out } = withTemporaryPrintState(options, leafRenderState, () => {
+          const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
+          const out = isNode(nn, N.Declaration)
+            ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
+            : w.capture(() => nn.toTrimmedString(options));
+          return { pre, out };
+        });
+        // Suppress pure-void Any nodes from generating blank output lines.
+        if (
+          isNode(nn, N.Any)
+          && !nn.requiredSemi
+          && !out.trim()
+          && !pre.trim()
+        ) {
           continue;
         }
-      }
-      let leafFrames = inFrames;
-      const carriedRuleset = getHoistedRulesetCarrier(node, options);
-      if (carriedRuleset) {
-        leafFrames = [...inFrames, carriedRuleset.frame];
-      }
-
-      let matches = -1;
-      /** Close current frames if needed */
-      for (let i = 0; i < lastRenderedFrames.length; i++) {
-        const currentFrame = leafFrames[i];
-        const priorHeader = frameHeaders[i];
-        if (!currentFrame || priorHeader === undefined) {
-          break;
-        }
-        options.depth = i;
-        const currentHeader = (
-          carriedRuleset && i === leafFrames.length - 1 && currentFrame === carriedRuleset.frame
-        )
-          ? getCarriedRulesetHeader(carriedRuleset, options, i)
-          : currentFrame.getHeaderString(options);
-        const priorFrame = lastRenderedFrames[i];
-        const sameHeader = (
-          currentHeader === priorHeader
-          && (
-            !isNode(currentFrame, N.AtRule)
-            || currentFrame === priorFrame
-          )
-        );
-        if (!sameHeader) {
-          break;
-        }
-        matches = i;
-      }
-      for (let i = lastRenderedFrames.length - 1; i > matches; i--) {
-        w.add(indent(i) + '}\n');
-        frameHeaders.pop();
-        lastRenderedFrames.pop();
-        options.depth = i;
-      }
-
-      for (let i = matches + 1; i < leafFrames.length; i++) {
-        let s = frameHeaders[i];
-        let f = leafFrames[i]!;
-        lastRenderedFrames.push(f);
-        options.depth = i;
-        if (s === undefined) {
-          s = (
-            carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
-          )
-            ? getCarriedRulesetHeader(carriedRuleset, options, i)
-            : leafFrames[i]!.getHeaderString(options);
-          frameHeaders[i] = s;
-        } else if (s === '') {
-          s = (
-            carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
-          )
-            ? getCarriedRulesetHeader(carriedRuleset, options, i)
-            : leafFrames[i]!.getHeaderString(options, true);
-          frameHeaders[i] = s;
-        }
-        w.add(s!);
-      }
-
-      // if (isNode(n, N.Declaration)) {
-      const leafDepth = lastRenderedFrames.length;
-      let idt = indent(leafDepth);
-      const ownReferenceMode = isNode(nn, N.Rules)
-        && (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-      const childReferenceMode = isNode(nn, N.Rules)
-        ? (inReferenceMode || ownReferenceMode)
-        : inReferenceMode;
-      const enteringChildReferenceMode = isNode(nn, N.Rules)
-        ? (!inReferenceMode && ownReferenceMode)
-        : false;
-      const childReferenceRenderEnabled = isNode(nn, N.Rules)
-        ? (
-            childReferenceMode
-              ? (enteringChildReferenceMode ? false : renderEnabled)
-              : true
-          )
-        : renderEnabled;
-      const leafRenderState = {
-        depth: leafDepth,
-        renderKey: leafRenderKey,
-        referenceMode: childReferenceMode,
-        referenceRenderEnabled: childReferenceRenderEnabled
-      };
-      const { pre, out } = withTemporaryPrintState(options, leafRenderState, () => {
-        const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
-        const out = isNode(nn, N.Declaration)
-          ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
-          : w.capture(() => nn.toTrimmedString(options));
-        return { pre, out };
-      });
-      // Suppress pure-void Any nodes from generating blank output lines.
-      if (
-        isNode(nn, N.Any)
-        && !nn.requiredSemi
-        && !out.trim()
-        && !pre.trim()
-      ) {
-        continue;
-      }
-      if (isNode(nn, N.Declaration)) {
-        const normalizedPre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-        const declIn = normalizedPre + out;
-        const hasEmptyValue = /:\s*$/.test(out);
-        // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
-        // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
-        const declNormalized = hasEmptyValue && (!normalizedPre || normalizedPre.trim() === '')
-          ? `${idt}${out}`
-          : normalizeIndent(declIn, idt, true);
-        if (nn.value.name.valueOf().startsWith('--')) {
-          w.add(idt);
-          w.add(out, nn);
-        } else {
-          w.add(declNormalized, nn);
-        }
-      } else if (isNode(nn, N.Rules)) {
-      /**
+        if (isNode(nn, N.Declaration)) {
+          const normalizedPre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+          const declIn = normalizedPre + out;
+          const hasEmptyValue = /:\s*$/.test(out);
+          // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
+          // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
+          const declNormalized = hasEmptyValue && (!normalizedPre || normalizedPre.trim() === '')
+            ? `${idt}${out}`
+            : normalizeIndent(declIn, idt, true);
+          if (nn.value.name.valueOf().startsWith('--')) {
+            w.add(idt);
+            w.add(out, nn);
+          } else {
+            w.add(declNormalized, nn);
+          }
+        } else if (isNode(nn, N.Rules)) {
+          /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
        * provided depth, so do not prefix another `idt` here (that would double-indent).
        */
-        w.add(out, nn);
-      } else if (isLeafAtRule) {
-        w.add(out, nn);
-      } else {
-        w.add(idt);
-        w.add(out, nn);
-      }
-      /** @todo - optionally add semi-colon for compression */
-      // if (n.requiredSemi && next) {
-      //   w.add(';');
+          w.add(out, nn);
+        } else if (isLeafAtRule) {
+          w.add(out, nn);
+        } else {
+          w.add(idt);
+          w.add(out, nn);
+        }
+        /** @todo - optionally add semi-colon for compression */
+        // if (n.requiredSemi && next) {
+        //   w.add(';');
+        // }
+        if (nn.requiredSemi) {
+          w.add(';');
+        }
+
+        w.add('\n');
+        let post = w.capture(() => nn.processPrePost('post', undefined, options));
+
+        if (!/^\s*$/.test(post)) {
+          w.add(normalizeIndent(post, idt));
+        }
       // }
-      if (nn.requiredSemi) {
-        w.add(';');
+      // else {
+      //   n.toString({ ...options, depth: options.depth + 1 });
+      // }
       }
-
-      w.add('\n');
-      let post = w.capture(() => nn.processPrePost('post', undefined, options));
-
-      if (!/^\s*$/.test(post)) {
-        w.add(normalizeIndent(post, idt));
+      if (!isTransparentWrapper) {
+        inFrames.pop();
+        if (closeFramesOnExit) {
+          frameHeaders.pop();
+        }
       }
-    // }
-    // else {
-    //   n.toString({ ...options, depth: options.depth + 1 });
-    // }
-    }
-    if (!isTransparentWrapper) {
-      inFrames.pop();
       if (closeFramesOnExit) {
-        frameHeaders.pop();
+        let renderedLength = lastRenderedFrames.length;
+        while (treeFrames.length < renderedLength) {
+          w.add(indent(renderedLength - 1) + '}\n');
+          options.depth--;
+          lastRenderedFrames.pop();
+          renderedLength = lastRenderedFrames.length;
+        }
       }
+      return w.getSince(mark);
+    };
+    if (hoisted && !isTransparentWrapper) {
+      return withArraySnapshot(treeFrames, (frames) => {
+      // When hoisting, we must reset the active frame stack to at-rules only.
+      // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
+      // in `treeFrames` and cause nested output like:
+      //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
+      // even though the current node is hoisted to root.
+        const atRulesOnly = frames!.filter(f => isNode(f, N.AtRule));
+        frames!.splice(0, frames!.length, ...atRulesOnly, node);
+        options.inFrames = inFrames = frames!;
+        return renderRulesBody();
+      });
     }
-    if (prevTreeFrames) {
-      treeFrames.splice(0, treeFrames.length, ...prevTreeFrames);
-    }
-    if (closeFramesOnExit) {
-      let renderedLength = lastRenderedFrames.length;
-      while (treeFrames.length < renderedLength) {
-        w.add(indent(renderedLength - 1) + '}\n');
-        options.depth--;
-        lastRenderedFrames.pop();
-        renderedLength = lastRenderedFrames.length;
-      }
-    }
-    return w.getSince(mark);
+    return renderRulesBody();
   };
 
   return withSavedPrintState(options, [
