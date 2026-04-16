@@ -111,12 +111,10 @@ export type FindOptions = DeclarationFindOptions & {
    * When false or undefined, mixin output Rules will be excluded.
    */
   hasTarget?: boolean;
-  /** RenderKey for fork-aware parent chain traversal */
-  renderKey?: RenderKey;
 };
 
 function getLookupRenderKey(options?: FindOptions): RenderKey | undefined {
-  return options?.context?.renderKey ?? options?.renderKey;
+  return options?.context?.renderKey;
 }
 
 export abstract class Registry<

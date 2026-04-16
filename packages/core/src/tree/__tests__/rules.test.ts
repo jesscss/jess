@@ -592,7 +592,6 @@ describe('Rules', () => {
           filter: () => true,
           context,
           hasTarget: false,
-          renderKey: context.renderKey,
           searchParents: true,
           start: 0
         });
