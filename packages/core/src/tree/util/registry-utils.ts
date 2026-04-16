@@ -13,7 +13,6 @@ import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet } from './bitset.js';
-import { getActiveRenderKey } from './print.js';
 
 const { isArray } = Array;
 
@@ -951,7 +950,7 @@ export class MixinRegistry extends Registry<
         break;
       }
       do {
-        const activeRenderKey = options ? getActiveRenderKey(options) : undefined;
+        const activeRenderKey = getLookupRenderKey(options);
         rules = (activeRenderKey ? rules?.getParent(activeRenderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
@@ -1351,7 +1350,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
         while (containingNode?.parent && !isNode(containingNode.parent, N.Rules)) {
           containingNode = containingNode.parent;
         }
-        const activeRenderKey = options ? getActiveRenderKey(options) : undefined;
+        const activeRenderKey = getLookupRenderKey(options);
         rules = (activeRenderKey ? rules?.getParent(activeRenderKey) : rules?.parent) as Rules;
         /**
          * If we reach an import boundary, stop unless it's an `@import`
