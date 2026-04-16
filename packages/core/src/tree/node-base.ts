@@ -607,7 +607,8 @@ export abstract class Node<
         this._renderKey = renderKey;
         value = this._processNodes(value);
         if (key != null) {
-          const existing = this.getValue(renderKey) as Record<string | number, any>;
+          const existing = forks.get(renderKey)! as Record<string | number, any>;
+          (this as Mutable<Node>).value = existing as Data;
           existing[key] = value;
         } else {
           (this as Mutable<Node>).value = value;
