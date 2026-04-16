@@ -383,11 +383,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         || isNode(nn, N.Extend)
         || isLeafAtRule
       );
-      let leafChildOptions: FinalPrintOptions = {
-        ...options,
-        depth: options.depth + 1,
-        renderKey: isSerializerRenderKeyIndependentLeaf ? undefined : effectiveRenderKey
-      };
+      const leafRenderKey = isSerializerRenderKeyIndependentLeaf ? undefined : effectiveRenderKey;
       if (isNode(nn, N.Rules)) {
         const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
         const childReferenceMode = inReferenceMode || ownReferenceMode;
@@ -395,12 +391,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const childReferenceRenderEnabled = childReferenceMode
           ? (enteringReferenceMode ? false : renderEnabled)
           : true;
-        leafChildOptions = {
-          ...leafChildOptions,
+        const previewOut = withTemporaryPrintState(options, {
+          depth: options.depth + 1,
+          renderKey: leafRenderKey,
           referenceMode: childReferenceMode,
           referenceRenderEnabled: childReferenceRenderEnabled
-        };
-        const previewOut = w.capture(() => nn.toTrimmedString(leafChildOptions));
+        }, () => w.capture(() => nn.toTrimmedString(options)));
         if (!previewOut) {
           continue;
         }
@@ -470,16 +466,35 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
       // if (isNode(n, N.Declaration)) {
       const leafDepth = lastRenderedFrames.length;
-      leafChildOptions = {
-        ...leafChildOptions,
-        depth: leafDepth
-      };
       let idt = indent(leafDepth);
-      let pre = w.capture(() => nn.processPrePost('pre', undefined, leafChildOptions));
-      /** normalize pre spacing */
-      let out = isNode(nn, N.Declaration)
-        ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(leafChildOptions)))
-        : w.capture(() => nn.toTrimmedString(leafChildOptions));
+      const ownReferenceMode = isNode(nn, N.Rules)
+        && (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+      const childReferenceMode = isNode(nn, N.Rules)
+        ? (inReferenceMode || ownReferenceMode)
+        : inReferenceMode;
+      const enteringChildReferenceMode = isNode(nn, N.Rules)
+        ? (!inReferenceMode && ownReferenceMode)
+        : false;
+      const childReferenceRenderEnabled = isNode(nn, N.Rules)
+        ? (
+            childReferenceMode
+              ? (enteringChildReferenceMode ? false : renderEnabled)
+              : true
+          )
+        : renderEnabled;
+      const leafRenderState = {
+        depth: leafDepth,
+        renderKey: leafRenderKey,
+        referenceMode: childReferenceMode,
+        referenceRenderEnabled: childReferenceRenderEnabled
+      };
+      const { pre, out } = withTemporaryPrintState(options, leafRenderState, () => {
+        const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
+        const out = isNode(nn, N.Declaration)
+          ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
+          : w.capture(() => nn.toTrimmedString(options));
+        return { pre, out };
+      });
       // Suppress pure-void Any nodes from generating blank output lines.
       if (
         isNode(nn, N.Any)
@@ -490,12 +505,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         continue;
       }
       if (isNode(nn, N.Declaration)) {
-        pre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-        const declIn = pre + out;
+        const normalizedPre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+        const declIn = normalizedPre + out;
         const hasEmptyValue = /:\s*$/.test(out);
         // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
         // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
-        const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
+        const declNormalized = hasEmptyValue && (!normalizedPre || normalizedPre.trim() === '')
           ? `${idt}${out}`
           : normalizeIndent(declIn, idt, true);
         if (nn.value.name.valueOf().startsWith('--')) {
