@@ -101,9 +101,7 @@ describe('Rules', () => {
     expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
   });
 
-  it('keeps Rules render flags and renderKey render-local', () => {
-    const renderKey = Symbol('outer-render');
-    context.renderKey = renderKey;
+  it('keeps Rules render flags render-local', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })
     ], {
@@ -121,7 +119,6 @@ describe('Rules', () => {
     expect(out).toBe('color: red;');
     expect(options.referenceMode).toBe(false);
     expect(options.referenceRenderEnabled).toBe(true);
-    expect(context.renderKey).toBe(renderKey);
   });
 
   it('reuses context-owned render state without accumulating prior output', () => {
@@ -583,7 +580,6 @@ describe('Rules', () => {
 
         root = await root.eval(context);
         expect(context.searchScope.size).toBe(0);
-        expect(context.renderKey).toBeUndefined();
         const scope1 = root.at(1) as any;
         const scope2 = scope1.value.rules.at(1) as any;
         const scope3 = scope2.value.rules.at(0) as any;

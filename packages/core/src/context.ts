@@ -22,7 +22,6 @@ import type { Call } from './tree/call.js';
 import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
-import { type RenderKey } from './tree/node-base.js';
 import { BitSetLibrary } from './tree/util/bitset.js';
 import type { PrintOptions } from './tree/util/print.js';
 
@@ -297,8 +296,6 @@ export class Context {
   get classMap() {
     return (this._classMap ??= new Map());
   }
-
-  renderKey: RenderKey | undefined;
 
   private _printState: PrintOptions | undefined;
   get printState() {

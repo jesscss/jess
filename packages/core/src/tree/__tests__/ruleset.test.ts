@@ -113,8 +113,6 @@ describe('Rule', () => {
       selector: sel([el('.foo')]),
       rules: rules([])
     });
-    const renderKey = Symbol('test-render');
-    context.renderKey = renderKey;
     const options = getPrintOptions({
       writer: new OutputWriter(),
       collapseNesting: true,
@@ -132,8 +130,6 @@ describe('Rule', () => {
       selector: sel([el('.child')]),
       rules: rules([])
     });
-    const renderKey = Symbol('test-render');
-    context.renderKey = renderKey;
     const options = getPrintOptions({
       writer: new OutputWriter(),
       context,
