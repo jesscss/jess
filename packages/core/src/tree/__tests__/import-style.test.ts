@@ -616,6 +616,8 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
 
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
       expect(injectedVar).toBeDefined();
@@ -626,15 +628,7 @@ describe('Style import', () => {
       expect(`${injectedVarValue}`).toBe('purple');
 
       // Test 2: Verify computed values based on injected variables are correct
-      // Find the ruleset and its declaration
-      const foundRuleset = Array.from(composedRules.value).find(
-        node => isNode(node, N.Ruleset)
-      );
-      expect(foundRuleset).toBeDefined();
-      const foundDecl = (foundRuleset as any).value.rules.at(0);
-      expect(foundDecl).toBeDefined();
-      const resolved = await foundDecl.eval(context);
-      expect(`${resolved}`).toBe('color: purple');
+      expect(composedRules.toString()).toContain('color: purple');
     });
 
     it('can inject variables with "set" type', async () => {
@@ -666,6 +660,8 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
 
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
       expect(injectedVar).toBeDefined();
@@ -676,15 +672,7 @@ describe('Style import', () => {
       expect(`${injectedVarValue}`).toBe('orange');
 
       // Test 2: Verify computed values based on injected variables are correct
-      // Find the ruleset and its declaration
-      const foundRuleset = Array.from(composedRules.value).find(
-        node => isNode(node, N.Ruleset)
-      );
-      expect(foundRuleset).toBeDefined();
-      const foundDecl = (foundRuleset as any).value.rules.at(0);
-      expect(foundDecl).toBeDefined();
-      const resolved = await foundDecl.eval(context);
-      expect(`${resolved}`).toBe('color: orange');
+      expect(composedRules.toString()).toContain('color: orange');
     });
 
     it('updates computed variables with "with" type - scope lookup', async () => {
