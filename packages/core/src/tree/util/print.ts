@@ -45,6 +45,7 @@ export type FinalPrintOptions = PrintOptions & {
 type RestorablePrintStateKey =
   | 'ampersandFirst'
   | 'collapseNesting'
+  | 'context'
   | 'composedSelectorStack'
   | 'depth'
   | 'inCustom'
@@ -60,6 +61,7 @@ type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
 const RESTORABLE_PRINT_STATE_KEYS: readonly RestorablePrintStateKey[] = [
   'ampersandFirst',
   'collapseNesting',
+  'context',
   'composedSelectorStack',
   'depth',
   'inCustom',

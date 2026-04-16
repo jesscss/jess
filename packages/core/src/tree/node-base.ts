@@ -6,7 +6,7 @@ import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
 import type { Comment } from './comment.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, withTemporaryPrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -1430,11 +1430,11 @@ export abstract class Node<
     )
       ? contextOrOptions as Context
       : undefined;
-    const options = context ? maybeOptions : contextOrOptions as PrintOptions | undefined;
-    return this.toTrimmedString({
-      ...options,
-      context: context ?? options?.context
-    });
+    const options = getPrintOptions(context ? maybeOptions : contextOrOptions as PrintOptions | undefined);
+    if (!context || options.context === context) {
+      return this.toTrimmedString(options);
+    }
+    return withTemporaryPrintState(options, { context }, () => this.toTrimmedString(options));
   }
 
   /**

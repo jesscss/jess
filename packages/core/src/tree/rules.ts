@@ -1145,7 +1145,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (depth === 0) {
       // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
         const prevCharsetEmitted = ctx?.charsetEmitted;
-        const prevTopImports = ctx?.topImports ? [...ctx.topImports] : undefined;
         // @charset must be first
         if (ctx?.currentCharset && !ctx.charsetEmitted) {
           const charset = ctx.currentCharset;
@@ -1200,9 +1199,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Restore global tracking (we only needed it during this print).
         if (ctx) {
           ctx.charsetEmitted = prevCharsetEmitted;
-          if (prevTopImports) {
-            ctx.topImports = prevTopImports;
-          }
         }
       }
 
