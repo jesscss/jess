@@ -1,4 +1,5 @@
 import type { AtRule } from '../at-rule.js';
+import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node, type RenderKey } from '../node.js';
 import {
@@ -31,6 +32,45 @@ function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): b
     return (sel as SelectorList).value.every((item: Selector) => isNode(item, N.Ampersand));
   }
   return false;
+}
+
+type RenderRuleEntry = {
+  node: Node;
+  renderKey: RenderKey | undefined;
+};
+
+function flattenVisibleRulesForRender(
+  rules: Rules,
+  inheritedKey: RenderKey | undefined = rules._renderKey
+): RenderRuleEntry[] {
+  const entries: RenderRuleEntry[] = [];
+  const iterateRules = (current: Rules, inherited: RenderKey | undefined) => {
+    const effectiveKey = current._renderKey ?? inherited;
+    for (const child of current.value) {
+      if (isNode(child, N.Rules)) {
+        if (!child.visible && !child.fullRender) {
+          continue;
+        }
+        if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
+          entries.push({
+            node: child,
+            renderKey: effectiveKey
+          });
+          continue;
+        }
+        iterateRules(child, effectiveKey);
+        continue;
+      }
+      if (child.visible || child.fullRender) {
+        entries.push({
+          node: child,
+          renderKey: effectiveKey
+        });
+      }
+    }
+  };
+  iterateRules(rules, inheritedKey);
+  return entries;
 }
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -239,7 +279,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return w.getSince(mark);
     }
 
-    const { nodes: rulesToRender, renderKeys: rulesRenderKeys } = rules.flatRulesWithKeys(true);
+    const rulesToRender = flattenVisibleRulesForRender(rules);
     const declarationOutputCache = new Map<number, string>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
@@ -276,7 +316,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     // Less-style duplicate declaration handling:
     // for each property, keep the last exact serialized declaration and skip earlier duplicates.
     for (let i = rulesToRender.length - 1; i >= 0; i--) {
-      const node = rulesToRender[i]!;
+      const node = rulesToRender[i]!.node;
       if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
         continue;
       }
@@ -319,11 +359,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
       /** Don't output selector yet. Let's see if any child rules need hoisting. */
       for (let idx = 0; idx < rulesToRender.length; idx++) {
-        let n = rulesToRender[idx]!;
+        const entry = rulesToRender[idx]!;
+        let n = entry.node;
         // Per-leaf renderKey: for leaves pulled up from nested Rules(_renderKey=X)
         // in mixin call / $for output, this is the call's renderKey. Used to
         // read the matching fork when serializing shared body nodes.
-        const entryRenderKey = rulesRenderKeys[idx];
+        const entryRenderKey = entry.renderKey;
         const effectiveRenderKey = (entryRenderKey ?? getActiveRenderKey(options)) as RenderKey | undefined;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 

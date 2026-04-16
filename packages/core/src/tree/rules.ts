@@ -4,7 +4,6 @@ import {
   type NodeOptions,
   type LocationInfo,
   type TreeContext,
-  type RenderKey,
   F_STATIC,
   F_VISIBLE
 } from './node.js';
@@ -1509,49 +1508,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
     iterateRules(this);
     return finalRules;
-  }
-
-  /**
-   * Same traversal as `flatRules`, but also returns the `_renderKey` of the
-   * nearest enclosing Rules (including `this`) for each leaf. Used by
-   * serialization to propagate per-call forks into shared leaf nodes adopted
-   * into multiple per-renderKey wrapper Rules (mixin calls, $for iterations).
-   *
-   * Returning a parallel `renderKeys` array instead of wrapping each entry
-   * keeps the happy path (`flatRules()` → `Node[]`) unchanged for its many
-   * other callers.
-   */
-  flatRulesWithKeys(visibleOnly: boolean = false): {
-    nodes: Node[];
-    renderKeys: Array<RenderKey | undefined>;
-  } {
-    const nodes: Node[] = [];
-    const renderKeys: Array<RenderKey | undefined> = [];
-    const iterateRules = (rules: Rules, inheritedKey: RenderKey | undefined) => {
-      const effectiveKey = rules._renderKey ?? inheritedKey;
-      for (let n of rules.value) {
-        if (isNode(n, N.Rules)) {
-          if (visibleOnly && !n.visible && !n.fullRender) {
-            continue;
-          }
-          if ((n.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
-            if (!visibleOnly || n.visible || n.fullRender) {
-              nodes.push(n);
-              renderKeys.push(effectiveKey);
-            }
-            continue;
-          }
-          iterateRules(n as Rules, effectiveKey);
-          continue;
-        }
-        if (!visibleOnly || n.visible || n.fullRender) {
-          nodes.push(n);
-          renderKeys.push(effectiveKey);
-        }
-      }
-    };
-    iterateRules(this, this._renderKey);
-    return { nodes, renderKeys };
   }
 
   visibleRules() {
