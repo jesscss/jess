@@ -142,7 +142,7 @@ function getHoistedRulesetCarrier(
   for (let i = 0; i < rulesetFrames.length; i++) {
     const currentFrame = rulesetFrames[i]!;
     const currentSelector = (
-      renderKey === undefined
+      renderKey === undefined || currentFrame._renderKey === undefined
         ? currentFrame.value
         : currentFrame.getValue(renderKey)
     ).selector;

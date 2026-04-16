@@ -688,7 +688,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const w = options.writer;
     const renderKey = options.context?.renderKey;
     const { selector } = (
-      renderKey === undefined
+      renderKey === undefined || this._renderKey === undefined
         ? this.value
         : this.getValue(renderKey)
     ) as RulesetValue;
