@@ -3062,8 +3062,28 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
       }
     }
+    function needsBoundLeadingItemWhitespaceNormalization(node: Node): boolean {
+      if (!isNode(node, N.List | N.Sequence)) {
+        return false;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const items = node.value as Node[];
+      if (items.length > 0 && items[0]!.pre !== 0) {
+        return true;
+      }
+      for (const item of items) {
+        if (needsBoundLeadingItemWhitespaceNormalization(item)) {
+          return true;
+        }
+      }
+      return false;
+    }
     function cloneBoundValue(value: Node): Node {
       if (!isNode(value, N.List | N.Sequence)) {
+        value.frozen = true;
+        return value;
+      }
+      if (!needsBoundLeadingItemWhitespaceNormalization(value)) {
         value.frozen = true;
         return value;
       }
