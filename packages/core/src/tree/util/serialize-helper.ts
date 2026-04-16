@@ -361,8 +361,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         // Per-leaf renderKey: for leaves pulled up from nested Rules(_renderKey=X)
         // in mixin call / $for output, this is the call's renderKey. Used to
         // read the matching fork when serializing shared body nodes.
-        const entryRenderKey = entry.renderKey;
-        const effectiveRenderKey = entryRenderKey ?? options.context?.renderKey;
+        const effectiveRenderKey = entry.renderKey;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
         if (!n.visible && !n.fullRender) {
