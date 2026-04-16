@@ -156,10 +156,6 @@ export const F_DEFAULT = F_VISIBLE;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
 
-export const CANONICAL: unique symbol = Symbol('CANONICAL');
-
-export type RenderKey = number | typeof CANONICAL;
-
 export type Mutable<T extends { value: unknown }> =
   Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
 
@@ -309,20 +305,16 @@ export abstract class Node<
   /**
    * The node's data.
    *
-   * This is `readonly` to prevent accidental unforked mutation. The fork
-   * machinery (per-renderKey copies for mixin calls / `$for` iterations) is
-   * maintained by `set(key, value, renderKey)`, and direct writes that
-   * bypass it silently leak state across render contexts — the failure
-   * mode is that calls 2+ pick up call 1's evaluated values.
+   * This is `readonly` to prevent accidental unforked mutation.
    *
    * Mutation paths, in order of preference:
-   *   1. `node.set(key, value, renderKey)` — fork-aware. Use this in all
-   *      eval-time code.
+   *   1. `node.set(key, value)` — canonical mutation with parent adoption.
    *   2. Direct assignment with an explicit `@ts-expect-error` escape:
    *        // @ts-expect-error direct mutation: <why fork machinery is not needed here>
    *        node.value = newValue;
-   *      Use this only when you know the caller is not inside a renderKey
-   *      context (parse time, in-place selector reshape helpers, etc.).
+   *      Use this only when you know the caller is not bypassing parent
+   *      adoption or other node invariants (parse time, in-place selector
+   *      reshape helpers, etc.).
    *      Every bypass must carry its justification inline.
    *
    * Short-term exception: `util/extend.ts` and friends still do extensive
@@ -506,83 +498,14 @@ export abstract class Node<
     return this.value;
   }
 
-  set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>, renderKey?: RenderKey): void;
-  set(key: null | string | number, value: any, renderKey?: RenderKey) {
-    if (renderKey === undefined) {
-      if (key == null) {
-        (this as Mutable<Node>).value = this._processNodes(value);
-      } else {
-        (this.value as Record<string | number, any>)[key] = this._processNodes(value);
-      }
-      return;
-    }
-    const existingValue = this.value;
-    /** Don't create fork if the value is the same */
-    if (existingValue === value
-      || existingValue?.valueOf?.() === value?.valueOf?.()
-    ) {
-      return;
-    }
-    let thisRenderKey = this._renderKey;
-    thisRenderKey ??= CANONICAL;
-    const forks: Map<RenderKey, NodeValue> = this._childForks ??= new Map();
-    if (!forks.has(renderKey)) {
-      /** Lazy cache existing value */
-      if (!forks.has(thisRenderKey)) {
-        forks.set(
-          thisRenderKey,
-          key != null
-            ? this.cloneValue(existingValue as NodeValue)
-            : existingValue as NodeValue
-        );
-      }
-      this._renderKey = renderKey;
-      value = this._processNodes(value);
-      if (key != null) {
-        const cloned = this.cloneValue(existingValue as NodeValue) as Record<string | number, any>;
-        (this as Mutable<Node>).value = cloned;
-        cloned[key] = value;
-        forks.set(renderKey, cloned as NodeValue);
-      } else {
-        forks.set(renderKey, value as NodeValue);
-        (this as Mutable<Node>).value = value;
-      }
+  set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
+  set(key: null | string | number, value: any) {
+    if (key == null) {
+      (this as Mutable<Node>).value = this._processNodes(value);
     } else {
-      /**
-       * If the renderkey matches the existing render key,
-       * we can just set the value directly.
-       */
-      if (thisRenderKey === renderKey) {
-        if (key == null) {
-          (this as Mutable<Node>).value = this._processNodes(value);
-        } else {
-          (this.value as Record<string | number, any>)[key] = this._processNodes(value);
-        }
-      } else {
-        this._renderKey = renderKey;
-        value = this._processNodes(value);
-        if (key != null) {
-          const existing = forks.get(renderKey)! as Record<string | number, any>;
-          (this as Mutable<Node>).value = existing as Data;
-          existing[key] = value;
-        } else {
-          (this as Mutable<Node>).value = value;
-          forks.set(renderKey, value as NodeValue);
-        }
-      }
+      (this.value as Record<string | number, any>)[key] = this._processNodes(value);
     }
   }
-
-  // _checkFork() {
-  //   if (!this.forked) {
-  //     this.forked = true;
-  //     const forks = this._forks ??= new Map();
-  //     forks.set(CANONICAL, this.cloneValue(this.value));
-  //   }
-  // }
-
-  declare _renderKey?: RenderKey;
-  declare _childForks?: Map<RenderKey, NodeValue>;
 
   /**
    * Static factory method to create a generated node.
@@ -1083,12 +1006,9 @@ export abstract class Node<
     }
 
     /**
-     * Canonical nodes (no _renderKey) are always eligible for re-evaluation —
-     * they're the template, not a result. Only forked nodes (with a _renderKey)
-     * should be gated by evaluated/preEvaluated flags.
-     *
-     * Also re-evaluate when the context renderKey differs from the node's —
-     * the node was evaluated in a different fork.
+     * Canonical nodes are always eligible for re-evaluation — they're the
+     * template, not a retained result. The remaining fork storage no longer
+     * tracks an "active render key" on the node itself.
      */
     const needsReeval = false;
 
