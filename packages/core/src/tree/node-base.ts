@@ -572,7 +572,6 @@ export abstract class Node<
     thisRenderKey ??= CANONICAL;
     const forks: Map<RenderKey, NodeValue> = this._childForks ??= new Map();
     if (!forks.has(renderKey)) {
-      const existingValue = this.value;
       /** Lazy cache existing value */
       if (!forks.has(thisRenderKey)) {
         forks.set(
