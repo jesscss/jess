@@ -433,17 +433,31 @@ export class ExtendRootRegistry {
   }
 
   setLayerName(atRule: AtRule, layerName: string): void {
-    this.layerNames.set(atRule, layerName);
+    for (const key of getAtRuleLayerKeys(atRule)) {
+      this.layerNames.set(key, layerName);
+    }
   }
 
   getLayerName(atRule: AtRule): string | undefined {
-    return this.layerNames.get(atRule);
+    for (const key of getAtRuleLayerKeys(atRule)) {
+      const layerName = this.layerNames.get(key);
+      if (layerName) {
+        return layerName;
+      }
+    }
+    return undefined;
   }
 
   takeLayerName(atRule: AtRule): string | undefined {
-    const layer = this.layerNames.get(atRule);
+    const keys = getAtRuleLayerKeys(atRule);
+    let layer: string | undefined;
+    for (const key of keys) {
+      layer ??= this.layerNames.get(key);
+    }
     if (layer) {
-      this.layerNames.delete(atRule);
+      for (const key of keys) {
+        this.layerNames.delete(key);
+      }
     }
     return layer;
   }
@@ -458,6 +472,14 @@ export class ExtendRootRegistry {
 }
 
 const rulesetsByRoot = new Map<Rules, Set<Ruleset>>();
+
+function getAtRuleLayerKeys(atRule: AtRule): AtRule[] {
+  const sourceAtRule = atRule.sourceNode as AtRule | undefined;
+  if (!sourceAtRule || sourceAtRule === atRule) {
+    return [atRule];
+  }
+  return [atRule, sourceAtRule];
+}
 
 export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
   if (!root || !ruleset) {
