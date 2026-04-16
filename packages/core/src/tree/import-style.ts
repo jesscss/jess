@@ -555,7 +555,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             && (
               importOptions!.reference === true
               || importOptions!._dedupe === true
-              || importOptions!.mutable === false
             )
           );
           // Import-localization should stay at the import boundary.
