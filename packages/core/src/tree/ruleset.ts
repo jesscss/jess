@@ -429,9 +429,26 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * mutates `value.selector`, we must clear this cache so frame/header caching
    * reflects the updated selector.
    */
-  invalidateSelectorValueCache(): void {
+  invalidateSelectorValueCache(nextSelector?: Selector | Nil): void {
     this._valueOf = undefined;
     this._composedSelector = undefined;
+    nextSelector ??= this.value.selector as Selector | Nil | undefined;
+
+    const sourceRuleset = this.sourceNode as Ruleset | undefined;
+    if (!sourceRuleset || sourceRuleset === this) {
+      return;
+    }
+
+    sourceRuleset._composedSelector = undefined;
+    if (nextSelector instanceof Nil) {
+      sourceRuleset._valueOf = '';
+      return;
+    }
+    if (nextSelector) {
+      sourceRuleset._valueOf = nextSelector.valueOf();
+      return;
+    }
+    sourceRuleset._valueOf = undefined;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -791,7 +808,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
-      const node = this;
+      const node = this.clone(false) as this;
       node.preEvaluated = true;
       let { selector, rules, guard } = node.value;
       const { selectorBits } = context;

@@ -549,19 +549,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the import type is `import`
       */
         if (withValues || !evaldRules || type === 'import') {
-          const needsImportLocalClone = (
-            !withValues
-            && type === 'import'
-            && importOptions!.reference === true
-          );
-          // Import-localization should stay at the import boundary.
-          // Plain mutable imports can now evaluate their canonical tree directly.
-          // The remaining local clone boundary is the reference/protected import
-          // surface, which still preserves referenced-selector identity.
-          if (needsImportLocalClone) {
-            rules = rules.clone(true) as Rules;
-            rules.sourceNode ??= node;
-          }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
