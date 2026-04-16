@@ -938,18 +938,18 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
+    const activeRenderKey = context.renderKey;
     /**
      * Local non-generic alias for `this.set` so we can write field-typed
      * mutations (`'guard'`, `'selector'`, `'rules'`) without TS losing the
      * key constraints to the class generic `T`.
      */
     const setOnRuleset = (key: 'guard' | 'selector' | 'rules', value: any) => {
-      const renderKey = context.renderKey;
-      if (renderKey === undefined) {
+      if (activeRenderKey === undefined) {
         (this as Ruleset).set(key as any, value);
         return;
       }
-      (this as Ruleset).set(key as any, value, renderKey);
+      (this as Ruleset).set(key as any, value, activeRenderKey);
     };
 
     // Store frames snapshot for collapseNesting serialization
