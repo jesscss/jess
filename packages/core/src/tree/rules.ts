@@ -3015,9 +3015,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           // Evaluating them can register/override variables in the current scope.
           // They should only be used for parameter binding.
           if (isNode(arg, N.VarDeclaration)) {
-            const cloned = arg.copy(true, freezeChildren);
-            cloned.frozen = true;
-            nodeArgs.push(cloned);
+            nodeArgs.push(arg);
             continue;
           }
           try {
