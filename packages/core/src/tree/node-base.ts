@@ -1217,18 +1217,17 @@ export abstract class Node<
     }
 
     const nodeRenderKey = node._renderKey;
-    if (nodeRenderKey !== undefined && nodeRenderKey !== renderKey) {
-      node.getValue(CANONICAL);
-    }
-
     const needsReeval = shouldGateReeval
       && (
         nodeRenderKey === undefined
         || nodeRenderKey !== renderKey
       );
 
-    if (needsReeval) {
+    if (nodeRenderKey !== undefined && nodeRenderKey !== renderKey) {
       node.getValue(CANONICAL);
+    }
+
+    if (needsReeval) {
       node.preEvaluated = false;
       node.evaluated = false;
     }
