@@ -3512,7 +3512,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
           outerRules.push(...rules.value);
           newRules = await outerRules.eval(thisContext);
         }
-        newRules._renderKey = renderKey;
+        if (newRules !== outerRules && newRules !== rules) {
+          newRules._renderKey = renderKey;
+        }
         candidate.parent!.adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
@@ -3556,6 +3558,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true);
+        const evalRules = rules;
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         // Allocate a renderKey per ruleset-as-mixin call so shared body
         // children (the nested Rulesets like `.bar`) get per-call forks for
@@ -3576,7 +3579,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
           thisContext.popRenderKey();
           thisContext.rulesContext = originalContext;
         }
-        rules._renderKey = renderKey;
+        if (rules !== evalRules) {
+          rules._renderKey = renderKey;
+        }
         callParent.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;

@@ -279,7 +279,9 @@ export class For extends Node<StructuredLoopValue> {
         context.popRenderKey();
 
         if (isNode(result, N.Rules)) {
-          result._renderKey = renderKey;
+          if (result !== iterationRules) {
+            result._renderKey = renderKey;
+          }
           outputRules.push(result);
         } else {
           outputRules.push(result);
