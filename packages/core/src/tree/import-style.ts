@@ -490,10 +490,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
           if (newVariables.length === 0 && replacementsByIndex.size === 0) {
             // No effective configuration change; keep the imported Rules tree.
-          } else if (replacementsByIndex.size === 0 && newVariables.every(newNode => isNode(newNode, N.VarDeclaration))) {
-            // Pure additive variable configuration can keep the imported Rules
-            // as a child surface instead of flattening every imported node into
-            // a fresh synthetic top-level tree.
+          } else if (replacementsByIndex.size === 0) {
+            // Pure additive configuration can keep the imported Rules as a
+            // child surface instead of flattening every imported node into a
+            // fresh synthetic top-level tree.
             const finalRules = Rules.create([]);
             for (const newNode of newVariables) {
               finalRules.adopt(newNode);

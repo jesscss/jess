@@ -874,6 +874,45 @@ describe('Style import', () => {
       expect(imported.toString()).toContain('.box');
     });
 
+    it('keeps additive non-variable "with" configs on a child rules surface', async () => {
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('black') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              ruleset({
+                selector: sellist([sel([el('.addon')])]),
+                rules: rules([
+                  decl({ name: any('color'), value: any('red') })
+                ])
+              })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.toString()).toContain('.base');
+      expect(composedRules.toString()).toContain('.addon');
+    });
+
     it('throws if "set" is used more than once', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
