@@ -25,8 +25,6 @@ export type PrintOptions = {
   referenceRenderEnabled?: boolean;
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
-  /** RenderKey for fork-aware value reads during serialization. */
-  renderKey?: RenderKey;
   /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
   /** Session-local composed selector cache keyed by rendered ruleset and active render key. */
@@ -55,7 +53,6 @@ type RestorablePrintStateKey =
   | 'referenceFilterTargets'
   | 'referenceMode'
   | 'referenceRenderEnabled'
-  | 'renderKey'
   | 'writer';
 
 type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
@@ -154,7 +151,6 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.referenceMode = seed?.referenceMode ?? false;
   state.referenceRenderEnabled = seed?.referenceRenderEnabled ?? true;
   state.referenceFilterTargets = seed?.referenceFilterTargets ?? false;
-  state.renderKey = seed?.renderKey;
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
@@ -205,7 +201,7 @@ export function restoreArrayState<T>(
 }
 
 export function getActiveRenderKey(options: PrintOptions): RenderKey | undefined {
-  return options.context?.renderKey ?? options.renderKey;
+  return options.context?.renderKey;
 }
 
 export function getCachedComposedSelector(
@@ -230,24 +226,20 @@ export function setCachedComposedSelector(
   byKey.set(renderKey, selector);
 }
 
-export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey | undefined): RenderKey | undefined {
+export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey | undefined): boolean {
   const context = options.context;
-  if (context) {
+  if (context && renderKey !== undefined) {
     context.pushRenderKey(renderKey);
-    return undefined;
+    return true;
   }
-  const previous = options.renderKey;
-  options.renderKey = renderKey;
-  return previous;
+  return false;
 }
 
-export function popActiveRenderKey(options: PrintOptions, previous: RenderKey | undefined): void {
+export function popActiveRenderKey(options: PrintOptions, pushed: boolean): void {
   const context = options.context;
-  if (context) {
+  if (context && pushed) {
     context.popRenderKey();
-    return;
   }
-  options.renderKey = previous;
 }
 
 export class OutputWriter implements OutputWriter {

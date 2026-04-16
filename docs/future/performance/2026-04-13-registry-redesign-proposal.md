@@ -122,6 +122,11 @@ The long-term model is:
 - no cloned `PrintOptions`
 - temporary render state managed by push/pop or save/restore on the live
   session surfaces
+- very light source nodes that behave like immutable templates
+- evaluation and serialization collapsing into one step against the active
+  output buffers
+- object-shaped intermediate output surviving only where later passes still
+  need structure, with selector/extend handling the main example
 
 Local child-specific values can still exist, but they should become explicit
 render-frame/session state rather than ad hoc copied options objects threaded

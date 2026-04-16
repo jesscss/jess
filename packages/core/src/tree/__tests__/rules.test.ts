@@ -103,6 +103,7 @@ describe('Rules', () => {
 
   it('keeps Rules render flags and renderKey render-local', () => {
     const renderKey = Symbol('outer-render');
+    context.pushRenderKey(renderKey);
     const node = rules([
       decl({ name: 'color', value: any('red') })
     ], {
@@ -110,9 +111,9 @@ describe('Rules', () => {
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),
+      context,
       referenceMode: false,
-      referenceRenderEnabled: true,
-      renderKey
+      referenceRenderEnabled: true
     });
 
     const out = node.toTrimmedString(options);
@@ -120,7 +121,7 @@ describe('Rules', () => {
     expect(out).toBe('color: red;');
     expect(options.referenceMode).toBe(false);
     expect(options.referenceRenderEnabled).toBe(true);
-    expect(options.renderKey).toBe(renderKey);
+    expect(context.renderKey).toBe(renderKey);
   });
 
   it('reuses context-owned render state without accumulating prior output', () => {

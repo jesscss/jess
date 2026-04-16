@@ -113,10 +113,12 @@ describe('Rule', () => {
       selector: sel([el('.foo')]),
       rules: rules([])
     });
+    const renderKey = Symbol('test-render');
+    context.pushRenderKey(renderKey);
     const options = getPrintOptions({
       writer: new OutputWriter(),
       collapseNesting: true,
-      renderKey: Symbol('test-render')
+      context
     });
 
     const header = node.getHeaderString(options);
@@ -131,11 +133,12 @@ describe('Rule', () => {
       rules: rules([])
     });
     const renderKey = Symbol('test-render');
+    context.pushRenderKey(renderKey);
     const options = getPrintOptions({
       writer: new OutputWriter(),
+      context,
       collapseNesting: true,
-      composedSelectorStack: [sel([el('.parent')])],
-      renderKey
+      composedSelectorStack: [sel([el('.parent')])]
     });
 
     const header = node.getHeaderString(options);
