@@ -104,10 +104,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
-      const node = this.maybeClone(context);
+      const node = this;
       node.preEvaluated = true;
-      // Index should already be assigned by parent Rules
-      node.sourceNode ??= this;
 
       // Evaluate name if needed (for interpolated names)
       let { name } = node.value;
