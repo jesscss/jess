@@ -38,7 +38,7 @@ type RenderRuleEntry = {
 
 function flattenVisibleRulesForRender(
   rules: Rules,
-  inheritedKey: RenderKey | undefined = rules._renderKey
+  inheritedKey: RenderKey | undefined
 ): RenderRuleEntry[] {
   const entries: RenderRuleEntry[] = [];
   const iterateRules = (current: Rules, inherited: RenderKey | undefined) => {
@@ -276,7 +276,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return w.getSince(mark);
     }
 
-    const rulesToRender = flattenVisibleRulesForRender(rules);
+    const rulesToRender = flattenVisibleRulesForRender(rules, options.context?.renderKey ?? rules._renderKey);
     const declarationOutputCache = new Map<number, string>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();

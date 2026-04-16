@@ -3558,7 +3558,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
         let rules = sourceRules.clone(true);
-        const evalRules = rules;
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         // Allocate a renderKey per ruleset-as-mixin call so shared body
         // children (the nested Rulesets like `.bar`) get per-call forks for
