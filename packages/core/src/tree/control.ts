@@ -12,7 +12,6 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { Range } from './range.js';
 import { List } from './list.js';
-import type { Mixin } from './mixin.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -52,10 +51,6 @@ export type ForIterable =
     includeStart: boolean;
     includeEnd: boolean;
   };
-
-function getBindingNames(pattern: ForPattern): string[] {
-  return getBindingDeclarations(pattern).map(entry => entry.value.name.valueOf());
-}
 
 function getBindingDeclarations(pattern: ForPattern): VarDeclaration[] {
   if (pattern.kind === 'single') {
@@ -117,7 +112,7 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       ? input.value
       : isNode(input, N.Ruleset)
         ? (input.value.rules?.value ?? [])
-        : ((input as Mixin).value.rules?.value ?? []);
+        : input.value.rules?.value ?? [];
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -230,8 +225,6 @@ export class For extends Node<StructuredLoopValue> {
       const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const renderKey = context.ruleCounter++;
-
         const resolvedValue = await value.eval(context);
         let resolvedKey: Node;
         if (typeof key === 'number') {
@@ -250,10 +243,6 @@ export class For extends Node<StructuredLoopValue> {
             ...PUBLIC_RULE_VISIBILITY
           }
         });
-        // Assign the renderKey before adopting shared loop-body children so
-        // they record per-iteration parent forks instead of overwriting their
-        // canonical parent chain on each pass.
-        iterationRules._renderKey = renderKey;
         iterationRules.inherit(originalRules);
 
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
@@ -274,9 +263,7 @@ export class For extends Node<StructuredLoopValue> {
           iterationRules.push(child);
         }
         counter++;
-        context.pushRenderKey(renderKey);
         const result = await iterationRules.eval(context);
-        context.popRenderKey();
 
         if (isNode(result, N.Rules)) {
           outputRules.push(result);
