@@ -3636,14 +3636,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
             // so @arguments reflects the actual argument count
             if (isNode(argNode, N.Sequence)) {
               for (const item of (argNode as { value: Node[] }).value) {
-                const cloned = item.copy(true, freezeChildren);
-                cloned.frozen = true;
-                argumentsArgs.push(cloned);
+                argumentsArgs.push(item);
               }
             } else {
-              const cloned = argNode.copy(true, freezeChildren);
-              cloned.frozen = true;
-              argumentsArgs.push(cloned);
+              argumentsArgs.push(argNode);
             }
           }
         }
