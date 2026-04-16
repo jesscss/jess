@@ -24,6 +24,7 @@ import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { type RenderKey } from './tree/node-base.js';
 import { BitSetLibrary } from './tree/util/bitset.js';
+import type { PrintOptions } from './tree/util/print.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -307,6 +308,11 @@ export class Context {
       return undefined;
     }
     return this.renderKeyStack[this.renderKeyStack.length - 1];
+  }
+
+  private _printState: PrintOptions | undefined;
+  get printState() {
+    return (this._printState ??= { context: this });
   }
 
   /** Frames for nested rulesets, used for selector evaluation */

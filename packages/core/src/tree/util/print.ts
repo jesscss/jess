@@ -139,6 +139,34 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   return resolved;
 }
 
+export function prepareContextPrintState(context: Context, seed?: PrintOptions): FinalPrintOptions {
+  const state = context.printState;
+
+  state.context = context;
+  state.treeFrames = [];
+  state.inFrames = [];
+  state.lastRenderedFrames = [];
+  state.frameHeaders = [];
+  state.depth = 0;
+  state.writer = seed?.writer ?? new OutputWriter();
+  state.compress = seed?.compress;
+  state.collapseNesting = seed?.collapseNesting;
+  state.inCustom = seed?.inCustom;
+  state.referenceMode = seed?.referenceMode ?? false;
+  state.referenceRenderEnabled = seed?.referenceRenderEnabled ?? true;
+  state.referenceFilterTargets = seed?.referenceFilterTargets ?? false;
+  state.renderKey = seed?.renderKey;
+  state.composedSelectorStack = seed?.composedSelectorStack;
+  state.ampersandFirst = seed?.ampersandFirst;
+
+  if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
+    state.collapseNesting = Boolean(context.opts.collapseNesting);
+  }
+
+  ensureFinalPrintOptions(state);
+  return state;
+}
+
 export type SavedPrintState = Array<[RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]]>;
 
 export function savePrintState(

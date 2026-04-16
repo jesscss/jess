@@ -123,6 +123,19 @@ describe('Rules', () => {
     expect(options.renderKey).toBe(renderKey);
   });
 
+  it('reuses context-owned render state without accumulating prior output', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    const first = node.render(context);
+    const second = node.render(context);
+
+    expect(first).toBe('color: red;');
+    expect(second).toBe('color: red;');
+    expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
   describe('Scope / lookups', () => {
     describe('set / get vars & props', () => {
       it('can do a normal get / set of properties', async () => {
