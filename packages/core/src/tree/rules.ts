@@ -3490,25 +3490,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return;
       }
 
-      // Allocate a unique renderKey per call so shared body nodes fork their
-      // `.value` state on mutation during eval, and so the recently-reused
-      // re-eval machinery in Node.evalStatic can detect and re-evaluate
-      // canonical nodes against this call's scope.
-      //
-      // NB: assign `_renderKey` on the call's wrapper BEFORE pushing children
-      // into it. `adopt` writes to `_parentForks[thisRenderKey]` only when the
-      // parent has a renderKey — setting it afterward would leave the shared
-      // body children with a canonical-only parent chain, and the last call
-      // to adopt would overwrite `child.parent` for every previous call. That
-      // wrecks per-call scope lookups, selector composition, and serialization
-      // renderKey propagation (which uses the Rules ancestor chain).
-      const renderKey = thisContext.ruleCounter++;
-      if (outerRules) {
-        outerRules._renderKey = renderKey;
-      } else {
-        rules._renderKey = renderKey;
-      }
-      thisContext.pushRenderKey(renderKey);
       try {
         let newRules: Rules;
         if (!outerRules) {
@@ -3548,7 +3529,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (currentCall) {
           thisContext.callMap.delete(currentCall);
         }
-        thisContext.popRenderKey();
       }
     };
 
