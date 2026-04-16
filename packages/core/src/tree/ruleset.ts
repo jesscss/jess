@@ -944,7 +944,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
      * key constraints to the class generic `T`.
      */
     const setOnRuleset = (key: 'guard' | 'selector' | 'rules', value: any) => {
-      (this as Ruleset).set(key as any, value, context.renderKey);
+      const renderKey = context.renderKey;
+      if (renderKey === undefined) {
+        (this as Ruleset).set(key as any, value);
+        return;
+      }
+      (this as Ruleset).set(key as any, value, renderKey);
     };
 
     // Store frames snapshot for collapseNesting serialization
