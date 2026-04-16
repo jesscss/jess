@@ -1100,7 +1100,7 @@ export abstract class Node<
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNode(n => n.preEval(context), context.renderKey);
+        out = node.forEachNodeForContext(n => n.preEval(context), context);
       } catch (error: unknown) {
         throw error;
       }
@@ -1124,9 +1124,9 @@ export abstract class Node<
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    let out = this.forEachNode((n: Node) => {
+    let out = this.forEachNodeForContext((n: Node) => {
       return n.eval(context);
-    }, context.renderKey);
+    }, context);
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         return this;
@@ -1234,6 +1234,21 @@ export abstract class Node<
     }
 
     return needsReeval;
+  }
+
+  protected forEachNodeForContext(
+    func: (n: Node, idx?: number) => MaybePromise<Node>,
+    context: Context
+  ) {
+    return this.forEachNode(func, context.renderKey);
+  }
+
+  protected setForContext<K extends NodeSetKey<Data>>(
+    key: K,
+    value: NodeSetValue<Data, K>,
+    context: Context
+  ): void {
+    this.set(key, value, context.renderKey);
   }
 
   /**
