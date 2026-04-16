@@ -1,7 +1,7 @@
 import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
-import { F_AMPERSAND, F_EXTENDED, type Node, type RenderKey } from '../node.js';
+import { CANONICAL, F_AMPERSAND, F_EXTENDED, type Node, type RenderKey } from '../node.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
@@ -42,7 +42,9 @@ function flattenVisibleRulesForRender(
 ): RenderRuleEntry[] {
   const entries: RenderRuleEntry[] = [];
   const iterateRules = (current: Rules, inherited: RenderKey | undefined) => {
-    const effectiveKey = current._renderKey ?? inherited;
+    const effectiveKey = current._renderKey === CANONICAL
+      ? inherited
+      : current._renderKey ?? inherited;
     for (const child of current.value) {
       if (isNode(child, N.Rules)) {
         if (!child.visible && !child.fullRender) {
