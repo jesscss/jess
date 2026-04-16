@@ -298,29 +298,7 @@ export class Context {
     return (this._classMap ??= new Map());
   }
 
-  private _renderKeyStack: RenderKey[] | undefined;
-  get renderKey() {
-    const stack = this._renderKeyStack;
-    if (!stack || stack.length === 0) {
-      return undefined;
-    }
-    return stack[stack.length - 1];
-  }
-
-  pushRenderKey(renderKey: RenderKey): void {
-    (this._renderKeyStack ??= []).push(renderKey);
-  }
-
-  popRenderKey(): void {
-    const stack = this._renderKeyStack;
-    if (stack && stack.length > 0) {
-      if (stack.length === 1) {
-        this._renderKeyStack = undefined;
-        return;
-      }
-      stack.pop();
-    }
-  }
+  renderKey: RenderKey | undefined;
 
   private _printState: PrintOptions | undefined;
   get printState() {

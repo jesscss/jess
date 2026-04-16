@@ -103,7 +103,7 @@ describe('Rules', () => {
 
   it('keeps Rules render flags and renderKey render-local', () => {
     const renderKey = Symbol('outer-render');
-    context.pushRenderKey(renderKey);
+    context.renderKey = renderKey;
     const node = rules([
       decl({ name: 'color', value: any('red') })
     ], {
