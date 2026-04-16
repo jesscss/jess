@@ -1225,7 +1225,7 @@ export abstract class Node<
         || nodeRenderKey !== renderKey
       );
 
-    if (nodeRenderKey !== undefined && nodeRenderKey !== renderKey) {
+    if (nodeRenderKey !== undefined && nodeRenderKey !== CANONICAL && nodeRenderKey !== renderKey) {
       node.getValue(CANONICAL);
     }
 
