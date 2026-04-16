@@ -549,10 +549,20 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the import type is `import`
       */
         if (withValues || !evaldRules || type === 'import') {
+          const needsImportLocalClone = (
+            !withValues
+            && type === 'import'
+            && (
+              importOptions!.reference === true
+              || importOptions!._dedupe === true
+              || importOptions!.mutable === false
+            )
+          );
           // Import-localization should stay at the import boundary.
-          // Ordinary imports/modules still begin from a local cloned tree,
-          // but the explicit `with/set` path already built its own local wrapper.
-          if (!withValues && type === 'import') {
+          // Plain mutable imports can now evaluate their canonical tree directly.
+          // The remaining local clone boundary is the reference/protected import
+          // surface, which still preserves referenced-selector identity.
+          if (needsImportLocalClone) {
             rules = rules.clone(true) as Rules;
             rules.sourceNode = node;
           }
