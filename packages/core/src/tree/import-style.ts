@@ -552,7 +552,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Import-localization should stay at the import boundary.
           // Ordinary imports/modules still begin from a local cloned tree,
           // but the explicit `with/set` path already built its own local wrapper.
-          if (!withValues) {
+          if (!withValues && type === 'import') {
             rules = rules.clone(true) as Rules;
             rules.sourceNode = node;
           }
