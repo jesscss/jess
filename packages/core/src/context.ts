@@ -315,6 +315,9 @@ export class Context {
     const stack = this._renderKeyStack;
     if (stack && stack.length > 0) {
       stack.pop();
+      if (stack.length === 0) {
+        this._renderKeyStack = undefined;
+      }
     }
   }
 
