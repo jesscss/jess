@@ -1,7 +1,7 @@
 import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
-import { CANONICAL, F_AMPERSAND, F_EXTENDED, type Node, type RenderKey } from '../node.js';
+import { CANONICAL, F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
@@ -33,15 +33,11 @@ function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): b
 
 type RenderRuleEntry = {
   node: Node;
-  renderKey: RenderKey | undefined;
 };
 
-function flattenVisibleRulesForRender(
-  rules: Rules,
-  inheritedKey: RenderKey | undefined
-): RenderRuleEntry[] {
+function flattenVisibleRulesForRender(rules: Rules): RenderRuleEntry[] {
   const entries: RenderRuleEntry[] = [];
-  const iterateRules = (current: Rules, inherited: RenderKey | undefined) => {
+  const iterateRules = (current: Rules) => {
     for (const child of current.value) {
       if (isNode(child, N.Rules)) {
         if (!child.visible && !child.fullRender) {
@@ -49,23 +45,21 @@ function flattenVisibleRulesForRender(
         }
         if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
           entries.push({
-            node: child,
-            renderKey: inherited
+            node: child
           });
           continue;
         }
-        iterateRules(child, inherited);
+        iterateRules(child);
         continue;
       }
       if (child.visible || child.fullRender) {
         entries.push({
-          node: child,
-          renderKey: inherited
+          node: child
         });
       }
     }
   };
-  iterateRules(rules, inheritedKey);
+  iterateRules(rules);
   return entries;
 }
 /**
@@ -177,8 +171,6 @@ function getCarriedRulesetHeader(
 
 function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): string {
   const w = options.writer;
-  const renderContext = options.context;
-  const activeRenderKey = renderContext?.renderKey;
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
@@ -282,7 +274,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return w.getSince(mark);
     }
 
-    const rulesToRender = flattenVisibleRulesForRender(rules, activeRenderKey);
+    const rulesToRender = flattenVisibleRulesForRender(rules);
     const declarationOutputCache = new Map<number, string>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
@@ -364,9 +356,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       for (let idx = 0; idx < rulesToRender.length; idx++) {
         const entry = rulesToRender[idx]!;
         let n = entry.node;
-        // Per-leaf renderKey follows the active inherited render context for
-        // this flattened render walk.
-        const effectiveRenderKey = entry.renderKey;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
         if (!n.visible && !n.fullRender) {
@@ -392,16 +381,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const pushedRenderKey = renderContext
-            && effectiveRenderKey !== undefined
-            && effectiveRenderKey !== activeRenderKey;
-          if (pushedRenderKey) {
-            renderContext.pushRenderKey(effectiveRenderKey);
-          }
           const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
-          if (pushedRenderKey) {
-            renderContext!.popRenderKey();
-          }
           if (!childOut) {
             continue;
           }
@@ -410,12 +390,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         /** Re-widen type after accumulated isNode narrowing above */
         const nn = n as Node;
-        const isSerializerRenderKeyIndependentLeaf = (
-          (isNode(nn, N.Declaration) && !isNode(nn, N.VarDeclaration))
-          || isNode(nn, N.Extend)
-          || isLeafAtRule
-        );
-        const leafRenderKey = isSerializerRenderKeyIndependentLeaf ? undefined : effectiveRenderKey;
         if (isNode(nn, N.Rules)) {
           const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
           const childReferenceMode = inReferenceMode || ownReferenceMode;
@@ -431,16 +405,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.depth = options.depth + 1;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const pushedRenderKey = renderContext
-            && leafRenderKey !== undefined
-            && leafRenderKey !== activeRenderKey;
-          if (pushedRenderKey) {
-            renderContext.pushRenderKey(leafRenderKey);
-          }
           const previewOut = w.capture(() => nn.toTrimmedString(options));
-          if (pushedRenderKey) {
-            renderContext!.popRenderKey();
-          }
           restorePrintState(options, previewSaved);
           if (!previewOut) {
             continue;
@@ -535,19 +500,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.depth = leafDepth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const pushedRenderKey = renderContext
-          && leafRenderKey !== undefined
-          && leafRenderKey !== activeRenderKey;
-        if (pushedRenderKey) {
-          renderContext.pushRenderKey(leafRenderKey);
-        }
         const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
         const out = isNode(nn, N.Declaration)
           ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
           : w.capture(() => nn.toTrimmedString(options));
-        if (pushedRenderKey) {
-          renderContext!.popRenderKey();
-        }
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (
