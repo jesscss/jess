@@ -549,8 +549,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
        * - the import type is `import`
       */
         if (withValues || !evaldRules || type === 'import') {
-          const preserveOriginalNodes = context.preserveOriginalNodes;
-          context.preserveOriginalNodes = true;
+          // Import-localization should stay at the import boundary.
+          // Ordinary imports/modules still begin from a local cloned tree,
+          // but the explicit `with/set` path already built its own local wrapper.
+          if (!withValues) {
+            rules = rules.clone(true) as Rules;
+            rules.sourceNode = node;
+          }
           let pushedImplicitReferenceEvalScope = false;
           const isImplicitReferenceModeForEval = (
             type === 'import'
@@ -590,7 +595,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
             rules = await rules.eval(context);
           } finally {
-            context.preserveOriginalNodes = preserveOriginalNodes;
             if (pushedImplicitReferenceEvalScope) {
               context.popImportScope();
             }
