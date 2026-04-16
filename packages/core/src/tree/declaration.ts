@@ -190,27 +190,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    const { renderKey } = context;
-    const needsCanonicalReset = renderKey !== undefined
-      && this._renderKey !== undefined
-      && this._renderKey !== renderKey;
-
-    if (needsCanonicalReset) {
-      this.getValue(CANONICAL);
-    }
-
-    const needsReeval = renderKey !== undefined
-      && this.preEvaluated
-      && (
-        !this._renderKey
-        || this._renderKey !== renderKey
-      );
-
-    if (needsReeval) {
-      this.getValue(CANONICAL);
-      this.preEvaluated = false;
-      this.evaluated = false;
-    }
+    Node.reconcileRenderKeyState(this, context, this.preEvaluated);
 
     /** We need a derived declaration, because pre-eval normalization mutates name/value/options. */
     let node = this.clone(false) as this;
@@ -328,10 +308,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
 
     if (name instanceof Interpolated) {
-      const { renderKey } = context;
-      if (renderKey !== undefined && name._renderKey !== undefined && name._renderKey !== renderKey) {
-        name.getValue(CANONICAL);
-      }
+      Node.reconcileRenderKeyState(name, context, false);
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {

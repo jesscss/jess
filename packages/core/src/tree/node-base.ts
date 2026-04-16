@@ -1090,27 +1090,7 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    const renderKey = context.renderKey;
-    const needsCanonicalReset = renderKey !== undefined
-      && this._renderKey !== undefined
-      && this._renderKey !== renderKey;
-
-    if (needsCanonicalReset) {
-      this.getValue(CANONICAL);
-    }
-
-    const needsReeval = renderKey !== undefined
-      && this.preEvaluated
-      && (
-        !this._renderKey
-        || this._renderKey !== renderKey
-      );
-
-    if (needsReeval) {
-      this.getValue(CANONICAL);
-      this.preEvaluated = false;
-      this.evaluated = false;
-    }
+    const needsReeval = Node.reconcileRenderKeyState(this, context, this.preEvaluated);
 
     if (!this.preEvaluated) {
       let node = this.maybeClone(context);
@@ -1168,32 +1148,7 @@ export abstract class Node<
      * Also re-evaluate when the context renderKey differs from the node's —
      * the node was evaluated in a different fork.
      */
-    const renderKey = context.renderKey;
-    const needsCanonicalReset = renderKey !== undefined
-      && node._renderKey !== undefined
-      && node._renderKey !== renderKey;
-
-    if (needsCanonicalReset) {
-      node.getValue(CANONICAL);
-    }
-
-    const needsReeval = renderKey !== undefined
-      && node.evaluated
-      && (
-        !node._renderKey
-        || node._renderKey !== renderKey
-      );
-
-    if (needsReeval) {
-      node.getValue(CANONICAL);
-      // Node-class preEval/evalNode methods gate on these flags internally,
-      // so we must clear them here when the evalStatic layer has already
-      // decided a re-eval is needed under a new fork. Without this, the
-      // node-class check wins and the second call reuses the first call's
-      // `.value` contents.
-      node.preEvaluated = false;
-      node.evaluated = false;
-    }
+    const needsReeval = Node.reconcileRenderKeyState(node, context, node.evaluated);
 
     if (!node.hasFlag(F_MAY_ASYNC)) {
       return Node._evalStaticSync(node, context, needsReeval);
@@ -1253,6 +1208,32 @@ export abstract class Node<
       evald.inherit(preEvaluatedNode);
     }
     return evald;
+  }
+
+  static reconcileRenderKeyState(node: Node, context: Context, shouldGateReeval: boolean): boolean {
+    const renderKey = context.renderKey;
+    if (renderKey === undefined) {
+      return false;
+    }
+
+    const nodeRenderKey = node._renderKey;
+    if (nodeRenderKey !== undefined && nodeRenderKey !== renderKey) {
+      node.getValue(CANONICAL);
+    }
+
+    const needsReeval = shouldGateReeval
+      && (
+        nodeRenderKey === undefined
+        || nodeRenderKey !== renderKey
+      );
+
+    if (needsReeval) {
+      node.getValue(CANONICAL);
+      node.preEvaluated = false;
+      node.evaluated = false;
+    }
+
+    return needsReeval;
   }
 
   /**
