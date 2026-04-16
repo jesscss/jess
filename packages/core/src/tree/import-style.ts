@@ -552,10 +552,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const needsImportLocalClone = (
             !withValues
             && type === 'import'
-            && (
-              importOptions!.reference === true
-              || importOptions!._dedupe === true
-            )
+            && importOptions!.reference === true
           );
           // Import-localization should stay at the import boundary.
           // Plain mutable imports can now evaluate their canonical tree directly.
