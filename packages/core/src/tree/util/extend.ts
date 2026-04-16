@@ -717,7 +717,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       }
       // @ts-expect-error direct mutation: in-place selector reshape in the
       // non-eval `createProcessedSelector` helper (extend pipeline). No
-      // renderKey context, no fork to preserve.
+      // No legacy fork state to preserve here anymore.
       el.value = flattened;
       push(el);
     } else if (isNode(el, N.CompoundSelector)) {

@@ -661,29 +661,21 @@ Restored to original behavior. The `mixinsByName fast path (slice 7)` test verif
 
 ## Next Step
 
-Track 1 is no longer blocked on variable/mixin lookup slices. The active work is
-only fork/renderKey deletion.
+Track 1 is no longer about outer renderKey plumbing. That runtime is gone.
 
-Delete, in order of payoff:
+What remains:
 
-1. Wrapper-node renderKey transport used by mixin calls / `$for` output.
-2. `Node.set(key, value, renderKey)`, `Node.getValue(renderKey)`, `_renderKey`,
-   `_childForks`, `_parentForks`, and the remaining fork-aware parent traversal.
+1. Reclassify Slice 13 in this doc from “active deletion seam” to “completed,
+   with import-sharing caveat tracked separately in Slice 13c”.
+2. Audit shared imported-AST behavior under the new canonical-only node model
+   and either close Slice 13c or narrow it to the exact remaining import path.
+3. Keep the handoff compressed: remove stale references to `_renderKey`,
+   `_childForks`, `getValue(renderKey)`, and wrapper renderKey transport as if
+   they are still live work.
 
-Do not add new APIs to support renderKey or fork state. If a pass does not make
-the remaining list shorter, it is probably not a Track 1 pass.
-Do not accept “cleaner node-local renderKey ownership” as progress; the target
-is lighter, more immutable template nodes plus session-owned render/output state.
-   instead of bailing — this makes the fast path self-sufficient for the variable
-   lookup case and eliminates the registry fallback.
-3. Remove `targetRules.find('declaration', ..., 'VarDeclaration', ...)` for the
-   `type === 'variable'` branch. Verify with full test suite.
-4. Keep verifying with:
-
-   ```sh
-   pnpm --filter @jesscss/core test -- --run src/tree/__tests__/mixin.test.ts
-   pnpm --filter @jesscss/core test
-   ```
+Do not reintroduce node-local fork machinery under a different name. If a pass
+does not make the source tree lighter or move eval/serialization closer to the
+session-owned buffer model, it is probably not a Track 1 pass.
 
 ## Constraints To Preserve
 

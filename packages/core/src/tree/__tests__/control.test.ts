@@ -245,7 +245,7 @@ describe('Control Nodes', () => {
     expect(forNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 
-  it('keeps nested renderKey state isolated across mixin calls and $for iterations', async () => {
+  it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {
     const context = new Context({
       leakyRules: true
     });
