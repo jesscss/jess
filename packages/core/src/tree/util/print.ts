@@ -29,6 +29,8 @@ export type PrintOptions = {
   renderKey?: RenderKey;
   /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
+  /** Session-local composed selector cache keyed by rendered ruleset and active render key. */
+  composedSelectorCache?: WeakMap<Ruleset, Map<RenderKey | undefined, Selector>>;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
 };
@@ -68,6 +70,7 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
   options.referenceMode ??= false;
   options.referenceRenderEnabled ??= true;
   options.referenceFilterTargets ??= false;
+  options.composedSelectorCache ??= new WeakMap();
 }
 
 export interface OutputWriter {
@@ -153,6 +156,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.referenceFilterTargets = seed?.referenceFilterTargets ?? false;
   state.renderKey = seed?.renderKey;
   state.composedSelectorStack = seed?.composedSelectorStack;
+  state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
 
   if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
@@ -202,6 +206,28 @@ export function restoreArrayState<T>(
 
 export function getActiveRenderKey(options: PrintOptions): RenderKey | undefined {
   return options.context?.renderKey ?? options.renderKey;
+}
+
+export function getCachedComposedSelector(
+  options: FinalPrintOptions,
+  ruleset: Ruleset,
+  renderKey: RenderKey | undefined
+): Selector | undefined {
+  return options.composedSelectorCache?.get(ruleset)?.get(renderKey);
+}
+
+export function setCachedComposedSelector(
+  options: FinalPrintOptions,
+  ruleset: Ruleset,
+  renderKey: RenderKey | undefined,
+  selector: Selector
+): void {
+  let byKey = options.composedSelectorCache?.get(ruleset);
+  if (!byKey) {
+    byKey = new Map<RenderKey | undefined, Selector>();
+    options.composedSelectorCache?.set(ruleset, byKey);
+  }
+  byKey.set(renderKey, selector);
 }
 
 export function pushActiveRenderKey(options: PrintOptions, renderKey: RenderKey | undefined): RenderKey | undefined {

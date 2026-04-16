@@ -15,7 +15,16 @@ import { CompoundSelector } from './selector-compound.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
-import { type PrintOptions, type FinalPrintOptions, getPrintOptions, savePrintState, restorePrintState, getActiveRenderKey } from './util/print.js';
+import {
+  type PrintOptions,
+  type FinalPrintOptions,
+  getPrintOptions,
+  savePrintState,
+  restorePrintState,
+  getActiveRenderKey,
+  getCachedComposedSelector,
+  setCachedComposedSelector
+} from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
@@ -754,7 +763,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
       );
       const rk = getActiveRenderKey(options);
-      let cached = this.getComposedSelector(rk);
+      let cached = getCachedComposedSelector(options, this, rk);
       if (!cached) {
         const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
         const hasExtendedComposeContext = Boolean(
@@ -779,7 +788,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
             )
           : composeInput;
         if (composeParent) {
-          this.setComposedSelector(cached as Selector, rk);
+          setCachedComposedSelector(options, this, rk, cached as Selector);
         }
       }
       renderSelector = cached as typeof selector;

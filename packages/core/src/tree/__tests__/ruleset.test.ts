@@ -124,6 +124,25 @@ describe('Rule', () => {
     expect(header).toContain('.foo');
     expect(node.getComposedSelector(options.renderKey)).toBeUndefined();
   });
+
+  it('getHeaderString keeps composed selector cache off the ruleset node', () => {
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: rules([])
+    });
+    const renderKey = Symbol('test-render');
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true,
+      composedSelectorStack: [sel([el('.parent')])],
+      renderKey
+    });
+
+    const header = node.getHeaderString(options);
+
+    expect(header).toContain('.parent .child');
+    expect(node.getComposedSelector(renderKey)).toBeUndefined();
+  });
   // it('should serialize to a module', () => {
   //   let node = rule({
   //     selector: list([sel([el('foo')])]),

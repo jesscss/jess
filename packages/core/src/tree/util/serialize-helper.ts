@@ -9,6 +9,8 @@ import {
   saveArrayState,
   restoreArrayState,
   getActiveRenderKey,
+  getCachedComposedSelector,
+  setCachedComposedSelector,
   pushActiveRenderKey,
   popActiveRenderKey
 } from './print.js';
@@ -170,7 +172,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       isTransparentWrapper = true;
     } else {
       const rk = getActiveRenderKey(options);
-      let cached = rs.getComposedSelector(rk);
+      let cached = getCachedComposedSelector(options, rs, rk);
       if (!cached && sel && !(sel instanceof Nil)) {
         const ownSelector = rs.options?.ownSelector;
         const structuralParentFrame = rs.hoistToRoot === true ? rs.parent?.parent : undefined;
@@ -201,7 +203,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           ? Ruleset.composeSelector(composeInput, composeParent)
           : composeInput;
         if (composeParent) {
-          rs.setComposedSelector(cached, rk);
+          setCachedComposedSelector(options, rs, rk, cached);
         }
       }
       if (cached) {
