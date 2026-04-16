@@ -58,21 +58,6 @@ type RestorablePrintStateKey =
 
 type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
 
-const RESTORABLE_PRINT_STATE_KEYS: readonly RestorablePrintStateKey[] = [
-  'ampersandFirst',
-  'collapseNesting',
-  'context',
-  'composedSelectorStack',
-  'depth',
-  'inCustom',
-  'inFrames',
-  'referenceFilterTargets',
-  'referenceMode',
-  'referenceRenderEnabled',
-  'renderKey',
-  'writer'
-];
-
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
   options.writer ??= new OutputWriter();
@@ -129,6 +114,17 @@ const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
 };
 
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
+  if (options?.context) {
+    if (options !== options.context.printState) {
+      return prepareContextPrintState(options.context, options);
+    }
+    const resolved = options.context.printState;
+    if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
+      resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+    }
+    ensureFinalPrintOptions(resolved);
+    return resolved;
+  }
   const resolved = options ?? {};
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
   if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
@@ -178,16 +174,6 @@ export function savePrintState(
     saved.push([key, options[key]]);
   }
   return saved;
-}
-
-export function applyPrintState(
-  options: FinalPrintOptions,
-  overrides: Partial<RestorablePrintState>
-): void {
-  const keys = RESTORABLE_PRINT_STATE_KEYS.filter(key => Object.hasOwn(overrides, key));
-  for (const key of keys) {
-    options[key] = overrides[key];
-  }
 }
 
 export function restorePrintState(

@@ -136,6 +136,19 @@ describe('Rules', () => {
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
+  it('reuses context-owned print state for explicit toString options with context', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    const first = node.toString({ context, writer: new OutputWriter() });
+    const second = node.toString({ context, writer: new OutputWriter() });
+
+    expect(first).toBe('color: red;\n');
+    expect(second).toBe('color: red;\n');
+    expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
   describe('Scope / lookups', () => {
     describe('set / get vars & props', () => {
       it('can do a normal get / set of properties', async () => {
