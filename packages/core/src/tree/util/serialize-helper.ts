@@ -1,7 +1,15 @@
 import type { AtRule } from '../at-rule.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node, type RenderKey } from '../node.js';
-import { type FinalPrintOptions, OutputWriter, withSavedPrintState, withTemporaryPrintState, withArraySnapshot } from './print.js';
+import {
+  type FinalPrintOptions,
+  OutputWriter,
+  savePrintState,
+  applyPrintState,
+  restorePrintState,
+  saveArrayState,
+  restoreArrayState
+} from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
@@ -109,16 +117,16 @@ function getCarriedRulesetHeader(
   depth: number
 ): string {
   const previousComposedSelectorStack = options.composedSelectorStack;
-  const selectorOut = withSavedPrintState(options, ['collapseNesting', 'composedSelectorStack'], () => {
-    options.collapseNesting = false;
-    options.composedSelectorStack = previousComposedSelectorStack ?? [];
-    return withArraySnapshot(options.composedSelectorStack, (stack) => {
-      if (stack) {
-        stack.length = 0;
-      }
-      return options.writer.capture(() => carrier.selector.toString(options));
-    });
-  });
+  const saved = savePrintState(options, ['collapseNesting', 'composedSelectorStack']);
+  options.collapseNesting = false;
+  options.composedSelectorStack = previousComposedSelectorStack ?? [];
+  const savedStack = saveArrayState(options.composedSelectorStack);
+  if (options.composedSelectorStack) {
+    options.composedSelectorStack.length = 0;
+  }
+  const selectorOut = options.writer.capture(() => carrier.selector.toString(options));
+  restoreArrayState(options.composedSelectorStack, savedStack);
+  restorePrintState(options, saved);
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }
 
@@ -269,10 +277,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         continue;
       }
       const declWriter = new OutputWriter();
-      const declOut = withTemporaryPrintState(options, {
+      const declSaved = savePrintState(options, ['writer', 'depth']);
+      applyPrintState(options, {
         writer: declWriter,
         depth: options.depth + 1
-      }, () => node.toTrimmedString(options));
+      });
+      const declOut = node.toTrimmedString(options);
+      restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       const declProp = node.value.name.valueOf();
@@ -337,9 +348,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const childOut = withTemporaryPrintState(options, {
+          const childSaved = savePrintState(options, ['renderKey']);
+          applyPrintState(options, {
             renderKey: effectiveRenderKey
-          }, () => serializeRulesContainerInternal(n as AtRule | Ruleset, options, false));
+          });
+          const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
+          restorePrintState(options, childSaved);
           if (!childOut) {
             continue;
           }
@@ -361,12 +375,20 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childReferenceRenderEnabled = childReferenceMode
             ? (enteringReferenceMode ? false : renderEnabled)
             : true;
-          const previewOut = withTemporaryPrintState(options, {
+          const previewSaved = savePrintState(options, [
+            'depth',
+            'renderKey',
+            'referenceMode',
+            'referenceRenderEnabled'
+          ]);
+          applyPrintState(options, {
             depth: options.depth + 1,
             renderKey: leafRenderKey,
             referenceMode: childReferenceMode,
             referenceRenderEnabled: childReferenceRenderEnabled
-          }, () => w.capture(() => nn.toTrimmedString(options)));
+          });
+          const previewOut = w.capture(() => nn.toTrimmedString(options));
+          restorePrintState(options, previewSaved);
           if (!previewOut) {
             continue;
           }
@@ -458,13 +480,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           referenceMode: childReferenceMode,
           referenceRenderEnabled: childReferenceRenderEnabled
         };
-        const { pre, out } = withTemporaryPrintState(options, leafRenderState, () => {
-          const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
-          const out = isNode(nn, N.Declaration)
-            ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
-            : w.capture(() => nn.toTrimmedString(options));
-          return { pre, out };
-        });
+        const leafSaved = savePrintState(options, [
+          'depth',
+          'renderKey',
+          'referenceMode',
+          'referenceRenderEnabled'
+        ]);
+        applyPrintState(options, leafRenderState);
+        const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
+        const out = isNode(nn, N.Declaration)
+          ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
+          : w.capture(() => nn.toTrimmedString(options));
+        restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (
           isNode(nn, N.Any)
@@ -539,52 +566,58 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return w.getSince(mark);
     };
     if (hoisted && !isTransparentWrapper) {
-      return withArraySnapshot(treeFrames, (frames) => {
+      const savedFrames = saveArrayState(treeFrames);
       // When hoisting, we must reset the active frame stack to at-rules only.
       // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
       // in `treeFrames` and cause nested output like:
       //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
       // even though the current node is hoisted to root.
-        const atRulesOnly = frames!.filter(f => isNode(f, N.AtRule));
-        frames!.splice(0, frames!.length, ...atRulesOnly, node);
-        options.inFrames = inFrames = frames!;
-        return renderRulesBody();
-      });
+      const atRulesOnly = treeFrames.filter(f => isNode(f, N.AtRule));
+      treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
+      options.inFrames = inFrames = treeFrames;
+      const out = renderRulesBody();
+      restoreArrayState(treeFrames, savedFrames);
+      return out;
     }
     return renderRulesBody();
   };
 
-  return withSavedPrintState(options, [
+  const saved = savePrintState(options, [
     'referenceMode',
     'referenceRenderEnabled',
     'depth',
     'inFrames',
     'composedSelectorStack'
-  ], () => {
-    const runWithCurrentComposedStack = () => {
-      if (!pushedComposed || !pushedComposedSelector) {
-        return run();
-      }
-      const stack = options.composedSelectorStack ?? (options.composedSelectorStack = []);
-      return withArraySnapshot(stack, (snapshotStack) => {
-        snapshotStack!.push(pushedComposedSelector!);
-        return run();
-      });
-    };
-    if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
-      const currentStack = options.composedSelectorStack;
-      if (currentStack) {
-        return withArraySnapshot(currentStack, (stack) => {
-          stack!.length = 0;
-          options.composedSelectorStack = stack;
-          return runWithCurrentComposedStack();
-        });
-      }
-      options.composedSelectorStack = [];
-      return runWithCurrentComposedStack();
+  ]);
+  const runWithCurrentComposedStack = () => {
+    if (!pushedComposed || !pushedComposedSelector) {
+      return run();
     }
-    return runWithCurrentComposedStack();
-  });
+    const stack = options.composedSelectorStack ?? (options.composedSelectorStack = []);
+    const pushedStackSnapshot = saveArrayState(stack);
+    stack.push(pushedComposedSelector);
+    const out = run();
+    restoreArrayState(stack, pushedStackSnapshot);
+    return out;
+  };
+  let runResult: string;
+  if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
+    const currentStack = options.composedSelectorStack;
+    if (currentStack) {
+      const rootStackSnapshot = saveArrayState(currentStack);
+      currentStack.length = 0;
+      options.composedSelectorStack = currentStack;
+      runResult = runWithCurrentComposedStack();
+      restoreArrayState(currentStack, rootStackSnapshot);
+    } else {
+      options.composedSelectorStack = [];
+      runResult = runWithCurrentComposedStack();
+    }
+  } else {
+    runResult = runWithCurrentComposedStack();
+  }
+  restorePrintState(options, saved);
+  return runResult;
 }
 
 /**

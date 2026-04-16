@@ -17,7 +17,7 @@ import { type Ruleset } from './ruleset.js';
 import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
-import { type PrintOptions, getPrintOptions, withSavedPrintState, withTemporaryPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions, savePrintState, applyPrintState, restorePrintState } from './util/print.js';
 
 import { atIndex } from './util/collections.js';
 import type { Condition } from './condition.js';
@@ -1136,92 +1136,95 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const ctx = options.context;
     const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
-    return withSavedPrintState(options, ['referenceMode', 'referenceRenderEnabled'], () => {
-      const ownReferenceMode = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-      if (ownReferenceMode && options.referenceMode !== true) {
-        options.referenceMode = true;
-        options.referenceRenderEnabled = false;
+    const saved = savePrintState(options, ['referenceMode', 'referenceRenderEnabled']);
+    const ownReferenceMode = (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+    if (ownReferenceMode && options.referenceMode !== true) {
+      options.referenceMode = true;
+      options.referenceRenderEnabled = false;
+    }
+    if (depth === 0) {
+    // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
+      const prevCharsetEmitted = ctx?.charsetEmitted;
+      // @charset must be first
+      if (ctx?.currentCharset && !ctx.charsetEmitted) {
+        const charset = ctx.currentCharset;
+        // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
+        const charsetStr = w.capture(() => charset.toTrimmedString(options));
+        w.add(charsetStr, charset);
+        w.add('\n');
+        // Do not permanently flip `charsetEmitted` here; restore at end.
+        ctx.charsetEmitted = true;
       }
-      if (depth === 0) {
-      // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
-        const prevCharsetEmitted = ctx?.charsetEmitted;
-        // @charset must be first
-        if (ctx?.currentCharset && !ctx.charsetEmitted) {
-          const charset = ctx.currentCharset;
-          // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
-          const charsetStr = w.capture(() => charset.toTrimmedString(options));
-          w.add(charsetStr, charset);
+      // Less keeps leading comments before hoisted @import output.
+      const isCommentLike = (node: Node): boolean => {
+        const text = String(node.valueOf?.() ?? '').trimStart();
+        if (!text.startsWith('/*')) {
+          return false;
+        }
+        return isNode(node, N.Comment) || isNode(node, N.Any);
+      };
+      if (ctx?.topImports?.length) {
+        for (const node of this.value) {
+          if (!isCommentLike(node)) {
+            break;
+          }
+          const commentStr = w.capture(() => node.toTrimmedString(options));
+          w.add(normalizeIndent(commentStr, ''), node);
           w.add('\n');
-          // Do not permanently flip `charsetEmitted` here; restore at end.
-          ctx.charsetEmitted = true;
-        }
-        // Less keeps leading comments before hoisted @import output.
-        const isCommentLike = (node: Node): boolean => {
-          const text = String(node.valueOf?.() ?? '').trimStart();
-          if (!text.startsWith('/*')) {
-            return false;
-          }
-          return isNode(node, N.Comment) || isNode(node, N.Any);
-        };
-        if (ctx?.topImports?.length) {
-          for (const node of this.value) {
-            if (!isCommentLike(node)) {
-              break;
-            }
-            const commentStr = w.capture(() => node.toTrimmedString(options));
-            w.add(normalizeIndent(commentStr, ''), node);
-            w.add('\n');
-            const wasVisible = node.hasFlag(F_VISIBLE);
-            suppressedLeadingComments.push({ node, visible: wasVisible });
-            if (wasVisible) {
-              node.removeFlag(F_VISIBLE);
-            }
+          const wasVisible = node.hasFlag(F_VISIBLE);
+          suppressedLeadingComments.push({ node, visible: wasVisible });
+          if (wasVisible) {
+            node.removeFlag(F_VISIBLE);
           }
         }
-        // @import must come after @charset but before other rules
-        if (ctx?.topImports?.length) {
-          for (const importRule of ctx.topImports) {
-            if (isNode(importRule, N.AtRule)) {
-              const importPrelude = importRule.value.prelude;
-              if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
-                const maybePrelude = importPrelude.eval(ctx);
-                if (!isThenable(maybePrelude)) {
-                  importRule.value.prelude = maybePrelude as Node;
-                }
+      }
+      // @import must come after @charset but before other rules
+      if (ctx?.topImports?.length) {
+        for (const importRule of ctx.topImports) {
+          if (isNode(importRule, N.AtRule)) {
+            const importPrelude = importRule.value.prelude;
+            if (importPrelude && String(importPrelude.valueOf?.() ?? '').includes('$')) {
+              const maybePrelude = importPrelude.eval(ctx);
+              if (!isThenable(maybePrelude)) {
+                importRule.value.prelude = maybePrelude as Node;
               }
             }
-            const importStr = w.capture(() => importRule.toString(options));
-            w.add(normalizeIndent(importStr, ''), importRule);
-            w.add('\n');
           }
-        // Do not permanently clear; restore at end.
+          const importStr = w.capture(() => importRule.toString(options));
+          w.add(normalizeIndent(importStr, ''), importRule);
+          w.add('\n');
         }
-        // Restore global tracking (we only needed it during this print).
-        if (ctx) {
-          ctx.charsetEmitted = prevCharsetEmitted;
-        }
+      // Do not permanently clear; restore at end.
       }
+      // Restore global tracking (we only needed it during this print).
+      if (ctx) {
+        ctx.charsetEmitted = prevCharsetEmitted;
+      }
+    }
 
-      const bodyMark = w.mark();
-      const bodyStr = this.toTrimmedString(options);
-      const bodyEmitted = w.getSince(bodyMark);
-      if (bodyEmitted.length === 0 && bodyStr) {
-        w.add(bodyStr);
-      }
-      // At root level, ensure output ends with a single newline (standard for CSS files)
-      // Don't propagate all the last child's post content (which may have extra whitespace)
-      if (depth === 0) {
-        for (const suppressed of suppressedLeadingComments) {
-          if (suppressed.visible) {
-            suppressed.node.addFlag(F_VISIBLE);
-          }
+    const bodyMark = w.mark();
+    const bodyStr = this.toTrimmedString(options);
+    const bodyEmitted = w.getSince(bodyMark);
+    if (bodyEmitted.length === 0 && bodyStr) {
+      w.add(bodyStr);
+    }
+    let result: string;
+    // At root level, ensure output ends with a single newline (standard for CSS files)
+    // Don't propagate all the last child's post content (which may have extra whitespace)
+    if (depth === 0) {
+      for (const suppressed of suppressedLeadingComments) {
+        if (suppressed.visible) {
+          suppressed.node.addFlag(F_VISIBLE);
         }
-        const result = w.getSince(mark).trimEnd();
-        // Ensure exactly one trailing newline (only if there's content)
-        return result ? result + '\n' : '';
       }
-      return w.getSince(mark);
-    });
+      result = w.getSince(mark).trimEnd();
+      // Ensure exactly one trailing newline (only if there's content)
+      result = result ? result + '\n' : '';
+    } else {
+      result = w.getSince(mark);
+    }
+    restorePrintState(options, saved);
+    return result;
   }
 
   pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
@@ -1272,9 +1275,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let space = ''.padStart(depth * 2);
     w.add('{');
     w.add('\n');
-    withTemporaryPrintState(opts, { depth: depth + 1 }, () => {
-      this._emitRulesBody(opts);
-    });
+    const saved = savePrintState(opts, ['depth']);
+    applyPrintState(opts, { depth: depth + 1 });
+    this._emitRulesBody(opts);
+    restorePrintState(opts, saved);
     // ensure closing brace is on its own properly indented line
     w.add('\n');
     if (depth !== 0) {
@@ -1369,110 +1373,113 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       markEmitted(n);
     };
-    withSavedPrintState(options, ['renderKey', 'referenceMode'], () => {
-      if (this._renderKey !== undefined) {
-        options.renderKey = this._renderKey;
+    const saved = savePrintState(options, ['renderKey', 'referenceMode']);
+    if (this._renderKey !== undefined) {
+      options.renderKey = this._renderKey;
+    }
+    if (
+      (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+      && options.referenceMode !== true
+    ) {
+      options.referenceMode = true;
+    }
+    for (let idx = 0; idx < items.length; idx++) {
+      const n = items[idx]!;
+      const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+      if (referenceMode && !referenceRenderEnabled && !isContainer) {
+        continue;
       }
-      if (
-        (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
-        && options.referenceMode !== true
-      ) {
-        options.referenceMode = true;
-      }
-      for (let idx = 0; idx < items.length; idx++) {
-        const n = items[idx]!;
-        const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
-        if (referenceMode && !referenceRenderEnabled && !isContainer) {
-          continue;
-        }
-        const isChildRules = n.type === 'Rules';
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const isLeafAtRule = n.type === 'AtRule' && !(n as AtRule).value.rules;
-        const isRulesetOrAtRule = n.type === 'Ruleset' || (n.type === 'AtRule' && !isLeafAtRule);
-        // Add indentation only for simple nodes (declarations, etc.)
-        // Ruleset and AtRule nodes indent themselves in renderOpening
-        // Emit directly to preserve source map segments
-        // For child Rules nodes, pass the same depth (don't increment depth)
-        // Rules nodes inside Rules nodes are at the same level
-        if (isChildRules) {
-          const ownReferenceMode = (
+      const isChildRules = n.type === 'Rules';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const isLeafAtRule = n.type === 'AtRule' && !(n as AtRule).value.rules;
+      const isRulesetOrAtRule = n.type === 'Ruleset' || (n.type === 'AtRule' && !isLeafAtRule);
+      // Add indentation only for simple nodes (declarations, etc.)
+      // Ruleset and AtRule nodes indent themselves in renderOpening
+      // Emit directly to preserve source map segments
+      // For child Rules nodes, pass the same depth (don't increment depth)
+      // Rules nodes inside Rules nodes are at the same level
+      if (isChildRules) {
+        const ownReferenceMode = (
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            (n.options as any)?.referenceMode === true
-          );
-          const childReferenceMode = referenceMode || ownReferenceMode;
-          const enteringReferenceMode = !referenceMode && ownReferenceMode;
-          const childReferenceRenderEnabled = childReferenceMode
-            ? (enteringReferenceMode ? false : referenceRenderEnabled)
-            : true;
-          const childRule = withTemporaryPrintState(options, {
-            depth,
-            referenceMode: childReferenceMode,
-            referenceRenderEnabled: childReferenceRenderEnabled
-          }, () => {
-            const previewOut = w.capture(() => n.toTrimmedString(options));
-            if (!previewOut) {
-              return undefined;
-            }
-            closeRenderedFramesToBaseline();
-            return w.capture(() => n.toTrimmedString(options));
-          });
-          if (!childRule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
-            continue;
-          }
-          if (!childRule) {
-            continue;
-          }
-          const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-          emitCaptured(childRule, n, prefix);
+          (n.options as any)?.referenceMode === true
+        );
+        const childReferenceMode = referenceMode || ownReferenceMode;
+        const enteringReferenceMode = !referenceMode && ownReferenceMode;
+        const childReferenceRenderEnabled = childReferenceMode
+          ? (enteringReferenceMode ? false : referenceRenderEnabled)
+          : true;
+        const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+        applyPrintState(options, {
+          depth,
+          referenceMode: childReferenceMode,
+          referenceRenderEnabled: childReferenceRenderEnabled
+        });
+        const previewOut = w.capture(() => n.toTrimmedString(options));
+        let childRule: string | undefined;
+        if (previewOut) {
+          closeRenderedFramesToBaseline();
+          childRule = w.capture(() => n.toTrimmedString(options));
+        }
+        restorePrintState(options, childSaved);
+        if (!childRule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
           continue;
         }
-        if (isRulesetOrAtRule) {
-          emitBoundaryIfNeeded(n);
-          const mark = w.mark();
-          withTemporaryPrintState(options, {
-            depth,
-            referenceMode,
-            referenceRenderEnabled
-          }, () => {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(options));
-            const emitted = w.getSince(mark);
-            if (!emitted && rule) {
-              w.add(rule, n);
-            }
-          });
-          const emitted = w.getSince(mark);
-          if (!emitted) {
-            continue;
-          }
-          markEmitted(n);
+        if (!childRule) {
           continue;
         }
-        closeRenderedFramesToBaseline();
-        const rule = withTemporaryPrintState(options, {
+        const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
+        emitCaptured(childRule, n, prefix);
+        continue;
+      }
+      if (isRulesetOrAtRule) {
+        emitBoundaryIfNeeded(n);
+        const mark = w.mark();
+        const containerSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+        applyPrintState(options, {
           depth,
           referenceMode,
           referenceRenderEnabled
-        }, () => {
-          const rule = w.capture(() => n.toTrimmedString(options));
-          return rule || undefined;
         });
-        if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(options));
+        const emitted = w.getSince(mark);
+        if (!emitted && rule) {
+          w.add(rule, n);
+        }
+        restorePrintState(options, containerSaved);
+        const emittedNow = w.getSince(mark);
+        if (!emittedNow) {
           continue;
         }
-        if (!rule) {
-          continue;
-        }
-        const prefix = !isChildRules && !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-        emitCaptured(rule, n, prefix);
+        markEmitted(n);
+        continue;
       }
-      while (lastRenderedFrames.length > renderedFrameBaseline) {
-        const depthToClose = lastRenderedFrames.length - 1;
-        w.add(indent(depthToClose) + '}\n');
-        lastRenderedFrames.pop();
-        frameHeaders.pop();
+      closeRenderedFramesToBaseline();
+      const leafSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+      applyPrintState(options, {
+        depth,
+        referenceMode,
+        referenceRenderEnabled
+      });
+      const capturedRule = w.capture(() => n.toTrimmedString(options));
+      const rule = capturedRule || undefined;
+      restorePrintState(options, leafSaved);
+      if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
+        continue;
       }
-    });
+      if (!rule) {
+        continue;
+      }
+      const prefix = !isChildRules && !isRulesetOrAtRule && depth !== 0 ? space : undefined;
+      emitCaptured(rule, n, prefix);
+    }
+    while (lastRenderedFrames.length > renderedFrameBaseline) {
+      const depthToClose = lastRenderedFrames.length - 1;
+      w.add(indent(depthToClose) + '}\n');
+      lastRenderedFrames.pop();
+      frameHeaders.pop();
+    }
+    restorePrintState(options, saved);
   }
 
   override toTrimmedString(options?: PrintOptions) {

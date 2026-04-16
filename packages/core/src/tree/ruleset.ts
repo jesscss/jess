@@ -15,7 +15,7 @@ import { CompoundSelector } from './selector-compound.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
-import { type PrintOptions, type FinalPrintOptions, getPrintOptions, withSavedPrintState } from './util/print.js';
+import { type PrintOptions, type FinalPrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
@@ -798,26 +798,26 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         return '';
       }
     }
-    return withSavedPrintState(options, ['referenceFilterTargets'], () => {
-      if (
-        options.referenceMode === true
-        && options.referenceRenderEnabled === true
-      ) {
-        options.referenceFilterTargets = true;
-      }
-      if (
-        !(renderSelector instanceof Nil)
-        && (
-          options.referenceFilterTargets
-          || Ruleset.needsVisibleSelectorClone(renderSelector as Selector)
-        )
-      ) {
-        renderSelector = renderSelector.copy(true) as typeof renderSelector;
-      }
-      Ruleset.ensureSelectorVisible(renderSelector);
-      let selOut = w.capture(() => renderSelector.toString(options));
-      return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
-    });
+    const saved = savePrintState(options, ['referenceFilterTargets']);
+    if (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+    ) {
+      options.referenceFilterTargets = true;
+    }
+    if (
+      !(renderSelector instanceof Nil)
+      && (
+        options.referenceFilterTargets
+        || Ruleset.needsVisibleSelectorClone(renderSelector as Selector)
+      )
+    ) {
+      renderSelector = renderSelector.copy(true) as typeof renderSelector;
+    }
+    Ruleset.ensureSelectorVisible(renderSelector);
+    let selOut = w.capture(() => renderSelector.toString(options));
+    restorePrintState(options, saved);
+    return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
 
   override preEval(context: Context): MaybePromise<this> {

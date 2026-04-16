@@ -15,7 +15,7 @@ import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions, withTemporaryPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions, savePrintState, applyPrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
 export const enum AssignmentType {
@@ -152,17 +152,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
-      withTemporaryPrintState(options, { inCustom: true }, () => {
-        // Preserve custom value text, but normalize boundary artifacts:
-        // - if capture ended with a line break before declaration termination,
-        //   drop that trailing line break so semicolon insertion stays inline.
-        // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
-        //   insert a single separator space for stable CSS output.
-        let customOut = w.capture(() => value.toString(options));
-        customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
-        customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
-        w.add(customOut, value);
-      });
+      const saved = savePrintState(options, ['inCustom']);
+      applyPrintState(options, { inCustom: true });
+      // Preserve custom value text, but normalize boundary artifacts:
+      // - if capture ended with a line break before declaration termination,
+      //   drop that trailing line break so semicolon insertion stays inline.
+      // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
+      //   insert a single separator space for stable CSS output.
+      let customOut = w.capture(() => value.toString(options));
+      customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+      customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
+      w.add(customOut, value);
+      restorePrintState(options, saved);
     } else {
       // Capture value output to normalize spacing after ':'
       let valOut = '';

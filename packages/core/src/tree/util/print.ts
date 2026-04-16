@@ -139,66 +139,51 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   return resolved;
 }
 
-export function withSavedPrintState<T>(
+export type SavedPrintState = Array<[RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]]>;
+
+export function savePrintState(
   options: FinalPrintOptions,
-  keys: readonly RestorablePrintStateKey[],
-  fn: () => T
-): T {
-  const saved = new Map<RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]>();
+  keys: readonly RestorablePrintStateKey[]
+): SavedPrintState {
+  const saved: SavedPrintState = [];
   for (const key of keys) {
-    saved.set(key, options[key]);
+    saved.push([key, options[key]]);
   }
-  try {
-    return fn();
-  } finally {
-    for (const key of keys) {
-      options[key] = saved.get(key)!;
-    }
-  }
+  return saved;
 }
 
-export function withTemporaryPrintState<T>(
+export function applyPrintState(
   options: FinalPrintOptions,
-  overrides: Partial<RestorablePrintState>,
-  fn: () => T
-): T {
+  overrides: Partial<RestorablePrintState>
+): void {
   const keys = RESTORABLE_PRINT_STATE_KEYS.filter(key => Object.hasOwn(overrides, key));
-  return withSavedPrintState(options, keys, () => {
-    for (const key of keys) {
-      options[key] = overrides[key];
-    }
-    return fn();
-  });
+  for (const key of keys) {
+    options[key] = overrides[key];
+  }
 }
 
-export function withArraySnapshot<T, R>(
+export function restorePrintState(
+  options: FinalPrintOptions,
+  saved: SavedPrintState
+): void {
+  for (let i = 0; i < saved.length; i++) {
+    const [key, value] = saved[i]!;
+    options[key] = value;
+  }
+}
+
+export function saveArrayState<T>(array: T[] | undefined): T[] | undefined {
+  return array?.slice();
+}
+
+export function restoreArrayState<T>(
   array: T[] | undefined,
-  fn: (array: T[] | undefined) => R
-): R {
-  const snapshot = array?.slice();
-  try {
-    return fn(array);
-  } finally {
-    if (!array) {
-      return;
-    }
-    array.splice(0, array.length, ...(snapshot ?? []));
+  saved: readonly T[] | undefined
+): void {
+  if (!array) {
+    return;
   }
-}
-
-export function withPoppedStackItem<T, R>(
-  stack: T[] | undefined,
-  fn: (item: T) => R
-): R | undefined {
-  if (!stack?.length) {
-    return undefined;
-  }
-  const item = stack.pop()!;
-  try {
-    return fn(item);
-  } finally {
-    stack.push(item);
-  }
+  array.splice(0, array.length, ...(saved ?? []));
 }
 
 export class OutputWriter implements OutputWriter {
