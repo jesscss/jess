@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { CANONICAL, Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -688,7 +688,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const w = options.writer;
     const renderKey = options.context?.renderKey;
     const { selector } = (
-      renderKey === undefined || this._renderKey === undefined
+      renderKey === undefined || this._renderKey === undefined || this._renderKey === CANONICAL
         ? this.value
         : this.getValue(renderKey)
     ) as RulesetValue;
