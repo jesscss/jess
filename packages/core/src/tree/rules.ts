@@ -3600,17 +3600,21 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let params = resolvedBindingInfo?.signature;
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
       if (candidate.value.params || paramBindings.length > 0) {
-        outerRules = Rules.create([], {
-          rulesVisibility: {
-            Ruleset: 'public',
-            Declaration: 'public',
-            VarDeclaration: 'public',
-            Mixin: 'public'
-          }
-        });
-        (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
-        outerRules.sourceParent = sourceParent;
-        outerRules.index = candidate.index;
+        const needsOuterRules = Boolean(candidate.value.guard);
+        if (needsOuterRules) {
+          outerRules = Rules.create([], {
+            rulesVisibility: {
+              Ruleset: 'public',
+              Declaration: 'public',
+              VarDeclaration: 'public',
+              Mixin: 'public'
+            }
+          });
+          (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
+          outerRules.sourceParent = sourceParent;
+          outerRules.index = candidate.index;
+        }
+        const scopeOwner = outerRules ?? rules;
         // Mark param source nodes and build the live-slot map for the ScopeFrame.
         const liveSlots = new Map<string, BindingCell>();
         for (const binding of paramBindings) {
@@ -3641,7 +3645,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
           ? (callSiteRules as Rules).getScopeFrame()
           : undefined;
-        outerRules.scopeFrame = buildScopeFrame(undefined, outerRules, parentFrame, liveSlots);
+        scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, parentFrame, liveSlots);
         // Populate @arguments after the frame is wired (the Sequence holds a
         // reference to argumentsArgs, so pushes here are visible through the frame).
         if (shouldDefineArguments && argumentsArgs) {
