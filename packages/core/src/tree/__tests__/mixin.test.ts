@@ -359,6 +359,125 @@ describe('Mixin', () => {
       expect(css).toContain('background-color: blue');
     });
 
+    it('resolves local mixin body vars when a detached ruleset is stored in a variable and called directly', async () => {
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          vardecl({
+            name: 'hover-content',
+            value: rules([
+              decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+            ])
+          }),
+          call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('resolves local mixin body vars when a detached ruleset variable is called inside a child ruleset', async () => {
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          vardecl({
+            name: 'hover-content',
+            value: rules([
+              decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.table-hover'),
+            rules: rules([
+              call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
+            ])
+          })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([tableRowVariantMixin, component]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('.table-hover');
+      expect(css).toContain('background-color: blue');
+    });
+
+    it('prefers local mixin body vars over same-named globals when detached ruleset vars are called directly', async () => {
+      const tableRowVariantMixin = mixin({
+        name: any('.table-row-variant'),
+        params: list([any('background', { role: 'property' })]),
+        rules: rules([
+          vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+          vardecl({
+            name: 'hover-content',
+            value: rules([
+              decl({ name: 'background-color', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+            ])
+          }),
+          call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.table-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([
+        vardecl({ name: 'hover-background', value: any('red') }),
+        tableRowVariantMixin,
+        component
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.table-primary');
+      expect(css).toContain('background-color: blue');
+      expect(css).not.toContain('background-color: red');
+    });
+
     it('resolves default params when mixin body lives in a separate (imported) rules context', async () => {
       // Simulates: @import "mixins.less" where mixins.less defines:
       //   .responsive-mixin(@size: 14px, @weight: normal) { font-size: @size; font-weight: @weight; }
