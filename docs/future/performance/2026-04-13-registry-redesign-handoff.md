@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `a4f013c8` (`Stop inheriting source nodes`)
+Checkpoint commit: `ca96bae9` (`Drop source-parent provenance scans`)
 
 ## Priority Reset
 
@@ -122,6 +122,8 @@ Practical rule for the next agent:
   - Generic node derivation no longer carries either `sourceParent` or
     `sourceNode` forward through `inherit()`; any remaining provenance now has
     to be kept explicitly by the few semantic surfaces that still need it.
+  - Reference-import ancestry scans no longer walk `sourceParent`; they now
+    stay on explicit `sourceNode`/`parent` provenance only.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
   - Cloned/fallback/direct-value reference results no longer stamp
