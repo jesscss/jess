@@ -1234,6 +1234,26 @@ export class DeclarationRegistry extends Registry<Declaration> {
       visitedRules.add(rules);
       let currentReadonly = options?.readonly || rules.options.readonly;
       newReadonly = currentReadonly;
+      if (filterType !== 'Declaration') {
+        const live = rules.scopeFrame?.liveSlotsByName.get(key);
+        const liveSource = live?.sourceNode;
+        if (liveSource && isNode(liveSource, N.VarDeclaration)) {
+          const passesFilter = !options?.filter || options.filter(liveSource);
+          if (passesFilter) {
+            newReadonly ||= live.readonly || liveSource.options?.readonly;
+            const currentRulesVisibility = rules.options.rulesVisibility?.VarDeclaration ?? '';
+            const isRulesetBodyScope = isNode(rules.parent, N.Ruleset) || isNode(rules.sourceNode, N.Ruleset);
+            if (currentRulesVisibility === 'optional' && !isRulesetBodyScope) {
+              optionalCandidates.add(liveSource);
+            } else {
+              if (options && newReadonly) {
+                options.readonly = true;
+              }
+              return liveSource;
+            }
+          }
+        }
+      }
       let registry = rules.getRegistry('declaration');
       registry.indexPendingItems();
       let set = registry.index.get(key);

@@ -13,6 +13,7 @@ import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
+import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -138,6 +139,36 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
+    const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
+    let didAdd = false;
+    for (const node of variableNodes) {
+      if (!isNode(node, N.VarDeclaration)) {
+        continue;
+      }
+      const name = node.value.name?.toString();
+      if (!name) {
+        continue;
+      }
+      liveSlots.set(name, {
+        value: node.value.value,
+        sourceNode: node,
+        readonly: node.options?.readonly
+      } satisfies BindingCell);
+      didAdd = true;
+    }
+    if (!didAdd) {
+      return;
+    }
+    targetRules.scopeFrame = buildScopeFrame(
+      undefined,
+      targetRules,
+      targetRules.scopeFrame?.parent,
+      liveSlots,
+      targetRules.scopeFrame?.pendingDynamicDecls
+    );
+  }
+
   private toImportPathNode(node: Node): Quoted | Url {
     if (isNode(node, N.Quoted) || node instanceof Url) {
       return node;
@@ -493,13 +524,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             // Pure additive configuration can keep the imported Rules as a
             // child surface instead of flattening every imported node into a
             // fresh synthetic top-level tree.
-            const additiveVarsNeeded = newVariables.some(node => isNode(node, N.VarDeclaration));
-            const finalRules = (additiveVarsNeeded ? withRules : rules).clone(false) as Rules;
+            const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
+            const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
+            const finalRules = rules.clone(false) as Rules;
             finalRules.value = [];
-            for (const newNode of newVariables) {
+            for (const newNode of additiveNonVariableNodes) {
               finalRules.adopt(newNode);
               finalRules.value.push(newNode);
             }
+            this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
             finalRules.adopt(rules);
             finalRules.value.push(rules);
             rules = finalRules;
@@ -518,13 +551,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             if (newVariables.length === 0) {
               rules = replacedRules;
             } else {
-              const additiveVarsNeeded = newVariables.some(node => isNode(node, N.VarDeclaration));
-              const finalRules = (additiveVarsNeeded ? withRules : replacedRules).clone(false) as Rules;
+              const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
+              const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
+              const finalRules = replacedRules.clone(false) as Rules;
               finalRules.value = [];
-              for (const newNode of newVariables) {
+              for (const newNode of additiveNonVariableNodes) {
                 finalRules.adopt(newNode);
                 finalRules.value.push(newNode);
               }
+              this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
               finalRules.adopt(replacedRules);
               finalRules.value.push(replacedRules);
               rules = finalRules;
