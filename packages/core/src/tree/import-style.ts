@@ -494,11 +494,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             // Pure additive configuration can keep the imported Rules as a
             // child surface instead of flattening every imported node into a
             // fresh synthetic top-level tree.
-            const finalRules = Rules.create([]);
-            for (const newNode of newVariables) {
-              finalRules.adopt(newNode);
-              finalRules.value.push(newNode);
-            }
+            const finalRules = withRules.clone(false) as Rules;
             finalRules.adopt(rules);
             finalRules.value.push(rules);
             rules = finalRules;
