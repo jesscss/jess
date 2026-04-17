@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `ed2760d8` (`Root mixed import wrappers in imported surfaces`)
+Checkpoint commit: `aada9a56` (`Refresh redesign handoff checkpoint`)
 
 ## Priority Reset
 
@@ -127,6 +127,9 @@ Practical rule for the next agent:
   Additional narrowing: mixed replacement+additive import config wrappers now
   derive from the original imported surface too, instead of rooting the outer
   additive shell in the intermediate replacement wrapper.
+  Additional narrowing: nested inline/evaluated import postlude wrappers now
+  keep deriving from the original imported surface across the whole wrapper
+  chain, instead of re-rooting each outer shell in the prior wrapper.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.

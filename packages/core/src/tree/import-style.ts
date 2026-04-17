@@ -761,8 +761,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Falls back to `@media <postlude>` for plain query nodes.
    */
   private wrapInlineSourceWithPostlude(sourceRules: Rules, postlude?: Node): Rules {
-    const deriveInlineWrapper = (wrappedNode: Node, sourceRules: Rules): Rules => {
-      const wrapped = sourceRules.clone(false) as Rules;
+    const anchorRules = sourceRules;
+    const deriveInlineWrapper = (wrappedNode: Node): Rules => {
+      const wrapped = anchorRules.clone(false) as Rules;
       wrapped.value = [wrappedNode];
       wrapped.scopeFrame = undefined;
       return wrapped;
@@ -787,7 +788,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               name: new Any(`@${callName}`, { role: 'atkeyword' }),
               prelude,
               rules: wrappedRules
-            }), wrappedRules);
+            }));
             continue;
           }
         }
@@ -797,7 +798,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         name: new Any('@media', { role: 'atkeyword' }),
         prelude: current,
         rules: wrappedRules
-      }), wrappedRules);
+      }));
     }
 
     return wrappedRules;
@@ -811,8 +812,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
-    const derivePostludeWrapper = (wrappedNode: Node, sourceRules: Rules): Rules => {
-      const wrapped = sourceRules.clone(false) as Rules;
+    const anchorRules = rules;
+    const derivePostludeWrapper = (wrappedNode: Node): Rules => {
+      const wrapped = anchorRules.clone(false) as Rules;
       wrapped.value = [wrappedNode];
       wrapped.scopeFrame = undefined;
       return wrapped;
@@ -832,7 +834,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               prelude,
               rules: wrappedRules
             });
-            wrappedRules = derivePostludeWrapper(wrappedAtRule, wrappedRules);
+            wrappedRules = derivePostludeWrapper(wrappedAtRule);
             continue;
           }
         }
@@ -843,7 +845,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         prelude: current,
         rules: wrappedRules
       });
-      wrappedRules = derivePostludeWrapper(mediaAtRule, wrappedRules);
+      wrappedRules = derivePostludeWrapper(mediaAtRule);
     }
 
     return wrappedRules;
