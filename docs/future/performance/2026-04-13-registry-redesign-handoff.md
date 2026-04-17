@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `491b3af3` (`Drop JS call declaration ref source parents`)
+Checkpoint commit: `9d88ffda` (`Drop JS call mixin callback source parents`)
 
 ## Priority Reset
 
