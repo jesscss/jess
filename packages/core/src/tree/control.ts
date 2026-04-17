@@ -236,13 +236,11 @@ export class For extends Node<StructuredLoopValue> {
           resolvedKey = new Any(String(key), { role: 'property' });
         }
 
-        const iterationRules = Rules.create([], {
-          rulesVisibility: {
-            ...originalRules.options.rulesVisibility,
-            ...PUBLIC_RULE_VISIBILITY
-          }
-        });
-        iterationRules.inherit(originalRules);
+        const iterationRules = originalRules.clone(false) as Rules;
+        iterationRules.options.rulesVisibility = {
+          ...iterationRules.options.rulesVisibility,
+          ...PUBLIC_RULE_VISIBILITY
+        };
 
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
         const liveSlots = new Map<string, BindingCell>();
@@ -258,9 +256,6 @@ export class For extends Node<StructuredLoopValue> {
           ? context.rulesContext.getScopeFrame()
           : undefined;
         iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
-        for (const child of originalRules.value) {
-          iterationRules.push(child);
-        }
         counter++;
         const result = await iterationRules.eval(context);
 
