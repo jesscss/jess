@@ -333,7 +333,7 @@ function findVarDeclarationFast(
       optionalMatch = laterOf(optionalMatch, result.optionalMatch);
       // No match at this scope; continue up the chain
     }
-    cursor = cursor.parent ?? cursor.sourceParent;
+    cursor = cursor.parent;
   }
   const fallbackFrame = startRules.scopeFrame?.fallbackFrame;
   const fallbackRules = fallbackFrame?.rulesNode;
@@ -356,11 +356,11 @@ function findVarDeclarationFast(
         optionalMatch = laterOf(optionalMatch, result.optionalMatch);
       }
       const nextFallbackRules = isNode(cursor, N.Rules)
-        ? ((cursor as Rules).scopeFrame?.fallbackFrame?.rulesNode as Node | undefined)
+        ? cursor.scopeFrame?.fallbackFrame?.rulesNode
         : undefined;
       cursor = isNode(nextFallbackRules, N.Rules)
         ? nextFallbackRules
-        : cursor.parent ?? cursor.sourceParent;
+        : cursor.parent;
     }
   }
   if (publicMatch !== undefined) {
@@ -498,7 +498,7 @@ function isWithinReferenceParamVarScope(
     ) {
       return true;
     }
-    cursor = cursor.parent ?? cursor.sourceParent;
+    cursor = cursor.parent;
   }
   return false;
 }

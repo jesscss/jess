@@ -277,7 +277,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       let resolvedParent = parent;
       if (resolvedParent === undefined) {
-        let cursor = this.parent ?? this.sourceParent;
+        let cursor = this.parent;
         while (cursor) {
           if (isNode(cursor, N.Rules)) {
             const frame = (cursor as Rules).scopeFrame;
@@ -286,7 +286,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               break;
             }
           }
-          cursor = cursor.parent ?? cursor.sourceParent;
+          cursor = cursor.parent;
         }
       }
       const pendingDynamicDecls = this.value.filter((node): node is VarDeclaration => {
@@ -444,7 +444,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         first = false;
         results.push(...findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
       }
-      cursor = cursor.parent ?? cursor.sourceParent;
+      cursor = cursor.parent;
       if (options?.searchParents === false) {
         break;
       }
@@ -550,7 +550,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options?.searchParents === false) {
         break;
       }
-      cursor = cursor.parent ?? cursor.sourceParent;
+      cursor = cursor.parent;
     }
     return false;
   }
@@ -643,7 +643,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options?.searchParents === false) {
         break;
       }
-      cursor = cursor.parent ?? cursor.sourceParent;
+      cursor = cursor.parent;
     }
     return false;
   }
@@ -737,7 +737,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options?.searchParents === false) {
         break;
       }
-      cursor = cursor.parent ?? cursor.sourceParent;
+      cursor = cursor.parent;
     }
     return results;
   }
@@ -832,7 +832,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (options?.searchParents === false) {
         break;
       }
-      cursor = cursor.parent ?? cursor.sourceParent;
+      cursor = cursor.parent;
     }
     return results;
   }
