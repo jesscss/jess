@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `ba36c61f` (`Drop interpolated at-rule source nodes`)
+Checkpoint commit: `41607687` (`Drop import postlude source clears`)
 
 ## Priority Reset
 
@@ -116,6 +116,9 @@ Practical rule for the next agent:
     `sourceNode` provenance from the canonical definition.
   - Interpolated at-rule `preEval()` wrappers no longer inherit `sourceNode`
     provenance from the canonical at-rule either.
+  - Import postlude wrapper shells no longer need to explicitly scrub
+    `sourceNode`; they just inherit whatever real imported surface they are
+    derived from.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
   - Cloned/fallback/direct-value reference results no longer stamp
