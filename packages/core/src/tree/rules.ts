@@ -3486,7 +3486,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     type DefaultPendingCandidate = {
       candidate: Mixin;
       rules: Rules;
-      outerRules?: Rules;
       params?: List<Node>;
       group: number;
     };
@@ -3495,7 +3494,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const evaluateCandidateOutput = async (
       candidate: Mixin,
       rules: Rules,
-      outerRules: Rules | undefined,
       params: List<Node> | undefined
     ): Promise<void> => {
       const currentCall = thisContext.callStack.at(-1);
@@ -3507,17 +3505,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
 
       try {
-        let newRules: Rules;
-        if (!outerRules) {
-          candidate.parent!.adopt(rules);
-          newRules = await rules.eval(thisContext);
-        } else {
-          // Evaluate in the wrapper scope so params are visible, but preserve the wrapper's
-          // rulesVisibility (it keeps VarDeclaration public). Overwriting visibility here can
-          // hide param vars from registry-based lookup.
-          outerRules.push(...rules.value);
-          newRules = await outerRules.eval(thisContext);
-        }
+        candidate.parent!.adopt(rules);
+        const newRules = await rules.eval(thisContext);
         candidate.parent!.adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         newRules.index = candidate.index;
@@ -3638,7 +3627,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         : undefined;
       let params = resolvedBindingInfo?.signature;
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
-      if (candidate.value.params || paramBindings.length > 0) {
+        if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
         if (needsOuterRules) {
           outerRules = createDerivedOuterRules(rules, {
@@ -3653,7 +3642,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           outerRules.sourceParent = sourceParent;
           outerRules.index = candidate.index;
         }
-        const scopeOwner = outerRules ?? rules;
+        const scopeOwner = rules;
         // Mark param source nodes and build the live-slot map for the ScopeFrame.
         const liveSlots = new Map<string, BindingCell>();
         for (const binding of paramBindings) {
@@ -3685,6 +3674,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
           ? (callSiteRules as Rules).getScopeFrame()
           : undefined;
         scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, parentFrame, liveSlots);
+        if (outerRules) {
+          outerRules.scopeFrame = scopeOwner.scopeFrame;
+        }
         // Populate @arguments after the frame is wired (the Sequence holds a
         // reference to argumentsArgs, so pushes here are visible through the frame).
         if (shouldDefineArguments && argumentsArgs) {
@@ -3737,6 +3729,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               }
               if (!probeGuard.hasFlag(F_STATIC)) {
                 outerRules ??= createDerivedOuterRules(rules);
+                outerRules.scopeFrame = rules.scopeFrame;
                 outerRules.adopt(probeGuard);
                 candidate.parent!.adopt(outerRules);
               }
@@ -3771,7 +3764,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
               pendingDefaultCandidates.push({
                 candidate: candidate as Mixin,
                 rules,
-                outerRules,
                 params,
                 group: defaultGroup
               });
@@ -3799,7 +3791,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (guard && hasDefault) {
           continue;
         }
-        await evaluateCandidateOutput(candidate as Mixin, rules, outerRules, params);
+        await evaluateCandidateOutput(candidate as Mixin, rules, params);
       } finally {
         thisContext.rulesContext = rulesContext;
       }
@@ -3837,12 +3829,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
           continue;
         }
         const previousRulesContext = thisContext.rulesContext;
-        thisContext.rulesContext = pending.outerRules ?? pending.rules;
+        thisContext.rulesContext = pending.rules;
         try {
           await evaluateCandidateOutput(
             pending.candidate,
             pending.rules,
-            pending.outerRules,
             pending.params
           );
         } finally {

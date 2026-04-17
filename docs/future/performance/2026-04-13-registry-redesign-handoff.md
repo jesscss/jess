@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `80749787` (`Skip static-guard mixin outer wrappers`)
+Checkpoint commit: `53ea5b7f` (`Keep detached collection calls on collection surfaces`)
 
 ## Priority Reset
 
@@ -105,6 +105,10 @@ Practical rule for the next agent:
   Additional narrowing: detached `Collection` calls now stay on the
   `Collection` surface too, instead of degrading to a fresh plain `Rules`
   wrapper before evaluation.
+  Additional narrowing: dynamic/default guard wrappers are now guard-only
+  lookup surfaces. Param/body evaluation stays on the cloned body `Rules`,
+  with the temporary wrapper only carrying the guard scope that must not see
+  body declarations.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
