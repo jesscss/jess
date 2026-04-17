@@ -14,6 +14,7 @@ import {
   mixin,
   call,
   list,
+  sellist,
   quoted,
   amp,
   pseudo,
@@ -1441,6 +1442,63 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       expect(`${evald}`).toContain('@keyframes some-name');
+    });
+
+    it('import-reference: reference-imported mixins still hoist nested media output', async () => {
+      context.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'reference-mixin-media.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.mixin-with-mediaq'),
+          params: list([any('num', { role: 'property' })]),
+          rules: rules([
+            decl({ name: any('color'), value: any('green') }),
+            decl({ name: any('test'), value: ref({ key: 'num' }, { type: 'variable' }) }),
+            atrule({
+              name: any('@media'),
+              prelude: any('(max-size: 450px)'),
+              rules: rules([
+                decl({ name: any('color'), value: any('red') })
+              ])
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-mixin-media.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: '.mixin-with-mediaq' }, { type: 'mixin-ruleset' }),
+              args: list([any('340px')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.after'),
+          rules: rules([
+            decl({ name: any('color'), value: any('blue') })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(evald.toString({ context })).toBeString(`
+        .out {
+          color: green;
+          test: 340px;
+        }
+        @media (max-size: 450px) {
+          .out {
+            color: red;
+          }
+        }
+        .after {
+          color: blue;
+        }
+      `);
     });
 
     it('import-reference: namespaced reference-imported rulesets remain callable as mixins', async () => {

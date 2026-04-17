@@ -453,6 +453,95 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return results;
   }
 
+  private findIndexedCallableStartMatches(
+    key: string,
+    options?: {
+      hasTarget?: boolean;
+      local?: boolean;
+      includeRulesets?: boolean;
+      searchParents?: boolean;
+    }
+  ): MixinEntry[] {
+    const findWithinScopeSurface = (
+      scope: Rules,
+      localContext: boolean | undefined,
+      visited: Set<Rules>
+    ): MixinEntry[] => {
+      if (visited.has(scope)) {
+        return [];
+      }
+      visited.add(scope);
+
+      const results: MixinEntry[] = [];
+      const registry = scope.getRegistry('mixin');
+      registry.indexPendingItems();
+      const entries = registry.index.get(key) ?? [];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i]!;
+        if (entry.match.length > 0) {
+          continue;
+        }
+        const candidate = entry.value;
+        if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
+          continue;
+        }
+        results.push(candidate);
+      }
+
+      const childEntries = scope._rulesSet as Array<{
+        node: Rules;
+        rulesVisibility?: RulesOptions['rulesVisibility'];
+      }> | undefined;
+      if (!childEntries?.length) {
+        return results;
+      }
+
+      for (let i = childEntries.length - 1; i >= 0; i--) {
+        const entry = childEntries[i]!;
+        const visibility = entry.rulesVisibility?.Mixin
+          ?? entry.node.options.rulesVisibility?.Mixin;
+        if (visibility !== 'public' && visibility !== 'optional') {
+          continue;
+        }
+        if (entry.node.options?.isMixinOutput === true && options?.hasTarget !== true) {
+          continue;
+        }
+        if (entry.node.options?.forward) {
+          continue;
+        }
+        if (localContext && entry.node.options?.local) {
+          continue;
+        }
+        results.push(...findWithinScopeSurface(
+          entry.node,
+          localContext || Boolean(entry.node.options?.local),
+          visited
+        ));
+      }
+
+      return results;
+    };
+
+    const results: MixinEntry[] = [];
+    let cursor: Node | undefined = this;
+    let first = true;
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        const scope = cursor as Rules;
+        if (!first && Registries.isNonClassicImportBoundary(scope)) {
+          break;
+        }
+        first = false;
+        results.push(...findWithinScopeSurface(scope, options?.local, new Set<Rules>()));
+      }
+      cursor = cursor.parent;
+      if (options?.searchParents === false) {
+        break;
+      }
+    }
+    return results;
+  }
+
   private hasVisibleCompoundPrefixRulesetPath(
     path: string[],
     options?: {
@@ -1081,17 +1170,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         local: options.local,
         includeRulesets
       });
-      if (fast.length > 0 && !includeRulesets) {
-        return fast;
-      }
-      const registryMatches = this.getRegistry('mixin').find(keys, filterType, options) as MixinEntry[] | undefined;
-      if (!registryMatches?.length) {
+      if (!includeRulesets) {
         return fast.length > 0 ? fast : undefined;
       }
+      const indexed = this.findIndexedCallableStartMatches(keys, {
+        hasTarget: options.hasTarget,
+        local: options.local,
+        includeRulesets,
+        searchParents: options.searchParents
+      });
       if (fast.length === 0) {
-        return registryMatches;
+        return indexed.length > 0 ? indexed : undefined;
       }
-      return [...new Set([...fast, ...registryMatches])];
+      if (indexed.length === 0) {
+        return fast;
+      }
+      return [...new Set([...fast, ...indexed])];
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       if (mixinFilterType !== 'Mixin') {

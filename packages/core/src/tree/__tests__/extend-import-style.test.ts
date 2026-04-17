@@ -709,11 +709,15 @@ describe('Style import extend behavior', () => {
       const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
       expect(css).toContain('.visible .c {');
       expect(css).toContain('.visible:hover {');
+      expect(css).toContain('.only-with-visible + .visible,');
+      expect(css).toContain('.visible + .only-with-visible,');
       expect(css).toContain('.visible + .visible {');
+      expect(css).toContain('.only-with-visible + .visible .sub,');
+      expect(css).toContain('.visible + .only-with-visible .sub,');
       expect(css).toContain('.visible + .visible .sub {');
       expect(css).toContain('.visible {');
       expect(css).not.toContain('.z .c {');
-      expect(css).not.toContain('.only-with-visible');
+      expect(css).not.toContain('.only-with-visible {');
     });
 
     it('reference import with collapseNesting=true does not double-compose a literal bare ampersand block', async () => {
@@ -885,9 +889,13 @@ describe('Style import extend behavior', () => {
           .visible:hover {
             color: green;
           }
+          .only-with-visible + .visible,
+          .visible + .only-with-visible,
           .visible + .visible {
             color: green;
           }
+          .only-with-visible + .visible .sub,
+          .visible + .only-with-visible .sub,
           .visible + .visible .sub {
             color: green;
           }
@@ -954,9 +962,13 @@ describe('Style import extend behavior', () => {
           .visible:hover {
             color: green;
           }
+          .only-with-visible + .visible,
+          .visible + .only-with-visible,
           .visible + .visible {
             color: green;
           }
+          .only-with-visible + .visible .sub,
+          .visible + .only-with-visible .sub,
           .visible + .visible .sub {
             color: green;
           }

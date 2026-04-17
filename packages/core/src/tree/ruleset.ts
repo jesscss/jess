@@ -588,14 +588,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private static isBareAmpersandSelector(sel: Selector | Nil): boolean {
+    const isBareAmpNode = (node: Selector): boolean => {
+      return isNode(node, N.Ampersand)
+        && (node.value.appendValue === undefined || node.value.appendValue === '');
+    };
     if (!sel || sel instanceof Nil) {
       return false;
     }
-    if (isNode(sel, N.Ampersand)) {
+    if (isBareAmpNode(sel as Selector)) {
       return true;
     }
+    if (isNode(sel, N.ComplexSelector) || isNode(sel, N.CompoundSelector)) {
+      return sel.value.length === 1 && isBareAmpNode(sel.value[0] as Selector);
+    }
     if (isNode(sel, N.SelectorList)) {
-      return (sel as SelectorList).value.every(item => isNode(item, N.Ampersand));
+      return (sel as SelectorList).value.every(item => Ruleset.isBareAmpersandSelector(item));
     }
     return false;
   }
@@ -706,6 +713,114 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     return SelectorList.create(kept).inherit(parent) as Selector;
   }
 
+  static expandGeneratedIsForReferenceCompose(selector: Selector): Selector | undefined {
+    if (isNode(selector, N.SelectorList)) {
+      const expanded: Selector[] = [];
+      let changed = false;
+      const seen = new Set<string>();
+      for (const item of (selector as SelectorList).value) {
+        const next = Ruleset.expandGeneratedIsForReferenceCompose(item) ?? item;
+        const items = isNode(next, N.SelectorList) ? (next as SelectorList).value : [next];
+        changed ||= next !== item;
+        for (const expandedItem of items) {
+          const key = expandedItem.valueOf();
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          expanded.push(expandedItem);
+        }
+      }
+      if (!changed) {
+        return undefined;
+      }
+      if (expanded.length === 1) {
+        return expanded[0]!;
+      }
+      return SelectorList.create(expanded).inherit(selector) as Selector;
+    }
+
+    if (!isNode(selector, N.ComplexSelector)) {
+      return undefined;
+    }
+
+    const slots: Array<Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }>> = [];
+    let sawGeneratedIs = false;
+    const complex = selector as ComplexSelector;
+    for (const part of complex.value) {
+      if (
+        isNode(part, N.PseudoSelector)
+        && (part as PseudoSelector).generated === true
+        && (part as PseudoSelector).value.name === ':is'
+        && (part as PseudoSelector).value.arg
+        && isNode((part as PseudoSelector).value.arg!, N.SelectorList)
+      ) {
+        const alternatives: Array<{ parts: ComplexSelectorComponent[]; hasAdded: boolean }> = [];
+        for (const item of ((part as PseudoSelector).value.arg! as SelectorList).value) {
+          if (item.hasFlag(F_EXTEND_TARGET)) {
+            continue;
+          }
+          alternatives.push({
+            parts: isNode(item, N.ComplexSelector)
+              ? [...(item as ComplexSelector).value]
+              : [item as ComplexSelectorComponent],
+            hasAdded: item.hasFlag(F_EXTENDED)
+          });
+        }
+        if (alternatives.length === 0) {
+          slots.push([{ parts: [part], hasAdded: false }]);
+          continue;
+        }
+        sawGeneratedIs = true;
+        slots.push(alternatives);
+        continue;
+      }
+      slots.push([{ parts: [part], hasAdded: false }]);
+    }
+
+    if (!sawGeneratedIs) {
+      return undefined;
+    }
+
+    const expanded: Selector[] = [];
+    const seen = new Set<string>();
+    const build = (
+      index: number,
+      parts: ComplexSelectorComponent[],
+      hasAdded: boolean
+    ): void => {
+      if (index >= slots.length) {
+        if (!hasAdded) {
+          return;
+        }
+        const built = attachSelectorBitLibrary(
+          ComplexSelector.create(parts).inherit(complex),
+          complex.keySetLibrary
+        ) as Selector;
+        built.addFlag(F_EXTENDED);
+        const key = built.valueOf();
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        expanded.push(built);
+        return;
+      }
+      for (const option of slots[index]!) {
+        build(index + 1, [...parts, ...option.parts], hasAdded || option.hasAdded);
+      }
+    };
+
+    build(0, [], false);
+    if (expanded.length === 0) {
+      return undefined;
+    }
+    if (expanded.length === 1) {
+      return expanded[0]!;
+    }
+    return SelectorList.create(expanded).inherit(selector) as Selector;
+  }
+
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     const w = options.writer;
     const { selector } = this.value as RulesetValue;
@@ -781,6 +896,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
                 : Ruleset.composeSelector(composeInput, composeParent as Selector)
             )
           : composeInput;
+        if (options.referenceMode === true && options.referenceRenderEnabled === true) {
+          cached = Ruleset.expandGeneratedIsForReferenceCompose(cached as Selector) ?? cached;
+        }
         if (composeParent) {
           setCachedComposedSelector(options, this, cached as Selector);
         }

@@ -19,14 +19,21 @@ import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
+  const isBareAmpNode = (node: Selector): boolean => {
+    return isNode(node, N.Ampersand)
+      && (node.value.appendValue === undefined || node.value.appendValue === '');
+  };
   if (!sel || sel instanceof Nil) {
     return false;
   }
-  if (isNode(sel, N.Ampersand)) {
+  if (isBareAmpNode(sel as Selector)) {
     return true;
   }
+  if (isNode(sel, N.ComplexSelector) || isNode(sel, N.CompoundSelector)) {
+    return sel.value.length === 1 && isBareAmpNode(sel.value[0] as Selector);
+  }
   if (isNode(sel, N.SelectorList)) {
-    return (sel as SelectorList).value.every((item: Selector) => isNode(item, N.Ampersand));
+    return (sel as SelectorList).value.every((item: Selector) => isBareAmpersandSelectorForSerialize(item));
   }
   return false;
 }
@@ -35,32 +42,85 @@ type RenderRuleEntry = {
   node: Node;
 };
 
-function flattenVisibleRulesForRender(rules: Rules): RenderRuleEntry[] {
-  const entries: RenderRuleEntry[] = [];
-  const iterateRules = (current: Rules) => {
+function flattenVisibleRulesForRender(
+  rules: Rules,
+  allowTransparentRulesetFlatten: boolean = false
+): RenderRuleEntry[] {
+  const leadingLeafEntries: RenderRuleEntry[] = [];
+  const trailingEntries: RenderRuleEntry[] = [];
+  let encounteredContainer = false;
+
+  const pushLeaf = (node: Node, forceLeading: boolean = false) => {
+    if (forceLeading || !encounteredContainer) {
+      leadingLeafEntries.push({ node });
+      return;
+    }
+    trailingEntries.push({ node });
+  };
+
+  const pushContainer = (node: Node) => {
+    encounteredContainer = true;
+    trailingEntries.push({ node });
+  };
+
+  const iterateRules = (
+    current: Rules,
+    allowTransparentFlatten: boolean,
+    forceLeadingLeaves: boolean = false
+  ) => {
     for (const child of current.value) {
       if (isNode(child, N.Rules)) {
         if (!child.visible && !child.fullRender) {
           continue;
         }
         if ((child.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
-          entries.push({
-            node: child
-          });
+          pushContainer(child);
           continue;
         }
-        iterateRules(child);
+        iterateRules(child, allowTransparentFlatten, forceLeadingLeaves);
+        continue;
+      }
+      if (
+        allowTransparentFlatten
+        && isNode(child, N.Ruleset)
+        && child.value.rules
+      ) {
+        const ownSelector = (child.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+        if (
+          ownSelector
+          && isBareAmpersandSelectorForSerialize(ownSelector)
+          && !isBareAmpersandSelectorForSerialize(child.value.selector)
+        ) {
+          const visibleChildren = child.value.rules.value.filter(node => node.visible || node.fullRender);
+          const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
+          if (!hasVisibleContainers) {
+            for (const leaf of visibleChildren) {
+              pushLeaf(leaf, true);
+            }
+            continue;
+          }
+        }
+      }
+      if (
+        allowTransparentFlatten
+        && isNode(child, N.Ruleset)
+        && isBareAmpersandSelectorForSerialize(child.value.selector)
+        && child.value.rules
+      ) {
+        iterateRules(child.value.rules, true, true);
         continue;
       }
       if (child.visible || child.fullRender) {
-        entries.push({
-          node: child
-        });
+        if (isNode(child, N.Ruleset | N.AtRule)) {
+          pushContainer(child);
+          continue;
+        }
+        pushLeaf(child, forceLeadingLeaves);
       }
     }
   };
-  iterateRules(rules);
-  return entries;
+  iterateRules(rules, allowTransparentRulesetFlatten);
+  return [...leadingLeafEntries, ...trailingEntries];
 }
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
@@ -176,11 +236,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   // getHeaderString normally handles this, but cached frame headers skip it.
   let pushedComposed = false;
   let pushedComposedSelector: Selector | undefined;
-  // A bare `&` selector with no real parent on the stack is a generated
-  // wrapper (e.g. synthetic `& { ... }` wrapping @media body when hoisted).
-  // It must be fully transparent: don't compose, don't push, don't emit as a
-  // frame — just render children as if they were direct children of the
-  // parent at-rule.
+  // A bare `&` selector is a selector-transparent wrapper. Whether authored
+  // directly or generated around hoisted content, it should not emit its own
+  // header; its children render against the current parent frame instead.
   let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
@@ -202,7 +260,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       : rawParentComposed;
     const sel = rs.value.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
-    if (isBareAmp && !parentComposed) {
+    if (isBareAmp) {
       isTransparentWrapper = true;
     } else {
       let cached = getCachedComposedSelector(options, rs);
@@ -235,6 +293,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         cached = composeParent
           ? Ruleset.composeSelector(composeInput, composeParent)
           : composeInput;
+        if (options.referenceMode === true && options.referenceRenderEnabled === true) {
+          cached = Ruleset.expandGeneratedIsForReferenceCompose(cached) ?? cached;
+        }
         if (composeParent) {
           setCachedComposedSelector(options, rs, cached);
         }
@@ -272,7 +333,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return w.getSince(mark);
     }
 
-    const rulesToRender = flattenVisibleRulesForRender(rules);
+    const rulesToRender = flattenVisibleRulesForRender(
+      rules,
+      options.collapseNesting === true
+      && (isNode(node, N.Ruleset) || Boolean(getHoistedRulesetCarrier(node, options)))
+    );
     const declarationOutputCache = new Map<number, string>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
@@ -349,6 +414,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // Note: in the hoisted branch above, `node` is already included.
 
       let lastRenderedFrames = options.lastRenderedFrames;
+      const carriedRuleset = getHoistedRulesetCarrier(node, options);
 
       /** Don't output selector yet. Let's see if any child rules need hoisting. */
       for (let idx = 0; idx < rulesToRender.length; idx++) {
@@ -410,7 +476,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
         }
         let leafFrames = inFrames;
-        const carriedRuleset = getHoistedRulesetCarrier(node, options);
         if (carriedRuleset) {
           leafFrames = [...inFrames, carriedRuleset.frame];
         }
@@ -558,6 +623,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // else {
       //   n.toString({ ...options, depth: options.depth + 1 });
       // }
+      }
+      if (
+        carriedRuleset
+        && !closeFramesOnExit
+        && lastRenderedFrames[lastRenderedFrames.length - 1] === carriedRuleset.frame
+      ) {
+        const carriedDepth = lastRenderedFrames.length - 1;
+        w.add(indent(carriedDepth) + '}\n');
+        frameHeaders.pop();
+        lastRenderedFrames.pop();
       }
       if (!isTransparentWrapper) {
         inFrames.pop();
