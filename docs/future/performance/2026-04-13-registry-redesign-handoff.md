@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `7d8ba105` (`Keep mixin preEval wrappers self-owned`)
+Checkpoint commit: `94bc62d5` (`Keep at-rule preEval wrappers self-owned`)
 
 ## Priority Reset
 
@@ -117,8 +117,8 @@ Practical rule for the next agent:
     `ScopeFrame` fallback surface instead of node provenance.
   - Interpolated mixin-name `preEval()` wrappers stay self-owned; they no
     longer clear or inherit canonical `sourceNode` provenance.
-  - Interpolated at-rule `preEval()` wrappers no longer inherit `sourceNode`
-    provenance from the canonical at-rule either.
+  - Interpolated at-rule `preEval()` wrappers stay self-owned; they no longer
+    clear or inherit canonical `sourceNode` provenance either.
   - Import postlude wrapper shells no longer need to explicitly scrub
     `sourceNode`; they just inherit whatever real imported surface they are
     derived from.
