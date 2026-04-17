@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, Rules as RulesClass } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -1523,6 +1523,197 @@ describe('Mixin', () => {
       expect(css).toBeString(`
         .test1 {
           color: red;
+        }
+      `);
+    });
+
+    it('evaluates dynamic mixin guards against caller scope while params still resolve from live slots', async () => {
+      context = new Context({ leakyRules: false });
+      const mixinDef = mixin({
+        name: any('.theme-mixin'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          'and',
+          condition([
+            expr(ref({ key: 'color' }, { type: 'variable' })),
+            '=',
+            any('red')
+          ])
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({
+              name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
+              args: list([any('red')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({
+              name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
+              args: list([any('red')])
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).not.toContain('.light {\n  color: red;');
+    });
+
+    it('evaluates default guards against caller scope without leaking param bindings into sibling output', async () => {
+      context = new Context({ leakyRules: false });
+      const darkDefault = mixin({
+        name: any('.guarded-default'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          'and',
+          defaultguard()
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+
+      const lightDefault = mixin({
+        name: any('.guarded-default'),
+        params: list([
+          any('color', { role: 'property' })
+        ]),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('light')
+          ]),
+          'and',
+          defaultguard()
+        ]),
+        rules: rules([
+          decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        darkDefault,
+        lightDefault,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            vardecl({ name: 'color', value: any('outer-dark') }),
+            call({
+              name: ref({ key: '.guarded-default' }, { type: 'mixin' }),
+              args: list([any('red')])
+            }),
+            decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            vardecl({ name: 'color', value: any('outer-light') }),
+            call({
+              name: ref({ key: '.guarded-default' }, { type: 'mixin' }),
+              args: list([any('blue')])
+            }),
+            decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).toContain('value: outer-dark;');
+      expect(css).toContain('.light {');
+      expect(css).toContain('background: blue;');
+      expect(css).toContain('value: outer-light;');
+      expect(css).not.toContain('value: red;');
+      expect(css).not.toContain('value: blue;');
+    });
+
+    it('evaluates rest-parameter guard checks against live slot bindings', async () => {
+      const mixinDef = mixin({
+        name: any('.rest-guard'),
+        params: list([
+          any('first', { role: 'property' }),
+          rest('rest')
+        ]),
+        guard: condition([
+          expr(ref({ key: 'rest' }, { type: 'variable' })),
+          '=',
+          seq([any('2px'), any('3px')])
+        ]),
+        rules: rules([
+          decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.match'),
+          rules: rules([
+            call({
+              name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
+              args: list([any('1px'), any('2px'), any('3px')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.miss'),
+          rules: rules([
+            call({
+              name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
+              args: list([any('1px'), any('4px'), any('5px')])
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .match {
+          margin: 2px 3px;
         }
       `);
     });

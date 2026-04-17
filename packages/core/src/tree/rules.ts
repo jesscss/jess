@@ -1802,8 +1802,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
     } else if (isNode(node, N.Ruleset)) {
-      // Register to 'mixin' for mixin calls
-      // Always register - guard filtering happens at call time in getFunctionFromMixins
+      // Register to 'mixin' for mixin calls.
+      // Always register - guard filtering happens at call time in MixinCollection.evalCall.
       // Note: extend processing keeps its own per-root Ruleset sets in Ruleset.preEval.
       this.register('mixin', node);
       const rulesetKey = getSimpleCallableRulesetKey(node as Ruleset);
@@ -3097,11 +3097,10 @@ function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
 }
 
 /**
- * A collection of resolved mixin candidates that can be called.
+ * A collection of resolved mixin candidates that can be called directly.
  *
- * This replaces the old `getFunctionFromMixins` closure pattern.
- * Instead of wrapping mixins in a JS function → JsFunction node → callWithContext,
- * Call.evalNode invokes `evalCall` directly.
+ * Call.evalNode resolves candidates and invokes `evalCall` here without going
+ * through the old JS-function wrapper path.
  *
  * Lives in rules.ts to avoid circular dependencies.
  */
