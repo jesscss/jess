@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `62142552` (`Drop synthetic mixin wrapper for funcs`)
+Checkpoint commit: `5596bef4` (`Unify detached ruleset calls with callable bodies`)
 
 ## Priority Reset
 
