@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `84c5b649` (`Fix each type narrowing`)
+Checkpoint commit: `7ad6c194` (`Drop sourceRulesParent provenance fallback`)
 
 ## Priority Reset
 
@@ -122,6 +122,8 @@ Practical rule for the next agent:
   - Generic node derivation no longer carries either `sourceParent` or
     `sourceNode` forward through `inherit()`; any remaining provenance now has
     to be kept explicitly by the few semantic surfaces that still need it.
+  - `sourceRulesParent` now rides explicit `ScopeFrame.fallbackFrame` only; it
+    no longer climbs `sourceParent` ancestry looking for a fallback scope.
   - Reference-import ancestry scans no longer walk `sourceParent`; they now
     stay on explicit `sourceNode`/`parent` provenance only.
   - Direct callable reference results no longer stamp `sourceParent` onto the
