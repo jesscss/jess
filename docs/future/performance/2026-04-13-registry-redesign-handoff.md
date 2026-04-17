@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `5596bef4` (`Unify detached ruleset calls with callable bodies`)
+Checkpoint commit: `9e339e51` (`Keep callable source context off candidates`)
 
 ## Priority Reset
 
