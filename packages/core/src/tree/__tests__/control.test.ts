@@ -204,6 +204,10 @@ describe('Control Nodes', () => {
     const firstChild = loopOutput instanceof Rules ? loopOutput.value[0] : undefined;
 
     expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput.scopeFrame).toBeUndefined();
     expect(firstChild).not.toBeInstanceOf(Rules);
     expect(`${evald}`).toContain('item: a');
   });

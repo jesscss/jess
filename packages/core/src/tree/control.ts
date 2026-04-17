@@ -260,6 +260,7 @@ export class For extends Node<StructuredLoopValue> {
         const result = await iterationRules.eval(context);
 
         if (isNode(result, N.Rules)) {
+          result.scopeFrame = undefined;
           outputRules.push(result);
         } else {
           outputRules.push(result);
