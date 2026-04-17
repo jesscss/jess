@@ -3441,7 +3441,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
     const originatesFromReferenceImport = (node: Node): boolean => {
-      const queue: any[] = [node, node.sourceNode, node.sourceParent];
+      const queue: any[] = [node, node.sourceNode];
       const seen = new Set<any>();
       while (queue.length > 0) {
         const current = queue.shift();
@@ -3455,7 +3455,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             return true;
           }
         }
-        queue.push(current.sourceNode, current.sourceParent, current.parent);
+        queue.push(current.sourceNode, current.parent);
       }
       return false;
     };

@@ -284,7 +284,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (predicate(current)) {
           return true;
         }
-        queue.push(current.sourceNode, current.sourceParent, current.parent);
+        queue.push(current.sourceNode, current.parent);
       }
       return false;
     };
