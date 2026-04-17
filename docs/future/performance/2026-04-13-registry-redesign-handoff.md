@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `620c2a61` (`Narrow call result source parents`)
+Checkpoint commit: `491b3af3` (`Drop JS call declaration ref source parents`)
 
 ## Priority Reset
 
