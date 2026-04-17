@@ -329,6 +329,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
       forward: isForward,
+      importBoundary: evaluatedRules.options.importBoundary === true,
       referenceMode: isReferenceMode,
       readonly
     };
@@ -443,10 +444,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             throw error;
           }
         }
-        // Bind imported-rule provenance once before evaluation so wrapper/local
-        // descendants can still see the import boundary without rewriting the
-        // canonical source tree on every import site.
-        rules.sourceNode ??= node;
+        // Mark import-boundary semantics on the Rules surface directly instead
+        // of depending on source-node provenance walks.
+        rules.options.importBoundary ??= this.options.type !== 'import';
         let evaldRules = context.evaldTrees.get(resolvedPath);
 
         // Compose caching semantics:

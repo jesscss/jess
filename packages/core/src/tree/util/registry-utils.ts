@@ -87,6 +87,10 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
   return keys;
 }
 
+export function isNonClassicImportBoundary(rules: Rules | undefined): boolean {
+  return rules?.options.importBoundary === true;
+}
+
 export type DeclarationFindOptions = {
   filter?: (n: Node) => boolean;
   candidates?: Set<Node>;
@@ -950,7 +954,7 @@ export class MixinRegistry extends Registry<
          * which means these rules can reach into the parent file that imports
          * this one.
          */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
+        if (isNonClassicImportBoundary(rules)) {
           rules = undefined;
           break;
         }
@@ -1026,7 +1030,7 @@ export class FunctionRegistry extends Registry<JsFunction | Func, JsFunction | F
         /**
          * If we reach an import boundary, skip the scope until we get to the top level.
          */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
+        if (isNonClassicImportBoundary(rules)) {
           findRoot = true;
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
@@ -1368,7 +1372,7 @@ export class DeclarationRegistry extends Registry<Declaration> {
          * which means these rules can reach into the parent file that imports
          * this one.
          */
-        if (rules && rules.sourceNode?.type === 'StyleImport' && rules.sourceNode.options.type !== 'import') {
+        if (isNonClassicImportBoundary(rules)) {
           rules = undefined;
           break;
         }

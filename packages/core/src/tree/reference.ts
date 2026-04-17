@@ -23,7 +23,7 @@ import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
-import { getOrderedSelectorKeys } from './util/registry-utils.js';
+import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -317,8 +317,7 @@ function findVarDeclarationFast(
       const applyCurrentScopeStart = first;
       if (!first) {
         // Stop at non-classic-import boundaries (same as DeclarationRegistry.find)
-        const sn = scope.sourceNode;
-        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+        if (isNonClassicImportBoundary(scope)) {
           break;
         }
       }
@@ -342,8 +341,7 @@ function findVarDeclarationFast(
     while (cursor) {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
-        const sn = scope.sourceNode;
-        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+        if (isNonClassicImportBoundary(scope)) {
           break;
         }
         const result = findVarWithinScopeSurface(

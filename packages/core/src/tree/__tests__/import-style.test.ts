@@ -158,6 +158,39 @@ describe('Style import', () => {
       expect(`${resolved}`).toBe('color: blue');
     });
 
+    it('tracks non-classic import boundaries on Rules options, not source provenance', async () => {
+      const composedPath = resolve(process.cwd(), 'composed-boundary.jess');
+      context.sourceTrees.set(composedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.composed')])]),
+          rules: rules([
+            decl({ name: any('color'), value: ref('parentVar', { type: 'variable', fallbackValue: any('blue') }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        vardecl({ name: 'parentVar', value: any('red') }),
+        style({
+          path: quoted(any('composed-boundary.jess'))
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(1) as Rules;
+      const composedRuleset = composedRules.at(0);
+
+      expect(composedRules.options.importBoundary).toBe(true);
+      expect(composedRules.sourceNode).toBe(composedRules);
+
+      const composedDecl = (composedRuleset as any).value.rules.at(0);
+      const resolved = await composedDecl.eval(context);
+      expect(`${resolved}`).toBe('color: blue');
+    });
+
     it('import type variables are visible to parent', async () => {
       context.sourceTrees.set('imported.jess', rules([
         vardecl({ name: 'importedVar', value: any('green') })

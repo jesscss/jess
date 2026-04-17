@@ -74,6 +74,8 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   frames: (Ruleset | AtRule)[] | undefined;
   /** Legacy canonical composed selector slot still used by extend post-processing. */
   declare _composedSelector?: Selector;
+  /** Canonical selector-cache owner for derived preEval wrappers. */
+  declare _selectorCacheOwner?: Ruleset;
 
   get selector() {
     return this.value.selector;
@@ -434,21 +436,21 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     this._composedSelector = undefined;
     nextSelector ??= this.value.selector as Selector | Nil | undefined;
 
-    const sourceRuleset = this.sourceNode as Ruleset | undefined;
-    if (!sourceRuleset || sourceRuleset === this) {
+    const cacheOwner = this._selectorCacheOwner;
+    if (!cacheOwner || cacheOwner === this) {
       return;
     }
 
-    sourceRuleset._composedSelector = undefined;
+    cacheOwner._composedSelector = undefined;
     if (nextSelector instanceof Nil) {
-      sourceRuleset._valueOf = '';
+      cacheOwner._valueOf = '';
       return;
     }
     if (nextSelector) {
-      sourceRuleset._valueOf = nextSelector.valueOf();
+      cacheOwner._valueOf = nextSelector.valueOf();
       return;
     }
-    sourceRuleset._valueOf = undefined;
+    cacheOwner._valueOf = undefined;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -809,6 +811,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       const node = this.clone(false) as this;
+      node._selectorCacheOwner = this;
       node.preEvaluated = true;
       let { selector, rules, guard } = node.value;
       const { selectorBits } = context;

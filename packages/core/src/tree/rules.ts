@@ -130,6 +130,8 @@ export type RulesOptions = {
    * consumers, but should not be visible to lookups within the current stylesheet scope.
    */
   forward?: boolean;
+  /** Non-classic import boundary marker (`compose`, `use`, `forward`, etc.). */
+  importBoundary?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
 };
@@ -436,8 +438,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          const sn = scope.sourceNode;
-          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          if (Registries.isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -537,8 +538,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          const sn = scope.sourceNode;
-          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          if (Registries.isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -630,8 +630,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          const sn = scope.sourceNode;
-          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          if (Registries.isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -726,8 +725,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          const sn = scope.sourceNode;
-          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          if (Registries.isNonClassicImportBoundary(scope)) {
             break;
           }
         }
@@ -821,8 +819,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (!first) {
-          const sn = scope.sourceNode;
-          if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          if (Registries.isNonClassicImportBoundary(scope)) {
             break;
           }
         }
