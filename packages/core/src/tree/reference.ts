@@ -1177,7 +1177,6 @@ function applyReferenceResultMetadata(
   }
   node.pre = referenceNode.pre;
   node.post = referenceNode.post;
-  node.sourceParent = referenceNode;
   return node;
 }
 

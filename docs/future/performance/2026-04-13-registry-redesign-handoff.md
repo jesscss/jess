@@ -110,6 +110,9 @@ Practical rule for the next agent:
     unresolved body-var fallback semantics currently depend on it.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
+  - Cloned/fallback/direct-value reference results no longer stamp
+    `sourceParent` onto the returned node; only the reference token trivia is
+    copied across now.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
