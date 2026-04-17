@@ -260,12 +260,17 @@ What should **not** differ:
 
 Current narrowing:
 
-- mixins and `$for` are now largely on the binding-frame path
+- mixins now bind params, rest args, and `@arguments` mostly through direct
+  frame-local bindings rather than transport clones
+- `$for` now derives iteration wrappers and loop output from the canonical body
+  surface instead of rebuilding synthetic empty `Rules` shells
 - configured imports now carry variable-only `with/set` bindings through
-  `ScopeFrame.liveSlotsByName` instead of synthetic wrapper declarations
-- the remaining work is mostly structural shell cleanup:
-  guard-scoped mixin wrappers, multi-output mixin carriers, and the last
-  postlude/import wrapper surfaces that still exist only to carry output shape
+  `ScopeFrame.liveSlotsByName` and keep replacement/configured surfaces rooted
+  in imported `Rules` containers instead of synthetic top-level wrappers
+- the remaining work is structural shell cleanup:
+  dynamic/default-guard mixin wrappers, multi-output mixin carriers, additive
+  non-variable import child-surface wrappers, and the last postlude/import
+  carrier shells that still exist only to carry output shape
 
 They are all the same class of problem: evaluate a canonical tree against a
 runtime binding frame.
