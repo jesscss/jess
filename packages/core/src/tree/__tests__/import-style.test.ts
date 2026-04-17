@@ -913,6 +913,53 @@ describe('Style import', () => {
       expect(composedRules.toString()).toContain('.addon');
     });
 
+    it('keeps replacement configs on an imported child rules surface when additive nodes are also present', async () => {
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('red') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) }),
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: any('color'), value: ref('derivedColor', { type: 'variable' }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'baseColor', value: any('teal') }),
+              ruleset({
+                selector: sellist([sel([el('.addon')])]),
+                rules: rules([
+                  decl({ name: any('border-color'), value: any('teal') })
+                ])
+              })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.toString()).toContain('.base');
+      expect(composedRules.toString()).toContain('.addon');
+
+      const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
+      expect(derivedColor).toBeDefined();
+      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      expect(`${derivedColorValue}`).toBe('teal');
+    });
+
     it('throws if "set" is used more than once', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
