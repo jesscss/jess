@@ -267,9 +267,7 @@ export class Call extends Node<CallValue, CallOptions> {
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
             // so callback bodies can resolve surrounding variables.
-            if (isNode(copied, N.Reference) && copied.options?.type === 'declaration') {
-              copied.sourceParent = this;
-            } else if (isNode(copied, N.Mixin)) {
+            if (isNode(copied, N.Mixin)) {
               copied.sourceParent = this;
             }
             copied.frozen = true;

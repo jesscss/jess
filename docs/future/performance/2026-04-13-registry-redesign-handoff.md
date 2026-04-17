@@ -121,6 +121,9 @@ Practical rule for the next agent:
     location/signature rather than back-pointing at the `StyleImport` node.
   - Direct call results now only keep call-site `sourceParent` for the
     declaration-only `Rules` case that still feeds post-eval ordering.
+  - JS function call args no longer stamp `sourceParent` onto copied
+    declaration refs; only detached mixin callback args still keep that
+    call-site anchor.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
