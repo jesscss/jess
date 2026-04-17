@@ -185,6 +185,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
     const rawParentComposed = options.composedSelectorStack?.at(-1);
+    const referenceComposeAmpCount = ((rs.options?.ownSelector ?? rs.value.selector)?.valueOf()?.match(/&/g) ?? []).length;
     // In reference mode, strip non-extended items from a SelectorList parent
     // before composing. This mirrors the filter applied at header render time
     // for reference-imported rulesets — the visible compose parent is only
@@ -194,7 +195,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       && options.referenceRenderEnabled === true
       && rawParentComposed
     )
-      ? Ruleset.filterExtendedForReferenceCompose(rawParentComposed) ?? rawParentComposed
+      ? Ruleset.filterExtendedForReferenceCompose(
+        rawParentComposed,
+        referenceComposeAmpCount > 1
+      ) ?? rawParentComposed
       : rawParentComposed;
     const sel = rs.value.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);

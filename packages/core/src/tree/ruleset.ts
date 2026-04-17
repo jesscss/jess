@@ -670,7 +670,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
    * Returns the filtered parent, or `undefined` when the filter is a no-op
    * so callers can fall through to their own parent handling.
    */
-  static filterExtendedForReferenceCompose(parent: Selector): Selector | undefined {
+  static filterExtendedForReferenceCompose(parent: Selector, includeUntouchedSiblings: boolean = false): Selector | undefined {
     if (!isNode(parent, N.SelectorList)) {
       return undefined;
     }
@@ -684,7 +684,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     const seen = new Set<string>();
     const kept: Selector[] = [];
     for (const item of list.value) {
-      if (!item.hasFlag(F_EXTENDED) || item.hasFlag(F_EXTEND_TARGET)) {
+      const keepItem = includeUntouchedSiblings
+        ? !item.hasFlag(F_EXTEND_TARGET)
+        : item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET);
+      if (!keepItem) {
         continue;
       }
       const key = item.valueOf();
@@ -724,13 +727,25 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       ? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector as Selector) as typeof renderSelector
       : undefined;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
-      const rawParentComposed = options.composedSelectorStack?.at(-1);
+      let rawParentComposed = options.composedSelectorStack?.at(-1);
+      const cachedCurrentComposed = getCachedComposedSelector(options, this);
+      if (
+        rawParentComposed
+        && cachedCurrentComposed
+        && rawParentComposed.valueOf() === cachedCurrentComposed.valueOf()
+      ) {
+        rawParentComposed = options.composedSelectorStack?.at(-2);
+      }
+      const referenceComposeAmpCount = (((this.options as RulesetOptions | undefined)?.ownSelector ?? selector)?.valueOf()?.match(/&/g) ?? []).length;
       const parentComposed = (
         options.referenceMode === true
         && options.referenceRenderEnabled === true
         && rawParentComposed
       )
-        ? Ruleset.filterExtendedForReferenceCompose(rawParentComposed as Selector) ?? rawParentComposed
+        ? Ruleset.filterExtendedForReferenceCompose(
+          rawParentComposed as Selector,
+          referenceComposeAmpCount > 1
+        ) ?? rawParentComposed
         : rawParentComposed;
       const structuralParent = (
         this.hoistToRoot === true

@@ -671,6 +671,10 @@ export function processExtends(context: Context): void {
           if (!matchType) {
             continue;
           }
+          const activatesReferenceVisibility = (
+            !instruction.partial
+            || instruction.target.valueOf() === instruction.extendWith.valueOf()
+          );
           instructionMatched.add(instruction);
           if (matchType === 'within-ampersand') {
             hasWithinAmpersandMatch = true;
@@ -678,13 +682,13 @@ export function processExtends(context: Context): void {
           } else if (matchType === 'crossing') {
             crossingInstructions.push(instruction);
             excludedFromLocal.add(instruction);
-            if (!instruction.partial) {
+            if (activatesReferenceVisibility) {
               isActivatedByVisibleExtend = true;
             }
           } else {
             // 'local' match
             hasAnyLocalMatch = true;
-            if (!instruction.partial) {
+            if (activatesReferenceVisibility) {
               isActivatedByVisibleExtend = true;
             }
           }

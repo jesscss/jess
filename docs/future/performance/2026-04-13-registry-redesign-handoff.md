@@ -93,9 +93,9 @@ Practical rule for the next agent:
   - Imports: mostly converged. `import-reference-issues.less` is now green on
     the real Less fixture path, and selector-list callable rulesets now fall
     back from the fast mixin lookup to the full registry. Remaining seam is
-    `import-reference.less`, specifically reference self-extend / nested
-    directive parity plus the last real non-variable/postlude carriers that
-    still need an outer `Rules` surface.
+    `import-reference.less`, now narrowed to multi-amp selector-list reference
+    composition (`& + &`-style mixed visible/original outputs) plus the media
+    carrier shape around imported postludes.
   - Mixins: mostly converged. Remaining seam is dynamic/default-guard outer
     wrappers and any remaining multi-output carrier shells.
   - `$for`: frame/binding convergence is done. Only incidental structural-shell
@@ -162,6 +162,11 @@ Practical rule for the next agent:
   - Ruleset copies no longer rebind selector `sourceNode` onto copied
     selectors.
   - Import wrappers now stay rooted in imported surfaces much more often.
+  - Reference self-extend activation now marks touched reference rulesets
+    visible even for partial/self (`all`) extends, so original self-extend
+    targets render again in reference mode.
+  - Plain-import first-use cloning now stays off the no-op `with` path, so
+    empty configuration reuses the canonical imported `Rules` surface again.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
   - `@jesscss/fns` `each()` now just returns a `For` over the canonical
