@@ -551,13 +551,7 @@ export abstract class Node<
     if (frameFallbackNode?.type === 'Rules') {
       return frameFallbackNode as Rules;
     }
-    let node = this.parent;
-    let sourceParent = this.sourceParent;
-    while (node && !sourceParent) {
-      node = node.parent;
-      sourceParent = node?.sourceParent;
-    }
-    return sourceParent?.rulesParent;
+    return undefined;
   }
 
   /**
