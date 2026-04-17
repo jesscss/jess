@@ -1645,6 +1645,54 @@ describe('Style import', () => {
       `);
     });
 
+    it('import-reference: reference-imported mixins keep nested reference imports suppressed', async () => {
+      const nestedReferencedPath = resolve(process.cwd(), 'reference-mixin-inner-reference.jess');
+      const outerReferencedPath = resolve(process.cwd(), 'reference-mixin-with-inner-reference.jess');
+      context.sourceTrees.set(nestedReferencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.hidden-from-inner-reference')])]),
+          rules: rules([
+            decl({ name: any('display'), value: any('none') })
+          ])
+        })
+      ]));
+      context.sourceTrees.set(outerReferencedPath, rules([
+        mixin({
+          name: any('.outer-reference-mixin'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') }),
+            style({
+              path: quoted(any('reference-mixin-inner-reference.jess'))
+            }, {
+              type: 'import',
+              importOptions: { reference: true }
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-mixin-with-inner-reference.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.consumer'),
+          rules: rules([
+            call({
+              name: ref({ key: '.outer-reference-mixin' }, { type: 'mixin-ruleset' }),
+              args: list([])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.consumer {');
+      expect(css).toContain('color: red;');
+      expect(css).not.toContain('.hidden-from-inner-reference');
+      expect(css).not.toContain('display: none;');
+    });
+
     it('import-reference: namespaced reference-imported rulesets remain callable as mixins', async () => {
       const referencedPath = resolve(process.cwd(), 'simple-mixin.jess');
       context.sourceTrees.set(referencedPath, rules([

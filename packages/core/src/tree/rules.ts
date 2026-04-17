@@ -3537,38 +3537,16 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return String(raw);
     };
     const restrictMixinOutputLookup = thisContext.leakyRules !== true;
-    const originatesFromReferenceImport = (node: Node): boolean => {
-      const queue: any[] = [node, node.sourceNode];
-      const seen = new Set<any>();
-      while (queue.length > 0) {
-        const current = queue.shift();
-        if (!current || seen.has(current)) {
-          continue;
-        }
-        seen.add(current);
-        if (current.type === 'StyleImport') {
-          const importOptions = current.options?.importOptions;
-          if (importOptions?.reference === true || importOptions?._dedupe === true) {
-            return true;
-          }
-        }
-        queue.push(current.sourceNode, current.parent);
-      }
-      return false;
-    };
     const clearReferenceModeForMixinOutput = (node: Node): void => {
       // Nested import wrappers that explicitly carry reference mode must keep
       // owning that render gate even when mixin output is made publicly visible.
-      const nodeOptions = node.options;
       if (
-        typeof nodeOptions === 'object'
-        && nodeOptions !== null
-        && 'referenceMode' in nodeOptions
-        && nodeOptions.referenceMode === true
+        isNode(node, N.Rules)
+        && (
+          (node.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+          || node._hasReferenceImports
+        )
       ) {
-        return;
-      }
-      if (originatesFromReferenceImport(node)) {
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
