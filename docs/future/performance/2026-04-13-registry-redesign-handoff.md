@@ -152,6 +152,10 @@ Practical rule for the next agent:
   Additional narrowing: empty import results and inline import source carriers
   no longer stamp `sourceNode` from the `StyleImport` node when they only
   exist to carry empty/output-only shape rather than imported lookup surfaces.
+  Additional narrowing: inline/evaluated import postlude wrapper shells no
+  longer inherit imported `sourceNode` provenance either; the imported lookup
+  surface stays on the inner `Rules`, while outer postlude carriers remain
+  output-only.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
