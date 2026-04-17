@@ -1020,12 +1020,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           setOnRuleset('rules', evaluatedRules as Rules);
           return evaluatedRules;
         }
-        // Preserve the sourceNode from the current selector before replacing it
-        const preservedSourceNode = this.value.selector?.sourceNode;
         setOnRuleset('selector', selector);
-        if (preservedSourceNode && this.value.selector) {
-          this.value.selector.sourceNode = preservedSourceNode;
-        }
         if (context.opts.collapseNesting) {
           this.hoistToRoot = true;
         }
