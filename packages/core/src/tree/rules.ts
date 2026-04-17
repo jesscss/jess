@@ -3104,6 +3104,23 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       return outerRules;
     }
+    function createDerivedMixinOutputWrapper(sourceRules: Rules): Rules {
+      const output = sourceRules.clone(false);
+      output.value = [];
+      output.scopeFrame = undefined;
+      output.options = {
+        ...output.options,
+        rulesVisibility: {
+          Ruleset: 'public',
+          Declaration: 'public',
+          VarDeclaration: 'public',
+          Mixin: 'public'
+        },
+        isMixinOutput: restrictMixinOutputLookup,
+        referenceMode: false
+      };
+      return output;
+    }
     const resolvedParamBindings = new WeakMap<Mixin, {
       bindings: RuntimeVarBindingRecord[];
       signature: List<Node> | undefined;
@@ -3831,6 +3848,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
     outputRules.sort(comparePosition);
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
+    if (outputRules.length === 0) {
+      return Rules.create([]);
+    }
     if (outputRules.length === 1) {
       output = outputRules[0]!;
       // Ensure single output rule is marked as mixin output
@@ -3843,16 +3863,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
        * This prevents mixin output from being searched by untargeted lookups.
        */
-      output = Rules.create([], {
-        rulesVisibility: {
-          Ruleset: 'public',
-          Declaration: 'public',
-          VarDeclaration: 'public',
-          Mixin: 'public'
-        },
-        isMixinOutput: restrictMixinOutputLookup,
-        referenceMode: false
-      });
+      output = createDerivedMixinOutputWrapper(outputRules[0]!);
       /**
        * Add rules but keep their original parents for further lazy lookups.
        * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
@@ -3875,9 +3886,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
      */
     /** Now push all rules into the rules value */
     output.index ??= thisContext.ruleCounter++;
-    if (output.value.length === 0) {
-      return Rules.create([]);
-    }
     return output;
   }
 }
