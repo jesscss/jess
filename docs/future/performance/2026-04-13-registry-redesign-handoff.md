@@ -94,6 +94,9 @@ Practical rule for the next agent:
   `value.maybeClone(context)` at all, and `List.operate('+')` /
   `Sequence.operate('+')` now build explicit derived results instead of
   depending on session-gated `maybeClone(...)` behavior.
+  Additional narrowing: detached-ruleset calls now derive from the original
+  `Rules` surface instead of rebuilding a fresh `Rules.create(n.value,
+  n.options)` shell before evaluation.
   Additional narrowing: `Collection.preEval()` and `$for.preEval()` no longer
   route through `maybeClone(...)` just to mark `preEvaluated`; those paths now
   stay on the canonical node.

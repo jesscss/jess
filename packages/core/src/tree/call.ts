@@ -194,11 +194,16 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      let rules = Rules.create(n.value, n.options);
+      let rules = isNode(n, N.Rules)
+        ? (n as Rules).clone(false)
+        : Rules.create(n.value, n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
       rules.inherit(n);
+      if (isNode(n, N.Rules)) {
+        rules.sourceNode ??= n;
+      }
       // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
       // to this call so leaky fallback can resolve call-site variables (e.g. @d).
       rules.sourceParent = this;
