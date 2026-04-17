@@ -192,6 +192,26 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toContain('item: a');
   });
 
+  it('derives zero-iteration $for output from the canonical loop body wrapper', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+
+    expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput).not.toBe(loopRules);
+    expect(loopOutput.value).toEqual([]);
+    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(`${evald}`).toBe('');
+  });
+
   it('collapses single-iteration $for output without an extra Rules wrapper', async () => {
     const context = new Context();
     const loopRules = rules([
