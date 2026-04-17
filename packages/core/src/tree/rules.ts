@@ -3121,10 +3121,17 @@ export class MixinCollection extends Node<MixinEntry[]> {
       };
       return output;
     }
+    function createEmptyDerivedRules(sourceRules: Rules): Rules {
+      const output = sourceRules.clone(false);
+      output.value = [];
+      output.scopeFrame = undefined;
+      return output;
+    }
     const resolvedParamBindings = new WeakMap<Mixin, {
       bindings: RuntimeVarBindingRecord[];
       signature: List<Node> | undefined;
     }>();
+    let emptyOutputSourceRules: Rules | undefined;
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
@@ -3552,6 +3559,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
+        emptyOutputSourceRules ??= sourceRules;
         let rules = sourceRules.clone(true);
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
@@ -3581,6 +3589,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // not eagerly execute/flatten them.
       if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         const sourceRules = getRootSourceRules(candidate.value.rules);
+        emptyOutputSourceRules ??= sourceRules;
         let unlocked = sourceRules.clone(false);
         // Adopt to the call-site parent (the args List of the outer mixin call).
         // This establishes the correct parent chain for variable lookup — walking up
@@ -3605,6 +3614,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         continue;
       }
       let rules = candidate.value.rules;
+      emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
       // Mixin body vars should follow the same leaky/non-leaky visibility model as
@@ -3849,7 +3859,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (outputRules.length === 0) {
-      return Rules.create([]);
+      return emptyOutputSourceRules ? createEmptyDerivedRules(emptyOutputSourceRules) : Rules.create([]);
     }
     if (outputRules.length === 1) {
       output = outputRules[0]!;
