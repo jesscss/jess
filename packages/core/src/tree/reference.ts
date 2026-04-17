@@ -1256,7 +1256,6 @@ function finalizeDirectNodeReferenceResult(
   context: Context
 ): Node {
   context.popReference();
-  result.sourceParent = referenceNode;
   return result;
 }
 

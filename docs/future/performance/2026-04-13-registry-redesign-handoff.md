@@ -143,6 +143,9 @@ Practical rule for the next agent:
   `sourceParent` onto each resolved mixin/ruleset candidate; that live call
   context now stays on the returned `MixinCollection` surface instead of
   mutating canonical callable nodes.
+  Additional narrowing: plain direct reference results no longer stamp
+  `sourceParent` onto the resolved canonical node just to carry live call-site
+  context through the result surface.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
