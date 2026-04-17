@@ -2432,6 +2432,25 @@ describe('Mixin', () => {
       expect(css).not.toContain('.two {\n  prop-foo: ok;');
     });
 
+    it('does not stamp sourceNode on interpolated mixin preEval wrappers', async () => {
+      const dynamicMixinName = interpolated({
+        source: '.inner-' + INTERPOLATION_PLACEHOLDER,
+        replacements: [any('foo')]
+      });
+      const node = mixin({
+        name: dynamicMixinName,
+        rules: rules([
+          decl({ name: any('value'), value: any('ok') })
+        ])
+      });
+
+      const preEvald = await node.preEval(context);
+
+      expect(preEvald).not.toBe(node);
+      expect(preEvald.sourceNode).toBeUndefined();
+      expect(preEvald.value.name.valueOf()).toBe('.inner-foo');
+    });
+
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
       context = new Context({
         collapseNesting: true,
