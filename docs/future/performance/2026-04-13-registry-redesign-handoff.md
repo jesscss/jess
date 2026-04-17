@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `99ae35ae` (`Root import postlude wrappers in imported surfaces`)
+Checkpoint commit: `c68fd2df` (`Require Rules bodies for stylesheet funcs`)
 
 ## Priority Reset
 
