@@ -1126,6 +1126,44 @@ describe('Style import', () => {
       expect(css).toContain('#css { color: yellow; }');
     });
 
+    it('derives evaluated import postlude wrappers from imported rules', async () => {
+      const importedPath = resolve(process.cwd(), 'import/postlude-derived.jess');
+      context.sourceTrees.set(importedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('import/postlude-derived.jess')) }, {
+          type: 'import',
+          importOptions: {
+            postlude: any('screen and (min-width: 600px)')
+          }
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const wrappedImport = evald.at(0);
+
+      expect(wrappedImport).toBeInstanceOf(RulesClass);
+      if (!(wrappedImport instanceof RulesClass)) {
+        throw new Error('Expected wrapped import to be Rules');
+      }
+      expect(wrappedImport).not.toBe(context.sourceTrees.get(importedPath));
+      expect(wrappedImport.value).toHaveLength(1);
+      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
+      if (!isNode(wrappedImport.value[0], N.AtRule)) {
+        throw new Error('Expected wrapped import child to be AtRule');
+      }
+      expect(wrappedImport.value[0].value.rules).toBeInstanceOf(RulesClass);
+      expect(`${evald}`).toContain('@media screen and (min-width: 600px)');
+      expect(`${evald}`).toContain('.imported');
+    });
+
     it('import-interpolation: resolves vars from later imports on retry', async () => {
       const interpolationImportPath = resolve(process.cwd(), 'import/import-interpolation.jess');
       const interpolationVarsPath = resolve(process.cwd(), 'import/interpolation-vars.jess');

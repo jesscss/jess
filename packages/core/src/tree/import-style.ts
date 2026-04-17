@@ -733,6 +733,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
+    const derivePostludeWrapper = (wrappedNode: Node, sourceRules: Rules): Rules => {
+      const wrapped = sourceRules.clone(false) as Rules;
+      wrapped.value = [wrappedNode];
+      wrapped.scopeFrame = undefined;
+      return wrapped;
+    };
     const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
@@ -748,7 +754,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               prelude,
               rules: wrappedRules
             });
-            wrappedRules = Rules.create([wrappedAtRule]);
+            wrappedRules = derivePostludeWrapper(wrappedAtRule, wrappedRules);
             continue;
           }
         }
@@ -759,7 +765,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         prelude: current,
         rules: wrappedRules
       });
-      wrappedRules = Rules.create([mediaAtRule]);
+      wrappedRules = derivePostludeWrapper(mediaAtRule, wrappedRules);
     }
 
     return wrappedRules;
