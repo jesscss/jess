@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `aaee420b` (`Drop import wrapper source nodes`)
+Checkpoint commit: `79ad36f9` (`Drop dynamic node source backfill`)
 
 ## Priority Reset
 
