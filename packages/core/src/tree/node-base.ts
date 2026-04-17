@@ -293,7 +293,6 @@ export abstract class Node<
    * parent.adopt(thisNode);
    */
   declare readonly parent: Node | undefined;
-  declare sourceParent: Node | undefined;
 
   getParent() {
     return this.parent;
@@ -476,12 +475,6 @@ export abstract class Node<
         configurable: false
       },
       parent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      sourceParent: {
         value: undefined,
         writable: true,
         enumerable: false,

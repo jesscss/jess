@@ -577,7 +577,7 @@ describe('Mixin', () => {
       expect(css).toContain('sub-scope-only: inside;');
     });
 
-    it('does not stamp sourceParent on ordinary mixin body output while preserving caller fallback', async () => {
+    it('does not stamp call-site back-pointers on ordinary mixin body output while preserving caller fallback', async () => {
       const mixinNoParam = mixin({
         name: any('.mixinNoParam'),
         params: list([
@@ -622,7 +622,7 @@ describe('Mixin', () => {
       if (!(result instanceof RulesClass)) {
         throw new Error('Expected Rules result');
       }
-      expect(result.sourceParent).toBeUndefined();
+      expect(Reflect.has(result, 'sourceParent')).toBe(false);
       const css = result.toString();
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');

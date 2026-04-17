@@ -115,7 +115,7 @@ export type RulesOptions = {
   /**
    * Marks declaration-only Rules emitted from non-mixin call sites so post-eval
    * ordering can move them ahead of nested rulesets/at-rules without relying on
-   * a live `sourceParent` Call back-pointer.
+   * a live call-site back-pointer on the emitted Rules wrapper.
    */
   callDeclarationOutput?: boolean;
   readonly?: boolean;
@@ -250,8 +250,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     newRules._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
-    // re-wire against the clone's parent/sourceParent chain. Reusing an empty frame from
-    // the source tree can shadow a live wrapper frame that actually carries live slots.
+    // re-wire against the clone's actual parent chain. Reusing an empty frame from the
+    // source tree can shadow a live wrapper frame that actually carries live slots.
     newRules.scopeFrame = this.scopeFrame?.liveSlotsByName.size
       ? buildScopeFrame(undefined, newRules, this.scopeFrame.parent, new Map(this.scopeFrame.liveSlotsByName))
       : undefined;

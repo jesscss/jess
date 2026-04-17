@@ -61,7 +61,7 @@ describe('each', () => {
     expect(result.value.iterable.value).toBe(list);
     expect(result.value.rules).toBeInstanceOf(Rules);
     expect(result.value.rules).toBe(mixinRules);
-    expect(result.value.rules.sourceParent).toBeUndefined();
+    expect(Reflect.has(result.value.rules, 'sourceParent')).toBe(false);
   });
 
   it('uses default binding names when mixin has no params', async () => {
@@ -73,7 +73,7 @@ describe('each', () => {
     assertTupleBindings(result, ['value', 'key', 'index']);
     expect(result.value.rules).toBeInstanceOf(Rules);
     expect(result.value.rules).toBe(mixin.value.rules);
-    expect(result.value.rules.sourceParent).toBeUndefined();
+    expect(Reflect.has(result.value.rules, 'sourceParent')).toBe(false);
   });
 
   it('overrides only the first binding name with one param', async () => {

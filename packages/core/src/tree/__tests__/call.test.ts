@@ -54,7 +54,7 @@ describe('Call', () => {
     expect(`${result}`).toContain('background-color');
   });
 
-  it('marks declaration-only JS call output without sourceParent back-pointers', async () => {
+  it('marks declaration-only JS call output without call-site back-pointers', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({
       name: 'decls',
@@ -75,7 +75,7 @@ describe('Call', () => {
     if (!isNode(result, N.Rules)) {
       throw new Error('Expected Rules result');
     }
-    expect(result.sourceParent).toBeUndefined();
+    expect(Reflect.has(result, 'sourceParent')).toBe(false);
     expect(result.options.callDeclarationOutput).toBe(true);
   });
 

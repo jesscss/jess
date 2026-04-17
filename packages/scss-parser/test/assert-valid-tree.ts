@@ -97,7 +97,6 @@ export function assertValidTree(root: unknown) {
       // Avoid infinite recursion / unrelated references.
       if (
         key === 'parent'
-        || key === 'sourceParent'
         || key === 'treeContext'
         || key === 'sourceNode'
         || key === 'pre'
@@ -105,7 +104,7 @@ export function assertValidTree(root: unknown) {
       ) {
         continue;
       }
-      childRoots.push((value as AnyRecord)[key]);
+      childRoots.push(Reflect.get(value, key));
     }
 
     for (const childRoot of childRoots) {
