@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `2eb18064` (`Derive detached ruleset calls from Rules surfaces`)
+Checkpoint commit: `80749787` (`Skip static-guard mixin outer wrappers`)
 
 ## Priority Reset
 
@@ -102,6 +102,9 @@ Practical rule for the next agent:
   Additional narrowing: detached-ruleset calls now derive from the original
   `Rules` surface instead of rebuilding a fresh `Rules.create(n.value,
   n.options)` shell before evaluation.
+  Additional narrowing: detached `Collection` calls now stay on the
+  `Collection` surface too, instead of degrading to a fresh plain `Rules`
+  wrapper before evaluation.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
