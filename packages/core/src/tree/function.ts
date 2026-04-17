@@ -1,12 +1,10 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type TreeContext } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
-import { Rules } from './rules.js';
+import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
-import { Mixin } from './mixin.js';
-import { MixinCollection } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 /**
@@ -79,19 +77,13 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
     const bodyRules = this.value.body;
 
-    // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
-    const mixinLike = new Mixin(
-      { rules: bodyRules, params: this.value.params },
-      undefined,
-      Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined,
-      this.treeContext
-    );
-    // Ensure it participates in the same parent chain as this function definition.
-    if (this.parent) {
-      this.parent.adopt(mixinLike);
-    }
-
-    const coll = new MixinCollection([mixinLike]);
+    const coll = new MixinCollection([
+      callableRulesEntry(
+        { rules: bodyRules, params: this.value.params },
+        this.parent,
+        this.index
+      )
+    ]);
     const evaluated = await coll.evalCall(context, args);
 
     if (!(evaluated instanceof Rules)) {

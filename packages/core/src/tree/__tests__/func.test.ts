@@ -26,4 +26,24 @@ describe('Func', () => {
       ok
     `);
   });
+
+  it('evaluates a zero-arg stylesheet function without a synthetic mixin wrapper', async () => {
+    const ctx = new Context({ leakyRules: true });
+    ctx.depth = 2;
+
+    const tree = rules([
+      fn({
+        name: any('answer'),
+        body: rules([
+          decl({ name: 'return', value: any('42') })
+        ])
+      }),
+      call({ name: ref('answer', { type: 'function' }), args: list([]) })
+    ]);
+
+    const out = await tree.eval(ctx);
+    expect(String(out)).toBeString(`
+      42
+    `);
+  });
 });

@@ -133,6 +133,9 @@ Practical rule for the next agent:
   Additional narrowing: stylesheet `Func` now requires a real `Rules` body, so
   function print/eval no longer manufacture `Rules.create([body])` carrier
   shells just to normalize legacy non-`Rules` bodies.
+  Additional narrowing: stylesheet `Func.evalCall()` no longer manufactures a
+  temporary anonymous `Mixin` node just to reuse mixin param binding; it now
+  feeds a lightweight callable-body entry through `MixinCollection` directly.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.

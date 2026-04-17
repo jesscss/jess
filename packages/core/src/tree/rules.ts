@@ -2936,7 +2936,36 @@ interface RulesEntry {
  * Right now, the only nodes that can be registered to the scope for lookups
  */
 // type ScopeNodes = Declaration | VarDeclaration | Mixin | Ruleset | Rules
-export type MixinEntry = Mixin | Ruleset;
+type CallableEntryValue = {
+  name?: unknown;
+  params?: List<Node>;
+  rules: Rules;
+  guard?: Condition | Bool;
+};
+
+export type CallableRulesEntry = {
+  kind: 'callable-rules';
+  value: CallableEntryValue;
+  parent?: Node;
+  options?: { hasDefault?: boolean };
+  index?: number;
+};
+
+type CallableEntry = Mixin | CallableRulesEntry;
+export type MixinEntry = CallableEntry | Ruleset;
+
+export function callableRulesEntry(
+  value: CallableEntryValue,
+  parent?: Node,
+  index?: number
+): CallableRulesEntry {
+  return {
+    kind: 'callable-rules',
+    value,
+    parent,
+    index
+  };
+}
 
 function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
   const params = mixinNode.value.params;
@@ -3127,7 +3156,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       output.scopeFrame = undefined;
       return output;
     }
-    const resolvedParamBindings = new WeakMap<Mixin, {
+    const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
       signature: List<Node> | undefined;
     }>();
@@ -3135,8 +3164,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
       let isPlainRule = isNode(mixin, N.Rules);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      let paramLength = isPlainRule ? 0 : (mixin as Mixin).value.params?.length ?? 0;
+      let paramLength = isPlainRule ? 0 : mixin.value.params?.length ?? 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
         if (nodeArgs.length) {
@@ -3293,7 +3321,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             { sep: ';' }
           );
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          resolvedParamBindings.set(mixin as Mixin, {
+          resolvedParamBindings.set(mixin as CallableEntry, {
             bindings: [...bindingRecordsByIndex.entries()]
               .sort((a, b) => a[0] - b[0])
               .map(([, binding]) => binding),
@@ -3369,8 +3397,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       .filter((candidate) => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const inStack = thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const blockedByFailedGuardAncestor = hasFailedGuardAncestor(candidate as unknown as Node);
+        const blockedByFailedGuardAncestor = isNode(candidate)
+          ? hasFailedGuardAncestor(candidate)
+          : false;
         return !inStack && !blockedByFailedGuardAncestor;
       })
       .map<MixinEntry>(
@@ -3484,7 +3513,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const DEF_TRUE = 1;
     const DEF_FALSE = 2;
     type DefaultPendingCandidate = {
-      candidate: Mixin;
+      candidate: CallableEntry;
       rules: Rules;
       params?: List<Node>;
       group: number;
@@ -3492,7 +3521,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const pendingDefaultCandidates: DefaultPendingCandidate[] = [];
     let hasDefNoneCandidate = false;
     const evaluateCandidateOutput = async (
-      candidate: Mixin,
+      candidate: CallableEntry,
       rules: Rules,
       params: List<Node> | undefined
     ): Promise<void> => {
@@ -3576,7 +3605,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // Less detached rulesets are represented as anonymous mixins (name is undefined).
       // Calling `@rulesetVar();` should *unlock* the rules into scope (including mixin definitions),
       // not eagerly execute/flatten them.
-      if (!candidate.value.name && !candidate.value.params && !candidate.value.guard) {
+      if (!isNode(candidate) && candidate.kind !== 'callable-rules') {
+        throw new TypeError('Unexpected non-node mixin candidate');
+      }
+      if (!isNode(candidate, N.Mixin) && !candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         const sourceRules = getRootSourceRules(candidate.value.rules);
         emptyOutputSourceRules ??= sourceRules;
         let unlocked = sourceRules.clone(false);
@@ -3622,8 +3654,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let outerRules: Rules | undefined;
 
       /** Now we need to add our parameters, if any */
-      const resolvedBindingInfo = isNode(candidate, N.Mixin)
-        ? resolvedParamBindings.get(candidate as Mixin)
+      const resolvedBindingInfo = !isNode(candidate, N.Ruleset)
+        ? resolvedParamBindings.get(candidate as CallableEntry)
         : undefined;
       let params = resolvedBindingInfo?.signature;
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
@@ -3760,7 +3792,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             guardPasses = passes;
             if (passes) {
               pendingDefaultCandidates.push({
-                candidate: candidate as Mixin,
+                candidate: candidate as CallableEntry,
                 rules,
                 params,
                 group: defaultGroup
@@ -3789,7 +3821,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (guard && hasDefault) {
           continue;
         }
-        await evaluateCandidateOutput(candidate as Mixin, rules, params);
+        await evaluateCandidateOutput(candidate as CallableEntry, rules, params);
       } finally {
         thisContext.rulesContext = rulesContext;
       }
