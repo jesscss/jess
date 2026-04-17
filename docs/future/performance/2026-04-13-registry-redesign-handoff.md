@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `c315afbd` (`Move mixin fallback off source parents`)
+Checkpoint commit: `0022f480` (`Drop interpolated mixin source nodes`)
 
 ## Priority Reset
 
@@ -112,6 +112,8 @@ Practical rule for the next agent:
     no longer stamp call-site `sourceParent`.
   - Ordinary mixin-body unresolved-var fallback now rides an explicit
     `ScopeFrame` fallback surface instead of node provenance.
+  - Interpolated mixin-name `preEval()` wrappers no longer inherit
+    `sourceNode` provenance from the canonical definition.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
   - Cloned/fallback/direct-value reference results no longer stamp
