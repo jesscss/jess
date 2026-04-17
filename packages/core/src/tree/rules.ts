@@ -3867,7 +3867,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
        * This prevents mixin output from being searched by untargeted lookups.
        */
-      output = createDerivedMixinOutputWrapper(outputRules[0]!);
+      if (!emptyOutputSourceRules) {
+        throw new ReferenceError('Mixin output source surface was not established.');
+      }
+      output = createDerivedMixinOutputWrapper(emptyOutputSourceRules);
       /**
        * Add rules but keep their original parents for further lazy lookups.
        * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)

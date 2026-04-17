@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `3ab06a8c` (`Derive inline import carriers from importer context`)
+Checkpoint commit: `9ec83ad8` (`Derive empty mixin outputs from candidate surfaces`)
 
 ## Priority Reset
 
@@ -118,6 +118,9 @@ Practical rule for the next agent:
   Additional narrowing: empty mixin output now always derives from the
   candidate source surface; the dead synthetic `Rules.create([])` fallback is
   gone.
+  Additional narrowing: the remaining multi-output mixin carrier now also
+  derives from the candidate source surface instead of rooting itself in the
+  first emitted child rule just to exist.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
