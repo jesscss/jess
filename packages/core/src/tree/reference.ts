@@ -1240,13 +1240,14 @@ function createDirectCallableReferenceResult(
 ): Node {
   const callableItems: MixinEntry[] = [];
   for (const item of returnVal) {
-    item.sourceParent = referenceNode;
     if (!isNode(item, N.Mixin | N.Ruleset)) {
       return cast(undefined);
     }
     callableItems.push(item);
   }
-  return new MixinCollection(callableItems);
+  const collection = new MixinCollection(callableItems);
+  collection.sourceParent = referenceNode;
+  return collection;
 }
 
 function finalizeDirectNodeReferenceResult(

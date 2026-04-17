@@ -139,6 +139,10 @@ Practical rule for the next agent:
   Additional narrowing: detached `Rules` / `Collection` calls in `Call.evalNode()`
   now also reuse that callable-body path instead of maintaining a one-off
   unlock branch in `call.ts`.
+  Additional narrowing: direct callable reference results no longer stamp
+  `sourceParent` onto each resolved mixin/ruleset candidate; that live call
+  context now stays on the returned `MixinCollection` surface instead of
+  mutating canonical callable nodes.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
