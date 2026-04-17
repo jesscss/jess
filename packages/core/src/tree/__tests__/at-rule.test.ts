@@ -46,6 +46,26 @@ describe('AtRule', () => {
     expect(preEvald).toBe(node);
   });
 
+  it('does not stamp sourceNode on interpolated at-rule preEval wrappers', async () => {
+    const node = atrule({
+      name: interpolated({
+        source: '@media',
+        replacements: []
+      }),
+      prelude: seq([any('screen', { role: 'keyword' })])
+    });
+
+    const preEvald = await node.preEval(context);
+
+    expect(preEvald).not.toBe(node);
+    expect(preEvald).toBeInstanceOf(AtRule);
+    expect(preEvald.sourceNode).toBeUndefined();
+    if (!(preEvald instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(preEvald.value.name.valueOf()).toBe('@media');
+  });
+
   describe('nested @media rules', () => {
     it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }
