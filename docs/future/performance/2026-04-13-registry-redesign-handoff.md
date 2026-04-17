@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `ed8e6405` (`Drop empty import source nodes`)
+Checkpoint commit: `b911c871` (`Drop reference result source parents`)
 
 ## Priority Reset
 
