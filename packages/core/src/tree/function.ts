@@ -22,7 +22,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 export type FuncValue<Name extends AnyRole = 'name'> = {
   name?: Any<Name> | Interpolated<Name>;
   params?: List<Node>;
-  body: Node;
+  body: Rules;
 };
 
 export type FuncOptions = {
@@ -63,9 +63,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
     w.add(') ');
 
-    // Body is always emitted as braced rules. If it's not a Rules node already, wrap it.
-    const bodyRules = body instanceof Rules ? body : Rules.create([body]);
-    bodyRules.toBraced(options);
+    body.toBraced(options);
 
     return w.getSince(mark);
   }
@@ -79,11 +77,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this.options?.returnName ?? 'return';
 
-    // Normalize body to a Rules node so it can be evaluated/scoped consistently.
-    const bodyNode = this.value.body;
-    const bodyRules = bodyNode instanceof Rules
-      ? bodyNode
-      : Rules.create([bodyNode]);
+    const bodyRules = this.value.body;
 
     // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
     const mixinLike = new Mixin(
@@ -114,7 +108,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
 }
 
 export const fn = defineType(Func, 'Func', 'fn') as (
-  value: FuncValue | { name?: string; params?: List<Node>; body: Node },
+  value: FuncValue | { name?: string; params?: List<Node>; body: Rules },
   options?: FuncOptions,
   location?: LocationInfo,
   treeContext?: TreeContext

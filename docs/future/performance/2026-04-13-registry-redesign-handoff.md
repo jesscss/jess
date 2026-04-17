@@ -130,6 +130,9 @@ Practical rule for the next agent:
   Additional narrowing: nested inline/evaluated import postlude wrappers now
   keep deriving from the original imported surface across the whole wrapper
   chain, instead of re-rooting each outer shell in the prior wrapper.
+  Additional narrowing: stylesheet `Func` now requires a real `Rules` body, so
+  function print/eval no longer manufacture `Rules.create([body])` carrier
+  shells just to normalize legacy non-`Rules` bodies.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
