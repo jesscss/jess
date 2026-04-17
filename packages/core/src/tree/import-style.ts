@@ -178,6 +178,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return configuredRules;
   }
 
+  private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Rules> {
+    if (isNode(withNode, N.Reference)) {
+      const evaluated = await withNode.eval(context);
+      if (!isNode(evaluated, N.Collection)) {
+        throw new Error('with/set node must evaluate to a Collection');
+      }
+      return evaluated as Rules;
+    }
+
+    return withNode as Rules;
+  }
+
   private partitionConfiguredNodes(sourceRules: Rules, withRules: Rules): {
     newVariables: Node[];
     replacementsByIndex: Map<number, Node>;
@@ -251,6 +263,26 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       additiveNonVariableNodes,
       additiveVariableNodes
     );
+  }
+
+  private applyConfiguredValues(sourceRules: Rules, withRules: Rules): Rules {
+    const { newVariables, replacementsByIndex } = this.partitionConfiguredNodes(sourceRules, withRules);
+
+    if (newVariables.length === 0 && replacementsByIndex.size === 0) {
+      return sourceRules;
+    }
+
+    if (replacementsByIndex.size === 0) {
+      const configuredRules = this.createConfiguredImportedSurface(sourceRules);
+      return this.applyConfiguredAdditions(sourceRules, configuredRules, newVariables);
+    }
+
+    const replacedRules = this.createConfiguredReplacementSurface(sourceRules, replacementsByIndex);
+    if (newVariables.length === 0) {
+      return replacedRules;
+    }
+
+    return this.applyConfiguredAdditions(sourceRules, replacedRules, newVariables);
   }
 
   private wrapConfiguredImportedSurface(
@@ -598,42 +630,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           if (withValues.type === 'set' && evaldRules) {
             throw new Error('Cannot configure a stylesheet more than once.');
           }
-          // withValues.node might be a Reference, so evaluate it first to get Rules
-          let withRulesNode = withValues.node;
-          if (isNode(withRulesNode, N.Reference)) {
-          // Evaluate the reference to get the actual Rules
-            const evaluated = await withRulesNode.eval(context);
-            if (!isNode(evaluated, N.Collection)) {
-              throw new Error('with/set node must evaluate to a Collection');
-            }
-            withRulesNode = evaluated;
-          }
-          // withRules don't need to be cloned because they are used once
-          let withRules = withRulesNode as Rules;
-
-          // Partition configuration into replacements for existing vars vs
-          // additive nodes that must stay ahead of the imported surface.
-          const { newVariables, replacementsByIndex } = this.partitionConfiguredNodes(rules, withRules);
-
-          if (newVariables.length === 0 && replacementsByIndex.size === 0) {
-            // No effective configuration change; keep the imported Rules tree.
-          } else if (replacementsByIndex.size === 0) {
-            // Pure additive configuration can keep the imported Rules as a
-            // child surface instead of flattening every imported node into a
-            // fresh synthetic top-level tree.
-            const configuredRules = this.createConfiguredImportedSurface(rules);
-            rules = this.applyConfiguredAdditions(rules, configuredRules, newVariables);
-          } else {
-            // Keep replacement semantics on a shallow-cloned imported Rules
-            // surface instead of flattening every imported top-level node into
-            // the outer configured wrapper.
-            const replacedRules = this.createConfiguredReplacementSurface(rules, replacementsByIndex);
-            if (newVariables.length === 0) {
-              rules = replacedRules;
-            } else {
-              rules = this.applyConfiguredAdditions(rules, replacedRules, newVariables);
-            }
-          }
+          const withRules = await this.resolveConfiguredRulesInput(context, withValues.node);
+          rules = this.applyConfiguredValues(rules, withRules);
         }
         // For compose type, register and push extend root BEFORE evaluation
         // so extends inside the import use the correct root

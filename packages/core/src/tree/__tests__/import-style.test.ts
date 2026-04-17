@@ -657,6 +657,7 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.options.importBoundary).toBe(true);
 
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
