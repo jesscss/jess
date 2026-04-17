@@ -158,17 +158,24 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return sourceRules;
   }
 
-  private createNestedImportedChildSurface(rules: Rules): Rules {
-    const childRules = rules.clone(false) as Rules;
-    delete childRules.options.importBoundary;
-    return childRules;
-  }
-
   private createConfiguredWrapperSurface(sourceRules: Rules): Rules {
     const wrapperRules = new Rules([], sourceRules.options ? { ...sourceRules.options } : undefined, sourceRules.location, sourceRules.treeContext);
     wrapperRules.inherit(sourceRules);
     wrapperRules.scopeFrame = undefined;
     return wrapperRules;
+  }
+
+  private clearConfiguredImportBoundary(rules: Rules): Rules {
+    delete rules.options.importBoundary;
+    return rules;
+  }
+
+  private createConfiguredImportedSurface(sourceRules: Rules, options?: { clearImportBoundary?: boolean }): Rules {
+    const configuredRules = sourceRules.clone(false) as Rules;
+    if (options?.clearImportBoundary) {
+      this.clearConfiguredImportBoundary(configuredRules);
+    }
+    return configuredRules;
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
@@ -564,12 +571,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
             const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
             if (additiveNonVariableNodes.length === 0) {
-              const configuredRules = rules.clone(false) as Rules;
+              const configuredRules = this.createConfiguredImportedSurface(rules);
               this.attachConfiguredVarBindings(configuredRules, additiveVariableNodes);
               rules = configuredRules;
             } else {
               const finalRules = this.createConfiguredWrapperSurface(rules);
-              const importedChildRules = this.createNestedImportedChildSurface(rules);
+              const importedChildRules = this.createConfiguredImportedSurface(rules, { clearImportBoundary: true });
               finalRules.value = [];
               for (const newNode of additiveNonVariableNodes) {
                 finalRules.adopt(newNode);
@@ -602,7 +609,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                 rules = replacedRules;
               } else {
                 const finalRules = this.createConfiguredWrapperSurface(rules);
-                delete replacedRules.options.importBoundary;
+                this.clearConfiguredImportBoundary(replacedRules);
                 finalRules.value = [];
                 for (const newNode of additiveNonVariableNodes) {
                   finalRules.adopt(newNode);

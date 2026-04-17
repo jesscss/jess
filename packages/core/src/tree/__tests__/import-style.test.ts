@@ -949,8 +949,11 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
+      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.options.importBoundary).toBe(true);
+      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(composedRules.toString()).toContain('.base');
       expect(composedRules.toString()).toContain('.addon');
       expect(composedRules.toString()).toContain('color: black');
@@ -1102,8 +1105,11 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
+      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.options.importBoundary).toBe(true);
+      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(composedRules.toString()).toContain('.base');
       expect(composedRules.toString()).toContain('.addon');
 
