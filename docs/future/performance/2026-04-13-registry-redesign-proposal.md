@@ -258,6 +258,15 @@ What should **not** differ:
 - separate mutation-isolation hacks for each construct
 - separate evaluation models for mixins vs imports vs loops
 
+Current narrowing:
+
+- mixins and `$for` are now largely on the binding-frame path
+- configured imports now carry variable-only `with/set` bindings through
+  `ScopeFrame.liveSlotsByName` instead of synthetic wrapper declarations
+- the remaining work is mostly structural shell cleanup:
+  guard-scoped mixin wrappers, multi-output mixin carriers, and the last
+  postlude/import wrapper surfaces that still exist only to carry output shape
+
 They are all the same class of problem: evaluate a canonical tree against a
 runtime binding frame.
 
