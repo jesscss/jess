@@ -128,6 +128,13 @@ The long-term model is:
 - object-shaped intermediate output surviving only where later passes still
   need structure, with selector/extend handling the main example
 
+Verification for this redesign should follow the same split:
+
+- iterate with focused core structural/unit tests around frames, lookup,
+  wrappers, provenance, and node shape
+- verify higher-level engine behavior with `.less` fixtures
+- do not treat `.jess` fixture probing as part of the plan for this track
+
 Local child-specific values can still exist, but they should become explicit
 render-frame/session state rather than ad hoc copied options objects threaded
 through serializer calls.

@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `7ad6c194` (`Drop sourceRulesParent provenance fallback`)
+Checkpoint commit: `a206ebbb` (`Drop sourceParent ancestry reads`)
 
 ## Priority Reset
 
@@ -103,6 +103,9 @@ Practical rule for the next agent:
   - They should differ only by installed bindings and parent-frame chaining.
   - `clonedEval(...)`, `preserveOriginalNodes`, and `maybeClone(...)` are
     legacy debt and should be deleted, not normalized.
+  - Iteration should use focused core structural/unit tests; higher-level
+    engine behavior is verified with `.less` fixtures. `.jess` fixture probing
+    is not part of this track.
 
   Recent net effect:
   - Synthetic `Rules.create(...)` carrier shells have been heavily reduced.
@@ -124,6 +127,9 @@ Practical rule for the next agent:
     to be kept explicitly by the few semantic surfaces that still need it.
   - `sourceRulesParent` now rides explicit `ScopeFrame.fallbackFrame` only; it
     no longer climbs `sourceParent` ancestry looking for a fallback scope.
+  - `Rules` and `Reference` scope walks now stay on real parent chains and
+    explicit fallback frames; they no longer consult dead `sourceParent`
+    ancestry while climbing lexical scope.
   - Reference-import ancestry scans no longer walk `sourceParent`; they now
     stay on explicit `sourceNode`/`parent` provenance only.
   - Direct callable reference results no longer stamp `sourceParent` onto the
