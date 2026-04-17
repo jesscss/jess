@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `5edb8c23` (`Drop ruleset selector source preservation`)
+Checkpoint commit: `7feaaef0` (`Drop ruleset copy selector source rebinding`)
 
 ## Priority Reset
 
