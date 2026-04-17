@@ -178,6 +178,60 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return configuredRules;
   }
 
+  private partitionConfiguredNodes(sourceRules: Rules, withRules: Rules): {
+    newVariables: Node[];
+    replacementsByIndex: Map<number, Node>;
+  } {
+    const firstVarIndexByName = new Map<string, number>();
+    for (let index = 0; index < sourceRules.value.length; index++) {
+      const existingNode = sourceRules.value[index]!;
+      if (!isNode(existingNode, N.VarDeclaration)) {
+        continue;
+      }
+      const existingName = existingNode.value.name?.toString();
+      if (existingName && !firstVarIndexByName.has(existingName)) {
+        firstVarIndexByName.set(existingName, index);
+      }
+    }
+
+    const newVariables: Node[] = [];
+    const replacementsByIndex = new Map<number, Node>();
+    for (const injectedNode of withRules.value) {
+      if (isNode(injectedNode, N.VarDeclaration)) {
+        const varName = injectedNode.value.name?.toString();
+        if (varName) {
+          const existingIndex = firstVarIndexByName.get(varName);
+          if (existingIndex !== undefined) {
+            replacementsByIndex.set(existingIndex, injectedNode);
+          } else {
+            newVariables.push(injectedNode);
+          }
+        } else {
+          newVariables.push(injectedNode);
+        }
+      } else {
+        newVariables.push(injectedNode);
+      }
+    }
+
+    return {
+      newVariables,
+      replacementsByIndex
+    };
+  }
+
+  private createConfiguredReplacementSurface(sourceRules: Rules, replacementsByIndex: Map<number, Node>): Rules {
+    const replacedRules = this.createConfiguredImportedSurface(sourceRules);
+    replacedRules.value = [];
+    for (let index = 0; index < sourceRules.value.length; index++) {
+      const originalNode = sourceRules.value[index]!;
+      const nextNode = replacementsByIndex.get(index) ?? originalNode;
+      replacedRules.adopt(nextNode);
+      replacedRules.value.push(nextNode);
+    }
+    return replacedRules;
+  }
+
   private wrapConfiguredImportedSurface(
     sourceRules: Rules,
     importedChildRules: Rules,
@@ -536,49 +590,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // withRules don't need to be cloned because they are used once
           let withRules = withRulesNode as Rules;
 
-          const firstVarIndexByName = new Map<string, number>();
-          for (let index = 0; index < rules.value.length; index++) {
-            const existingNode = rules.value[index]!;
-            if (!isNode(existingNode, N.VarDeclaration)) {
-              continue;
-            }
-            const existingName = existingNode.value.name?.toString();
-            if (existingName && !firstVarIndexByName.has(existingName)) {
-              firstVarIndexByName.set(existingName, index);
-            }
-          }
-
-          // Separate injected variables into two groups:
-          // 1. Variables that replace existing ones (found in imported rules)
-          // 2. Variables that are new (not found in imported rules)
-          const newVariables: Node[] = [];
-          const replacementsByIndex = new Map<number, Node>();
-
-          // For each injected variable, find and replace the first matching declaration
-          // in the imported rules, OR if not found, add it to newVariables to inject at the top.
-          // This ensures the injected value "overrides" the original.
-          // Works correctly for both scope lookup ($var) and linear lookup ($^var):
-          // - For linear lookup: injected vars come first, so they're found first
-          // - For scope lookup: original is replaced, so injected value wins
-          for (const injectedNode of withRules.value) {
-            if (isNode(injectedNode, N.VarDeclaration)) {
-              const varName = injectedNode.value.name?.toString();
-              if (varName) {
-                const existingIndex = firstVarIndexByName.get(varName);
-                if (existingIndex !== undefined) {
-                  replacementsByIndex.set(existingIndex, injectedNode);
-                } else {
-                  newVariables.push(injectedNode);
-                }
-              } else {
-              // Non-variable nodes (if any) are kept as-is
-                newVariables.push(injectedNode);
-              }
-            } else {
-            // Non-VarDeclaration nodes are kept as-is
-              newVariables.push(injectedNode);
-            }
-          }
+          // Partition configuration into replacements for existing vars vs
+          // additive nodes that must stay ahead of the imported surface.
+          const { newVariables, replacementsByIndex } = this.partitionConfiguredNodes(rules, withRules);
 
           if (newVariables.length === 0 && replacementsByIndex.size === 0) {
             // No effective configuration change; keep the imported Rules tree.
@@ -605,14 +619,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             // Keep replacement semantics on a shallow-cloned imported Rules
             // surface instead of flattening every imported top-level node into
             // the outer configured wrapper.
-            const replacedRules = rules.clone(false) as Rules;
-            replacedRules.value = [];
-            for (let index = 0; index < rules.value.length; index++) {
-              const originalNode = rules.value[index]!;
-              const nextNode = replacementsByIndex.get(index) ?? originalNode;
-              replacedRules.adopt(nextNode);
-              replacedRules.value.push(nextNode);
-            }
+            const replacedRules = this.createConfiguredReplacementSurface(rules, replacementsByIndex);
             if (newVariables.length === 0) {
               rules = replacedRules;
             } else {
