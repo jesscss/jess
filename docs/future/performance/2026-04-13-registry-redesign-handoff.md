@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `9e339e51` (`Keep callable source context off candidates`)
+Checkpoint commit: `001e4500` (`Drop direct reference source parents`)
 
 ## Priority Reset
 
