@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `94bc62d5` (`Keep at-rule preEval wrappers self-owned`)
+Checkpoint commit: `00ae259d` (`Move import boundaries off source provenance`)
 
 ## Priority Reset
 
@@ -125,6 +125,10 @@ Practical rule for the next agent:
   - Generic node derivation no longer carries either `sourceParent` or
     `sourceNode` forward through `inherit()`; any remaining provenance now has
     to be kept explicitly by the few semantic surfaces that still need it.
+  - Non-classic import boundaries now live on `Rules.options.importBoundary`
+    instead of source-node provenance walks.
+  - Ruleset selector-cache invalidation now uses an explicit cache-owner link
+    on derived rulesets instead of overloading `sourceNode`.
   - `sourceRulesParent` now rides explicit `ScopeFrame.fallbackFrame` only; it
     no longer climbs `sourceParent` ancestry looking for a fallback scope.
   - `Rules` and `Reference` scope walks now stay on real parent chains and
