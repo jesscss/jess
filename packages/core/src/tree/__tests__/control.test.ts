@@ -232,6 +232,27 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toContain('item: a');
   });
 
+  it('derives multi-iteration $for output from the canonical loop body wrapper', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+
+    expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput).not.toBe(loopRules);
+    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(`${evald}`).toContain('item: a');
+    expect(`${evald}`).toContain('item: b');
+  });
+
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
     const registryHits: string[] = [];
