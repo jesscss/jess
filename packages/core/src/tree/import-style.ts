@@ -513,7 +513,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             if (newVariables.length === 0) {
               rules = replacedRules;
             } else {
-              const finalRules = Rules.create([]);
+              const finalRules = withRules.clone(false) as Rules;
+              finalRules.value = [];
               for (const newNode of newVariables) {
                 finalRules.adopt(newNode);
                 finalRules.value.push(newNode);
