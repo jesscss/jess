@@ -1081,10 +1081,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         local: options.local,
         includeRulesets
       });
-      if (fast.length > 0) {
+      if (fast.length > 0 && !includeRulesets) {
         return fast;
       }
-      return undefined;
+      const registryMatches = this.getRegistry('mixin').find(keys, filterType, options) as MixinEntry[] | undefined;
+      if (!registryMatches?.length) {
+        return fast.length > 0 ? fast : undefined;
+      }
+      if (fast.length === 0) {
+        return registryMatches;
+      }
+      return [...new Set([...fast, ...registryMatches])];
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
       if (mixinFilterType !== 'Mixin') {
@@ -3457,13 +3464,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return false;
     };
     const clearReferenceModeForMixinOutput = (node: Node): void => {
-      if (originatesFromReferenceImport(node)) {
+      // Nested import wrappers that explicitly carry reference mode must keep
+      // owning that render gate even when mixin output is made publicly visible.
+      const nodeOptions = node.options;
+      if (
+        typeof nodeOptions === 'object'
+        && nodeOptions !== null
+        && 'referenceMode' in nodeOptions
+        && nodeOptions.referenceMode === true
+      ) {
         return;
       }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      if ((node.options as any)?.referenceMode === true) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        (node.options as any).referenceMode = false;
+      if (originatesFromReferenceImport(node)) {
+        return;
       }
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const nestedRules = (node as any).value?.rules;

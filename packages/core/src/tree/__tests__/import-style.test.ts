@@ -15,6 +15,9 @@ import {
   call,
   list,
   quoted,
+  amp,
+  pseudo,
+  co,
   Interpolated,
   INTERPOLATION_PLACEHOLDER,
   type Rules,
@@ -1564,6 +1567,202 @@ describe('Style import', () => {
       } finally {
         Registries.MixinRegistry.prototype.find = originalFind;
       }
+    });
+
+    it('import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains', async () => {
+      const nestedPath = resolve(process.cwd(), 'import-reference-issues/multiple-import-nested.jess');
+      const importPath = resolve(process.cwd(), 'import-reference-issues/multiple-import.jess');
+      context.sourceTrees.set(nestedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('should')])]),
+          rules: rules([
+            decl({ name: any('be'), value: any('invisible') })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.something')])]),
+          rules: rules([
+            decl({ name: any('invisible'), value: any('suppress warning') })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.invisible')])]),
+          rules: rules([
+            any('&:extend(.something all)')
+          ])
+        })
+      ]));
+      context.sourceTrees.set(importPath, rules([
+        any('/*\n  tralala\n*/'),
+        ruleset({
+          selector: sellist([sel([el('.fix')])]),
+          rules: rules([
+            decl({ name: any('fix'), value: any('fix') })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.something')])]),
+          rules: rules([
+            style({
+              path: quoted(any('multiple-import-nested.jess'))
+            }, {
+              type: 'import',
+              importOptions: { reference: true }
+            }),
+            decl({ name: any('inside'), value: any('something') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: sellist([sel([el('#do-not-show-import')])]),
+          rules: rules([
+            style({
+              path: quoted(any('import-reference-issues/multiple-import.jess'))
+            }, {
+              type: 'import',
+              importOptions: { reference: true, multiple: true }
+            })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('show-all-content')])]),
+          rules: rules([
+            style({
+              path: quoted(any('import-reference-issues/multiple-import.jess'))
+            }, {
+              type: 'import',
+              importOptions: { multiple: true }
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const out = evald.toString({ context });
+      expect(out).toContain('.fix');
+      expect(out).toContain('.something');
+      expect(out).toContain('show-all-content');
+      expect(out).not.toContain('#do-not-show-import .fix');
+      expect(out).not.toContain('#do-not-show-import .something');
+      expect(out).not.toContain('should {\n  be: invisible;');
+    });
+
+    it('import-reference-issues: reference imports inside mixins do not emit imported rulesets', async () => {
+      const referencedPath = resolve(process.cwd(), 'import-reference-issues/simple-ruleset-2162.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('ruleset')])]),
+          rules: rules([
+            decl({ name: any('shall-be-invisible'), value: any('less') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        mixin({
+          name: any('.mixin-with-import-by-reference-inside'),
+          rules: rules([
+            decl({ name: any('the-only-property'), value: any('nothing-below-this') }),
+            style({
+              path: quoted(any('import-reference-issues/simple-ruleset-2162.jess'))
+            }, {
+              type: 'import',
+              importOptions: { reference: true }
+            })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('call-mixin-with-import-by-reference-inside')])]),
+          rules: rules([
+            call({
+              name: ref({ key: '.mixin-with-import-by-reference-inside' }, { type: 'mixin-ruleset' }),
+              args: list([])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const out = evald.toString({ context });
+      expect(out).toContain('call-mixin-with-import-by-reference-inside');
+      expect(out).toContain('the-only-property: nothing-below-this;');
+      expect(out).not.toContain('shall-be-invisible: less;');
+      expect(out).not.toContain('call-mixin-with-import-by-reference-inside ruleset');
+    });
+
+    it('import-reference: reference-imported selector-list rulesets remain callable as mixins', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
+      const referencedPath = resolve(process.cwd(), 'import-reference-selector-list.jess');
+      localContext.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.z')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') }),
+            ruleset({
+              selector: sellist([sel([el('.c')])]),
+              rules: rules([
+                decl({ name: any('color'), value: any('green') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.only-with-visible')]), sel([el('.z')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('green') }),
+            ruleset({
+              selector: sellist([sel([amp(), pseudo({ name: ':hover' })])]),
+              rules: rules([
+                decl({ name: any('color'), value: any('green') })
+              ])
+            }),
+            ruleset({
+              selector: sellist([sel([amp(), co('+'), amp()])]),
+              rules: rules([
+                decl({ name: any('color'), value: any('green') }),
+                ruleset({
+                  selector: sellist([sel([el('.sub')])]),
+                  rules: rules([
+                    decl({ name: any('color'), value: any('green') })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('import-reference-selector-list.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        }),
+        ruleset({
+          selector: sellist([sel([el('.b')])]),
+          rules: rules([
+            call({
+              name: ref({ key: '.z' }, { type: 'mixin-ruleset' }),
+              args: list([])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(localContext);
+      const out = evald.toString({ context: localContext });
+      expect(out).toContain('.b {');
+      expect(out).toContain('color: red;');
+      expect(out).toContain('color: green;');
+      expect(out).toContain('.b .c {');
+      expect(out).toContain('.b:hover {');
+      expect(out).toContain('.b + .b {');
+      expect(out).toContain('.b + .b .sub {');
+      expect(out).not.toContain('.only-with-visible');
     });
 
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
