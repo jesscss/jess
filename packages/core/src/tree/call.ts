@@ -136,7 +136,13 @@ export class Call extends Node<CallValue, CallOptions> {
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
       node.pre = this.pre;
       node.post = this.post;
-      node.sourceParent = this;
+      if (
+        isNode(node, N.Rules)
+        && node.value.length > 0
+        && node.value.every(child => isNode(child, N.Declaration | N.Comment))
+      ) {
+        node.sourceParent = this;
+      }
       return node;
     };
     const evalArgNodes = async (nodes?: List<Node>) => {

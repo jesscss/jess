@@ -85,6 +85,9 @@ Practical rule for the next agent:
     keeps shrinking; `&` is live contextual selector state; end-state nodes
     should be very light, effectively immutable templates.
 - [x] Slice 13b — Wire `$for` loop iteration variables through `ScopeFrame` / `liveSlotsByName` (same as mixin params, Slices 8–11). `$for` no longer materializes synthetic loop `VarDeclaration`s just to transport `value` / `key` / `index`; per-iteration wrapper `Rules` now get a `scopeFrame` with those bindings in `liveSlotsByName`, and loop-var references resolve without declaration-registry lookup. The loop body still uses renderKey for shared-node mutation isolation, so this slice removes declaration-shaped binding transport but does **not** make `$for` fully fork-free by itself.
+  Status:
+  - Done: `$for` iteration variables now live in `ScopeFrame.liveSlotsByName`,
+    and emitted loop output no longer retains iteration-local frame state.
 - [ ] Slice 13c — Finish converging mixins, imports, and `$for` on canonical-tree + binding-frame evaluation
   Current status:
   - Imports: mostly converged. Remaining seam is the last non-variable config /
@@ -116,6 +119,8 @@ Practical rule for the next agent:
   - Plain CSS import queue entries no longer stamp `sourceNode` onto the
     emitted `@import` at-rule; dedupe now relies on node identity plus
     location/signature rather than back-pointing at the `StyleImport` node.
+  - Direct call results now only keep call-site `sourceParent` for the
+    declaration-only `Rules` case that still feeds post-eval ordering.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
