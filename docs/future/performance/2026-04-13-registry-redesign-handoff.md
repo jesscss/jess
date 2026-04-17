@@ -72,124 +72,69 @@ Practical rule for the next agent:
 - [x] Slice 12a — Extend `findVarDeclarationFast` with `beforeIndex` for positional variable lookups
 - [x] Slice 12b — Delete `resolution: 'linear'`; remove `beforeIndex` from `findVarDeclarationFast`; strip linear branches from `performLookup`, `toTrimmedString`, and `declaration.ts`; delete the linear-specific test in `rules.test.ts`
 - [x] Slice 13 — Delete fork/renderKey system from the active node/runtime path
-  Current status, compressed:
-  - Completed leaf-node deletions: `selector-pseudo.ts`, `selector-attr.ts`, `operation.ts`, `interpolated.ts`, `selector-compound.ts`, `selector-complex.ts`, `selector-list.ts`, `paren.ts`, `quoted.ts`, `sequence.ts`, `declaration.ts`, `extend.ts`, `mixin.ts`, and `at-rule.ts` no longer store eval results on nodes keyed by `renderKey`; they now return original-or-derived nodes and read serializer output from canonical `value`.
-  - Completed serializer-local deletions: declaration / extend / leaf at-rule emission no longer depend on per-leaf renderKey serializer state; `Ruleset.getHeaderString()` no longer rewrites stored selector state just to print filtered/reference-mode headers; root/uncomposed ruleset renders no longer populate node-level composed-selector cache slots.
-  - Completed live-state moves: active composed-selector cache lives on session render state instead of `Ruleset`; `Node.render()` reuses `context.printState`; serializer stack/frame/flag changes are managed on live render state with save/restore instead of cloned session objects; lookup render keys now resolve from `options.context` first and no longer cross through serializer helpers; serializer flattening now takes the inherited live render key from the active session/render call instead of treating `Rules._renderKey` as an implicit default, no longer falls back to `Rules._renderKey` at the top-level flatten entry point, no longer propagates the fake `CANONICAL` sentinel as if it were a live render key, and no longer carries a per-entry render key bag through the flattened walk just to hand the already-active session key back to leaf emission; serializer child/container emission no longer pushes the same render key back onto the session stack when it is already active; `serializeRulesContainerInternal()` now captures the active session/render key once per container render instead of repeatedly rereading it through `options.context` across child emission; `Rules` wrapper rendering now captures that same live key once per wrapper render instead of rereading `options.context` through the hot path, while also refusing to push the fake `CANONICAL` sentinel onto the live render-key stack; the composed-selector cache is no longer keyed by render key at all, only by `Ruleset`, because serializer composition no longer varies by live render-key state; and parent lookup is now canonical-only, with `getParent(renderKey)` / `_parentForks` deleted from `node-base.ts`.
-  - Completed lookup deletion: `FindOptions.renderKey` is gone. Lookup no longer threads render-key state through ad hoc option bags.
-  - Completed lookup cleanup: `registry-utils.ts` no longer consults `Context` for a live render key during parent-scope walks. Remaining Track 1 render-key/fork work is now concentrated in `node-base.ts` fork storage, not in lookup-side option routing.
-  - Completed serializer deletion: `PrintOptions.renderKey` fallback is gone, serializer-side `Rules` / `Ruleset` render-key pushes are gone, flattened serializer entries no longer carry per-entry render-key baggage, the public `EVAL` render-key sentinel is gone, `Node.getValue(renderKey)` is gone from the public node surface, `_renderKey` and `_childForks` are gone from `Node`, `Node.set(..., renderKey)` is gone, and the composed-selector cache is no longer keyed by render key at all.
-  - Completed cleanup cuts: dead `ruleset-trace` / discarded `processPrePost('pre', ...)` header-path work is gone; `Node.preEval()` / `evalNode()` use context-owned traversal helpers; `Reference` no longer injects redundant lookup render keys; `Rules.flatRulesWithKeys()` is gone, with serializer traversal now carrying inherited live render context directly instead of materializing parallel node/key arrays on `Rules`; mixin / ruleset-as-mixin / `$for` output no longer reassigns `_renderKey` after eval when the same wrapper instance already carried that live key into evaluation, `$for` no longer rewrites `_renderKey` onto a post-eval replacement wrapper, and the `ruleset-as-mixin` deep-clone path, the ordinary mixin-call wrapper path, and the per-iteration `$for` wrapper path no longer assign or push render keys at all; `Ruleset.getHeaderString()` and hoisted-ruleset carrier composition no longer consult render keys to choose forked selector data during print and now always read the canonical `Ruleset` value during serialization, and `Ruleset.evalNode()` no longer routes field writes through a fork-aware branch at all; `Node._visitValues(...)` no longer carries an unused renderKey fork path; `Node.forEachNode(...)` is no longer exposed as a general node API surface and now mutates only the active canonical value tree during eval instead of bouncing through `set(..., renderKey)` branches; `Node.toTrimmedString()` no longer threads a dead renderKey argument into `_visitValues(...)`; `Node.getValue()` now exits immediately on the canonical/no-render-key path instead of dragging that case through the larger fork guard; `Node.getParent(renderKey)` and `_parentForks` are gone entirely, so parent traversal is canonical-only again; `Node.set()` no longer re-reads `this.value` when entering the forked branch, and an existing forked-object update no longer bounces back through `getValue(renderKey)` just to fetch the same fork again; the no-op `Node.reconcileRenderKeyState(...)` shim is gone; `Node.setForContext(...)` is gone; `Context.pushRenderKey(...)` / `popRenderKey()`, the internal render-key stack, and the temporary single `context.renderKey` field are all gone from runtime; `getActiveRenderKey(...)` is gone; and the print-layer render-key push/pop helpers are gone.
-  - Guardrails: `Context` remains the singleton eval/render session; `PrintOptions` is transitional and should keep shrinking; `&` is live contextual selector state, not canonical node state; end-state nodes should be very light, effectively immutable templates that evaluate-and-serialize in one step into the active output buffers, with object-shaped deferred output kept only where later passes still need structure (mainly selector/extend work).
-  - Result: the active renderKey/fork runtime is gone from `Node`, `Context`, lookup, serializer state, wrapper transport, and node eval/storage. Remaining Track 1 work is no longer generic renderKey deletion; it is import-sharing validation (Slice 13c) plus any narrowly-discovered cleanup still coupled to the old model.
+  Status:
+  - Done: the active renderKey/fork runtime is gone from `Node`, `Context`,
+    lookup, serializer state, wrapper transport, and node eval/storage.
+  - Done: leaf eval/storage, serializer fallback reads, lookup-side render-key
+    threading, and node-level fork maps/caches are all removed from the active
+    path.
+  - Remaining seam: no longer generic renderKey deletion; only `13c` import
+    sharing / binding-frame convergence and any narrowly-discovered cleanup
+    still coupled to the old model.
+  - Guardrails: `Context` remains singleton session state; `PrintOptions`
+    keeps shrinking; `&` is live contextual selector state; end-state nodes
+    should be very light, effectively immutable templates.
 - [x] Slice 13b — Wire `$for` loop iteration variables through `ScopeFrame` / `liveSlotsByName` (same as mixin params, Slices 8–11). `$for` no longer materializes synthetic loop `VarDeclaration`s just to transport `value` / `key` / `index`; per-iteration wrapper `Rules` now get a `scopeFrame` with those bindings in `liveSlotsByName`, and loop-var references resolve without declaration-registry lookup. The loop body still uses renderKey for shared-node mutation isolation, so this slice removes declaration-shaped binding transport but does **not** make `$for` fully fork-free by itself.
 - [ ] Slice 13c — Finish converging mixins, imports, and `$for` on canonical-tree + binding-frame evaluation
-  Current status, compressed:
-  - Completed import-side convergence: imported trees now evaluate canonically on first use across `@compose`, plain mutable `@import`, protected `mutable:false`, implicit `_dedupe`, and explicit `reference: true` flows; plain CSS imports return an empty `Rules` result because output is carried by `topImports`; imported `Rules.sourceNode` provenance is bound once; no-op `with/set` keeps the imported tree directly; variable-only configured imports now bind through `ScopeFrame.liveSlotsByName` with declaration lookup able to surface those live slots; replacement-configured imports stay on shallow imported `Rules` surfaces instead of synthetic top-level `Rules.create([])` shells; inline and evaluated import postludes now derive from imported surfaces instead of rebuilding fresh wrapper shells.
-  - Completed mixin-side convergence: `Mixin.preEval()` stays canonical unless the mixin name is actually interpolated; static regular mixin bodies now use shallow wrapper clones; params-only calls bind directly on the cloned body `Rules`; static guard probes no longer take defensive deep-copy tiers or dead outer wrappers; simple/named/rest parameter transport and `@arguments` now reuse bound nodes directly except where list/sequence normalization really needs a local copy; detached ruleset calls derive from the original `Rules` surface instead of rebuilding synthetic `Rules.create(...)` shells.
-  - Completed `$for` convergence: iteration vars live in `ScopeFrame.liveSlotsByName`; per-iteration wrappers derive from the canonical loop body instead of rebuilding empty shells; zero-, single-, and multi-iteration outputs now derive from the loop-body surface instead of returning synthetic `Rules.create([])` wrappers; emitted loop-output `Rules` no longer retain iteration-local `scopeFrame` bindings after eval.
-  - Remaining seam for the next pass block: delete the last structural shells that still exist only to carry output shape or special lookup surfaces. In practice this means dynamic/default-guard mixin outer wrappers, multi-output mixin carriers, additive non-variable import child-surface wrappers, and any remaining postlude carrier shells that are not yet rooted in the imported/candidate `Rules` surface.
-  Guardrail: mixins, imports, and `$for` are the same architectural class. They
-  should all evaluate canonical trees against runtime binding frames, differing
-  only in which bindings they install and which parent frame they chain to.
-  `clonedEval(...)`, `preserveOriginalNodes`, and `maybeClone(...)` are legacy
-  debt from the older clone-before-mutate model and should be deleted, not
-  normalized into the redesign.
-  Current narrowing: declaration assignment normalization no longer uses
-  `value.maybeClone(context)` at all, and `List.operate('+')` /
-  `Sequence.operate('+')` now build explicit derived results instead of
-  depending on session-gated `maybeClone(...)` behavior.
-  Additional narrowing: detached-ruleset calls now derive from the original
-  `Rules` surface instead of rebuilding a fresh `Rules.create(n.value,
-  n.options)` shell before evaluation.
-  Additional narrowing: detached `Collection` calls now stay on the
-  `Collection` surface too, instead of degrading to a fresh plain `Rules`
-  wrapper before evaluation.
-  Additional narrowing: dynamic/default guard wrappers are now guard-only
-  lookup surfaces. Param/body evaluation stays on the cloned body `Rules`,
-  with the temporary wrapper only carrying the guard scope that must not see
-  body declarations.
-  Additional narrowing: plain CSS imports and optional/reference import misses
-  now return derived empty `Rules` surfaces rooted in the active importer
-  context instead of synthetic `Rules.create([])` placeholder shells.
-  Additional narrowing: inline import source carriers now derive from the
-  active importer context too, instead of starting from a synthetic
-  `Rules.create([sourceNode])` shell before postlude wrapping.
-  Additional narrowing: empty mixin output now always derives from the
-  candidate source surface; the dead synthetic `Rules.create([])` fallback is
-  gone.
-  Additional narrowing: the remaining multi-output mixin carrier now also
-  derives from the candidate source surface instead of rooting itself in the
-  first emitted child rule just to exist.
-  Additional narrowing: dynamic/default guard wrappers no longer carry adopted
-  guard nodes themselves; they now stay as pure lookup surfaces while guard
-  evaluation remains on the canonical guard tree.
-  Additional narrowing: mixed replacement+additive import config wrappers now
-  derive from the original imported surface too, instead of rooting the outer
-  additive shell in the intermediate replacement wrapper.
-  Additional narrowing: nested inline/evaluated import postlude wrappers now
-  keep deriving from the original imported surface across the whole wrapper
-  chain, instead of re-rooting each outer shell in the prior wrapper.
-  Additional narrowing: stylesheet `Func` now requires a real `Rules` body, so
-  function print/eval no longer manufacture `Rules.create([body])` carrier
-  shells just to normalize legacy non-`Rules` bodies.
-  Additional narrowing: stylesheet `Func.evalCall()` no longer manufactures a
-  temporary anonymous `Mixin` node just to reuse mixin param binding; it now
-  feeds a lightweight callable-body entry through `MixinCollection` directly.
-  Additional narrowing: detached `Rules` / `Collection` calls in `Call.evalNode()`
-  now also reuse that callable-body path instead of maintaining a one-off
-  unlock branch in `call.ts`.
-  Additional narrowing: direct callable reference results no longer stamp
-  `sourceParent` onto each resolved mixin/ruleset candidate; that live call
-  context now stays on the returned `MixinCollection` surface instead of
-  mutating canonical callable nodes.
-  Additional narrowing: plain direct reference results no longer stamp
-  `sourceParent` onto the resolved canonical node just to carry live call-site
-  context through the result surface.
-  Additional narrowing: dynamic/default guard wrappers no longer stamp
-  `sourceParent` onto the temporary outer `Rules` lookup surface; guard scope
-  now stays frame/parent-driven there too.
-  Additional narrowing: empty import results and inline import source carriers
-  no longer stamp `sourceNode` from the `StyleImport` node when they only
-  exist to carry empty/output-only shape rather than imported lookup surfaces.
-  Additional narrowing: inline/evaluated import postlude wrapper shells no
-  longer inherit imported `sourceNode` provenance either; the imported lookup
-  surface stays on the inner `Rules`, while outer postlude carriers remain
-  output-only.
-  Additional narrowing: param-bearing mixin calls no longer allocate an
-  `outerRules` wrapper just because a guard exists; that wrapper is now reserved
-  for dynamic/default guard cases that actually need a separate lookup surface.
-  Additional narrowing: `Collection.preEval()` and `$for.preEval()` no longer
-  route through `maybeClone(...)` just to mark `preEvaluated`; those paths now
-  stay on the canonical node.
-  Additional narrowing: the base `Node.preEval()` fallback no longer routes
-  through `maybeClone(...)`; `Rules.preEval()` stays canonical, `Ruleset.preEval()`
-  now returns a derived wrapper instead of mutating the canonical source node in
-  place, and `AtRule.preEval()` now only derives when pre-eval actually changes
-  the at-rule shape so static-name at-rules stay canonical when their child
-  rules do; mixin arguments now
-  evaluate through ordinary eval/binding flow instead of `clonedEval(...)`;
-  nested `@layer` parent/name tracking is now source-node aware so those
-  derived `AtRule` wrappers do not break same-layer extend visibility; and the
-  legacy `maybeClone(...)` / `clonedEval(...)` /
-  `preserveOriginalNodes` helpers are deleted from the runtime.
+  Current status:
+  - Imports: mostly converged. Remaining seam is the last non-variable config /
+    postlude carriers that still need a real outer `Rules` surface.
+  - Mixins: mostly converged. Remaining seam is dynamic/default-guard outer
+    wrappers and any remaining multi-output carrier shells.
+  - `$for`: frame/binding convergence is done. Only incidental structural-shell
+    cleanup may remain.
+
+  Guardrails:
+  - Mixins, imports, and `$for` are one architectural class: canonical tree +
+    runtime binding frame.
+  - They should differ only by installed bindings and parent-frame chaining.
+  - `clonedEval(...)`, `preserveOriginalNodes`, and `maybeClone(...)` are
+    legacy debt and should be deleted, not normalized.
+
+  Recent net effect:
+  - Synthetic `Rules.create(...)` carrier shells have been heavily reduced.
+  - Live call-site/source provenance is no longer being stamped onto most
+    temporary wrapper surfaces.
+  - Import wrappers now stay rooted in imported surfaces much more often.
+  - Stylesheet functions and detached callable bodies share the same lighter
+    callable-body path.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
-  Current status: `findVarDeclarationFast` now reads per-scope `ScopeFrame.declarationBucketsByName` instead of `Rules.varsByName`, while still walking outward via the `Rules` parent/sourceParent chain (not `frame.parent`, which is reserved for live slots). `getScopeFrame()` now auto-indexes previously untouched scopes, `registerNode()` keeps existing frame buckets in sync for runtime-added static `VarDeclaration`s, and the fast path now recurses through static parent-visible child `Rules` surfaces instead of punting all such lookups to `DeclarationRegistry`. Core proofs now cover import/compose child-scope hits without `DeclarationRegistry.find`.
-  Current parser reality: both the current Jess parser and the Less parser still emit static `VarDeclaration` names for normal syntax; dynamic-name `VarDeclaration`s appear to be hand-built/API-only right now rather than a common frontend path. `findVarDeclarationFast` only promotes `pendingDynamicDecls` entries into the static buckets when their names have already become static on the node. If a dynamic declaration name is still dynamic at reference time, lookup does not try to resolve it; the reference stays synchronous, misses normally, and retry ownership remains with the surrounding `Rules` eval queue. The remaining direct `Rules.find('declaration', ..., 'VarDeclaration')` uses are outside the `Reference(type='variable')` hot path.
-  Future exploration note: one alternative would be dependency-tracked wakeups for unresolved refs (nodes register which names they are waiting on, then retry when those names are later registered). That may allow earlier failure/reporting, but it is intentionally out of scope for this redesign. The current model stays simpler: reference lookup is synchronous, and retry scheduling remains the responsibility of `Rules` evaluation.
+  Status:
+  - Done: hot variable lookup now uses `findVarDeclarationFast` +
+    `ScopeFrame.declarationBucketsByName`, including parent-visible child
+    surfaces, without `DeclarationRegistry.find`.
+  - Dynamic-name note: unresolved dynamic declaration names are still treated
+    synchronously as misses; retry ownership stays with surrounding `Rules`
+    evaluation, not the lookup path.
 - [x] Slice 15 — Retire `MixinRegistry` hot path; `findMixinFast` already covers static-name Mixin lookups; verify no Ruleset-as-mixin gaps, then drop the `targetRules.find('mixin', ...)` fallback for the static-string case
-  Current status: static-string callable lookup now lives behind `Rules.find('mixin', ...)` itself via `findMixinsFast`, instead of `Reference` branching around the lookup API. Plain `Reference(type='mixin')` hits and misses therefore skip `MixinRegistry.find` once scopes are indexed, and already-registered interpolated simple names do too. `Reference(type='mixin-ruleset')` stays on that same callable mixin surface and now also fast-paths already-registered interpolated simple names, plain simple-name misses, exact callable ruleset array-path hits when no namespace start exists, pure nested no-arg mixin namespace array paths, pure ruleset namespace array paths when no mixin candidate is involved, compound-prefix callable ruleset precedence when a longer array path resolves through a ruleset chain, definite array-path namespace misses when the callable surface is provably dead, a terminal callable ruleset under a resolved static namespace chain, and nested compound/complex callable ruleset segments under a ruleset namespace prefix. Plain `type='mixin'` array-path lookups now ignore ruleset ambiguity entirely and stay on the mixin namespace path; only `mixin-ruleset` preserves ruleset-side ambiguity handling. Required-arg intermediate namespace hops are now treated as definite misses unless a competing compound-prefix ruleset chain actually resolves, in which case that ruleset-side path wins without `MixinRegistry.find`. Lookup itself stays synchronous: if callable names are still dynamic, they are not resolved here and should be retried by the surrounding `Rules` eval queue. The remaining `MixinRegistry` fallbacks are therefore the genuinely ambiguous / legacy `mixin-ruleset` cases where neither the mixin namespace path nor the ruleset-side exact/prefix walkers can resolve the array path decisively. In practice that still includes local authored ampersand-descendant array-path lookups and mixin-output namespace prefixes. It is not modeled as a separate ruleset lookup path.
+  Status:
+  - Done: static callable lookup now lives behind `Rules.find('mixin', ...)`
+    via `findMixinsFast`; plain mixin hits/misses bypass `MixinRegistry.find`.
+  - Remaining fallback class: only the genuinely ambiguous legacy
+    `mixin-ruleset` array-path cases where neither mixin nor ruleset-side
+    fast paths can decide synchronously.
 - [x] Slice 16 — Retire `RulesetRegistry` and remove the speculative standalone ruleset lookup surface
-  Current status: `RulesetRegistry` is gone, and the speculative standalone ruleset lookup surface was removed with it. Extend roots keep their own per-root `Ruleset` sets directly, while callable ruleset-shaped things continue to resolve only through the mixin/callable surface (`mixin-ruleset` -> `find('mixin', ...)`). There is no separate `Rules.find('ruleset', ...)` path anymore.
+  Status:
+  - Done: `RulesetRegistry` and the standalone ruleset lookup surface are gone.
+  - Ruleset-shaped callables now resolve only through the callable/mixin
+    surface; extend roots keep their own per-root `Ruleset` sets directly.
 - [ ] Cleanup slice — Extract the shared `Reference` lookup algorithm and move type-specific logic behind lookup-surface adapters
-  Current status: this cleanup progressed far enough that `Reference.evalNode()`
-  is now mostly orchestration over extracted helpers/adapters rather than a
-  single giant type-switch. That cleanup was worthwhile, but it is now
-  **de-prioritized** relative to Slice 13 / 13c and Track 5. The remaining
-  `Reference` work should happen only when it directly supports shared
-  lookup-surface ownership in `Rules`, runtime binding generalization, or the
-  renderKey/buffered-render transition. Do not keep polishing `reference.ts`
-  just because it is locally tractable.
+  Status:
+  - Partly done: `Reference.evalNode()` is now mostly orchestration over
+    extracted helpers/adapters rather than one giant type-switch.
+  - Priority note: this is de-prioritized. Only touch `reference.ts` when it
+    directly helps `13c`, shared lookup ownership in `Rules`, runtime binding
+    generalization, or Track 5.
 - [ ] `FunctionRegistry` optimization — keep as plugin API but change granularity from per-`Rules` to per-stylesheet: one global registry for built-ins/plugins; one stylesheet-level registry created on demand when `registerFunction()` is called within a stylesheet; stylesheet registry falls through to global; `@compose` children see only the global (not the parent stylesheet registry); `@import` children see the parent stylesheet registry; O(1) lookup in common case (no stylesheet-local functions), O(depth of stylesheet registries between call site and global) otherwise — in practice 1-2 hops, never the full Rules-node depth
 
 ### Track 2 — Node Shape: Direct Instance Fields
