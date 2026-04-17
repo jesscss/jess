@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `64beb037` (`Drop guard wrapper source parents`)
+Checkpoint commit: `ed8e6405` (`Drop empty import source nodes`)
 
 ## Priority Reset
 
