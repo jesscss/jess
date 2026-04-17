@@ -544,6 +544,13 @@ export abstract class Node<
   }
 
   get sourceRulesParent(): Rules | undefined {
+    const directRulesParent = this.rulesParent as Rules | undefined;
+    const frameFallbackNode = directRulesParent?.scopeFrame?.fallbackFrame?.rulesNode as
+      | { type?: string }
+      | undefined;
+    if (frameFallbackNode?.type === 'Rules') {
+      return frameFallbackNode as Rules;
+    }
     let node = this.parent;
     let sourceParent = this.sourceParent;
     while (node && !sourceParent) {

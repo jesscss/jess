@@ -335,6 +335,34 @@ function findVarDeclarationFast(
     }
     cursor = cursor.parent ?? cursor.sourceParent;
   }
+  const fallbackFrame = startRules.scopeFrame?.fallbackFrame;
+  const fallbackRules = fallbackFrame?.rulesNode;
+  if (publicMatch === undefined && optionalMatch === undefined && isNode(fallbackRules, N.Rules)) {
+    cursor = fallbackRules as Rules;
+    while (cursor) {
+      if (isNode(cursor, N.Rules)) {
+        const scope = cursor as Rules;
+        const sn = scope.sourceNode;
+        if (sn?.type === 'StyleImport' && sn.options.type !== 'import') {
+          break;
+        }
+        const result = findVarWithinScopeSurface(
+          scope,
+          undefined,
+          options.local,
+          new Set<Rules>()
+        );
+        publicMatch = laterOf(publicMatch, result.publicMatch);
+        optionalMatch = laterOf(optionalMatch, result.optionalMatch);
+      }
+      const nextFallbackRules = isNode(cursor, N.Rules)
+        ? ((cursor as Rules).scopeFrame?.fallbackFrame?.rulesNode as Node | undefined)
+        : undefined;
+      cursor = isNode(nextFallbackRules, N.Rules)
+        ? nextFallbackRules
+        : cursor.parent ?? cursor.sourceParent;
+    }
+  }
   if (publicMatch !== undefined) {
     return {
       match: publicMatch

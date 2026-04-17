@@ -3019,10 +3019,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
     let evalCandidates: MixinEntry[];
     const thisContext = context;
     let caller = thisContext.caller;
-    let sourceParent = caller?.value.name instanceof Node
-      ? caller.value.name.sourceParent
-      : caller?.sourceParent;
-    sourceParent ??= caller;
     let nodeArgs: Node[] = [];
     const savedRulesContext = thisContext.rulesContext;
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
@@ -3636,7 +3632,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
       rules.options.rulesVisibility ??= {};
       rules.options.rulesVisibility.VarDeclaration = thisContext.leakyRules ? 'public' : 'private';
       candidate.parent!.adopt(rules);
-      rules.sourceParent = sourceParent;
       // Don't set index before evaluation - let evaluation assign the correct index
       /**
        * If we have params or a guard, we need to create a wrapper rules object,
@@ -3651,6 +3646,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
         : undefined;
       let params = resolvedBindingInfo?.signature;
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
+      const callSiteRules = thisContext.rulesContext;
+      const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
+        ? (callSiteRules as Rules).getScopeFrame()
+        : undefined;
       if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
         if (needsOuterRules) {
@@ -3692,11 +3691,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
           });
         }
         // Wire the ScopeFrame with call-site parent and the populated live slots.
-        const callSiteRules = thisContext.rulesContext;
-        const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
-          ? (callSiteRules as Rules).getScopeFrame()
-          : undefined;
         scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, parentFrame, liveSlots);
+        scopeOwner.scopeFrame.fallbackFrame = parentFrame;
         if (outerRules) {
           outerRules.scopeFrame = scopeOwner.scopeFrame;
         }
@@ -3717,6 +3713,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
             }
           }
         }
+      } else if (parentFrame) {
+        rules.getScopeFrame().fallbackFrame = parentFrame;
       }
 
       /** Now we can evaluate our guards, if any */

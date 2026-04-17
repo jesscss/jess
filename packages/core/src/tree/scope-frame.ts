@@ -57,6 +57,14 @@ export interface ScopeFrame {
   parent: ScopeFrame | undefined;
 
   /**
+   * Optional call-site fallback chain for leaky/runtime lookup.
+   * This is distinct from `parent`: lexical/default-param resolution should
+   * stay on the ordinary frame chain, while unresolved body vars may still
+   * fall back to the caller scope.
+   */
+  fallbackFrame?: ScopeFrame | undefined;
+
+  /**
    * Live binding cells: mixin params and loop counters.
    * O(1) Map.get; populated at call time, not from the AST.
    */
@@ -124,6 +132,7 @@ export function buildScopeFrame(
 
   return {
     parent,
+    fallbackFrame: undefined,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
     pendingDynamicDecls: pendingDynamicDecls ?? [],

@@ -577,6 +577,58 @@ describe('Mixin', () => {
       expect(css).toContain('sub-scope-only: inside;');
     });
 
+    it('does not stamp sourceParent on ordinary mixin body output while preserving caller fallback', async () => {
+      const mixinNoParam = mixin({
+        name: any('.mixinNoParam'),
+        params: list([
+          vardecl({ name: 'parameter', value: ref({ key: 'parameterDefault' }, { type: 'variable' }) }, { paramVar: true })
+        ]),
+        guard: condition([
+          ref({ key: 'parameter' }, { type: 'variable' }),
+          '=',
+          any('top level')
+        ]),
+        rules: rules([
+          decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
+          decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
+          decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
+        ])
+      });
+
+      const callerRules = rules([
+        vardecl({ name: 'parameterDefault', value: any('inside') }),
+        vardecl({ name: 'anotherVariable', value: any('inside') }),
+        vardecl({ name: 'subScopeOnly', value: any('inside') })
+      ]);
+
+      const root = rules([
+        vardecl({ name: 'parameterDefault', value: any('top level') }),
+        vardecl({ name: 'anotherVariable', value: any('top level') }),
+        mixinNoParam,
+        ruleset({
+          selector: el('#allAreUsedHere'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const mixinCall = call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) });
+      callerRules.adopt(mixinCall);
+
+      const result = await mixinCall.eval(context);
+
+      expect(result).toBeInstanceOf(RulesClass);
+      if (!(result instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(result.sourceParent).toBeUndefined();
+      const css = result.toString();
+      expect(css).toContain('default: top level;');
+      expect(css).toContain('scope: top level;');
+      expect(css).toContain('sub-scope-only: inside;');
+    });
+
     it('should call a mixin with multiple parameters', async () => {
       // Create a mixin with multiple parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({
