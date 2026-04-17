@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `a206ebbb` (`Drop sourceParent ancestry reads`)
+Checkpoint commit: `9e8fa7cb` (`Delete sourceParent field`)
 
 ## Priority Reset
 
@@ -130,6 +130,8 @@ Practical rule for the next agent:
   - `Rules` and `Reference` scope walks now stay on real parent chains and
     explicit fallback frames; they no longer consult dead `sourceParent`
     ancestry while climbing lexical scope.
+  - The dead `sourceParent` field itself is gone from nodes; only explicit
+    semantic provenance surfaces remain.
   - Reference-import ancestry scans no longer walk `sourceParent`; they now
     stay on explicit `sourceNode`/`parent` provenance only.
   - Direct callable reference results no longer stamp `sourceParent` onto the
