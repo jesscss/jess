@@ -139,6 +139,19 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  private createEmptyImportResult(context: Context): Rules {
+    const sourceRules = isNode(context.rulesContext, N.Rules)
+      ? context.rulesContext
+      : isNode(this.parent, N.Rules)
+        ? this.parent
+        : context.root;
+    const emptyRules = sourceRules.clone(false) as Rules;
+    emptyRules.value = [];
+    emptyRules.scopeFrame = undefined;
+    emptyRules.sourceNode ??= this;
+    return emptyRules;
+  }
+
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
     const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
     let didAdd = false;
@@ -398,7 +411,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
           importRule.sourceNode = this;
           this.queueCssImport(context, importRule);
-          return Rules.create([]);
+          return this.createEmptyImportResult(context);
         }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
@@ -418,10 +431,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
           } catch (error: any) {
             if (importOptions!.optional) {
-              return Rules.create([]);
+              return this.createEmptyImportResult(context);
             }
             if (importOptions!.reference && (error?.phase === 'parse' || String(error?.code ?? '').startsWith('parse/'))) {
-              return Rules.create([]);
+              return this.createEmptyImportResult(context);
             }
             throw error;
           }

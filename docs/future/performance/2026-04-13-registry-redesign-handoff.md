@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `53ea5b7f` (`Keep detached collection calls on collection surfaces`)
+Checkpoint commit: `5103bbc6` (`Fix rules indentation`)
 
 ## Priority Reset
 
@@ -109,6 +109,9 @@ Practical rule for the next agent:
   lookup surfaces. Param/body evaluation stays on the cloned body `Rules`,
   with the temporary wrapper only carrying the guard scope that must not see
   body declarations.
+  Additional narrowing: plain CSS imports and optional/reference import misses
+  now return derived empty `Rules` surfaces rooted in the active importer
+  context instead of synthetic `Rules.create([])` placeholder shells.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
