@@ -3092,6 +3092,18 @@ export class MixinCollection extends Node<MixinEntry[]> {
       normalizeBoundLeadingItemWhitespace(boundValue);
       return boundValue;
     }
+    function createDerivedOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
+      const outerRules = sourceRules.clone(false);
+      outerRules.value = [];
+      outerRules.scopeFrame = undefined;
+      if (options) {
+        outerRules.options = {
+          ...outerRules.options,
+          ...options
+        };
+      }
+      return outerRules;
+    }
     const resolvedParamBindings = new WeakMap<Mixin, {
       bindings: RuntimeVarBindingRecord[];
       signature: List<Node> | undefined;
@@ -3602,7 +3614,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard);
         if (needsOuterRules) {
-          outerRules = Rules.create([], {
+          outerRules = createDerivedOuterRules(rules, {
             rulesVisibility: {
               Ruleset: 'public',
               Declaration: 'public',
@@ -3679,7 +3691,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (guard) {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
           if (guardNeedsOuterRules) {
-            outerRules ??= Rules.create([]);
+            outerRules ??= createDerivedOuterRules(rules);
             outerRules.adopt(guard);
             candidate.parent!.adopt(outerRules);
           }
@@ -3697,7 +3709,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 return false;
               }
               if (!probeGuard.hasFlag(F_STATIC)) {
-                outerRules ??= Rules.create([]);
+                outerRules ??= createDerivedOuterRules(rules);
                 outerRules.adopt(probeGuard);
                 candidate.parent!.adopt(outerRules);
               }
