@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `41607687` (`Drop import postlude source clears`)
+Checkpoint commit: `2efe585c` (`Stop inheriting source parents`)
 
 ## Priority Reset
 
@@ -119,6 +119,9 @@ Practical rule for the next agent:
   - Import postlude wrapper shells no longer need to explicitly scrub
     `sourceNode`; they just inherit whatever real imported surface they are
     derived from.
+  - Generic node derivation no longer carries `sourceParent` forward through
+    `inherit()`; any remaining provenance has to be kept explicitly by the
+    few semantic surfaces that still need it.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
   - Cloned/fallback/direct-value reference results no longer stamp
