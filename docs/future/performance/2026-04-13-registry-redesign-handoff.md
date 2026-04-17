@@ -105,6 +105,9 @@ Practical rule for the next agent:
   - Synthetic `Rules.create(...)` carrier shells have been heavily reduced.
   - Live call-site/source provenance is no longer being stamped onto most
     temporary wrapper surfaces.
+  - Ruleset-as-mixin and detached-unlock output surfaces no longer stamp
+    call-site `sourceParent`; ordinary mixin body output still does, because
+    unresolved body-var fallback semantics currently depend on it.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.

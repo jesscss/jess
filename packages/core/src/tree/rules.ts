@@ -3582,7 +3582,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
-        rules.sourceParent = sourceParent;
         let originalContext = thisContext.rulesContext;
         thisContext.rulesContext = rules;
         try {
@@ -3617,7 +3616,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // from the args List reaches the calling mixin's body where definition-site
         // variables (e.g. @hover-background) are registered.
         candidate.parent!.adopt(unlocked);
-        unlocked.sourceParent = sourceParent ?? caller;
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
         unlocked.options.referenceMode = false;
