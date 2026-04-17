@@ -7,7 +7,7 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { MixinCollection, Rules } from './rules.js';
+import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
@@ -186,31 +186,20 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       return result;
     } else if (isNode(n, N.Rules | N.Collection)) {
-      // If the evaluated name is a Rules or Collection (detached rulesets),
-      // return those rules directly, but only if args are empty
-      // If args are provided, throw an error - you can't call Rules/Collection with arguments
+      // Detached rulesets/collections share the same callable-body path as
+      // anonymous mixin bodies. They still reject explicit arguments.
       if (args && args.value.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      let rules = (n as Rules).clone(false);
-      // Inherit from Collection (n) to preserve definition-scope parent chain
-      // This ensures variables like @a resolve from where the detached ruleset was defined
-      // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
-      rules.inherit(n);
-      rules.sourceNode ??= n;
-      // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
-      // to this call so leaky fallback can resolve call-site variables (e.g. @d).
-      rules.sourceParent = this;
-      rules = await rules.eval(context);
-      context.callStack.pop();
-      context.parenFrames.pop();
-      // Apply markImportant if needed
-      if (markImportant) {
-        this.makeImportant(n);
-      }
-      return rules;
+      n = new MixinCollection([
+        callableRulesEntry(
+          { rules: n as Rules },
+          n.parent,
+          n.index
+        )
+      ]);
     }
 
     if (n instanceof MixinCollection) {
