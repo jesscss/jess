@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `0022f480` (`Drop interpolated mixin source nodes`)
+Checkpoint commit: `ba36c61f` (`Drop interpolated at-rule source nodes`)
 
 ## Priority Reset
 
@@ -114,6 +114,8 @@ Practical rule for the next agent:
     `ScopeFrame` fallback surface instead of node provenance.
   - Interpolated mixin-name `preEval()` wrappers no longer inherit
     `sourceNode` provenance from the canonical definition.
+  - Interpolated at-rule `preEval()` wrappers no longer inherit `sourceNode`
+    provenance from the canonical at-rule either.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
   - Cloned/fallback/direct-value reference results no longer stamp
