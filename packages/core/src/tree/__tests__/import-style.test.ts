@@ -14,6 +14,9 @@ import {
   mixin,
   call,
   list,
+  condition,
+  expr,
+  defaultguard,
   sellist,
   quoted,
   amp,
@@ -1401,6 +1404,147 @@ describe('Style import', () => {
           color: red;
         }
       `);
+    });
+
+    it('import-reference: reference-imported mixin guards read caller scope while params stay live-bound', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-mixin-guarded.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.guarded-ref'),
+          params: list([
+            any('color', { role: 'property' })
+          ]),
+          guard: condition([
+            condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('dark')
+            ]),
+            'and',
+            condition([
+              expr(ref({ key: 'color' }, { type: 'variable' })),
+              '=',
+              any('red')
+            ])
+          ]),
+          rules: rules([
+            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-mixin-guarded.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({
+              name: ref({ key: '.guarded-ref' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({
+              name: ref({ key: '.guarded-ref' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).not.toContain('.light {\n  color: red;');
+    });
+
+    it('import-reference: reference-imported default guards read caller scope without leaking param bindings', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-mixin-default-guarded.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.guarded-default-ref'),
+          params: list([
+            any('color', { role: 'property' })
+          ]),
+          guard: condition([
+            condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('dark')
+            ]),
+            'and',
+            defaultguard()
+          ]),
+          rules: rules([
+            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        mixin({
+          name: any('.guarded-default-ref'),
+          params: list([
+            any('color', { role: 'property' })
+          ]),
+          guard: condition([
+            condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('light')
+            ]),
+            'and',
+            defaultguard()
+          ]),
+          rules: rules([
+            decl({ name: any('background'), value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-mixin-default-guarded.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            vardecl({ name: 'color', value: any('outer-dark') }),
+            call({
+              name: ref({ key: '.guarded-default-ref' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            }),
+            decl({ name: any('value'), value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            vardecl({ name: 'color', value: any('outer-light') }),
+            call({
+              name: ref({ key: '.guarded-default-ref' }, { type: 'mixin-ruleset' }),
+              args: list([any('blue')])
+            }),
+            decl({ name: any('value'), value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).toContain('value: outer-dark;');
+      expect(css).toContain('.light {');
+      expect(css).toContain('background: blue;');
+      expect(css).toContain('value: outer-light;');
+      expect(css).not.toContain('value: red;');
+      expect(css).not.toContain('value: blue;');
     });
 
     it('import-reference: directive-bearing reference-imported mixins remain callable', async () => {
