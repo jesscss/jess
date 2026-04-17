@@ -415,7 +415,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       try {
         if (this.isPlainCssImport(finalPath)) {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
-          importRule.sourceNode = this;
           this.queueCssImport(context, importRule);
           return this.createEmptyImportResult(context);
         }

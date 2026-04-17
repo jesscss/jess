@@ -113,6 +113,9 @@ Practical rule for the next agent:
   - Cloned/fallback/direct-value reference results no longer stamp
     `sourceParent` onto the returned node; only the reference token trivia is
     copied across now.
+  - Plain CSS import queue entries no longer stamp `sourceNode` onto the
+    emitted `@import` at-rule; dedupe now relies on node identity plus
+    location/signature rather than back-pointing at the `StyleImport` node.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
