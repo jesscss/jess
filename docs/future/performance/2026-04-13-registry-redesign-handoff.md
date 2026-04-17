@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `56d3b8c0` (`Refresh redesign handoff checkpoint`)
+Checkpoint commit: `ed2760d8` (`Root mixed import wrappers in imported surfaces`)
 
 ## Priority Reset
 
