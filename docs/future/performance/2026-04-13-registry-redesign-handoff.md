@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `c68fd2df` (`Require Rules bodies for stylesheet funcs`)
+Checkpoint commit: `62142552` (`Drop synthetic mixin wrapper for funcs`)
 
 ## Priority Reset
 
