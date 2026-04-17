@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `9ec83ad8` (`Derive empty mixin outputs from candidate surfaces`)
+Checkpoint commit: `36b8cc9f` (`Derive mixin output carriers from candidate surfaces`)
 
 ## Priority Reset
 
@@ -121,6 +121,9 @@ Practical rule for the next agent:
   Additional narrowing: the remaining multi-output mixin carrier now also
   derives from the candidate source surface instead of rooting itself in the
   first emitted child rule just to exist.
+  Additional narrowing: dynamic/default guard wrappers no longer carry adopted
+  guard nodes themselves; they now stay as pure lookup surfaces while guard
+  evaluation remains on the canonical guard tree.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.

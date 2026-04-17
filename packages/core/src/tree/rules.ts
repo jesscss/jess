@@ -3711,7 +3711,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
           if (guardNeedsOuterRules) {
             outerRules ??= createDerivedOuterRules(rules);
-            outerRules.adopt(guard);
             candidate.parent!.adopt(outerRules);
           }
           /** Allow lookup on the inherited rules */
@@ -3730,7 +3729,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
               if (!probeGuard.hasFlag(F_STATIC)) {
                 outerRules ??= createDerivedOuterRules(rules);
                 outerRules.scopeFrame = rules.scopeFrame;
-                outerRules.adopt(probeGuard);
                 candidate.parent!.adopt(outerRules);
               }
               thisContext.isDefault = isDefaultValue;
