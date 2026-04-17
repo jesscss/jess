@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `79ad36f9` (`Drop dynamic node source backfill`)
+Checkpoint commit: `c90ad61c` (`Replace call declaration source parents`)
 
 ## Priority Reset
 
