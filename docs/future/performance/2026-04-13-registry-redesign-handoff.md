@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `ca96bae9` (`Drop source-parent provenance scans`)
+Checkpoint commit: `8c8451bc` (`Make each a thin  wrapper`)
 
 ## Priority Reset
 
@@ -146,6 +146,8 @@ Practical rule for the next agent:
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
+  - `@jesscss/fns` `each()` now just returns a `For` over the canonical
+    callback rules surface; loop frames stay owned by `$for`.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
