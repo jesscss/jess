@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `8c8451bc` (`Make each a thin  wrapper`)
+Checkpoint commit: `84c5b649` (`Fix each type narrowing`)
 
 ## Priority Reset
 
