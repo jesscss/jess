@@ -1096,7 +1096,6 @@ export abstract class Node<
     // Note that we need to create new arrays if we mutate pre/post later
     this.pre ||= node.pre;
     this.post ||= node.post;
-    this.sourceNode = node.sourceNode;
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
