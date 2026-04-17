@@ -178,6 +178,24 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return configuredRules;
   }
 
+  private wrapConfiguredImportedSurface(
+    sourceRules: Rules,
+    importedChildRules: Rules,
+    additiveNonVariableNodes: Node[],
+    additiveVariableNodes: Node[]
+  ): Rules {
+    const finalRules = this.createConfiguredWrapperSurface(sourceRules);
+    finalRules.value = [];
+    for (const newNode of additiveNonVariableNodes) {
+      finalRules.adopt(newNode);
+      finalRules.value.push(newNode);
+    }
+    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    finalRules.adopt(importedChildRules);
+    finalRules.value.push(importedChildRules);
+    return finalRules;
+  }
+
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
     const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
     let didAdd = false;
@@ -575,17 +593,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               this.attachConfiguredVarBindings(configuredRules, additiveVariableNodes);
               rules = configuredRules;
             } else {
-              const finalRules = this.createConfiguredWrapperSurface(rules);
               const importedChildRules = this.createConfiguredImportedSurface(rules, { clearImportBoundary: true });
-              finalRules.value = [];
-              for (const newNode of additiveNonVariableNodes) {
-                finalRules.adopt(newNode);
-                finalRules.value.push(newNode);
-              }
-              this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
-              finalRules.adopt(importedChildRules);
-              finalRules.value.push(importedChildRules);
-              rules = finalRules;
+              rules = this.wrapConfiguredImportedSurface(
+                rules,
+                importedChildRules,
+                additiveNonVariableNodes,
+                additiveVariableNodes
+              );
             }
           } else {
             // Keep replacement semantics on a shallow-cloned imported Rules
@@ -608,17 +622,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                 this.attachConfiguredVarBindings(replacedRules, additiveVariableNodes);
                 rules = replacedRules;
               } else {
-                const finalRules = this.createConfiguredWrapperSurface(rules);
                 this.clearConfiguredImportBoundary(replacedRules);
-                finalRules.value = [];
-                for (const newNode of additiveNonVariableNodes) {
-                  finalRules.adopt(newNode);
-                  finalRules.value.push(newNode);
-                }
-                this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
-                finalRules.adopt(replacedRules);
-                finalRules.value.push(replacedRules);
-                rules = finalRules;
+                rules = this.wrapConfiguredImportedSurface(
+                  rules,
+                  replacedRules,
+                  additiveNonVariableNodes,
+                  additiveVariableNodes
+                );
               }
             }
           }
