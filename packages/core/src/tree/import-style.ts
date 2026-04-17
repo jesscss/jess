@@ -337,8 +337,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isForward) {
       out.removeFlag(F_VISIBLE);
     }
-    // Set sourceNode so variable lookups know they can cross import boundaries
-    out.sourceNode = this;
     this.adopt(out);
     return out;
   }
