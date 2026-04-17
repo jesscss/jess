@@ -994,6 +994,78 @@ describe('Style import', () => {
       expect(composedRules.toString()).toContain('color: purple');
     });
 
+    it('keeps variable-only additive "with" configs visible to imported guarded mixins', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-guarded-mixin.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        mixin({
+          name: any('.configured-guarded'),
+          params: list([
+            any('color', { role: 'property' })
+          ]),
+          guard: condition([
+            condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('dark')
+            ]),
+            'and',
+            condition([
+              expr(ref({ key: 'accentColor' }, { type: 'variable' })),
+              '=',
+              any('purple')
+            ])
+          ]),
+          rules: rules([
+            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library-guarded-mixin.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'accentColor', value: any('purple') })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        }),
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({
+              name: ref({ key: '.configured-guarded' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({
+              name: ref({ key: '.configured-guarded' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).toContain('border-color: purple;');
+      expect(css).not.toContain('.light {\n  color: red;');
+    });
+
     it('keeps replacement configs on an imported child rules surface when additive nodes are also present', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
@@ -1039,6 +1111,143 @@ describe('Style import', () => {
       expect(derivedColor).toBeDefined();
       const derivedColorValue = await derivedColor!.value.value.eval(context);
       expect(`${derivedColorValue}`).toBe('teal');
+    });
+
+    it('keeps child-surface additive "with" configs compatible with imported mixin calls', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-child-surface-mixin.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        mixin({
+          name: any('.use-accent'),
+          rules: rules([
+            decl({ name: any('color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: any('background'), value: any('white') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library-child-surface-mixin.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'accentColor', value: any('purple') }),
+              ruleset({
+                selector: sellist([sel([el('.addon')])]),
+                rules: rules([
+                  decl({ name: any('border-color'), value: any('purple') })
+                ])
+              })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        }),
+        ruleset({
+          selector: el('.consumer'),
+          rules: rules([
+            call({
+              name: ref({ key: '.use-accent' }, { type: 'mixin-ruleset' }),
+              args: list([])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+      const css = `${evald}`;
+
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(css).toContain('.base');
+      expect(css).toContain('.addon');
+      expect(css).toContain('.consumer {');
+      expect(css).toContain('color: purple;');
+    });
+
+    it('keeps child-surface additive "with" configs visible to imported guarded mixins', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-child-surface-guarded-mixin.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        mixin({
+          name: any('.guarded-child-surface'),
+          params: list([
+            any('color', { role: 'property' })
+          ]),
+          guard: condition([
+            condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('dark')
+            ]),
+            'and',
+            condition([
+              expr(ref({ key: 'accentColor' }, { type: 'variable' })),
+              '=',
+              any('purple')
+            ])
+          ]),
+          rules: rules([
+            decl({ name: any('color'), value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library-child-surface-guarded-mixin.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'accentColor', value: any('purple') }),
+              ruleset({
+                selector: sellist([sel([el('.addon')])]),
+                rules: rules([
+                  decl({ name: any('border-color'), value: any('purple') })
+                ])
+              })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        }),
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({
+              name: ref({ key: '.guarded-child-surface' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({
+              name: ref({ key: '.guarded-child-surface' }, { type: 'mixin-ruleset' }),
+              args: list([any('red')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.addon');
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: red;');
+      expect(css).toContain('border-color: purple;');
+      expect(css).not.toContain('.light {\n  color: red;');
     });
 
     it('throws if "set" is used more than once', async () => {

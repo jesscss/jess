@@ -661,21 +661,40 @@ function lookupRuntimeVarBinding(
   context: Context
 ): RuntimeVarBinding | undefined {
   const frame = targetRules.getScopeFrame();
-  let f = frame;
-  while (f) {
-    const live = f.liveSlotsByName.get(key);
-    if (live) {
-      const src = live.sourceNode as Node | undefined;
-      if (!src || !context.searchScope.has(src)) {
-        return {
-          kind: 'runtime-var-binding',
-          value: live.value,
-          readonly: live.readonly,
-          sourceNode: src
-        } satisfies RuntimeVarBinding;
+  const seen = new Set<ScopeFrame>();
+  const searchChain = (start: ScopeFrame | undefined): RuntimeVarBinding | undefined => {
+    let f = start;
+    while (f && !seen.has(f)) {
+      seen.add(f);
+      const live = f.liveSlotsByName.get(key);
+      if (live) {
+        const src = live.sourceNode as Node | undefined;
+        if (!src || !context.searchScope.has(src)) {
+          return {
+            kind: 'runtime-var-binding',
+            value: live.value,
+            readonly: live.readonly,
+            sourceNode: src
+          } satisfies RuntimeVarBinding;
+        }
       }
+      f = f.parent;
     }
-    f = f.parent;
+    return undefined;
+  };
+
+  const direct = searchChain(frame);
+  if (direct) {
+    return direct;
+  }
+
+  let fallback = frame.fallbackFrame;
+  while (fallback) {
+    const resolved = searchChain(fallback);
+    if (resolved) {
+      return resolved;
+    }
+    fallback = fallback.fallbackFrame;
   }
   return undefined;
 }

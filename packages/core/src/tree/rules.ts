@@ -385,6 +385,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       scope.mixinsByName ??= new Map();
 
       const results: MixinEntry[] = [];
+      const wrapCallableForScope = (candidate: MixinEntry): MixinEntry => {
+        if (!isNode(candidate, N.Mixin) || candidate.parent === scope) {
+          return candidate;
+        }
+        return callableRulesEntry(candidate.value, scope, candidate.index);
+      };
       const candidates = scope.mixinsByName.get(key);
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
@@ -392,7 +398,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
             continue;
           }
-          results.push(candidate);
+          results.push(wrapCallableForScope(candidate));
         }
       }
 
@@ -473,6 +479,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       visited.add(scope);
 
       const results: MixinEntry[] = [];
+      const wrapCallableForScope = (candidate: MixinEntry): MixinEntry => {
+        if (!isNode(candidate, N.Mixin) || candidate.parent === scope) {
+          return candidate;
+        }
+        return callableRulesEntry(candidate.value, scope, candidate.index);
+      };
       const registry = scope.getRegistry('mixin');
       registry.indexPendingItems();
       const entries = registry.index.get(key) ?? [];
@@ -485,7 +497,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
           continue;
         }
-        results.push(candidate);
+        results.push(wrapCallableForScope(candidate));
       }
 
       const childEntries = scope._rulesSet as Array<{
@@ -3743,6 +3755,16 @@ export class MixinCollection extends Node<MixinEntry[]> {
       const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
         ? (callSiteRules as Rules).getScopeFrame()
         : undefined;
+      const definitionFrame: ScopeFrame | undefined = isNode(candidate.parent, N.Rules)
+        ? (candidate.parent as Rules).getScopeFrame()
+        : undefined;
+      const fallbackScopeFrame = (
+        definitionFrame
+        && definitionFrame !== parentFrame
+      )
+        ? definitionFrame
+        : parentFrame;
+      let usesPreboundParamGuardOuterRules = false;
       if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
         if (needsOuterRules) {
@@ -3754,6 +3776,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               Mixin: 'public'
             }
           }, false);
+          usesPreboundParamGuardOuterRules = true;
         }
         const scopeOwner = rules;
         // Mark param source nodes and build the live-slot map for the ScopeFrame.
@@ -3783,7 +3806,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         // Wire the ScopeFrame with call-site parent and the populated live slots.
         scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, parentFrame, liveSlots);
-        scopeOwner.scopeFrame.fallbackFrame = parentFrame;
+        scopeOwner.scopeFrame.fallbackFrame = fallbackScopeFrame;
         if (outerRules) {
           outerRules.scopeFrame = scopeOwner.scopeFrame;
         }
@@ -3837,7 +3860,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
       try {
         if (guard) {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
-          if (guardNeedsOuterRules && !usesPreboundNonParamGuardOuterRules) {
+          if (
+            guardNeedsOuterRules
+            && !usesPreboundNonParamGuardOuterRules
+            && !usesPreboundParamGuardOuterRules
+          ) {
             ensureOuterRules(candidate.parent!);
           }
           /** Allow lookup on the inherited rules */
@@ -3853,7 +3880,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
               if (!probeGuard) {
                 return false;
               }
-              if (!probeGuard.hasFlag(F_STATIC)) {
+              if (
+                !probeGuard.hasFlag(F_STATIC)
+                && !usesPreboundNonParamGuardOuterRules
+                && !usesPreboundParamGuardOuterRules
+              ) {
                 ensureOuterRules(candidate.parent!);
               }
               thisContext.isDefault = isDefaultValue;
