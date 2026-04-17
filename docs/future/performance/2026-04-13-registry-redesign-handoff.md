@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `001e4500` (`Drop direct reference source parents`)
+Checkpoint commit: `64beb037` (`Drop guard wrapper source parents`)
 
 ## Priority Reset
 
