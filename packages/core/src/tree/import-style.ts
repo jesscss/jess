@@ -170,12 +170,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return rules;
   }
 
-  private createConfiguredImportedSurface(sourceRules: Rules, options?: { clearImportBoundary?: boolean }): Rules {
-    const configuredRules = sourceRules.clone(false) as Rules;
-    if (options?.clearImportBoundary) {
-      this.clearConfiguredImportBoundary(configuredRules);
-    }
-    return configuredRules;
+  private createConfiguredImportedSurface(sourceRules: Rules): Rules {
+    return sourceRules.clone(false) as Rules;
   }
 
   private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Rules> {
