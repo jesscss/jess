@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `aada9a56` (`Refresh redesign handoff checkpoint`)
+Checkpoint commit: `99ae35ae` (`Root import postlude wrappers in imported surfaces`)
 
 ## Priority Reset
 
