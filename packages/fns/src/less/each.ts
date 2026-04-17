@@ -30,18 +30,10 @@ import {
  */
 const each = defineFunction(
   'each',
-  async function(this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const context = this?.context;
-    const rawMixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
-    // Re-anchor the callback body to the current invocation scope instead of the
-    // parser's detached arg-list ancestry.
-    const mixinRules = rawMixinRules.clone();
-    if (context) {
-      Object.defineProperty(mixinRules, 'parent', { value: context.rulesContext ?? rawMixinRules.parent });
-      mixinRules.sourceParent = this.caller ?? context.rulesContext ?? rawMixinRules.sourceParent;
-    }
+  async function(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
+    const mixinRules = mixin.type === 'Rules' ? mixin : mixin.value.rules;
     let keys = ['value', 'key', 'index'];
-    if (mixin instanceof Mixin) {
+    if (mixin.type === 'Mixin') {
       const { params } = mixin.value;
       if (params) {
         let paramList = params.value;
@@ -56,12 +48,22 @@ const each = defineFunction(
         }
       }
     }
-    const vars = keys.map(name => new VarDeclaration({
-      name: new Any(name, { role: 'property' }),
-      value: new Nil()
-    }, { paramVar: true }));
+    const vars: [VarDeclaration, VarDeclaration, VarDeclaration] = [
+      new VarDeclaration({
+        name: new Any(keys[0], { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true }),
+      new VarDeclaration({
+        name: new Any(keys[1], { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true }),
+      new VarDeclaration({
+        name: new Any(keys[2], { role: 'property' }),
+        value: new Nil()
+      }, { paramVar: true })
+    ];
     return new For({
-      pattern: { kind: 'tuple', values: vars as [VarDeclaration, ...VarDeclaration[]] },
+      pattern: { kind: 'tuple', values: vars },
       iterable: { kind: 'node', value: list },
       rules: mixinRules
     });
