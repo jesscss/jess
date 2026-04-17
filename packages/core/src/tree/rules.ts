@@ -3627,7 +3627,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         : undefined;
       let params = resolvedBindingInfo?.signature;
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
-        if (candidate.value.params || paramBindings.length > 0) {
+      if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
         if (needsOuterRules) {
           outerRules = createDerivedOuterRules(rules, {
