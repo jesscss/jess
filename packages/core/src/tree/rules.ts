@@ -3850,7 +3850,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
     /** Create a rules wrapper - but optimize to avoid unnecessary nesting */
     let output: Rules;
     if (outputRules.length === 0) {
-      return emptyOutputSourceRules ? createEmptyDerivedRules(emptyOutputSourceRules) : Rules.create([]);
+      if (!emptyOutputSourceRules) {
+        throw new ReferenceError('Mixin output source surface was not established.');
+      }
+      return createEmptyDerivedRules(emptyOutputSourceRules);
     }
     if (outputRules.length === 1) {
       output = outputRules[0]!;

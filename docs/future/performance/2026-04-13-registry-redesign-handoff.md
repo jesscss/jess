@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `cf489d90` (`Derive empty import results from importer context`)
+Checkpoint commit: `3ab06a8c` (`Derive inline import carriers from importer context`)
 
 ## Priority Reset
 
@@ -115,6 +115,9 @@ Practical rule for the next agent:
   Additional narrowing: inline import source carriers now derive from the
   active importer context too, instead of starting from a synthetic
   `Rules.create([sourceNode])` shell before postlude wrapping.
+  Additional narrowing: empty mixin output now always derives from the
+  candidate source surface; the dead synthetic `Rules.create([])` fallback is
+  gone.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
