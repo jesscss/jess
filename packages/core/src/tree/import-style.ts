@@ -232,6 +232,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return replacedRules;
   }
 
+  private applyConfiguredAdditions(
+    sourceRules: Rules,
+    importedRules: Rules,
+    additiveNodes: Node[]
+  ): Rules {
+    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
+    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
+    if (additiveNonVariableNodes.length === 0) {
+      this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
+      return importedRules;
+    }
+
+    this.clearConfiguredImportBoundary(importedRules);
+    return this.wrapConfiguredImportedSurface(
+      sourceRules,
+      importedRules,
+      additiveNonVariableNodes,
+      additiveVariableNodes
+    );
+  }
+
   private wrapConfiguredImportedSurface(
     sourceRules: Rules,
     importedChildRules: Rules,
@@ -600,21 +621,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             // Pure additive configuration can keep the imported Rules as a
             // child surface instead of flattening every imported node into a
             // fresh synthetic top-level tree.
-            const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
-            const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
-            if (additiveNonVariableNodes.length === 0) {
-              const configuredRules = this.createConfiguredImportedSurface(rules);
-              this.attachConfiguredVarBindings(configuredRules, additiveVariableNodes);
-              rules = configuredRules;
-            } else {
-              const importedChildRules = this.createConfiguredImportedSurface(rules, { clearImportBoundary: true });
-              rules = this.wrapConfiguredImportedSurface(
-                rules,
-                importedChildRules,
-                additiveNonVariableNodes,
-                additiveVariableNodes
-              );
-            }
+            const configuredRules = this.createConfiguredImportedSurface(rules);
+            rules = this.applyConfiguredAdditions(rules, configuredRules, newVariables);
           } else {
             // Keep replacement semantics on a shallow-cloned imported Rules
             // surface instead of flattening every imported top-level node into
@@ -623,20 +631,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             if (newVariables.length === 0) {
               rules = replacedRules;
             } else {
-              const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
-              const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
-              if (additiveNonVariableNodes.length === 0) {
-                this.attachConfiguredVarBindings(replacedRules, additiveVariableNodes);
-                rules = replacedRules;
-              } else {
-                this.clearConfiguredImportBoundary(replacedRules);
-                rules = this.wrapConfiguredImportedSurface(
-                  rules,
-                  replacedRules,
-                  additiveNonVariableNodes,
-                  additiveVariableNodes
-                );
-              }
+              rules = this.applyConfiguredAdditions(rules, replacedRules, newVariables);
             }
           }
         }

@@ -989,6 +989,7 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.options.importBoundary).toBe(true);
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
       const injectedVarValue = await injectedVar!.value.value.eval(context);
