@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `9e8fa7cb` (`Delete sourceParent field`)
+Checkpoint commit: `7d8ba105` (`Keep mixin preEval wrappers self-owned`)
 
 ## Priority Reset
 
@@ -115,8 +115,8 @@ Practical rule for the next agent:
     no longer stamp call-site `sourceParent`.
   - Ordinary mixin-body unresolved-var fallback now rides an explicit
     `ScopeFrame` fallback surface instead of node provenance.
-  - Interpolated mixin-name `preEval()` wrappers no longer inherit
-    `sourceNode` provenance from the canonical definition.
+  - Interpolated mixin-name `preEval()` wrappers stay self-owned; they no
+    longer clear or inherit canonical `sourceNode` provenance.
   - Interpolated at-rule `preEval()` wrappers no longer inherit `sourceNode`
     provenance from the canonical at-rule either.
   - Import postlude wrapper shells no longer need to explicitly scrub
