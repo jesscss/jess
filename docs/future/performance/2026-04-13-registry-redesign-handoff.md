@@ -90,8 +90,11 @@ Practical rule for the next agent:
     and emitted loop output no longer retains iteration-local frame state.
 - [ ] Slice 13c — Finish converging mixins, imports, and `$for` on canonical-tree + binding-frame evaluation
   Current status:
-  - Imports: mostly converged. Remaining seam is the last non-variable config /
-    postlude carriers that still need a real outer `Rules` surface.
+  - Imports: mostly converged. Non-classic import boundaries now live on the
+    final returned `Rules` surface, and nested configured child surfaces clear
+    that marker. Remaining seam is reference-import fixture parity plus the
+    last real non-variable/postlude carriers that still need an outer `Rules`
+    surface.
   - Mixins: mostly converged. Remaining seam is dynamic/default-guard outer
     wrappers and any remaining multi-output carrier shells.
   - `$for`: frame/binding convergence is done. Only incidental structural-shell

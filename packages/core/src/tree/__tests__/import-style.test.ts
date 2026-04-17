@@ -910,10 +910,12 @@ describe('Style import', () => {
     it('keeps additive non-variable "with" configs on a child rules surface', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'baseColor', value: any('black') }),
+        vardecl({ name: 'derivedColor', value: ref('baseColor', { type: 'variable' }) }),
         ruleset({
           selector: sellist([sel([el('.base')])]),
           rules: rules([
-            decl({ name: any('color'), value: any('black') })
+            decl({ name: any('color'), value: ref('derivedColor', { type: 'variable' }) })
           ])
         })
       ]));
@@ -944,6 +946,7 @@ describe('Style import', () => {
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.toString()).toContain('.base');
       expect(composedRules.toString()).toContain('.addon');
+      expect(composedRules.toString()).toContain('color: black');
     });
 
     it('keeps variable-only additive "with" configs on the imported rules surface', async () => {
