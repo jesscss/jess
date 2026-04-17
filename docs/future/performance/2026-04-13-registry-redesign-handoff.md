@@ -149,6 +149,9 @@ Practical rule for the next agent:
   Additional narrowing: dynamic/default guard wrappers no longer stamp
   `sourceParent` onto the temporary outer `Rules` lookup surface; guard scope
   now stays frame/parent-driven there too.
+  Additional narrowing: empty import results and inline import source carriers
+  no longer stamp `sourceNode` from the `StyleImport` node when they only
+  exist to carry empty/output-only shape rather than imported lookup surfaces.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.

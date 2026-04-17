@@ -148,7 +148,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const emptyRules = sourceRules.clone(false) as Rules;
     emptyRules.value = [];
     emptyRules.scopeFrame = undefined;
-    emptyRules.sourceNode ??= this;
     return emptyRules;
   }
 
