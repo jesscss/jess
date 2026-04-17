@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `00ae259d` (`Move import boundaries off source provenance`)
+Checkpoint commit: `ddf46b1c` (`Narrow reference import parity seam`)
 
 ## Priority Reset
 
