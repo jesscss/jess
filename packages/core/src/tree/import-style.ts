@@ -584,7 +584,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
                 this.attachConfiguredVarBindings(replacedRules, additiveVariableNodes);
                 rules = replacedRules;
               } else {
-                const finalRules = replacedRules.clone(false) as Rules;
+                const finalRules = rules.clone(false) as Rules;
                 finalRules.value = [];
                 for (const newNode of additiveNonVariableNodes) {
                   finalRules.adopt(newNode);

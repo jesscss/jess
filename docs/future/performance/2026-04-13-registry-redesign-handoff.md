@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `d356b09a` (`Keep mixin guard wrappers lookup-only`)
+Checkpoint commit: `56d3b8c0` (`Refresh redesign handoff checkpoint`)
 
 ## Priority Reset
 
@@ -124,6 +124,9 @@ Practical rule for the next agent:
   Additional narrowing: dynamic/default guard wrappers no longer carry adopted
   guard nodes themselves; they now stay as pure lookup surfaces while guard
   evaluation remains on the canonical guard tree.
+  Additional narrowing: mixed replacement+additive import config wrappers now
+  derive from the original imported surface too, instead of rooting the outer
+  additive shell in the intermediate replacement wrapper.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.
