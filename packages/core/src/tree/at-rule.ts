@@ -109,7 +109,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       const node = this.clone(false) as AtRule;
       node.preEvaluated = true;
-      node.sourceNode = undefined;
 
       // Evaluate name if needed (for interpolated names)
       let { name } = node.value;
@@ -139,7 +138,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
         node = original.clone(false) as AtRule;
-        node.sourceNode = undefined;
       }
       node.preEvaluated = true;
       return node;

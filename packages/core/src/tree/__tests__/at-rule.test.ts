@@ -46,7 +46,7 @@ describe('AtRule', () => {
     expect(preEvald).toBe(node);
   });
 
-  it('does not stamp sourceNode on interpolated at-rule preEval wrappers', async () => {
+  it('keeps interpolated at-rule preEval wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
     const node = atrule({
       name: interpolated({
         source: '@media',
@@ -59,7 +59,7 @@ describe('AtRule', () => {
 
     expect(preEvald).not.toBe(node);
     expect(preEvald).toBeInstanceOf(AtRule);
-    expect(preEvald.sourceNode).toBeUndefined();
+    expect(preEvald.sourceNode).toBe(preEvald);
     if (!(preEvald instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
