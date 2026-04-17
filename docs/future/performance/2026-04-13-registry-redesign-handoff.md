@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `5103bbc6` (`Fix rules indentation`)
+Checkpoint commit: `cf489d90` (`Derive empty import results from importer context`)
 
 ## Priority Reset
 
@@ -112,6 +112,9 @@ Practical rule for the next agent:
   Additional narrowing: plain CSS imports and optional/reference import misses
   now return derived empty `Rules` surfaces rooted in the active importer
   context instead of synthetic `Rules.create([])` placeholder shells.
+  Additional narrowing: inline import source carriers now derive from the
+  active importer context too, instead of starting from a synthetic
+  `Rules.create([sourceNode])` shell before postlude wrapping.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.

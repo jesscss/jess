@@ -152,6 +152,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return emptyRules;
   }
 
+  private createInlineImportSourceCarrier(context: Context, sourceNode: Node): Rules {
+    const sourceRules = this.createEmptyImportResult(context);
+    sourceRules.adopt(sourceNode);
+    sourceRules.value = [sourceNode];
+    return sourceRules;
+  }
+
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
     const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
     let didAdd = false;
@@ -425,7 +432,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = new Any(source, { role: 'any' });
-          rules = this.wrapInlineSourceWithPostlude(sourceNode, importOptions!.postlude);
+          const sourceRules = this.createInlineImportSourceCarrier(context, sourceNode);
+          rules = this.wrapInlineSourceWithPostlude(sourceRules, importOptions!.postlude);
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
@@ -752,14 +760,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Applies CSS import postlude wrappers around inline source content.
    * Falls back to `@media <postlude>` for plain query nodes.
    */
-  private wrapInlineSourceWithPostlude(sourceNode: Node, postlude?: Node): Rules {
+  private wrapInlineSourceWithPostlude(sourceRules: Rules, postlude?: Node): Rules {
     const deriveInlineWrapper = (wrappedNode: Node, sourceRules: Rules): Rules => {
       const wrapped = sourceRules.clone(false) as Rules;
       wrapped.value = [wrappedNode];
       wrapped.scopeFrame = undefined;
       return wrapped;
     };
-    const sourceRules = Rules.create([sourceNode]);
     if (!postlude) {
       return sourceRules;
     }
