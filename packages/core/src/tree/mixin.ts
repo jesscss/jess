@@ -133,7 +133,6 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     let { name, rules } = node.value;
     if (name && name instanceof Interpolated) {
       node = this.clone(false) as this;
-      node.sourceNode = undefined;
       name = node.value.name;
       rules = node.value.rules;
     }
