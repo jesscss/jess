@@ -1978,9 +1978,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (resolvedNode.index === undefined) {
         resolvedNode.index = node.index;
       }
-      if (!resolvedNode.sourceNode) {
-        resolvedNode.sourceNode = node.sourceNode ?? node;
-      }
       if (resolvedNode.type === 'Ruleset') {
         rules.registerNode(resolvedNode);
       }

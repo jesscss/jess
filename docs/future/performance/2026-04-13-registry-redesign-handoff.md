@@ -125,6 +125,8 @@ Practical rule for the next agent:
     copy/freeze path at all.
   - Final import result wrappers no longer overwrite `sourceNode`; imported
     provenance is bound once before evaluation and inherited from there.
+  - Dynamic-name resolution no longer backfills `sourceNode` onto resolved
+    nodes when interpolation materializes a canonical node.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
