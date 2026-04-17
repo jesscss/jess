@@ -695,16 +695,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Falls back to `@media <postlude>` for plain query nodes.
    */
   private wrapInlineSourceWithPostlude(sourceNode: Node, postlude?: Node): Rules {
+    const deriveInlineWrapper = (wrappedNode: Node, sourceRules: Rules): Rules => {
+      const wrapped = sourceRules.clone(false) as Rules;
+      wrapped.value = [wrappedNode];
+      wrapped.scopeFrame = undefined;
+      return wrapped;
+    };
+    const sourceRules = Rules.create([sourceNode]);
     if (!postlude) {
-      return Rules.create([sourceNode]);
+      return sourceRules;
     }
 
-    let wrapped: Node = sourceNode;
+    let wrappedRules = sourceRules;
     const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
 
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
-      const body = Rules.create([wrapped]);
 
       if (isNode(current, N.Call)) {
         const callName = String(current.value.name).toLowerCase();
@@ -712,24 +718,24 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const args = current.value.args?.value ?? [];
           const prelude = args.length <= 1 ? args[0] : current.value.args;
           if (prelude) {
-            wrapped = new AtRule({
+            wrappedRules = deriveInlineWrapper(new AtRule({
               name: new Any(`@${callName}`, { role: 'atkeyword' }),
               prelude,
-              rules: body
-            });
+              rules: wrappedRules
+            }), wrappedRules);
             continue;
           }
         }
       }
 
-      wrapped = new AtRule({
+      wrappedRules = deriveInlineWrapper(new AtRule({
         name: new Any('@media', { role: 'atkeyword' }),
         prelude: current,
-        rules: body
-      });
+        rules: wrappedRules
+      }), wrappedRules);
     }
 
-    return Rules.create([wrapped]);
+    return wrappedRules;
   }
 
   /**
