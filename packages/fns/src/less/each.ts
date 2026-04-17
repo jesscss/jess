@@ -31,9 +31,9 @@ import {
 const each = defineFunction(
   'each',
   async function(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const mixinRules = mixin.type === 'Rules' ? mixin : mixin.value.rules;
-    let keys = ['value', 'key', 'index'];
-    if (mixin.type === 'Mixin') {
+    const mixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
+    let keys: [string, string, string] = ['value', 'key', 'index'];
+    if (mixin instanceof Mixin) {
       const { params } = mixin.value;
       if (params) {
         let paramList = params.value;
