@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `36b8cc9f` (`Derive mixin output carriers from candidate surfaces`)
+Checkpoint commit: `d356b09a` (`Keep mixin guard wrappers lookup-only`)
 
 ## Priority Reset
 
