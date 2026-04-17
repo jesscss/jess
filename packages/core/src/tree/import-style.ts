@@ -12,7 +12,6 @@ import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
-import { Nil } from './nil.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 
 /**
@@ -368,7 +367,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
           importRule.sourceNode = this;
           this.queueCssImport(context, importRule);
-          return Rules.create([new Nil()]);
+          return Rules.create([]);
         }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
