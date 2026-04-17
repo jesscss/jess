@@ -1246,7 +1246,6 @@ function createDirectCallableReferenceResult(
     callableItems.push(item);
   }
   const collection = new MixinCollection(callableItems);
-  collection.sourceParent = referenceNode;
   return collection;
 }
 

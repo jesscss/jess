@@ -108,6 +108,8 @@ Practical rule for the next agent:
   - Ruleset-as-mixin and detached-unlock output surfaces no longer stamp
     call-site `sourceParent`; ordinary mixin body output still does, because
     unresolved body-var fallback semantics currently depend on it.
+  - Direct callable reference results no longer stamp `sourceParent` onto the
+    returned `MixinCollection` wrapper either.
   - Import wrappers now stay rooted in imported surfaces much more often.
   - Stylesheet functions and detached callable bodies share the same lighter
     callable-body path.
