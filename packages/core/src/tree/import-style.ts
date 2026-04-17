@@ -762,7 +762,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       const wrapped = anchorRules.clone(false) as Rules;
       wrapped.value = [wrappedNode];
       wrapped.scopeFrame = undefined;
-      wrapped.sourceNode = undefined;
       return wrapped;
     };
     if (!postlude) {
@@ -814,7 +813,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       const wrapped = anchorRules.clone(false) as Rules;
       wrapped.value = [wrappedNode];
       wrapped.scopeFrame = undefined;
-      wrapped.sourceNode = undefined;
       return wrapped;
     };
     const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
