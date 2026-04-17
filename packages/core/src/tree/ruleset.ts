@@ -933,9 +933,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override copy(deep?: boolean): this {
     const node = super.copy(deep);
-    const selectorSourceNode = this.value.selector.sourceNode;
-    node.value.selector = selectorSourceNode.copy(true) as Selector | Nil;
-    node.value.selector.sourceNode = selectorSourceNode;
+    node.value.selector = this.value.selector.copy(true) as Selector | Nil;
     return node;
   }
 
