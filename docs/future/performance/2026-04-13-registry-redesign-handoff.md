@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `7feaaef0` (`Drop ruleset copy selector source rebinding`)
+Checkpoint commit: `c315afbd` (`Move mixin fallback off source parents`)
 
 ## Priority Reset
 
@@ -108,9 +108,10 @@ Practical rule for the next agent:
   - Synthetic `Rules.create(...)` carrier shells have been heavily reduced.
   - Live call-site/source provenance is no longer being stamped onto most
     temporary wrapper surfaces.
-  - Ruleset-as-mixin and detached-unlock output surfaces no longer stamp
-    call-site `sourceParent`; ordinary mixin body output still does, because
-    unresolved body-var fallback semantics currently depend on it.
+  - Ruleset-as-mixin, detached-unlock output, and ordinary mixin body output
+    no longer stamp call-site `sourceParent`.
+  - Ordinary mixin-body unresolved-var fallback now rides an explicit
+    `ScopeFrame` fallback surface instead of node provenance.
   - Direct callable reference results no longer stamp `sourceParent` onto the
     returned `MixinCollection` wrapper either.
   - Cloned/fallback/direct-value reference results no longer stamp
