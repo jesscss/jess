@@ -3742,6 +3742,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
        * but instead look upwards / outwards.
        */
       let outerRules: Rules | undefined;
+      const ensureOuterRules = (
+        parent: Node,
+        options?: Rules['options'],
+        syncScopeFrame = true
+      ): Rules => {
+        outerRules ??= createDerivedOuterRules(rules, options);
+        if (syncScopeFrame && rules.scopeFrame) {
+          outerRules.scopeFrame = rules.scopeFrame;
+        }
+        outerRules.index = candidate.index;
+        parent.adopt(outerRules);
+        return outerRules;
+      };
 
       /** Now we need to add our parameters, if any */
       const resolvedBindingInfo = !isNode(candidate, N.Ruleset)
@@ -3756,16 +3769,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
         if (needsOuterRules) {
-          outerRules = createDerivedOuterRules(rules, {
+          ensureOuterRules(thisContext.rulesContext ?? candidate.parent!, {
             rulesVisibility: {
               Ruleset: 'public',
               Declaration: 'public',
               VarDeclaration: 'public',
               Mixin: 'public'
             }
-          });
-          (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
-          outerRules.index = candidate.index;
+          }, false);
         }
         const scopeOwner = rules;
         // Mark param source nodes and build the live-slot map for the ScopeFrame.
@@ -3834,8 +3845,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (guard) {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
           if (guardNeedsOuterRules) {
-            outerRules ??= createDerivedOuterRules(rules);
-            candidate.parent!.adopt(outerRules);
+            ensureOuterRules(candidate.parent!);
           }
           /** Allow lookup on the inherited rules */
           passes = false;
@@ -3851,9 +3861,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 return false;
               }
               if (!probeGuard.hasFlag(F_STATIC)) {
-                outerRules ??= createDerivedOuterRules(rules);
-                outerRules.scopeFrame = rules.scopeFrame;
-                candidate.parent!.adopt(outerRules);
+                ensureOuterRules(candidate.parent!);
               }
               thisContext.isDefault = isDefaultValue;
               const probeResult = await probeGuard.eval(thisContext);

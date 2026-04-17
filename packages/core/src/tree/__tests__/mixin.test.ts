@@ -1585,6 +1585,47 @@ describe('Mixin', () => {
       expect(css).not.toContain('.light {\n  color: red;');
     });
 
+    it('evaluates no-param mixin guards against caller scope', async () => {
+      context = new Context({ leakyRules: false });
+      const mixinDef = mixin({
+        name: any('.scope-guarded'),
+        guard: condition([
+          expr(ref({ key: 'mode' }, { type: 'variable' })),
+          '=',
+          any('dark')
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('black') })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: black;');
+      expect(css).not.toContain('.light {\n  color: black;');
+    });
+
     it('evaluates default guards against caller scope without leaking param bindings into sibling output', async () => {
       context = new Context({ leakyRules: false });
       const darkDefault = mixin({
@@ -1666,6 +1707,73 @@ describe('Mixin', () => {
       expect(css).toContain('value: outer-light;');
       expect(css).not.toContain('value: red;');
       expect(css).not.toContain('value: blue;');
+    });
+
+    it('evaluates no-param default guards against caller scope', async () => {
+      context = new Context({ leakyRules: false });
+      const darkDefault = mixin({
+        name: any('.scope-default'),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('dark')
+          ]),
+          'and',
+          defaultguard()
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: any('black') })
+        ])
+      });
+
+      const lightDefault = mixin({
+        name: any('.scope-default'),
+        guard: condition([
+          condition([
+            expr(ref({ key: 'mode' }, { type: 'variable' })),
+            '=',
+            any('light')
+          ]),
+          'and',
+          defaultguard()
+        ]),
+        rules: rules([
+          decl({ name: 'background', value: any('white') })
+        ])
+      });
+
+      const root = rules([
+        darkDefault,
+        lightDefault,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
+            decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
+            decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: black;');
+      expect(css).toContain('value: dark;');
+      expect(css).toContain('.light {');
+      expect(css).toContain('background: white;');
+      expect(css).toContain('value: light;');
     });
 
     it('evaluates rest-parameter guard checks against live slot bindings', async () => {
