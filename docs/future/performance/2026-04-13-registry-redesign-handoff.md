@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `9d88ffda` (`Drop JS call mixin callback source parents`)
+Checkpoint commit: `aaee420b` (`Drop import wrapper source nodes`)
 
 ## Priority Reset
 
