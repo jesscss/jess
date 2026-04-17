@@ -146,6 +146,9 @@ Practical rule for the next agent:
   Additional narrowing: plain direct reference results no longer stamp
   `sourceParent` onto the resolved canonical node just to carry live call-site
   context through the result surface.
+  Additional narrowing: dynamic/default guard wrappers no longer stamp
+  `sourceParent` onto the temporary outer `Rules` lookup surface; guard scope
+  now stays frame/parent-driven there too.
   Additional narrowing: param-bearing mixin calls no longer allocate an
   `outerRules` wrapper just because a guard exists; that wrapper is now reserved
   for dynamic/default guard cases that actually need a separate lookup surface.

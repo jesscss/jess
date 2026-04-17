@@ -3671,7 +3671,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
             }
           });
           (thisContext.rulesContext ?? candidate.parent!).adopt(outerRules);
-          outerRules.sourceParent = sourceParent;
           outerRules.index = candidate.index;
         }
         const scopeOwner = rules;
