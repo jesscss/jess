@@ -616,7 +616,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
 
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
@@ -660,7 +660,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
 
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
@@ -911,6 +911,44 @@ describe('Style import', () => {
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.toString()).toContain('.base');
       expect(composedRules.toString()).toContain('.addon');
+    });
+
+    it('keeps variable-only additive "with" configs on the imported rules surface', async () => {
+      const libraryPath = resolve(process.cwd(), 'library.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.base')])]),
+          rules: rules([
+            decl({ name: any('color'), value: ref('accentColor', { type: 'variable' }) })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'accentColor', value: any('purple') })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const composedRules = evald.at(0) as Rules;
+
+      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
+      expect(injectedVar).toBeDefined();
+      const injectedVarValue = await injectedVar!.value.value.eval(context);
+      expect(`${injectedVarValue}`).toBe('purple');
+      expect(composedRules.toString()).toContain('.base');
+      expect(composedRules.toString()).toContain('color: purple');
     });
 
     it('keeps replacement configs on an imported child rules surface when additive nodes are also present', async () => {

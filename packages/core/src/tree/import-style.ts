@@ -526,16 +526,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             // fresh synthetic top-level tree.
             const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
             const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
-            const finalRules = rules.clone(false) as Rules;
-            finalRules.value = [];
-            for (const newNode of additiveNonVariableNodes) {
-              finalRules.adopt(newNode);
-              finalRules.value.push(newNode);
+            if (additiveNonVariableNodes.length === 0) {
+              const configuredRules = rules.clone(false) as Rules;
+              this.attachConfiguredVarBindings(configuredRules, additiveVariableNodes);
+              rules = configuredRules;
+            } else {
+              const finalRules = rules.clone(false) as Rules;
+              finalRules.value = [];
+              for (const newNode of additiveNonVariableNodes) {
+                finalRules.adopt(newNode);
+                finalRules.value.push(newNode);
+              }
+              this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+              finalRules.adopt(rules);
+              finalRules.value.push(rules);
+              rules = finalRules;
             }
-            this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
-            finalRules.adopt(rules);
-            finalRules.value.push(rules);
-            rules = finalRules;
           } else {
             // Keep replacement semantics on a shallow-cloned imported Rules
             // surface instead of flattening every imported top-level node into
@@ -553,16 +559,21 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             } else {
               const additiveVariableNodes = newVariables.filter(node => isNode(node, N.VarDeclaration));
               const additiveNonVariableNodes = newVariables.filter(node => !isNode(node, N.VarDeclaration));
-              const finalRules = replacedRules.clone(false) as Rules;
-              finalRules.value = [];
-              for (const newNode of additiveNonVariableNodes) {
-                finalRules.adopt(newNode);
-                finalRules.value.push(newNode);
+              if (additiveNonVariableNodes.length === 0) {
+                this.attachConfiguredVarBindings(replacedRules, additiveVariableNodes);
+                rules = replacedRules;
+              } else {
+                const finalRules = replacedRules.clone(false) as Rules;
+                finalRules.value = [];
+                for (const newNode of additiveNonVariableNodes) {
+                  finalRules.adopt(newNode);
+                  finalRules.value.push(newNode);
+                }
+                this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+                finalRules.adopt(replacedRules);
+                finalRules.value.push(replacedRules);
+                rules = finalRules;
               }
-              this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
-              finalRules.adopt(replacedRules);
-              finalRules.value.push(replacedRules);
-              rules = finalRules;
             }
           }
         }
