@@ -120,7 +120,8 @@ Practical rule for the next agent:
     emitted `@import` at-rule; dedupe now relies on node identity plus
     location/signature rather than back-pointing at the `StyleImport` node.
   - Direct call results now only keep call-site `sourceParent` for the
-    declaration-only `Rules` case that still feeds post-eval ordering.
+    ordinary mixin-body fallback case; declaration-only call output now uses
+    an explicit wrapper-local marker for post-eval ordering instead.
   - JS function call args no longer stamp `sourceParent` during the
     copy/freeze path at all.
   - Final import result wrappers no longer overwrite `sourceNode`; imported

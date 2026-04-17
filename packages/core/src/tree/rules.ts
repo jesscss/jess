@@ -112,6 +112,12 @@ export type RulesOptions = {
    * References without a target (e.g., @foo) cannot access these Rules.
    */
   isMixinOutput?: boolean;
+  /**
+   * Marks declaration-only Rules emitted from non-mixin call sites so post-eval
+   * ordering can move them ahead of nested rulesets/at-rules without relying on
+   * a live `sourceParent` Call back-pointer.
+   */
+  callDeclarationOutput?: boolean;
   readonly?: boolean;
   /**
    * all imports other than classic `@import` set returned rules to local.
@@ -2651,18 +2657,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const shouldMove = (n: Node) => {
       if (
         !isNode(n, N.Rules)
-        || !isNode(n.sourceParent, N.Call)
+        || n.options?.callDeclarationOutput !== true
         || n.value.length === 0
         || !n.value.every(child => isNode(child, N.Declaration | N.Comment))
-      ) {
-        return false;
-      }
-      const sourceName = n.sourceParent.value.name;
-      // Keep mixin-call declaration blocks in source order relative to nested rulesets.
-      if (
-        isNode(sourceName, N.Reference)
-        && (sourceName.options?.type === 'mixin'
-          || sourceName.options?.type === 'mixin-ruleset')
       ) {
         return false;
       }

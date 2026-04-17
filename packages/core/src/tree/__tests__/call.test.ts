@@ -1,4 +1,4 @@
-import { any, call, coll, decl, list, num, ref, rules, vardecl } from '../index.js';
+import { Any, JsFunction, any, call, coll, decl, list, num, ref, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -52,6 +52,31 @@ describe('Call', () => {
     const result = await call({ name: ref('themeMap', { type: 'variable' }) }).eval(context);
     expect(isNode(result, N.Collection)).toBe(true);
     expect(`${result}`).toContain('background-color');
+  });
+
+  it('marks declaration-only JS call output without sourceParent back-pointers', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'decls',
+      fn: () => rules([
+        decl({ name: new Any('color', { role: 'property' }), value: any('red') })
+      ])
+    }));
+
+    context.root = root;
+    context.rulesContext = root;
+
+    const result = await call({
+      name: ref({ key: 'decls' }, { type: 'function' }),
+      args: list([])
+    }).eval(context);
+
+    expect(isNode(result, N.Rules)).toBe(true);
+    if (!isNode(result, N.Rules)) {
+      throw new Error('Expected Rules result');
+    }
+    expect(result.sourceParent).toBeUndefined();
+    expect(result.options.callDeclarationOutput).toBe(true);
   });
 
   // it('should serialize to a module', () => {

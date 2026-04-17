@@ -133,6 +133,11 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name } = this.value;
     let args = this.value.args;
     let { markImportant } = this.options;
+    const markCallDeclarationOutput = !(
+      isNode(this.value.name, N.Reference)
+      && (this.value.name.options?.type === 'mixin'
+        || this.value.name.options?.type === 'mixin-ruleset')
+    );
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
       node.pre = this.pre;
       node.post = this.post;
@@ -140,8 +145,9 @@ export class Call extends Node<CallValue, CallOptions> {
         isNode(node, N.Rules)
         && node.value.length > 0
         && node.value.every(child => isNode(child, N.Declaration | N.Comment))
+        && markCallDeclarationOutput
       ) {
-        node.sourceParent = this;
+        node.options.callDeclarationOutput = true;
       }
       return node;
     };
