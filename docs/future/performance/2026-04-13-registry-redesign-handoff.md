@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `b911c871` (`Drop reference result source parents`)
+Checkpoint commit: `620c2a61` (`Narrow call result source parents`)
 
 ## Priority Reset
 
