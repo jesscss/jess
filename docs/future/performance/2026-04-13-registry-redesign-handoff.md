@@ -2,7 +2,7 @@
 
 Date: `2026-04-13`
 Branch: `dev`
-Checkpoint commit: `c90ad61c` (`Replace call declaration source parents`)
+Checkpoint commit: `5edb8c23` (`Drop ruleset selector source preservation`)
 
 ## Priority Reset
 
