@@ -1626,6 +1626,48 @@ describe('Mixin', () => {
       expect(css).not.toContain('.light {\n  color: black;');
     });
 
+    it('keeps no-param guard lookup isolated from mixin body vars with the same name', async () => {
+      context = new Context({ leakyRules: false });
+      const mixinDef = mixin({
+        name: any('.scope-guarded-body-shadow'),
+        guard: condition([
+          expr(ref({ key: 'mode' }, { type: 'variable' })),
+          '=',
+          any('dark')
+        ]),
+        rules: rules([
+          vardecl({ name: 'mode', value: any('light') }),
+          decl({ name: 'color', value: any('black') })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.light'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('light') }),
+            call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('.dark {');
+      expect(css).toContain('color: black;');
+      expect(css).not.toContain('.light {\n  color: black;');
+    });
+
     it('evaluates default guards against caller scope without leaking param bindings into sibling output', async () => {
       context = new Context({ leakyRules: false });
       const darkDefault = mixin({

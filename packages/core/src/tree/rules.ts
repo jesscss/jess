@@ -3600,7 +3600,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       return current;
     };
-
     const DEF_FALSE_EITHER = -1;
     const DEF_NONE = 0;
     const DEF_TRUE = 1;
@@ -3837,6 +3836,22 @@ export class MixinCollection extends Node<MixinEntry[]> {
         : candidate.value.guard
           ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
           : undefined;
+      const usesPreboundNonParamGuardOuterRules = Boolean(
+        guard
+        && !hasDefault
+        && !guard.hasFlag(F_STATIC)
+        && !candidate.value.params
+        && paramBindings.length === 0
+      );
+      if (
+        usesPreboundNonParamGuardOuterRules
+        && !outerRules
+      ) {
+        ensureOuterRules(thisContext.rulesContext ?? candidate.parent!, undefined, false);
+        if (parentFrame) {
+          outerRules.scopeFrame = rules.getScopeFrame();
+        }
+      }
       let passes = true;
       let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
@@ -3844,7 +3859,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       try {
         if (guard) {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
-          if (guardNeedsOuterRules) {
+          if (guardNeedsOuterRules && !usesPreboundNonParamGuardOuterRules) {
             ensureOuterRules(candidate.parent!);
           }
           /** Allow lookup on the inherited rules */
