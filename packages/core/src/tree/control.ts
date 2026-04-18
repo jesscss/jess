@@ -197,6 +197,18 @@ export class For extends Node<StructuredLoopValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
+  private createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
+    const output = sourceRules.clone(false) as Rules;
+    output.value = [];
+    output.scopeFrame = undefined;
+    if (childNodes) {
+      for (const childNode of childNodes) {
+        output.push(childNode);
+      }
+    }
+    return output;
+  }
+
   constructor(value: StructuredLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -267,21 +279,12 @@ export class For extends Node<StructuredLoopValue> {
         }
       }
       if (outputRules.length === 0) {
-        const emptyOutput = originalRules.clone(false) as Rules;
-        emptyOutput.value = [];
-        emptyOutput.scopeFrame = undefined;
-        return emptyOutput;
+        return this.createDerivedIterationOutputSurface(originalRules);
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      const output = originalRules.clone(false) as Rules;
-      output.value = [];
-      output.scopeFrame = undefined;
-      for (const r of outputRules) {
-        output.push(r);
-      }
-      return output;
+      return this.createDerivedIterationOutputSurface(originalRules, outputRules);
     };
     return run();
   }
