@@ -11,6 +11,13 @@ describe('Declaration', () => {
     expect(`${rule}`).toBe('color: #eee');
   });
 
+  it('does not allocate options when serializing a default declaration', () => {
+    const rule = decl({ name: 'color', value: color('#eee') });
+
+    expect(rule.toTrimmedString()).toBe('color: #eee');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
   it('serializes important declarations with one space before !important', async () => {
     const node = rules([
       decl({

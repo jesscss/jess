@@ -139,7 +139,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = this.value;
-    const { assign = ':', normalizedFromAssign, setDefined } = this.options;
+    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
