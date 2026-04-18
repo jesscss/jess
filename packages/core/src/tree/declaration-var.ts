@@ -51,7 +51,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
     // print `$name` (no `: <value>`).
-    if (this.options?.paramVar && this.value.value instanceof Nil) {
+    if (this._options?.paramVar && this.value.value instanceof Nil) {
       w.add('$', this);
       const normalizedName = String(this.value.name).replace(/\s+$/, '');
       w.add(normalizedName, this.value.name);
@@ -76,7 +76,10 @@ export const vardecl = (
   location?: LocationInfo,
   treeContext?: TreeContext
 ) => {
-  let { name } = value;
-  value.name = typeof name === 'string' ? new Any(name, { role: 'property' }) : name;
-  return new VarDeclaration(value as DeclarationValue, options, location, treeContext);
+  const { name } = value;
+  const declarationValue: DeclarationValue = {
+    ...value,
+    name: typeof name === 'string' ? new Any(name, { role: 'property' }) : name
+  };
+  return new VarDeclaration(declarationValue, options, location, treeContext);
 };

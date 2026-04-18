@@ -60,7 +60,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
-    if (other instanceof Quoted && !this.options?.escaped && !other.options?.escaped) {
+    if (other instanceof Quoted && !this._options?.escaped && !other._options?.escaped) {
       const left = String(this.valueOf());
       const right = String(other.valueOf?.() ?? '');
       if (left === right) {
@@ -73,7 +73,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
 
   override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
     const cont = (value: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
-      if (this.options.escaped) {
+      if (this._options?.escaped) {
         if (value instanceof Node) {
           return value;
         }

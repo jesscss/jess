@@ -20,6 +20,15 @@ describe('quoted', () => {
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
+  it('does not allocate options when comparing default quoted values', () => {
+    const left = quoted('hello');
+    const right = quoted('hello');
+
+    expect(left.compare(right)).toBe(0);
+    expect(Object.getOwnPropertyDescriptor(left, '_options')?.value).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(right, '_options')?.value).toBeUndefined();
+  });
+
   it('renders a resolved quoted value through render(context)', async () => {
     const node = rules([
       vardecl({

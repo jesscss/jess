@@ -1,5 +1,6 @@
-import { vardecl, coll, decl, any, rules, Node } from '..';
+import { vardecl, coll, decl, any, rules, Node } from '../index.js';
 import { Context } from '../../context.js';
+import { nil } from '../index.js';
 
 let context: Context;
 
@@ -51,6 +52,17 @@ describe('Let', () => {
       );
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+    });
+
+    it('serializes parameter vars without nil defaults as bare bindings', () => {
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+
+      expect(rule.toTrimmedString()).toBe('$tone');
     });
   });
 
