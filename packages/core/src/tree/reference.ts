@@ -267,6 +267,22 @@ function findVarDeclarationFast(
         optionalMatch: currentOptionalMatch
       };
     })();
+    const lexicalParentRules = frame.parent?.rulesNode;
+    const astRulesParent = scope.rulesParent;
+    if (
+      isNode(lexicalParentRules, N.Rules)
+      && lexicalParentRules !== scope
+      && lexicalParentRules !== astRulesParent
+    ) {
+      const lexicalResult = findVarWithinScopeSurface(
+        lexicalParentRules as Rules,
+        undefined,
+        localContext,
+        visited
+      );
+      publicMatch = laterOf(publicMatch, lexicalResult.publicMatch);
+      optionalMatch = laterOf(optionalMatch, lexicalResult.optionalMatch);
+    }
 
     if (!includeChildSurfaces) {
       return { publicMatch, optionalMatch };

@@ -3780,7 +3780,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
         if (needsOuterRules) {
-          ensureOuterRules(thisContext.rulesContext ?? candidate.parent!, {
+          ensureOuterRules(candidate.parent!, {
             rulesVisibility: {
               Ruleset: 'public',
               Declaration: 'public',
@@ -3821,7 +3821,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
         scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, lexicalScopeFrame, liveSlots);
         scopeOwner.scopeFrame.fallbackFrame = fallbackScopeFrame;
         if (outerRules) {
-          outerRules.scopeFrame = scopeOwner.scopeFrame;
+          if (usesPreboundParamGuardOuterRules) {
+            outerRules.scopeFrame = buildScopeFrame(
+              undefined,
+              outerRules,
+              lexicalScopeFrame,
+              new Map(liveSlots)
+            );
+            if (parentFrame && parentFrame !== lexicalScopeFrame) {
+              outerRules.scopeFrame.fallbackFrame = parentFrame;
+            }
+          } else {
+            outerRules.scopeFrame = scopeOwner.scopeFrame;
+          }
         }
         // Populate @arguments after the frame is wired (the Sequence holds a
         // reference to argumentsArgs, so pushes here are visible through the frame).
