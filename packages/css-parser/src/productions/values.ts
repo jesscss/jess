@@ -37,7 +37,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
         if ($.RECORDING_PHASE) {
           return;
         }
-        let nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context), true);
+        let nameNode = new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), this.context);
         return [nameNode, assign, value, important];
       }
     },
@@ -67,7 +67,7 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
           return;
         }
         let location = $.endRule();
-        let nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context), true);
+        let nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), this.context);
         let value = new Sequence(nodes!, undefined, location, this.context);
         return [nameNode, assign, value];
       }
@@ -96,8 +96,8 @@ export function declaration(this: C, T: TokenMap, alt?: AltContext) {
       const wrapCtx = isCustom ? { ...ctx, inCustomPropertyValue: true } : ctx;
       return new (isCustom ? CustomDeclaration : Declaration)({
         name: name!,
-        value: $.wrap(value!, 'both', wrapCtx),
-        important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), this.context), 'both') : undefined
+        value: value!,
+        important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), this.context) : undefined
       }, { assign: assign!.image as AssignmentType }, location, this.context);
     }
   };
@@ -120,7 +120,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
       ALT: () => {
         const token = $.CONSUME($.LA(1).tokenType);
         if (!$.RECORDING_PHASE) {
-          return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+          return $.processValueToken(token, ctx);
         }
       }
     },
@@ -147,7 +147,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
           { ALT: () => $.CONSUME(T.Unknown) }
         ]);
         if (!$.RECORDING_PHASE) {
-          return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+          return $.processValueToken(token, ctx);
         }
       }
     }
@@ -156,7 +156,7 @@ export function customValue(this: C, T: TokenMap, alt?: AltContext) {
   return (ctx: RuleContext = {}) => {
     if (!$.RECORDING_PHASE && ($.LA(1).tokenType.name === 'ColorIntStart' || $.LA(1).tokenType.name === 'ColorIdentStart')) {
       const token = $.CONSUME($.LA(1).tokenType);
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
     return $.OR(alt(ctx));
   };
@@ -173,7 +173,7 @@ export function innerCustomValue(this: C, T: TokenMap, alt?: AltContext) {
         if ($.RECORDING_PHASE) {
           return;
         }
-        return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), this.context));
+        return new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), this.context);
       }
     },
     { ALT: () => $.SUBRULE($.customValue, { ARGS: [ctx] }) }
@@ -208,7 +208,7 @@ export function extraTokens(this: C, T: TokenMap, alt?: AltContext): ProductionR
       return;
     }
     if (!(node instanceof Node)) {
-      node = $.wrap($.processValueToken(node));
+      node = $.processValueToken(node);
     }
     return node;
   };
@@ -315,10 +315,10 @@ export function customBlock(this: C, T: TokenMap, alt?: AltContext) {
         // Preserve inner sequence post so trailing semicolons become part of block content
         const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
         let seq = new Sequence(nodes!, undefined, seqLoc, this.context);
-        return $.wrap(new Block($.wrap(seq, true, ctx), { type }, location, this.context), undefined, ctx);
+        return new Block(seq, { type }, location, this.context);
       } else {
-        let startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), this.context), undefined, ctx);
-        let endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), this.context), undefined, ctx);
+        let startNode = new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), this.context);
+        let endNode = new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), this.context);
         nodes = [startNode, ...nodes!, endNode];
         return new Sequence(nodes, undefined, location, this.context);
       }
@@ -379,7 +379,7 @@ export function valueSequence(this: C, T: TokenMap): ProductionRule {
       let value = $.SUBRULE($.value, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
-        nodes.push($.wrap(value));
+        nodes.push(value);
       }
     });
 
@@ -388,9 +388,9 @@ export function valueSequence(this: C, T: TokenMap): ProductionRule {
     }
     let location = $.endRule();
     if (nodes!.length === 1) {
-      return $.wrap(nodes![0]!, true);
+      return nodes![0]!;
     }
-    return $.wrap(new Sequence(nodes!, undefined, location, this.context), true);
+    return new Sequence(nodes!, undefined, location, this.context);
   };
 }
 
@@ -470,9 +470,9 @@ export function value(this: C, T: TokenMap, valueAlt?: AltContext): ProductionRu
       node = $.processValueToken(node);
     }
     if (additionalValue) {
-      return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, this.context));
+      return new List([node, additionalValue], { sep: '/' }, location, this.context);
     }
-    return $.wrap(node);
+    return node;
   };
 }
 
@@ -667,7 +667,7 @@ export function mathValue(this: C, T: TokenMap, alt?: AltContext): ProductionRul
     if (!(node instanceof Node)) {
       node = $.processValueToken(node);
     }
-    return $.wrap(node, 'both');
+    return node;
   };
 }
 
@@ -724,9 +724,9 @@ export function ifFunctionArgs(this: C, T: TokenMap): ProductionRule {
         $.CONSUME(T.Assign);
         const value = $.SUBRULE($.valueList, { ARGS: [{ ...ctx, inner: true }] });
         if (!RECORDING_PHASE) {
-          const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, this.context), true);
+          const sep = new Any(':', { role: 'operator' }, undefined, this.context);
           const loc = $.getLocationFromNodes([condition, value]);
-          branches!.push(new Sequence([$.wrap(condition, true), sep, $.wrap(value, true)], undefined, loc, this.context));
+          branches!.push(new Sequence([condition, sep, value], undefined, loc, this.context));
         }
       }
     });
@@ -777,12 +777,12 @@ export function varFunction(this: C, T: TokenMap) {
       return;
     }
     let location = $.endRule();
-    let propNode = $.wrap(new Any(prop.image, { role: 'customprop' }, $.getLocationInfo(prop), this.context), 'both');
+    let propNode = new Any(prop.image, { role: 'customprop' }, $.getLocationInfo(prop), this.context);
     if (!args) {
       args = new List([propNode], undefined, $.getLocationInfo(prop), this.context);
     } else {
       let { startOffset, startLine, startColumn } = prop;
-      args.setData([propNode, ...args.value]);
+      args.set(null, [propNode, ...args.value]);
       args.location[0] = startOffset;
       args.location[1] = startLine!;
       args.location[2] = startColumn!;

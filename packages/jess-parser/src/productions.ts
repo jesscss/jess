@@ -433,10 +433,12 @@ export function jessConditional(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       const loc = $.endRule();
-      const conditions = [condition];
-      const bodies = [thenRules];
-      const elseBranch = elseRules ?? undefined;
-      return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
+      return new If({
+        branches: [
+          { condition, rules: thenRules },
+          ...(elseRules ? [{ rules: elseRules }] : [])
+        ]
+      }, undefined, loc, $.context);
     }
   };
 }
@@ -821,9 +823,9 @@ export function value(this: P, T: TokenMap, valueAlt?: AltContext) {
         node = $.processValueToken(node);
       }
       if (additionalValue) {
-        return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, $.context));
+        return new List([node, additionalValue], { sep: '/' }, location, $.context);
       }
-      return $.wrap(node);
+      return node;
     }
   };
 }
@@ -1026,10 +1028,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
         });
 
         if (!RECORDING_PHASE) {
-          const nameNode = $.wrap(
-            new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context),
-            true
-          );
+          const nameNode = new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context);
           return [nameNode, assign, value, important] as const;
         }
       }
@@ -1052,7 +1051,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
           important = $.CONSUME(T.Important);
         });
         if (!$.RECORDING_PHASE) {
-          const nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context), true);
+          const nameNode = new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context);
           return [nameNode, assign, value, important] as const;
         }
       }
@@ -1075,7 +1074,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
         });
         if (!RECORDING_PHASE) {
           const location = $.endRule();
-          const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+          const nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context);
           const value = new Sequence(nodes!, undefined, location, $.context);
           return [nameNode, assign, value] as const;
         }
@@ -1110,8 +1109,8 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
       const isCustom = String(name!.valueOf()).startsWith('--');
       return new (isCustom ? CustomDeclaration : Declaration)({
         name: name!,
-        value: $.wrap(value!, 'both'),
-        important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both') : undefined
+        value: value!,
+        important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
       }, { assign: assign!.image as unknown as AssignmentType }, location, $.context);
     }
   };

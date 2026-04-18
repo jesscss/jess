@@ -121,7 +121,7 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
     });
 
     const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
-    return $.wrap(withComments, true);
+    return withComments;
   };
 }
 
@@ -131,6 +131,25 @@ export function main(this: P, T: TokenMap, alt?: AltContext) {
  */
 export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
   const $ = this;
+  const isInterpolatedDeclarationStart = () => {
+    if ($.LA(1).tokenType !== $.T.InterpolationStart) {
+      return false;
+    }
+    for (let i = 2; i < 64; i++) {
+      const tokenType = $.LA(i).tokenType;
+      if (tokenType === $.T.Assign || tokenType === $.T.Colon) {
+        return true;
+      }
+      if (
+        tokenType === $.T.Semi
+        || tokenType === $.T.LCurly
+        || tokenType.name === 'EOF'
+      ) {
+        return false;
+      }
+    }
+    return false;
+  };
 
   /**
    * SCSS declaration-list routing: use proper GATE/ALT pattern so
@@ -138,6 +157,10 @@ export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
    */
   alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
+    {
+      GATE: isInterpolatedDeclarationStart,
+      ALT: () => $.SUBRULE($.declaration, { ARGS: [ctx] })
+    },
     {
       GATE: () => $.shouldTryQualifiedRuleInDeclarationList(),
       ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [{ ...ctx, inner: true }] })
@@ -177,7 +200,7 @@ export function declarationList(this: P, T: TokenMap, alt?: AltContext) {
     }
 
     const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
-    return $.wrap(withComments, true);
+    return withComments;
   };
 }
 

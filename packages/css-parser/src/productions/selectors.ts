@@ -103,7 +103,7 @@ export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
 
     if (!RECORDING_PHASE) {
       let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
-      const wrapped = $.wrap(returnNode!, true);
+      const wrapped = returnNode!;
 
       return wrapped;
     }
@@ -397,7 +397,7 @@ export function nthValue(this: C, T: TokenMap, valueAlt?: AltContext) {
           break;
         }
       }
-      return $.wrap(new Any(tokenValues, { role: 'any' }, location, this.context), 'both');
+      return new Any(tokenValues, { role: 'any' }, location, this.context);
     }
   };
 }
@@ -554,7 +554,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
         });
         if (!RECORDING_PHASE) {
           if (co) {
-            combinator = $.wrap(new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context), 'both');
+            combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
           } else {
             /** Whitespace combinators are special */
             let startOffset = this.LA(1).startOffset;
@@ -618,7 +618,7 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.setData([combinator, ...complex.value]);
+              complex.set(null, [combinator, ...complex.value]);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;
@@ -672,9 +672,9 @@ export function forgivingSelectorList(this: C, T: TokenMap) {
           i++;
           if (i === 1 && ctx.qualifiedRule) {
             // Only attach post; leave pre for the parent Rules to lift comments
-            sequences.push($.wrap(selector, true));
+            sequences.push(selector);
           } else {
-            sequences.push($.wrap(selector, i === 1 ? true : 'both'));
+            sequences.push(selector);
           }
         }
       }
@@ -716,9 +716,9 @@ export function selectorList(this: C, T: TokenMap) {
           // so that pre-rule comments remain available to be lifted to Rules.
           if (i === 1 && ctx.qualifiedRule) {
             // Only attach post; leave pre for the parent Rules to lift comments
-            sequences.push($.wrap(sel, true));
+            sequences.push(sel);
           } else {
-            sequences.push($.wrap(sel, i === 1 ? true : 'both'));
+            sequences.push(sel);
           }
         }
       }

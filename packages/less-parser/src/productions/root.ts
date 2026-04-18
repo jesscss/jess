@@ -517,7 +517,7 @@ export function main(this: P, T: TokenMap) {
     }
     let returnNode = $.getRulesWithComments(rules!, $.getLocationInfo($.LA(1)));
     // Attaches remaining whitespace at the end of rules
-    return $.wrap(returnNode!, true);
+    return returnNode!;
   };
 }
 
@@ -628,7 +628,7 @@ export function declaration(this: P, T: TokenMap) {
           if (nameValue.includes('@') || nameValue.includes('$')) {
             nameNode = getInterpolatedNode(nameValue, $.getLocationInfo(name), $.context);
           } else {
-            nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+            nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context);
           }
           const value = new Sequence(nodes!, undefined, location, $.context);
           return [nameNode, assign, value];
@@ -677,7 +677,7 @@ export function declaration(this: P, T: TokenMap) {
             if (nameValue.includes('@') || nameValue.includes('$')) {
               nameNode = getInterpolatedNode(nameValue, $.getLocationInfo(name!), $.context);
             } else {
-              nameNode = $.wrap(new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context), true);
+              nameNode = new Any(name!.image, { role: 'property' }, $.getLocationInfo(name!), $.context);
             }
             return [nameNode, assign, value, important];
           }
@@ -735,7 +735,7 @@ export function mediaInParens(this: P, T: TokenMap) {
       return;
     }
     const location = $.endRule();
-    return $.wrap(new Paren($.wrap(node, 'both'), undefined, location, $.context));
+    return new Paren(node, undefined, location, $.context);
   };
 }
 
@@ -816,7 +816,7 @@ export function lessMediaQueryTail(this: P, T: TokenMap) {
         ]);
 
         if (!RECORDING_PHASE) {
-          nodes!.push($.wrap(new Keyword(andToken.image, undefined, $.getLocationInfo(andToken), $.context), 'both'));
+          nodes!.push(new Keyword(andToken.image, undefined, $.getLocationInfo(andToken), $.context));
           nodes!.push(next);
         }
       }
@@ -903,13 +903,10 @@ export function mediaFeature(this: P, T: TokenMap) {
                 const value = $.SUBRULE($.mfValue, { ARGS: [ctx] });
                 if (!RECORDING_PHASE) {
                   const location = $.endRule();
-                  return $.wrap(
-                    new Declaration({
-                      name: $.wrap(createFeatureIdentNode(ident, 'property'), true),
-                      value: $.wrap(value)
-                    }, undefined, location, $.context),
-                    'both'
-                  );
+                  return new Declaration({
+                      name: createFeatureIdentNode(ident, 'property'),
+                      value: value
+                    }, undefined, location, $.context);
                 }
               }
             },
@@ -921,7 +918,7 @@ export function mediaFeature(this: P, T: TokenMap) {
 
                 if (!RECORDING_PHASE) {
                   const [startOffset, startLine, startColumn] = $.endRule();
-                  seq.value.unshift($.wrap(createFeatureIdentNode(ident, 'ident'), true));
+                  seq.value.unshift(createFeatureIdentNode(ident, 'ident'));
                   seq.location[0] = startOffset;
                   seq.location[1] = startLine;
                   seq.location[2] = startColumn;
@@ -939,8 +936,8 @@ export function mediaFeature(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   const location = $.endRule();
                   return new QueryCondition([
-                    $.wrap(createFeatureIdentNode(ident, 'ident'), true),
-                    $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context), 'both'),
+                    createFeatureIdentNode(ident, 'ident'),
+                    new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context),
                     value
                   ], undefined, location, $.context);
                 }
@@ -951,7 +948,7 @@ export function mediaFeature(this: P, T: TokenMap) {
         if (!RECORDING_PHASE && !rule) {
           const location = $.endRule();
           const identNode = createFeatureIdentNode(ident, 'ident');
-          return $.wrap(new QueryCondition([identNode], undefined, location, $.context), 'both');
+          return new QueryCondition([identNode], undefined, location, $.context);
         }
         return rule;
       }
@@ -983,8 +980,8 @@ export function mediaFeature(this: P, T: TokenMap) {
                 const location = $.endRule();
                 return new QueryCondition([
                   left,
-                  $.wrap(new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context)),
-                  $.wrap(createFeatureIdentNode(value, 'ident'), 'both')
+                  new Any(op.image, { role: 'operator' }, $.getLocationInfo(op), $.context),
+                  createFeatureIdentNode(value, 'ident')
                 ], undefined, location, $.context);
               }
             }
@@ -1045,18 +1042,18 @@ export function mfNonIdentifierValue(this: P, T: TokenMap) {
             num2 = $.CONSUME2(T.Number);
           });
           let location = $.endRule();
-          let num1Node = $.wrap($.processValueToken(num1), 'both');
+          let num1Node = $.processValueToken(num1);
           if (!num2) {
             return num1Node;
           }
-          let num2Node = $.wrap($.processValueToken(num2), 'both');
+          let num2Node = $.processValueToken(num2);
           return new List([num1Node, num2Node], { sep: '/' }, location, $.context);
         }
       },
       {
         ALT: () => {
           let dim = $.CONSUME(T.Dimension);
-          return $.wrap($.processValueToken(dim), 'both');
+          return $.processValueToken(dim);
         }
       }
     ]);

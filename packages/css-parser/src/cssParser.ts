@@ -44,17 +44,24 @@ export class CssParser {
   parse(text: string, rule: CssRules = 'stylesheet'): IParseResult {
     const parser = this.parser;
     const lexerResult = this.lexer.tokenize(text);
+    parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens;
     const ruleFn = Reflect.get(parser, rule);
     if (typeof ruleFn !== 'function') {
       throw new Error(`Unknown parser rule: ${rule}`);
     }
-    const tree: Node = Reflect.apply(ruleFn, parser, []);
+    const tree = Reflect.apply(ruleFn, parser, []) as Node | undefined;
+    const trivia = parser.trivia;
+    parser.context.opts.trivia = trivia;
+    if (tree) {
+      tree.treeContext.opts.trivia = trivia;
+    }
 
     return {
-      tree,
+      tree: tree as Node,
       lexerResult,
       errors: parser.errors,
+      trivia,
       warnings: []
     };
   }

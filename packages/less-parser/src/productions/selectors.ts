@@ -385,9 +385,9 @@ export function forgivingSelectorList(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           i++;
           if (i === 1 && ctx.qualifiedRule) {
-            sequences!.push($.wrap(selector, true));
+            sequences!.push(selector);
           } else {
-            sequences!.push($.wrap(selector, i === 1 ? true : 'both'));
+            sequences!.push(selector);
           }
         }
       }
@@ -424,9 +424,9 @@ export function selectorList(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           i++;
           if (i === 1 && ctx.qualifiedRule) {
-            sequences!.push($.wrap(selector, true));
+            sequences!.push(selector);
           } else {
-            sequences!.push($.wrap(selector, i === 1 ? true : 'both'));
+            sequences!.push(selector);
           }
         }
       }
@@ -520,10 +520,7 @@ export function complexSelector(this: P, T: TokenMap) {
         if (!RECORDING_PHASE) {
           if (co) {
             const coImg = co.image as Combinators;
-            combinator = $.wrap(
-              new Combinator(coImg, undefined, $.getLocationInfo(co), $.context),
-              'both'
-            );
+            combinator = new Combinator(coImg, undefined, $.getLocationInfo(co), $.context);
           } else {
             const startOffset = $.LA(1).startOffset;
             combinator = new Combinator(' ', undefined, undefined, $.context);
@@ -977,7 +974,7 @@ export function importAtRule(this: P, T: TokenMap) {
       let url = urlNode.valueOf();
       isAtRule = isCssUrl(url, options);
 
-      let preludeNodes: Node[] = [$.wrap(urlNode)];
+      let preludeNodes: Node[] = [urlNode];
 
       if (extraNodes && extraNodes.length) {
         if (isAtRule) {
@@ -995,7 +992,7 @@ export function importAtRule(this: P, T: TokenMap) {
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context);
         const atRule = new AtRule({
-          name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
+          name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
           prelude: prelude
         }, undefined, location, $.context);
         return atRule;
@@ -1131,9 +1128,9 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     }
 
     return new VarDeclaration({
-      name: $.wrap(nameNode, true) as any,
-      value: $.wrap(value, true),
-      important: important ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), true) : undefined
+      name: nameNode as any,
+      value: value,
+      important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
     }, undefined, location, $.context);
   };
 }
@@ -1161,7 +1158,7 @@ export function selectorCapture(this: P, T: TokenMap) {
       return;
     }
     return new SelectorCapture(
-      $.wrap(selector, true),
+      selector,
       undefined,
       location,
       $.context
@@ -1230,7 +1227,7 @@ export function squareValue(this: P, T: TokenMap) {
           let nodes: Node[] = [];
           $.MANY(() => {
             let node = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
-            const wrapped = $.wrap(node);
+            const wrapped = node;
             nodes.push(wrapped);
           });
           const seq = new Sequence(nodes, undefined, $.getLocationFromNodes(nodes), $.context);

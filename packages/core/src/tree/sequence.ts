@@ -67,6 +67,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
+      const prevNode = value[i - 1]!;
       const node = value[i]!;
       // For sequences, normalize spacing based on actual serialized output (including pre/post)
       // If direct child has explicit pre === 0, respect that (no space)
@@ -85,9 +86,17 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         const currentCaptured = w.captureWithMeta(() => node.toString(options));
         const currentNodeOut = currentCaptured.text;
         const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+        const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+        const hasSourceGap = trivia
+          ? Boolean(
+            trivia.after.get(prevNode.location[3]!)
+            ?? trivia.before.get(node.location[0]!)
+          )
+          : undefined;
         const hasExplicitNoSpaceBoundary = (
           prevTrailingIntent === 'explicit_none'
           || currentCaptured.leadingIntent === 'explicit_none'
+          || hasSourceGap === false
         );
 
         if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
