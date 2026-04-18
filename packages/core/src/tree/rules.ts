@@ -22,6 +22,7 @@ import {
   savePrintState,
   restorePrintState
 } from './util/print.js';
+import type { IToken } from 'chevrotain';
 
 import { atIndex } from './util/collections.js';
 import type { Condition } from './condition.js';
@@ -38,6 +39,35 @@ import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 const { isArray } = Array;
+
+function emitTriviaTokens(tokens: IToken[] | undefined, options: PrintOptions): void {
+  if (!tokens) {
+    return;
+  }
+  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+  if (emittedTrivia.has(tokens)) {
+    return;
+  }
+  emittedTrivia.add(tokens);
+  const writer = options.writer!;
+  for (const token of tokens) {
+    if (options.context && token.image.startsWith('//')) {
+      continue;
+    }
+    writer.add(token.image);
+  }
+}
+
+function captureLeadingTrivia(node: Node, options: PrintOptions): string {
+  const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
+    | TreeContext['opts']['trivia']
+    | undefined;
+  if (trivia && options.trivia !== trivia) {
+    options.trivia = trivia;
+  }
+  const offset = node.location[0];
+  return options.writer!.capture(() => emitTriviaTokens(trivia?.before.get(offset), options));
+}
 
 export const enum Priority {
   None = 0,
@@ -1269,6 +1299,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // Do not permanently flip `charsetEmitted` here; restore at end.
         ctx.charsetEmitted = true;
       }
+      if (ctx?.topImports?.length) {
+        for (const node of this.value) {
+          const leadingTrivia = captureLeadingTrivia(node, options);
+          if (leadingTrivia.trim()) {
+            w.add(normalizeIndent(leadingTrivia, ''), node);
+            break;
+          }
+          if (node.hasFlag(F_VISIBLE)) {
+            break;
+          }
+        }
+      }
       // Less keeps leading comments before hoisted @import output.
       const isCommentLike = (node: Node): boolean => {
         const text = String(node.valueOf?.() ?? '').trimStart();
@@ -1422,15 +1464,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
-    // Skip charset nodes - they are collected and prepended at root level
-    // Nil nodes are now non-visible, so they're automatically filtered by n.visible
+    // No spacing flags; writer.capture is used where needed
     const items = value.filter(n => n.visible);
 
     if (items.length === 0) {
       return;
     }
-
-    // No spacing flags; writer.capture is used where needed
 
     const isInlineSourceRules = (node: Node): boolean => {
       if (node.type !== 'Rules') {

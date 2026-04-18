@@ -2,6 +2,8 @@ import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
+import type { IToken } from 'chevrotain';
+import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
@@ -17,6 +19,45 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
+
+function emitTriviaTokens(tokens: IToken[] | undefined, options: FinalPrintOptions): void {
+  if (!tokens) {
+    return;
+  }
+  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+  if (emittedTrivia.has(tokens)) {
+    return;
+  }
+  emittedTrivia.add(tokens);
+  const writer = options.writer!;
+  for (const token of tokens) {
+    if (options.context && token.image.startsWith('//')) {
+      continue;
+    }
+    writer.add(token.image);
+  }
+}
+
+function captureNodeBoundary(
+  node: Node,
+  key: 'pre' | 'post',
+  options: FinalPrintOptions
+): string {
+  const writer = options.writer!;
+  const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as TriviaMap | undefined;
+  if (trivia && options.trivia !== trivia) {
+    options.trivia = trivia;
+  }
+  if (node[key] !== undefined) {
+    return writer.capture(() => node.processPrePost(key, undefined, options));
+  }
+  if (!trivia) {
+    return '';
+  }
+  const offset = key === 'pre' ? node.location[0] : node.location[3];
+  const tokens = key === 'pre' ? trivia.before.get(offset) : trivia.after.get(offset);
+  return writer.capture(() => emitTriviaTokens(tokens, options));
+}
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
   const isBareAmpNode = (node: Selector): boolean => {
@@ -563,7 +604,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.depth = leafDepth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const pre = w.capture(() => nn.processPrePost('pre', undefined, options));
+        const pre = captureNodeBoundary(nn, 'pre', options);
         const out = isNode(nn, N.Declaration)
           ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
           : w.capture(() => nn.toTrimmedString(options));
@@ -593,6 +634,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             w.add(declNormalized, nn);
           }
         } else if (isNode(nn, N.Rules)) {
+          if (!/^\s*$/.test(pre)) {
+            w.add(normalizeIndent(pre, idt));
+          }
           /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
@@ -600,8 +644,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
        */
           w.add(out, nn);
         } else if (isLeafAtRule) {
+          if (!/^\s*$/.test(pre)) {
+            w.add(normalizeIndent(pre, idt));
+          }
           w.add(out, nn);
         } else {
+          if (!/^\s*$/.test(pre)) {
+            w.add(normalizeIndent(pre, idt));
+          }
           w.add(idt);
           w.add(out, nn);
         }
@@ -614,7 +664,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         }
 
         w.add('\n');
-        let post = w.capture(() => nn.processPrePost('post', undefined, options));
+        let post = captureNodeBoundary(nn, 'post', options);
 
         if (!/^\s*$/.test(post)) {
           w.add(normalizeIndent(post, idt));
