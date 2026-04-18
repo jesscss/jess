@@ -134,6 +134,22 @@ describe('Rules', () => {
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
+  it('keeps source serialization separate from context-owned render state', async () => {
+    const scope = await rules([
+      vardecl({ name: 'tone', value: any('red') })
+    ]).eval(context);
+    context.root = scope;
+    context.rulesContext = scope;
+
+    const node = ref({ key: 'tone' }, { type: 'variable' });
+
+    expect(node.render(context)).toBe('red');
+    expect(context.printState.writer?.toString()).toBe('red');
+    expect(node.toTrimmedString()).toBe('$tone');
+    expect(context.printState.writer?.toString()).toBe('red');
+    expect(node.toString()).toBe('$tone');
+  });
+
   it('reuses context-owned print state for explicit toString options with context', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })

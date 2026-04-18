@@ -1168,23 +1168,14 @@ export abstract class Node<
   }
 
   /**
-   * This re-serializes the node, if needed. Will
-   * likely be over-ridden in some cases.
+   * Re-serializes the node in its authored form.
    *
-   * Note that this is the "as-is" representation of the
-   * node, not the "evaluated" version.
+   * This is the canonical source serializer, not the evaluated render path.
+   * It includes outer pre/post whitespace and comments so the shared AST can
+   * still round-trip back to Jess/Less-like source.
    *
-   * Note that the ToCssVisitor will be a little
-   * more sophisticated, as it will re-format
-   * to some extent by replacing newlines + spacing
-   * with the appropriate amount of whitespace.
-   *
-   * @note toString() will, by default, include pre/post
-   * white-space and comments, to make serialization
-   * easy.
-   *
-   * In almost all Node cases, this should not be overriden,
-   * and toTrimmedString() should be overridden instead.
+   * In almost all Node cases, this should not be overridden, and
+   * `toTrimmedString()` should be overridden instead.
    */
   toString(options?: PrintOptions): string {
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
@@ -1203,6 +1194,10 @@ export abstract class Node<
     return w.getSince(mark);
   }
 
+  /**
+   * Renders evaluated output for this node through the context-owned print
+   * state. This is the live-binding render path, not a source serializer.
+   */
   render(context: Context, options?: PrintOptions): string {
     const prepared = prepareContextPrintState(context, options);
     const resolved = this.resolve(context);
@@ -1214,12 +1209,13 @@ export abstract class Node<
   }
 
   /**
-   * The form of the node without pre/post comments and white-space
+   * The authored body form of the node without outer pre/post comments and
+   * whitespace.
    *
    * @note - Internally, this still calls `toString()` on each value,
    * so that the internal spacing of the node serialization is
    * correct. This method just serializes a node without the outer
-   * pre/post nodes.
+   * pre/post nodes, and does not require a render context.
    */
   toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

@@ -1502,9 +1502,9 @@ that reinforce each other:
   (one `typeof` check instead of `.valueOf()` + node-type inspection) and
   removes a class of edge cases around interpolated names with static content.
 
-The render model here (`render()` writing to `ctx.outputBuffer`) is fully
+The render model here (`render(ctx)` writing to `ctx.outputBuffer`) is fully
 compatible with the whitespace proposal's `FormattingMap` — `emitFmt()` is
-just called at the start and end of each `render()` call exactly where the
+just called at the start and end of each `render(ctx)` call exactly where the
 current `processPrePost()` sandwich is.
 
 ---

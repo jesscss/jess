@@ -74,7 +74,7 @@ Keep these contracts distinct:
 
 Use this as the guardrail for ambiguous nodes:
 
-- `SelectorCapture.render()` without context should still serialize `*[ ... ]`
+- `SelectorCapture.toTrimmedString()` should still serialize `*[ ... ]`
   syntax.
 - `SelectorCapture.render(context)` may resolve the captured selector payload
   for evaluated output.
