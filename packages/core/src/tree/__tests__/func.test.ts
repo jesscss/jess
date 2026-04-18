@@ -31,13 +31,15 @@ describe('Func', () => {
     const ctx = new Context({ leakyRules: true });
     ctx.depth = 2;
 
+    const answer = fn({
+      name: any('answer'),
+      body: rules([
+        decl({ name: 'return', value: any('42') })
+      ])
+    });
+
     const tree = rules([
-      fn({
-        name: any('answer'),
-        body: rules([
-          decl({ name: 'return', value: any('42') })
-        ])
-      }),
+      answer,
       call({ name: ref('answer', { type: 'function' }), args: list([]) })
     ]);
 
@@ -45,5 +47,6 @@ describe('Func', () => {
     expect(String(out)).toBeString(`
       42
     `);
+    expect(Object.getOwnPropertyDescriptor(answer, '_options')?.value).toBeUndefined();
   });
 });

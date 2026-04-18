@@ -63,6 +63,7 @@ describe('Node Flags', () => {
       const node = comment('/* test */');
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
+      expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
     });
 
     it('Combinator should be F_STATIC', () => {
@@ -120,21 +121,21 @@ describe('Node Flags', () => {
     });
 
     it('container with one non-static child should get F_NON_STATIC', () => {
-      const items = [any('hello'), ref({ key: any('name') })];
-      const node = list(items as any);
+      const items: Parameters<typeof list>[0] = [any('hello'), ref({ key: any('name') })];
+      const node = list(items);
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
 
     it('container with one async child should get F_MAY_ASYNC', () => {
-      const items = [any('hello'), ref({ key: any('name') })];
-      const node = list(items as any);
+      const items: Parameters<typeof list>[0] = [any('hello'), ref({ key: any('name') })];
+      const node = list(items);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
 
     it('F_NON_STATIC takes precedence over F_STATIC', () => {
-      const items = [any('static-child'), ref({ key: any('dynamic') })];
-      const node = list(items as any);
+      const items: Parameters<typeof list>[0] = [any('static-child'), ref({ key: any('dynamic') })];
+      const node = list(items);
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
@@ -148,7 +149,7 @@ describe('Node Flags', () => {
     });
 
     it('nested non-static containers should bubble F_NON_STATIC up', () => {
-      const inner = list([any('a'), ref({ key: any('x') })] as any);
+      const inner = list([any('a'), ref({ key: any('x') })]);
       const outer = paren(inner);
       expect(outer.hasFlag(F_NON_STATIC)).toBe(true);
       expect(outer.hasFlag(F_STATIC)).toBe(false);
@@ -156,7 +157,7 @@ describe('Node Flags', () => {
 
     it('F_MAY_ASYNC should bubble through multiple levels', () => {
       const r = ref({ key: any('x') });
-      const inner = list([r] as any);
+      const inner = list([r]);
       const outer = paren(inner);
       expect(outer.hasFlag(F_MAY_ASYNC)).toBe(true);
     });

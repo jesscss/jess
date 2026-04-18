@@ -73,7 +73,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
    * to avoid duplicating complex param matching logic.
    */
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
-    const returnName = this.options?.returnName ?? 'return';
+    const returnName = this._options?.returnName ?? 'return';
 
     const bodyRules = this.value.body;
 

@@ -19,7 +19,7 @@ export class Comment extends Node<string, CommentOptions> {
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlag(F_STATIC);
-    if (this.options.lineComment || value.startsWith('//')) {
+    if (options?.lineComment || value.startsWith('//')) {
       this.removeFlag(F_VISIBLE);
     }
   }
