@@ -350,52 +350,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       node.frames = [...context.frames];
     }
 
-    const tryMergeNestedMedia = () => {
-      // Nested @media merge is currently disabled to match less.js fixture expectations.
-      // (Some fixtures expect nested @media blocks to remain nested rather than being
-      // rewritten as `@media a and b`.)
-      if (process.env.ENABLE_NESTED_MEDIA_MERGE !== 'true') {
-        return;
-      }
-      if (node.value.name?.valueOf?.() !== '@media') {
-        return;
-      }
-      const outerRules = node.value.rules;
-      if (!outerRules) {
-        return;
-      }
-      const visible = outerRules.value.filter(n => n.visible);
-      if (visible.length !== 1) {
-        return;
-      }
-      const only = visible[0]!;
-      if (!isNode(only, N.AtRule) || (only as AtRule).value.name?.valueOf?.() !== '@media') {
-        return;
-      }
-      const inner = only as AtRule;
-      const innerRules = inner.value.rules;
-      if (!innerRules) {
-        return;
-      }
-
-      // Combine media queries using "and" like Less does.
-      const outerPrelude = node.value.prelude;
-      const innerPrelude = inner.value.prelude;
-      if (outerPrelude && innerPrelude) {
-        // Build a normalized text prelude to avoid double-spacing from nested sequences.
-        const outerText = outerPrelude.toTrimmedString().trim();
-        const innerText = innerPrelude.toTrimmedString().trim();
-        const combined = `${outerText} and ${innerText}`.replace(/[ \t]+/g, ' ').trim();
-        node.value.prelude = new Any(combined);
-      } else {
-        node.value.prelude = outerPrelude ?? innerPrelude;
-      }
-
-      // Replace outer rules with the inner rules (flatten nested media).
-      node.value.rules = innerRules;
-      node.adopt(innerRules);
-    };
-
     return pipe(
       () => {
         // Evaluate prelude in the correct scope (mixin params, vars, etc.).
@@ -474,7 +428,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                   node.value.rules = finalRules;
-                  tryMergeNestedMedia();
                   context.extendRoots.popExtendRoot();
                   const layerName = context.extendRoots.takeLayerName(node);
                   const parent = parentExtendRoot ?? context.root ?? undefined;
@@ -521,8 +474,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               node.value.rules = finalRules;
-              tryMergeNestedMedia();
-
               if (pushedExtendRoot && node.isNestable()) {
                 context.extendRoots.popExtendRoot();
                 const layerName = context.extendRoots.takeLayerName(node);
@@ -550,8 +501,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           const finalRules =
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
           node.value.rules = finalRules;
-          tryMergeNestedMedia();
-
           if (pushedExtendRoot && node.isNestable()) {
             context.extendRoots.popExtendRoot();
             const layerName = context.extendRoots.takeLayerName(node);
