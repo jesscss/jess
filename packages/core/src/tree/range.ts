@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo } from './node.js';
+import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type RangeValue = {
@@ -35,8 +35,8 @@ export class Range extends Node<RangeValue, RangeOptions> {
     const w = options.writer!;
     const mark = w.mark();
     const { start, end, step } = this.value;
-    const includeStart = this.options?.includeStart !== false;
-    const includeEnd = this.options?.includeEnd !== false;
+    const includeStart = this._options?.includeStart !== false;
+    const includeEnd = this._options?.includeEnd !== false;
 
     const emitTrimmed = (n: Node) => {
       const s = w.capture(() => n.toString(options));

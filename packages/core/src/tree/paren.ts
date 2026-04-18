@@ -65,7 +65,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const escapeChar = this.options?.escaped ? '~' : '';
+    const escapeChar = this._options?.escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);
     }
@@ -104,7 +104,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         if (evaluatedGuardBool) {
           return evaluatedGuardBool;
         }
-        if (this.options?.escaped && value instanceof Node) {
+        if (this._options?.escaped && value instanceof Node) {
           return value;
         }
         /**

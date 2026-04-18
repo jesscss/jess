@@ -12,6 +12,16 @@ describe('Range', () => {
     }).toTrimmedString()).toBe('1 to <3 step 2');
   });
 
+  it('does not allocate options when rendering an inclusive range', () => {
+    const node = range({
+      start: num(1),
+      end: num(3)
+    });
+
+    expect(node.toTrimmedString()).toBe('1 to 3');
+    expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
+  });
+
   it('serializes inclusive/exclusive range boundaries canonically', () => {
     expect(`${range({
       start: num(1),

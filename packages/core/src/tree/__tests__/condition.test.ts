@@ -1,4 +1,4 @@
-import { bool, condition, dimension, num } from '..';
+import { bool, condition, dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -42,6 +42,17 @@ describe('Condition', () => {
         bool(true)
       ], { negate: true });
       expect(`${node}`).toBe('not (true = true)');
+    });
+
+    it('does not allocate options when rendering a default condition', () => {
+      const node = condition([
+        bool(true),
+        '=',
+        bool(true)
+      ]);
+
+      expect(node.toTrimmedString()).toBe('(true = true)');
+      expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
     });
   });
 

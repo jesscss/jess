@@ -13,6 +13,13 @@ describe('Paren', () => {
     expect(paren(any('foo')).toTrimmedString()).toBe('(foo)');
   });
 
+  it('does not allocate options when rendering paren syntax with defaults', () => {
+    const rule = paren(any('foo'));
+
+    expect(rule.toTrimmedString()).toBe('(foo)');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
   it('renders resolved paren values through render(context)', async () => {
     const node = rules([
       vardecl({

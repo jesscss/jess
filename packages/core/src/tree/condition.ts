@@ -35,8 +35,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const w = options.writer!;
     const mark = w.mark();
     let [left, op, right] = this.value;
-    const needsParens = Boolean(right || this.options?.negate);
-    if (this.options?.negate) {
+    const negate = this._options?.negate === true;
+    const needsParens = Boolean(right || negate);
+    if (negate) {
       w.add('not ');
     }
     if (needsParens) {
@@ -84,19 +85,23 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   override evalNode(context: Context): MaybePromise<Bool> {
     let [left, op, right] = this.value;
-    let negated = !!this.options?.negate;
+    let negated = this._options?.negate === true;
     const normalizeDefaultCall = (node: Node): Node => {
       if (node.type === 'DefaultGuard') {
         return new Bool(Boolean(context.isDefault));
       }
       if (node.type === 'Paren') {
-        const inner = (node as { value?: Node }).value;
-        return inner ? normalizeDefaultCall(inner) : node;
+        const inner = node.value;
+        return inner instanceof Node ? normalizeDefaultCall(inner) : node;
       }
       if (node.type !== 'Call') {
         return node;
       }
-      const rawName = (node as any).value?.name;
+      const rawValue = node.value;
+      if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
+        return node;
+      }
+      const rawName = rawValue.name;
       const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
       const refKey = rawName?.type === 'Reference'
         ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
