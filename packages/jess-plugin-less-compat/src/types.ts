@@ -1,38 +1,210 @@
-/**
- * TypeScript type definitions for Less.js compatibility
- */
+import type {
+  AtRule,
+  Call,
+  Color,
+  Comment,
+  Condition,
+  Declaration,
+  Dimension,
+  Extend,
+  Expression,
+  List,
+  Mixin,
+  Negative,
+  Node,
+  Operation,
+  Paren,
+  Quoted,
+  Reference,
+  Ruleset,
+  Sequence,
+  StyleImport,
+  Url,
+  VarDeclaration
+} from '@jesscss/core';
+import type { LessAdapterBase } from './transform/less-adapter.js';
 
-// Re-export Less.js types when available
-// For now, we'll use any to avoid dependency issues during development
+export interface LessAdapterNode<TJess extends Node = Node> extends LessAdapterBase<TJess> {
+  type: string;
+  typeIndex: number | undefined;
+  accept(visitor: unknown): TJess | unknown;
+}
 
-export type LessNode = any;
+export interface LessRuleset extends LessAdapterNode<Ruleset> {
+  type: 'Ruleset';
+  selectors: LessSelector[];
+  rules: LessNode[];
+}
+
+export interface LessSelector extends LessAdapterNode<Node> {
+  type: 'Selector';
+  elements: LessElement[];
+  length: number;
+}
+
+export interface LessElement extends LessAdapterNode<Node> {
+  type: 'Element';
+  combinator: LessCombinator;
+  value: unknown;
+  isVariable: boolean;
+}
+
+export interface LessCombinator extends LessAdapterNode<Node> {
+  type: 'Combinator';
+  value: string;
+  emptyOrWhitespace: boolean;
+}
+
+export interface LessDeclaration extends LessAdapterNode<Declaration> {
+  type: 'Declaration';
+  name: unknown;
+  value: LessNode | unknown;
+  important: unknown;
+  variable: boolean;
+  merge: boolean;
+}
+
+export interface LessVariable extends LessAdapterNode<Reference | VarDeclaration> {
+  type: 'Variable';
+  name: string;
+}
+
+export interface LessProperty extends LessAdapterNode<Reference> {
+  type: 'Property';
+  name: string;
+}
+
+export interface LessVariableCall extends LessAdapterNode<Reference> {
+  type: 'VariableCall';
+  name: string;
+  value?: unknown;
+}
+
+export interface LessMixinDefinition extends LessAdapterNode<Mixin> {
+  type: 'Mixin';
+  name?: unknown;
+  params?: unknown;
+  rules: LessNode[];
+  condition?: unknown;
+}
+
+export interface LessMixinCall extends LessAdapterNode<Call> {
+  type: 'Call';
+  name: unknown;
+  args: LessNode[];
+  index?: number;
+}
+
+export interface LessDimension extends LessAdapterNode<Dimension> {
+  type: 'Dimension' | 'Num';
+  value: number;
+  unit?: string;
+}
+
+export interface LessColor extends LessAdapterNode<Color> {
+  type: 'Color';
+}
+
+export interface LessOperation extends LessAdapterNode<Operation> {
+  type: 'Operation';
+  op: string;
+  operands: LessNode[];
+}
+
+export interface LessExpression extends LessAdapterNode<Expression | Sequence | List> {
+  type: 'Expression' | 'Value';
+  value: LessNode[];
+  length?: number;
+}
+
+export interface LessQuoted extends LessAdapterNode<Quoted> {
+  type: 'Quoted';
+  value: string;
+  quote: string;
+  escaped: boolean;
+}
+
+export interface LessURL extends LessAdapterNode<Url> {
+  type: 'Url';
+  value: LessNode | unknown;
+}
+
+export interface LessComment extends LessAdapterNode<Comment> {
+  type: 'Comment';
+}
+
+export interface LessAtRule extends LessAdapterNode<AtRule> {
+  type: 'AtRule' | 'Directive';
+  name: unknown;
+  value?: LessNode | unknown;
+  rules: LessNode[];
+}
+
+export interface LessImport extends LessAdapterNode<StyleImport> {
+  type: 'Import';
+  path: LessNode | unknown;
+  options: Record<string, unknown>;
+  currentFileInfo: unknown;
+  index?: number;
+}
+
+export interface LessExtend extends LessAdapterNode<Extend> {
+  type: 'Extend';
+  selector: LessSelector | unknown;
+  option: 'exact' | 'all';
+  index?: number;
+  currentFileInfo: unknown;
+}
+
+export interface LessCondition extends LessAdapterNode<Condition> {
+  type: 'Condition';
+  op: string;
+  lvalue: LessNode | unknown;
+  rvalue: LessNode | unknown;
+  negate: boolean;
+}
+
+export interface LessParen extends LessAdapterNode<Paren> {
+  type: 'Paren';
+  value: LessNode | unknown;
+}
+
+export interface LessNegative extends LessAdapterNode<Negative> {
+  type: 'Negative';
+  value: LessNode | unknown;
+}
+
+export type LessValue = LessExpression;
+export type LessAssignment = LessDeclaration;
+
+export type LessNode =
+  | LessRuleset
+  | LessSelector
+  | LessElement
+  | LessCombinator
+  | LessDeclaration
+  | LessVariable
+  | LessProperty
+  | LessVariableCall
+  | LessMixinDefinition
+  | LessMixinCall
+  | LessDimension
+  | LessColor
+  | LessOperation
+  | LessExpression
+  | LessQuoted
+  | LessURL
+  | LessComment
+  | LessAtRule
+  | LessImport
+  | LessExtend
+  | LessCondition
+  | LessParen
+  | LessNegative
+  | LessAdapterNode;
 
 /**
  * @deprecated Less.js Visitor API - This is a compatibility type for Less.js visitors.
  * Use Jess's native Visitor interface instead when possible.
  */
 export type LessVisitor = any;
-export type LessRuleset = any;
-export type LessSelector = any;
-export type LessElement = any;
-export type LessDeclaration = any;
-export type LessVariable = any;
-export type LessProperty = any;
-export type LessVariableCall = any;
-export type LessMixinDefinition = any;
-export type LessMixinCall = any;
-export type LessDimension = any;
-export type LessColor = any;
-export type LessOperation = any;
-export type LessExpression = any;
-export type LessQuoted = any;
-export type LessURL = any;
-export type LessComment = any;
-export type LessAtRule = any;
-export type LessImport = any;
-export type LessExtend = any;
-export type LessCondition = any;
-export type LessParen = any;
-export type LessNegative = any;
-export type LessValue = any;
-export type LessAssignment = any;

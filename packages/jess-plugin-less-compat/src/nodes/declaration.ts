@@ -1,20 +1,31 @@
-import { Declaration, Node } from '@jesscss/core';
+import { Any, Declaration, Node } from '@jesscss/core';
 import { createFromAdapter } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
+import { fromLessNode } from '../transform/from-less.js';
 
 export const transformDeclarationToLess = createFromAdapter<Declaration>({
   fields: {
-    name: d => d.get('name'),
-    value: (d, cache) => {
-      const value = d.get('value');
-      return value instanceof Node ? toLessNode(value, { cache }) : value;
+    name: {
+      get: d => d.value.name,
+      set: (d, value) => {
+        d.set('name', value instanceof Any ? value : new Any(String(value), { role: 'property' }));
+      }
     },
-    important: d => d.get('important') || false,
+    value: {
+      get: (d, cache) => {
+        const value = d.value.value;
+        return value instanceof Node ? toLessNode(value, { cache }) : value;
+      },
+      set: (d, value) => {
+        d.set('value', value instanceof Node ? value : fromLessNode(value));
+      }
+    },
+    important: d => d.value.important || false,
     variable: d => d.options?.assign !== undefined,
     merge: () => false
   },
   accept: (decl, visitor, cache) => {
-    const value = decl.get('value');
+    const value = decl.value.value;
     if (value instanceof Node) {
       const lessValue = toLessNode(value, { cache });
       if (lessValue?.accept) {
@@ -23,13 +34,6 @@ export const transformDeclarationToLess = createFromAdapter<Declaration>({
         visitor.visitArray([lessValue]);
       } else if (lessValue && visitor.visit) {
         visitor.visit(lessValue);
-      }
-    } else if (value && Array.isArray(value)) {
-      const lessValues = (value as any[]).map((v: any) =>
-        v instanceof Node ? toLessNode(v, { cache }) : v
-      );
-      if (visitor.visitArray) {
-        visitor.visitArray(lessValues);
       }
     }
     return decl;

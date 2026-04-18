@@ -299,11 +299,11 @@ Replace the current `value = Proxy({ name, value, ... })` pattern with direct ty
 
 Replace the transparent `Proxy`-based compat shim with explicit typed adapter classes (e.g. `LessRuleset`, `LessDeclaration`). V8-inlineable getters, no per-node Proxy, explicit API surface.
 
-- [ ] Design adapter class interface for each Less-exposed node type
-- [ ] Implement adapter classes (`jess-plugin-less-compat` package)
-- [ ] Replace `isLessProxy` / `getJessNodeFromProxy` checks with `instanceof` guards
-- [ ] Remove the `Proxy` factory from the compat layer
-- [ ] Verify Less compatibility suite still green after switch
+- [x] Design adapter class interface for each Less-exposed node type
+- [x] Implement adapter classes (`jess-plugin-less-compat` package)
+- [x] Replace `isLessProxy` / `getJessNodeFromProxy` checks with `instanceof` guards
+- [x] Remove the `Proxy` factory from the compat layer
+- [x] Verify Less compatibility suite still green after switch
 
 ### Track 4 — Whitespace / Trivia Token Proposal
 
