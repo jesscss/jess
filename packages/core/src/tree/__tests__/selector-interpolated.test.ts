@@ -21,10 +21,10 @@ describe('InterpolatedSelector', () => {
   it('renders interpolated selector source syntax through toTrimmedString()', () => {
     const node = interpolatedSelector(interpolated({
       source: `.${INTERPOLATION_PLACEHOLDER}`,
-      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
     }));
 
-    expect(node.toTrimmedString()).toBe('.$name');
+    expect(node.toTrimmedString()).toBe('.$[name]');
   });
 
   it('renders resolved interpolated selectors through render(context)', async () => {
@@ -40,7 +40,7 @@ describe('InterpolatedSelector', () => {
 
     const rendered = interpolatedSelector(interpolated({
       source: `.${INTERPOLATION_PLACEHOLDER}`,
-      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
     })).render(context);
 
     expect(rendered).toBe('.foo');
@@ -59,7 +59,7 @@ describe('InterpolatedSelector', () => {
 
     const resolved = await interpolatedSelector(interpolated({
       source: `.${INTERPOLATION_PLACEHOLDER}`,
-      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
     })).resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
