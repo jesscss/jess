@@ -48,16 +48,8 @@ describe('Basic Ruleset Rendering', () => {
       }`
     );
   });
-});
 
-describe('Basic Ruleset Rendering', () => {
-  let context: Context;
-
-  beforeEach(() => {
-    context = new Context();
-  });
-
-  it('should render a basic ruleset correctly', async () => {
+  it('renders a root rules container through render(context)', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.test')]),
@@ -67,17 +59,14 @@ describe('Basic Ruleset Rendering', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString();
-
-    expect(css).toBeString(`
+    expect(node.render(context)).toBeString(`
       .test {
         color: red;
-      }`
-    );
+      }
+    `);
   });
 
-  it('should render a basic ruleset without collapseNesting', async () => {
+  it('resolves a root rules container without touching render state', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.test')]),
@@ -87,13 +76,13 @@ describe('Basic Ruleset Rendering', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: false });
+    const resolved = await node.resolve(context);
 
-    expect(css).toBeString(`
+    expect(resolved.toTrimmedString()).toBeString(`
       .test {
         color: red;
-      }`
-    );
+      }
+    `);
+    expect(context.printState.writer).toBeUndefined();
   });
 });
