@@ -11,6 +11,7 @@ import {
   Rules,
   Sequence,
   VarDeclaration,
+  While,
   any,
   bool,
   call,
@@ -176,6 +177,38 @@ describe('Control Nodes', () => {
     expect(context.printState.writer?.toString()).toBeString(`
       $for ($value of a, b) {
         item: $value;
+      }
+    `);
+  });
+
+  it('serializes $while source syntax through toTrimmedString()', () => {
+    const node = new While({
+      condition: bool(true),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    expect(node.toTrimmedString()).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+  });
+
+  it('keeps direct $while render(context) on source syntax', () => {
+    const context = new Context();
+    const node = new While({
+      condition: bool(true),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    expect(node.render(context)).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+    expect(context.printState.writer?.toString()).toBeString(`
+      $while (true) {
+        color: red;
       }
     `);
   });
