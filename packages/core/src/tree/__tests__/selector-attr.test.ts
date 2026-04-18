@@ -9,6 +9,16 @@ describe('Attribute Selector', () => {
   });
 
   describe('normalization', () => {
+    test('renders attribute selector syntax through render()', () => {
+      const rule = attr({
+        name: 'data',
+        op: '=',
+        value: quoted('bar')
+      });
+
+      expect(rule.render()).toBe('[data="bar"]');
+    });
+
     test('with or without quotes', () => {
       let rule1 = attr({
         name: 'foo',
@@ -29,6 +39,26 @@ describe('Attribute Selector', () => {
       expect(rule2.toString()).toBe('[FOO= "bar"]');
       expect(rule1.valueOf()).toBe(rule2.valueOf());
     });
+  });
+
+  test('renders resolved attribute selector values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const rendered = attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    }).render(context);
+
+    expect(rendered).toBe('[data=foo]');
   });
 
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {

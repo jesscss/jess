@@ -32,6 +32,31 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return node;
   }
 
+  private renderAttributeSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    const { name, op, value, mod } = this.value;
+    w.add('[');
+    if (typeof name === 'string') {
+      w.add(name, this);
+    } else {
+      name.toString(options);
+    }
+    if (op) {
+      w.add(op);
+    }
+    if (value) {
+      value.toString(options);
+    }
+    if (mod) {
+      w.add(' ');
+      w.add(mod);
+    }
+    w.add(']');
+    return w.getSince(mark);
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     return pipe(
       () => super.evalNode(context),
@@ -66,29 +91,27 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     );
   }
 
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderAttributeSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    const { name, op, value, mod } = this.value;
-    w.add('[');
-    if (typeof name === 'string') {
-      w.add(name, this);
-    } else {
-      name.toString(options);
-    }
-    if (op) {
-      w.add(op);
-    }
-    if (value) {
-      value.toString(options);
-    }
-    if (mod) {
-      w.add(' ');
-      w.add(mod);
-    }
-    w.add(']');
-    return w.getSince(mark);
+    return this.renderAttributeSyntax(options);
   }
 
   override valueOf() {
