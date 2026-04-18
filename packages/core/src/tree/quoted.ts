@@ -25,16 +25,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return node;
   }
 
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
-    super(value, options, location, treeContext);
-    if (typeof value === 'string' && !options?.escaped) {
-      this.addFlag(F_STATIC);
-    } else {
-      this.addFlag(F_NON_STATIC);
-    }
-  }
-
-  override toTrimmedString(options?: PrintOptions) {
+  private renderQuotedSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -47,6 +38,38 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     super.toTrimmedString(options);
     w.add(quote);
     return w.getSince(mark);
+  }
+
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    if (typeof value === 'string' && !options?.escaped) {
+      this.addFlag(F_STATIC);
+    } else {
+      this.addFlag(F_NON_STATIC);
+    }
+  }
+
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderQuotedSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    return this.renderQuotedSyntax(options);
   }
 
   override valueOf(): string {
