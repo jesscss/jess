@@ -272,20 +272,30 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return replacedRules;
   }
 
-  private applyConfiguredAdditions(
+  private partitionAdditiveConfiguredNodes(additiveNodes: Node[]): {
+    additiveVariableNodes: Node[];
+    additiveNonVariableNodes: Node[];
+  } {
+    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
+    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
+    return {
+      additiveVariableNodes,
+      additiveNonVariableNodes
+    };
+  }
+
+  private finalizeConfiguredImportedSurface(
     sourceRules: Rules,
     importedRules: Rules,
     additiveNodes: Node[]
   ): Rules {
-    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
-    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
+    const { additiveVariableNodes, additiveNonVariableNodes } = this.partitionAdditiveConfiguredNodes(additiveNodes);
+    this.clearConfiguredImportBoundary(importedRules);
     if (additiveNonVariableNodes.length === 0) {
-      this.clearConfiguredImportBoundary(importedRules);
       this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
       return importedRules;
     }
 
-    this.clearConfiguredImportBoundary(importedRules);
     return this.wrapConfiguredImportedSurface(
       sourceRules,
       importedRules,
@@ -301,18 +311,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return sourceRules;
     }
 
-    if (replacementsByIndex.size === 0) {
-      const configuredRules = this.createConfiguredImportedSurface(sourceRules);
-      return this.applyConfiguredAdditions(sourceRules, configuredRules, newVariables);
-    }
+    const importedRules = replacementsByIndex.size === 0
+      ? this.createConfiguredImportedSurface(sourceRules)
+      : this.createConfiguredReplacementSurface(sourceRules, replacementsByIndex);
 
-    const replacedRules = this.createConfiguredReplacementSurface(sourceRules, replacementsByIndex);
-    if (newVariables.length === 0) {
-      this.clearConfiguredImportBoundary(replacedRules);
-      return replacedRules;
-    }
-
-    return this.applyConfiguredAdditions(sourceRules, replacedRules, newVariables);
+    return this.finalizeConfiguredImportedSurface(sourceRules, importedRules, newVariables);
   }
 
   private wrapConfiguredImportedSurface(
