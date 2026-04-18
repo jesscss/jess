@@ -89,25 +89,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return value;
   }
 
-  override render(context: Context, options?: PrintOptions): string;
-  override render(options?: PrintOptions): string;
-  override render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      return super.render(context, maybeOptions);
-    }
-    return this.renderCompoundSyntax(contextOrOptions as PrintOptions | undefined);
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderCompoundSyntax(options);
   }

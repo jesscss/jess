@@ -9,14 +9,14 @@ describe('Attribute Selector', () => {
   });
 
   describe('normalization', () => {
-    test('renders attribute selector syntax through render()', () => {
+    test('renders attribute selector syntax through toTrimmedString()', () => {
       const rule = attr({
         name: 'data',
         op: '=',
         value: quoted('bar')
       });
 
-      expect(rule.render()).toBe('[data="bar"]');
+      expect(rule.toTrimmedString()).toBe('[data="bar"]');
     });
 
     test('with or without quotes', () => {

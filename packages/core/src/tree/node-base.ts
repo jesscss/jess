@@ -1203,29 +1203,14 @@ export abstract class Node<
     return w.getSince(mark);
   }
 
-  render(context?: Context, options?: PrintOptions): string;
-  render(options?: PrintOptions): string;
-  render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      const options = prepareContextPrintState(context, maybeOptions);
-      const resolved = this.resolve(context);
-      if (!isThenable(resolved)) {
-        return resolved.toTrimmedString(options);
-      }
-      return this.toTrimmedString(options);
+  render(context: Context, options?: PrintOptions): string {
+    const prepared = prepareContextPrintState(context, options);
+    const resolved = this.resolve(context);
+    if (!isThenable(resolved)) {
+      return resolved.toTrimmedString(prepared);
     }
-    const options = getPrintOptions(contextOrOptions as PrintOptions | undefined);
-    return this.toTrimmedString(options);
+    const printOptions = getPrintOptions(prepared);
+    return this.toTrimmedString(printOptions);
   }
 
   /**

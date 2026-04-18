@@ -9,8 +9,8 @@ describe('url', () => {
     context = new Context();
   });
 
-  it('renders url syntax through render()', () => {
-    expect(url(quoted('image.png')).render()).toBe('url("image.png")');
+  it('renders url syntax through toTrimmedString()', () => {
+    expect(url(quoted('image.png')).toTrimmedString()).toBe('url("image.png")');
   });
 
   it('renders a resolved url value through render(context)', async () => {

@@ -9,9 +9,9 @@ describe('reference', () => {
     context = new Context();
   });
   describe('serialization', () => {
-    it('renders a variable reference through render()', () => {
+    it('renders a variable reference through toTrimmedString()', () => {
       let node = ref({ key: 'foo' }, { type: 'variable' });
-      expect(node.render()).toBe('$foo');
+      expect(node.toTrimmedString()).toBe('$foo');
     });
 
     it('should serialize a variable reference', () => {

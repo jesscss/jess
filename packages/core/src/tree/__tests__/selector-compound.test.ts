@@ -12,7 +12,7 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
-    test('renders compound selector syntax through render()', () => {
+    test('renders compound selector syntax through toTrimmedString()', () => {
       const node = compound([
         el('a'),
         attr({
@@ -22,7 +22,7 @@ describe('Compound Selector', () => {
         })
       ]);
 
-      expect(node.render()).toBe('a[data=bar]');
+      expect(node.toTrimmedString()).toBe('a[data=bar]');
     });
 
     test('same value', () => {

@@ -1,7 +1,6 @@
 import { Node, defineType } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type Any } from './any.js';
-import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -33,25 +32,6 @@ export class Url extends Node<Quoted | Any> {
       return quotedValue;
     }
     return value.value;
-  }
-
-  override render(context: Context, options?: PrintOptions): string;
-  override render(options?: PrintOptions): string;
-  override render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      return super.render(context, maybeOptions);
-    }
-    return this.renderUrlSyntax(contextOrOptions as PrintOptions | undefined);
   }
 
   override toTrimmedString(options?: PrintOptions) {

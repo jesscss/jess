@@ -9,14 +9,14 @@ describe('Complex selector', () => {
   });
 
   describe('render', () => {
-    test('renders complex selector syntax through render()', () => {
+    test('renders complex selector syntax through toTrimmedString()', () => {
       const node = sel([
         el('a'),
         co('>'),
         el('.foo')
       ]);
 
-      expect(node.render()).toBe('a > .foo');
+      expect(node.toTrimmedString()).toBe('a > .foo');
     });
 
     test('renders resolved complex selector values through render(context)', async () => {

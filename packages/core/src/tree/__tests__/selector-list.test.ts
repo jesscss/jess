@@ -12,13 +12,13 @@ describe('Selector list', () => {
   });
 
   describe('equality', () => {
-    test('renders selector-list syntax through render()', () => {
+    test('renders selector-list syntax through toTrimmedString()', () => {
       const node = sellist([
         el('.foo'),
         el('.bar')
       ]);
 
-      expect(node.render()).toBe('.foo,\n.bar');
+      expect(node.toTrimmedString()).toBe('.foo,\n.bar');
     });
 
     /** @todo - add test for non-equality */

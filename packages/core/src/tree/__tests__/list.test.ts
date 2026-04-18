@@ -24,10 +24,10 @@ describe('List', () => {
     context = new Context();
   });
 
-  it('renders list syntax through render()', () => {
+  it('renders list syntax through toTrimmedString()', () => {
     const rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
 
-    expect(rule.render()).toBe('1 2 3, four');
+    expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
 
   it('renders resolved list values through render(context)', async () => {

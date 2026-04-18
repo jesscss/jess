@@ -91,25 +91,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
   }
 
-  override render(context: Context, options?: PrintOptions): string;
-  override render(options?: PrintOptions): string;
-  override render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      return super.render(context, maybeOptions);
-    }
-    return this.renderPseudoSyntax(contextOrOptions as PrintOptions | undefined);
-  }
-
   override toTrimmedString(options?: PrintOptions) {
     return this.renderPseudoSyntax(options);
   }

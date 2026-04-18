@@ -9,8 +9,8 @@ describe('SelectorCapture', () => {
     context = new Context();
   });
 
-  it('renders selector capture syntax through render()', () => {
-    expect(selcap(el('.foo')).render()).toBe('*[.foo]');
+  it('renders selector capture syntax through toTrimmedString()', () => {
+    expect(selcap(el('.foo')).toTrimmedString()).toBe('*[.foo]');
   });
 
   it('renders resolved selector values through render(context)', async () => {

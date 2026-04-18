@@ -108,25 +108,6 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   /** Normalize selectors on separate lines with indentation */
-  override render(context: Context, options?: PrintOptions): string;
-  override render(options?: PrintOptions): string;
-  override render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      return super.render(context, maybeOptions);
-    }
-    return this.renderSelectorListSyntax(contextOrOptions as PrintOptions | undefined);
-  }
-
   override toTrimmedString(options?: PrintOptions) {
     return this.renderSelectorListSyntax(options);
   }

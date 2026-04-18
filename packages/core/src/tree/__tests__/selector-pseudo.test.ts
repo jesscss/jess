@@ -9,8 +9,8 @@ describe('PseudoSelector', () => {
     context = new Context();
   });
 
-  it('renders pseudo selector syntax through render()', () => {
-    expect(pseudo({ name: ':hover' }).render()).toBe(':hover');
+  it('renders pseudo selector syntax through toTrimmedString()', () => {
+    expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
   });
 
   it('renders resolved pseudo selector values through render(context)', async () => {

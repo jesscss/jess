@@ -1714,25 +1714,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string;
-  override render(options?: PrintOptions): string;
-  override render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      return super.render(context, maybeOptions);
-    }
-    return this.renderReferenceSyntax(contextOrOptions as PrintOptions | undefined);
-  }
-
   /**
    * @note - A reference renders a $ only if it has no target.
    */

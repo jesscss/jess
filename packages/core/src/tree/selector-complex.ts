@@ -125,25 +125,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     this._requiredKeySet = requiredKeySet;
   }
 
-  override render(context: Context, options?: PrintOptions): string;
-  override render(options?: PrintOptions): string;
-  override render(
-    contextOrOptions?: Context | PrintOptions,
-    maybeOptions?: PrintOptions
-  ): string {
-    const context = (
-      contextOrOptions
-      && typeof contextOrOptions === 'object'
-      && 'opts' in contextOrOptions
-    )
-      ? contextOrOptions as Context
-      : undefined;
-    if (context) {
-      return super.render(context, maybeOptions);
-    }
-    return this.renderComplexSyntax(contextOrOptions as PrintOptions | undefined);
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderComplexSyntax(options);
   }

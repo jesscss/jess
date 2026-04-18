@@ -9,8 +9,8 @@ describe('quoted', () => {
     context = new Context();
   });
 
-  it('renders quoted syntax through render()', () => {
-    expect(quoted('hello').render()).toBe('"hello"');
+  it('renders quoted syntax through toTrimmedString()', () => {
+    expect(quoted('hello').toTrimmedString()).toBe('"hello"');
   });
 
   it('renders a resolved quoted value through render(context)', async () => {
