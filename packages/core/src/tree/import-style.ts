@@ -139,23 +139,45 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
-  private createEmptyImportResult(context: Context): Rules {
-    const sourceRules = isNode(context.rulesContext, N.Rules)
+  private getImportAnchorRules(context: Context): Rules {
+    return isNode(context.rulesContext, N.Rules)
       ? context.rulesContext
       : isNode(this.parent, N.Rules)
         ? this.parent
         : context.root;
-    const emptyRules = sourceRules.clone(false) as Rules;
-    emptyRules.value = [];
-    emptyRules.scopeFrame = undefined;
-    return emptyRules;
+  }
+
+  private deriveClonedRulesSurface(
+    anchorRules: Rules,
+    childNodes?: Node[],
+    options?: {
+      preserveSourceNode?: boolean;
+      resetScopeFrame?: boolean;
+    }
+  ): Rules {
+    const wrapped = anchorRules.clone(false) as Rules;
+    if (options?.resetScopeFrame) {
+      wrapped.scopeFrame = undefined;
+    }
+    if (options?.preserveSourceNode) {
+      wrapped.sourceNode = anchorRules.sourceNode ?? anchorRules;
+    }
+    if (childNodes) {
+      wrapped.value = [];
+      for (const childNode of childNodes) {
+        wrapped.adopt(childNode);
+        wrapped.value.push(childNode);
+      }
+    }
+    return wrapped;
+  }
+
+  private createEmptyImportResult(context: Context): Rules {
+    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
   }
 
   private createInlineImportSourceCarrier(context: Context, sourceNode: Node): Rules {
-    const sourceRules = this.createEmptyImportResult(context);
-    sourceRules.adopt(sourceNode);
-    sourceRules.value = [sourceNode];
-    return sourceRules;
+    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
   }
 
   private createConfiguredWrapperSurface(sourceRules: Rules): Rules {
@@ -165,22 +187,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return wrapperRules;
   }
 
-  private deriveSingleChildWrapperSurface(anchorRules: Rules, wrappedNode: Node): Rules {
-    const wrapped = anchorRules.clone(false) as Rules;
-    wrapped.value = [wrappedNode];
-    wrapped.scopeFrame = undefined;
-    return wrapped;
-  }
-
   private clearConfiguredImportBoundary(rules: Rules): Rules {
     delete rules.options.importBoundary;
     return rules;
   }
 
   private createConfiguredImportedSurface(sourceRules: Rules): Rules {
-    const importedRules = sourceRules.clone(false) as Rules;
-    importedRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
-    return importedRules;
+    return this.deriveClonedRulesSurface(sourceRules, undefined, { preserveSourceNode: true });
   }
 
   private throwIfConfiguredReuseIsDisallowed(withValues: StyleImportValue['with'] | undefined, hasCachedEvaluation: boolean): void {
@@ -826,7 +839,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               prelude,
               rules: wrappedRules
             });
-            wrappedRules = this.deriveSingleChildWrapperSurface(anchorRules, wrappedAtRule);
+            wrappedRules = this.deriveClonedRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
             continue;
           }
         }
@@ -837,7 +850,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         prelude: current,
         rules: wrappedRules
       });
-      wrappedRules = this.deriveSingleChildWrapperSurface(anchorRules, mediaAtRule);
+      wrappedRules = this.deriveClonedRulesSurface(anchorRules, [mediaAtRule], { resetScopeFrame: true });
     }
 
     return wrappedRules;
