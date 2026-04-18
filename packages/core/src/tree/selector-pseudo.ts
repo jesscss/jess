@@ -26,6 +26,39 @@ export type PseudoSelectorValue = {
  *   e.g. :hover, :focus, :active
 */
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
+  private renderPseudoSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    let { name, arg } = this.value;
+    const mark = w.mark();
+    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
+      let out = w.capture(() => arg.toString(options));
+      out = out.replace(/\n\s*/g, ' ').trim();
+      if (!out.includes(',')) {
+        w.add(out, arg);
+        return w.getSince(mark);
+      }
+      w.add(name, this);
+      w.add('(');
+      w.add(out, arg);
+      w.add(')');
+      return w.getSince(mark);
+    }
+    w.add(name, this);
+    if (arg) {
+      w.add('(');
+      if (isNode(arg, N.SelectorList)) {
+        let out = w.capture(() => arg.toString(options));
+        out = out.replace(/\n\s*/g, ' ').trim();
+        w.add(out, arg);
+      } else {
+        arg.toString(options);
+      }
+      w.add(')');
+    }
+    return w.getSince(mark);
+  }
+
   override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -58,37 +91,27 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     }
   }
 
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderPseudoSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    let { name, arg } = this.value;
-    const mark = w.mark();
-    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
-      let out = w.capture(() => arg.toString(options));
-      out = out.replace(/\n\s*/g, ' ').trim();
-      if (!out.includes(',')) {
-        w.add(out, arg);
-        return w.getSince(mark);
-      }
-      w.add(name, this);
-      w.add('(');
-      w.add(out, arg);
-      w.add(')');
-      return w.getSince(mark);
-    }
-    w.add(name, this);
-    if (arg) {
-      w.add('(');
-      if (isNode(arg, N.SelectorList)) {
-        let out = w.capture(() => arg.toString(options));
-        out = out.replace(/\n\s*/g, ' ').trim();
-        w.add(out, arg);
-      } else {
-        arg.toString(options);
-      }
-      w.add(')');
-    }
-    return w.getSince(mark);
+    return this.renderPseudoSyntax(options);
   }
 
   /**
