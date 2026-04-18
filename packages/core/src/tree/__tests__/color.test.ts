@@ -268,6 +268,32 @@ describe('Color Node', () => {
       expect(color.toTrimmedString()).toBe('#ff0000');
     });
 
+    it('renders color values through render(context)', () => {
+      const rgbColor = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+      const hexColor = new Color('#ff0000');
+
+      expect(rgbColor.render(new Context())).toBe('rgb(255, 0, 0)');
+      expect(hexColor.render(new Context())).toBe('#ff0000');
+    });
+
+    it('resolves colors without touching render state', async () => {
+      const context = new Context();
+      const color = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+
+      const resolved = await color.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('rgb(255, 0, 0)');
+      expect(context.printState.writer).toBeUndefined();
+    });
+
     it('should preserve original function call syntax when node is present', () => {
       const callNode = new Call({
         name: 'rgba',
@@ -369,7 +395,10 @@ describe('Color Node', () => {
 
       expect(color.options.format).toBe(ColorFormat.RGB);
       expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('rgb');
+      if (!(color.value.node instanceof Call)) {
+        throw new TypeError('Expected color node to preserve RGB Call');
+      }
+      expect(color.value.node.value.name).toBe('rgb');
       expect(color.alpha).toBe(1);
     });
 
@@ -389,7 +418,10 @@ describe('Color Node', () => {
 
       expect(color.options.format).toBe(ColorFormat.HSL);
       expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('hsl');
+      if (!(color.value.node instanceof Call)) {
+        throw new TypeError('Expected color node to preserve HSL Call');
+      }
+      expect(color.value.node.value.name).toBe('hsl');
       expect(color.alpha).toBe(1);
     });
   });

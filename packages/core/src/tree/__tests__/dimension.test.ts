@@ -1,4 +1,4 @@
-import { dimension, num } from '..';
+import { dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -22,6 +22,23 @@ describe('Dimension', () => {
       let rule = num(10);
       expect(rule.value.number).toBe(10);
       expect(rule.toString()).toBe('10');
+    });
+
+    it('renders dimension syntax through toTrimmedString()', () => {
+      expect(dimension([10, 'px']).toTrimmedString()).toBe('10px');
+      expect(num(10).toTrimmedString()).toBe('10');
+    });
+
+    it('renders dimension values through render(context)', () => {
+      expect(dimension([10, 'px']).render(context)).toBe('10px');
+      expect(num(10).render(context)).toBe('10');
+    });
+
+    it('resolves dimensions without touching render state', async () => {
+      const resolved = await dimension([10, 'px']).resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('10px');
+      expect(context.printState.writer).toBeUndefined();
     });
   });
 
