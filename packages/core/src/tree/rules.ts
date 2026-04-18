@@ -3826,7 +3826,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             }
           }
         }
-      } else if (parentFrame) {
+      } else if (thisContext.leakyRules === true && parentFrame) {
         rules.getScopeFrame().fallbackFrame = parentFrame;
       }
 
@@ -3836,15 +3836,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
         : candidate.value.guard
           ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
           : undefined;
-      const usesPreboundNonParamGuardOuterRules = Boolean(
+      const usesPreboundCallerGuardOuterRules = Boolean(
         guard
-        && !hasDefault
         && !guard.hasFlag(F_STATIC)
         && !candidate.value.params
         && paramBindings.length === 0
       );
       if (
-        usesPreboundNonParamGuardOuterRules
+        usesPreboundCallerGuardOuterRules
         && !outerRules
       ) {
         ensureOuterRules(thisContext.rulesContext ?? candidate.parent!, undefined, false);
@@ -3861,7 +3860,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
           if (
             guardNeedsOuterRules
-            && !usesPreboundNonParamGuardOuterRules
+            && !usesPreboundCallerGuardOuterRules
             && !usesPreboundParamGuardOuterRules
           ) {
             ensureOuterRules(candidate.parent!);
@@ -3881,7 +3880,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               }
               if (
                 !probeGuard.hasFlag(F_STATIC)
-                && !usesPreboundNonParamGuardOuterRules
+                && !usesPreboundCallerGuardOuterRules
                 && !usesPreboundParamGuardOuterRules
               ) {
                 ensureOuterRules(candidate.parent!);

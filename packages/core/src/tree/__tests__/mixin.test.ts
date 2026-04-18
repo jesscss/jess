@@ -1745,6 +1745,39 @@ describe('Mixin', () => {
       expect(css).not.toContain('.light {\n  color: black;');
     });
 
+    it('does not let non-leaky no-param mixin bodies read caller scope after guard selection', async () => {
+      context = new Context({ leakyRules: false });
+      const mixinDef = mixin({
+        name: any('.scope-guarded-body'),
+        guard: condition([
+          expr(ref({ key: 'mode' }, { type: 'variable' })),
+          '=',
+          any('dark')
+        ]),
+        rules: rules([
+          decl({ name: 'color', value: ref({ key: 'mode' }, { type: 'variable' }) })
+        ])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.dark'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.scope-guarded-body' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      await expectRejects(
+        root.eval(context),
+        ReferenceError,
+        /mode/
+      );
+    });
+
     it('keeps no-param guard lookup isolated from mixin body vars with the same name', async () => {
       context = new Context({ leakyRules: false });
       const mixinDef = mixin({
