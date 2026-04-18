@@ -171,7 +171,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createConfiguredImportedSurface(sourceRules: Rules): Rules {
-    return sourceRules.clone(false) as Rules;
+    const importedRules = sourceRules.clone(false) as Rules;
+    importedRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
+    return importedRules;
   }
 
   private throwIfConfiguredReuseIsDisallowed(withValues: StyleImportValue['with'] | undefined, hasCachedEvaluation: boolean): void {
@@ -258,6 +260,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
     const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
     if (additiveNonVariableNodes.length === 0) {
+      this.clearConfiguredImportBoundary(importedRules);
       this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
       return importedRules;
     }
@@ -285,6 +288,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const replacedRules = this.createConfiguredReplacementSurface(sourceRules, replacementsByIndex);
     if (newVariables.length === 0) {
+      this.clearConfiguredImportBoundary(replacedRules);
       return replacedRules;
     }
 
@@ -476,11 +480,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // `referenceMode` via PrintOptions, so we don't need to mutate every
     // child's `options.referenceMode`.
     let out = evaluatedRules.clone() as Rules;
+    const hasImportBoundary = (
+      evaluatedRules.options.importBoundary === true
+      || (isNode(evaluatedRules.sourceNode, N.Rules) && evaluatedRules.sourceNode.options.importBoundary === true)
+    );
     out.options = {
       rulesVisibility: { Ruleset, Declaration, Mixin, VarDeclaration },
       local: isLocal,
       forward: isForward,
-      importBoundary: evaluatedRules.options.importBoundary === true,
+      importBoundary: hasImportBoundary,
       referenceMode: isReferenceMode,
       readonly
     };

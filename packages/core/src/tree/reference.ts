@@ -227,7 +227,8 @@ function findVarDeclarationFast(
     scopeStart: number | undefined,
     localContext: boolean | undefined,
     visited: Set<Rules>,
-    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration']
+    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration'],
+    includeChildSurfaces = true
   ): {
     publicMatch: Node | undefined;
     optionalMatch: Node | undefined;
@@ -245,21 +246,30 @@ function findVarDeclarationFast(
     }
     const frame = scope.getScopeFrame();
     promoteResolvedPendingDecls(scope, frame);
-    let publicMatch: Node | undefined;
-    let optionalMatch: Node | undefined;
-
-    const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
-    if (currentCandidate) {
-      const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
-      const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
-      const isOptionalCurrentScope = visibilityOverride === undefined
-        ? scopeVisibility === 'optional' && !isRulesetBodyScope
-        : scopeVisibility === 'optional';
-      if (isOptionalCurrentScope) {
-        optionalMatch = currentCandidate;
-      } else {
-        publicMatch = currentCandidate;
+    let { publicMatch, optionalMatch } = (() => {
+      let currentPublicMatch: Node | undefined;
+      let currentOptionalMatch: Node | undefined;
+      const currentCandidate = selectBucketCandidate(frame.declarationBucketsByName.get(name), undefined);
+      if (currentCandidate) {
+        const scopeVisibility = visibilityOverride ?? scope.options.rulesVisibility?.VarDeclaration;
+        const isRulesetBodyScope = isNode(scope.parent, N.Ruleset) || isNode(scope.sourceNode, N.Ruleset);
+        const isOptionalCurrentScope = visibilityOverride === undefined
+          ? scopeVisibility === 'optional' && !isRulesetBodyScope
+          : scopeVisibility === 'optional';
+        if (isOptionalCurrentScope) {
+          currentOptionalMatch = currentCandidate;
+        } else {
+          currentPublicMatch = currentCandidate;
+        }
       }
+      return {
+        publicMatch: currentPublicMatch,
+        optionalMatch: currentOptionalMatch
+      };
+    })();
+
+    if (!includeChildSurfaces) {
+      return { publicMatch, optionalMatch };
     }
 
     const childEntries = scope._rulesSet as Array<{
@@ -317,8 +327,17 @@ function findVarDeclarationFast(
       const scopeStart = first ? options.start : undefined;
       const applyCurrentScopeStart = first;
       if (!first) {
-        // Stop at non-classic-import boundaries (same as DeclarationRegistry.find)
         if (isNonClassicImportBoundary(scope)) {
+          const boundaryResult = findVarWithinScopeSurface(
+            scope,
+            undefined,
+            options.local,
+            new Set<Rules>(),
+            undefined,
+            false
+          );
+          publicMatch = laterOf(publicMatch, boundaryResult.publicMatch);
+          optionalMatch = laterOf(optionalMatch, boundaryResult.optionalMatch);
           break;
         }
       }
@@ -343,6 +362,16 @@ function findVarDeclarationFast(
       if (isNode(cursor, N.Rules)) {
         const scope = cursor as Rules;
         if (isNonClassicImportBoundary(scope)) {
+          const boundaryResult = findVarWithinScopeSurface(
+            scope,
+            undefined,
+            options.local,
+            new Set<Rules>(),
+            undefined,
+            false
+          );
+          publicMatch = laterOf(publicMatch, boundaryResult.publicMatch);
+          optionalMatch = laterOf(optionalMatch, boundaryResult.optionalMatch);
           break;
         }
         const result = findVarWithinScopeSurface(

@@ -310,8 +310,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
    * 1. Non-Ident start => selector-like, allow immediately.
    * 2. Ident + no Colon => selector-like, allow immediately.
    * 3. Ident + Colon + whitespace after colon => declaration, reject.
-   * 4. Ident + Colon + no-space + selector-like token => selector, allow.
-   * 5. Ident + Colon + no-space + Ident => scan forward for `{` before `;`/`}`.
+   * 4. Ident + Colon + no-space + selector-like token => only allow the nested
+   *    qualified-rule path when a `{` appears before `;`/`}`.
+   * 5. Ident + Colon + no-space + Ident => same `{` lookahead before `;`/`}`.
    */
   shouldTryQualifiedRuleInDeclarationList(): boolean {
     const {
