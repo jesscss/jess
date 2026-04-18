@@ -295,15 +295,22 @@ Replace the current `value = Proxy({ name, value, ... })` pattern with direct ty
 - [ ] Update `less-compat` adapter layer to map old `value.name` / `value.value` paths to new fields
 - [ ] Remove `value` proxy infrastructure from `Node` base class once all subclasses migrated
 
-### Track 3 — Less-Compat Adapter Layer
+### Track 3 — Less-Compat Adapter Layer (MOSTLY done)
 
 Replace the transparent `Proxy`-based compat shim with explicit typed adapter classes (e.g. `LessRuleset`, `LessDeclaration`). V8-inlineable getters, no per-node Proxy, explicit API surface.
+
+Current status: mostly done. The proxy-to-adapter swap is landed and the
+compat/plugin surface is running through explicit adapter classes now. Plan one
+follow-up pass after Track 2 changes the underlying node API again; that pass
+should let us drop more legacy field-mapping glue and simplify the adapters
+further.
 
 - [x] Design adapter class interface for each Less-exposed node type
 - [x] Implement adapter classes (`jess-plugin-less-compat` package)
 - [x] Replace `isLessProxy` / `getJessNodeFromProxy` checks with `instanceof` guards
 - [x] Remove the `Proxy` factory from the compat layer
 - [x] Verify Less compatibility suite still green after switch
+- [x] Revisit once Track 2 lands and simplify the adapter layer around the new direct-field API
 
 ### Track 4 — Whitespace / Trivia Token Proposal
 

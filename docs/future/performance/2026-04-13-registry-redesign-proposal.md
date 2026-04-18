@@ -1153,13 +1153,13 @@ hops, never the full depth of Rules nodes in the tree.
 
 ## Less-Compat Adapter Layer
 
-The `jess-plugin-less-compat` package currently uses `Proxy` to wrap Jess nodes
-and expose a Less.js-compatible API to Less plugins. The handler is almost
-entirely transparent — `Reflect.get`, `Reflect.set`, `Reflect.has`, all
-delegating straight through — with only `typeIndex` and a per-call `propertyMap`
-callback as actual interception.
+Track 3 is now mostly done. The `jess-plugin-less-compat` package used to rely
+on `Proxy` wrappers around Jess nodes, and that proxy-based compat layer has
+now been replaced with explicit adapter classes. One follow-up pass is still
+expected after Track 2 lands, because the direct-field node API should let us
+remove more adapter glue and simplify the package further.
 
-This design is wrong on two counts.
+The old proxy design was wrong on two counts.
 
 **First, transparency is a bug, not a feature.** The Proxy fallthrough means a
 Less.js plugin can access any internal Jess property through the compat layer,
@@ -1176,9 +1176,9 @@ is measurable overhead.
 
 ### The correct shape: explicit adapter classes
 
-Replace `createLessProxy` with concrete adapter classes, one per Less.js node
-type, with explicit getters for every property in the documented Less.js node
-shape:
+The right shape is what we now have in broad strokes: concrete adapter classes,
+one per Less.js node type, with explicit getters for every property in the
+documented Less.js node shape:
 
 ```ts
 class LessRuleset {
@@ -1204,14 +1204,14 @@ Benefits:
 - `isLessProxy` / `getJessNodeFromProxy` can be replaced with `instanceof`
   checks on the adapter classes
 
-The `propertyMap` callback pattern in the current proxy collapses into the
-getters of the appropriate adapter class. `adapter.ts`, `to-less.ts`, and
-`selector.ts` become typed adapter classes rather than ad-hoc Proxy construction
-with callbacks.
+The old `propertyMap` callback pattern collapses into the getters of the
+appropriate adapter class. `adapter.ts`, `to-less.ts`, and `selector.ts`
+become typed adapter classes rather than ad-hoc Proxy construction with
+callbacks.
 
-This is a separate work item from the registry redesign but belongs in the same
-performance push. The selector element proxies in particular are created on the
-critical path during rendering.
+This remains a separate work item from the registry redesign but belongs in the
+same performance push. The remaining pass after Track 2 should be treated as
+cleanup/simplification work, not a second full adapter redesign.
 
 ## Node Shape: Direct Instance Fields
 
@@ -1756,7 +1756,8 @@ because they touch serialization:
 - **Track 2:** Node shape — direct instance fields on each node class, removing
   the `value = Proxy(...)` pattern.
 - **Track 3:** Less-compat adapter layer — explicit adapter classes replacing
-  the transparent `Proxy` shim.
+  the transparent `Proxy` shim. Mostly done now; revisit once after Track 2
+  lands so the direct-field API can simplify the adapters further.
 - **Track 4:** Whitespace/trivia token proposal — `FormattingMap` replaces
   `pre`/`post` fields; static declaration names become plain `string`.
 - **Track 5:** Buffered render pass — typed `Segment[]` buffer with post-step
