@@ -72,6 +72,23 @@ describe('reference', () => {
       expect(rendered).toBe('red');
     });
 
+    it('resolves a variable value without touching render state', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const resolved = await ref({ key: 'foo' }, { type: 'variable' }).resolve(context);
+
+      expect(`${resolved}`).toBe('red');
+      expect(context.printState.writer).toBeUndefined();
+    });
+
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({

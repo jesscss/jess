@@ -34,4 +34,25 @@ describe('Operation', () => {
 
     expect(rendered).toBe('30');
   });
+
+  it('resolves operation values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await op([
+      num(10),
+      '+',
+      ref({ key: 'rhs' }, { type: 'variable' })
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('30');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });

@@ -473,10 +473,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return evaluatedRules;
     }
     // Shallow clone the Rules wrapper. The children are shared with the
-    // canonical evaluated tree — per-render options (visibility, reference
-    // mode) are set on the wrapper below; downstream serialization propagates
-    // `referenceMode` via PrintOptions, so we don't need to mutate every
-    // child's `options.referenceMode`.
+    // canonical tree/session result for this import placement — per-render
+    // options (visibility, reference mode) are set on the wrapper below;
+    // downstream serialization propagates `referenceMode` via PrintOptions,
+    // so we don't need to mutate every child's `options.referenceMode`.
     let out = evaluatedRules.clone() as Rules;
     const hasImportBoundary = (
       evaluatedRules.options.importBoundary === true
@@ -720,9 +720,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             context.evaldTrees.set(resolvedPath, rules);
           }
         } else {
-          // Compose cache hit: `rules` is already the fully-evaluated tree
-          // from `context.evaldTrees` (assigned at line 353). No clone and
-          // no re-eval is needed — shape differences per compose scope are
+          // Compose cache hit: `rules` is already the cached canonical/session
+          // result from `context.evaldTrees` (assigned at line 353). No clone
+          // and no re-eval is needed — shape differences per compose scope are
           // handled by the shallow wrapper built in `getFinalRules` below,
           // which applies per-scope visibility/reference options without
           // mutating the shared cached tree.

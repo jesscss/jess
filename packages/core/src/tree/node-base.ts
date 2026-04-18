@@ -1050,6 +1050,13 @@ export abstract class Node<
     return Node.evalStatic(this, context);
   }
 
+  /**
+   * Value-returning sibling of `render(context)`.
+   *
+   * This resolves the node in context without writing to the print buffer.
+   * Callers should use the returned node immediately rather than treating it
+   * as a retained second tree.
+   */
   resolve(context: Context): MaybePromise<Node> {
     return this.eval(context);
   }
