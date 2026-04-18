@@ -3216,40 +3216,45 @@ export class MixinCollection extends Node<MixinEntry[]> {
       normalizeBoundLeadingItemWhitespace(boundValue);
       return boundValue;
     }
-    function createDerivedOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
-      const outerRules = sourceRules.clone(false);
-      outerRules.value = [];
-      outerRules.scopeFrame = undefined;
-      if (options) {
-        outerRules.options = {
-          ...outerRules.options,
-          ...options
+    function createDerivedRulesSurface(
+      sourceRules: Rules,
+      options?: {
+        rulesOptions?: Rules['options'];
+        markMixinOutput?: boolean;
+      }
+    ): Rules {
+      const output = sourceRules.clone(false);
+      output.value = [];
+      output.scopeFrame = undefined;
+      if (options?.rulesOptions || options?.markMixinOutput) {
+        output.options = {
+          ...output.options,
+          ...options?.rulesOptions
         };
       }
-      return outerRules;
+      if (options?.markMixinOutput) {
+        output.options = {
+          ...output.options,
+          rulesVisibility: {
+            Ruleset: 'public',
+            Declaration: 'public',
+            VarDeclaration: 'public',
+            Mixin: 'public'
+          },
+          isMixinOutput: restrictMixinOutputLookup,
+          referenceMode: false
+        };
+      }
+      return output;
+    }
+    function createDerivedOuterRules(sourceRules: Rules, options?: Rules['options']): Rules {
+      return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
     }
     function createDerivedMixinOutputWrapper(sourceRules: Rules): Rules {
-      const output = sourceRules.clone(false);
-      output.value = [];
-      output.scopeFrame = undefined;
-      output.options = {
-        ...output.options,
-        rulesVisibility: {
-          Ruleset: 'public',
-          Declaration: 'public',
-          VarDeclaration: 'public',
-          Mixin: 'public'
-        },
-        isMixinOutput: restrictMixinOutputLookup,
-        referenceMode: false
-      };
-      return output;
+      return createDerivedRulesSurface(sourceRules, { markMixinOutput: true });
     }
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
-      const output = sourceRules.clone(false);
-      output.value = [];
-      output.scopeFrame = undefined;
-      return output;
+      return createDerivedRulesSurface(sourceRules);
     }
     function cloneRulesetCallableRules(sourceRules: Rules, deep: boolean): Rules {
       const clonedRules = sourceRules.clone(deep);
