@@ -5,7 +5,7 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformNegativeToLess = createFromAdapter<Negative>({
   fields: {
     value: (n, cache) => {
-      const value = n.get('value');
+      const value = n.value;
       return value instanceof Node ? toLessNode(value, { cache }) : value;
     }
   },

@@ -5,28 +5,28 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformRulesetToLess = createFromAdapter<Ruleset>({
   fields: {
     selectors: (rs, cache) => {
-      const selector = rs.get('selector');
+      const selector = rs.value.selector;
       if (selector instanceof Nil) {
         return [];
       }
       if (selector instanceof SelectorList) {
-        return selector.get('value').map((s: Selector) => toLessNode(s, { cache }));
+        return selector.value.map((s: Selector) => toLessNode(s, { cache }));
       }
       return [toLessNode(selector, { cache })];
     },
     rules: (rs, cache) => {
-      const rules = rs.get('rules');
+      const rules = rs.value.rules;
       return rules.value.map((r: Node) => toLessNode(r, { cache }));
     }
   },
   accept: (ruleset, visitor, cache) => {
-    const selector = ruleset.get('selector');
-    const rules = ruleset.get('rules');
+    const selector = ruleset.value.selector;
+    const rules = ruleset.value.rules;
 
     // Traverse selectors
     if (selector && !(selector instanceof Nil)) {
       if (selector instanceof SelectorList) {
-        const lessSelectors = selector.get('value').map((s: Selector) => toLessNode(s, { cache }));
+        const lessSelectors = selector.value.map((s: Selector) => toLessNode(s, { cache }));
         if (visitor.visitArray) {
           visitor.visitArray(lessSelectors);
         } else {

@@ -4,18 +4,18 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformAtRuleToLess = createFromAdapter<AtRule>({
   fields: {
-    name: a => a.get('name'),
+    name: a => a.value.name,
     value: (a, cache) => {
-      const prelude = a.get('prelude');
+      const prelude = a.value.prelude;
       return prelude instanceof Node ? toLessNode(prelude, { cache }) : prelude;
     },
     rules: (a, cache) => {
-      const rules = a.get('rules');
+      const rules = a.value.rules;
       return rules ? rules.value.map((r: Node) => toLessNode(r, { cache })) : [];
     }
   },
   accept: childrenAccept((a) => {
-    const rules = a.get('rules');
+    const rules = a.value.rules;
     return rules?.value?.length ? [...rules.value] : [];
   })
 });

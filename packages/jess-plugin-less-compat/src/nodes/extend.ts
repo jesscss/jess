@@ -5,10 +5,10 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformExtendToLess = createFromAdapter<Extend>({
   fields: {
     selector: (e, cache) => {
-      const selector = e.get('selector');
+      const selector = e.value.selector;
       return selector instanceof Selector ? toLessNode(selector, { cache }) : selector;
     },
-    option: e => e.get('flag') === ExtendFlag.Exact ? 'exact' : 'all',
+    option: e => e.value.flag === ExtendFlag.Exact ? 'exact' : 'all',
     index: (e) => {
       const loc = e.location;
       return loc.length ? loc[0] : undefined;

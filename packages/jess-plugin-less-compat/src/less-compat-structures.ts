@@ -7,7 +7,7 @@
  * Less.js Visitor base class (minimal implementation)
  * Plugins expect this structure to exist
  */
-import { isLessProxy } from './transform/proxy.js';
+import { LessAdapterBase } from './transform/less-adapter.js';
 
 export class LessVisitor {
   // Track nodes being processed to prevent infinite recursion
@@ -112,17 +112,17 @@ export class LessVisitor {
 
     // Less.js pattern: after calling visit method, traverse children if visitDeeper is true
     // This matches Less.js Visitor.visit() behavior
-    // CRITICAL: Only call accept() on Less proxies, NOT on Jess nodes
+    // CRITICAL: Only call accept() on Less adapter nodes, NOT on Jess nodes
     // Jess nodes' accept() calls visitor.visit() which would cause infinite recursion
-    // Less proxies' accept() methods only traverse children, they don't call visitor.visit()
+    // Less adapter accept() methods only traverse children, they don't call visitor.visit()
     if (args.visitDeeper && node && node.accept) {
-      const isProxy = isLessProxy(node);
-      // Only call accept() if this is a Less proxy
-      // Less proxies have accept() that traverses children without calling visit()
-      if (isProxy) {
+      const isAdapter = node instanceof LessAdapterBase;
+      // Only call accept() if this is a Less adapter node.
+      // Adapter instances have accept() that traverses children without calling visit().
+      if (isAdapter) {
         node.accept(this);
       }
-      // If it's not a Less proxy (it's a Jess node), we should NOT call accept()
+      // If it's not a Less adapter (it's a Jess node), we should NOT call accept()
       // because Jess's accept() calls visitor.visit() which would recurse
       // Instead, the plugin visitor's visit() method handles Jess node traversal
     }

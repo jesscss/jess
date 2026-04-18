@@ -5,7 +5,7 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformParenToLess = createFromAdapter<Paren>({
   fields: {
     value: (p, cache) => {
-      const value = p.get('value');
+      const value = p.value;
       return value instanceof Node ? toLessNode(value, { cache }) : value;
     }
   },
