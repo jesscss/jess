@@ -174,12 +174,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return wrapped;
   }
 
-  private createEmptyImportResult(context: Context): Rules {
-    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
-  }
-
-  private createInlineImportSourceCarrier(context: Context, sourceNode: Node): Rules {
-    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
+  private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
+    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
   }
 
   private getPostludeNodes(postlude?: Node): Node[] {
@@ -576,7 +572,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         if (this.isPlainCssImport(finalPath)) {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
           this.queueCssImport(context, importRule);
-          return this.createEmptyImportResult(context);
+          return this.createImportAnchorSurface(context);
         }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
@@ -590,17 +586,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = new Any(source, { role: 'any' });
-          const sourceRules = this.createInlineImportSourceCarrier(context, sourceNode);
-          rules = this.wrapRulesWithPostlude(sourceRules, sourceRules, importOptions!.postlude);
+          const sourceRules = this.createImportAnchorSurface(context, [sourceNode]);
+          rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
           } catch (error: any) {
             if (importOptions!.optional) {
-              return this.createEmptyImportResult(context);
+              return this.createImportAnchorSurface(context);
             }
             if (importOptions!.reference && (error?.phase === 'parse' || String(error?.code ?? '').startsWith('parse/'))) {
-              return this.createEmptyImportResult(context);
+              return this.createImportAnchorSurface(context);
             }
             throw error;
           }
@@ -746,7 +742,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // clearing it here defeats dedupe suppression entirely.
         let finalRules = node.getFinalRules(rules);
         if (importOptions!.postlude && !isInlineImport) {
-          finalRules = this.wrapRulesWithPostlude(finalRules, finalRules, importOptions!.postlude);
+          finalRules = this.wrapRulesWithPostlude(finalRules, importOptions!.postlude);
         }
 
         // For import type, register the final Rules as a child root of the parent
@@ -802,11 +798,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return finalize(finalPath, this.toImportPathNode(maybePath));
   }
 
-  private wrapRulesWithPostlude(anchorRules: Rules, rules: Rules, postlude?: Node): Rules {
+  private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
     if (!postlude) {
       return rules;
     }
     const postludeNodes = this.getPostludeNodes(postlude);
+    const anchorRules = rules;
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
