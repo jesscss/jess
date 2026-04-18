@@ -66,6 +66,61 @@ describe('AtRule', () => {
     expect(preEvald.value.name.valueOf()).toBe('@media');
   });
 
+  it('renders resolved at-rules through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    expect(node.render(context)).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+  });
+
+  it('resolves at-rules without touching render state', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   describe('nested @media rules', () => {
     it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }
