@@ -267,36 +267,28 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return replacedRules;
   }
 
-  private partitionAdditiveConfiguredNodes(additiveNodes: Node[]): {
-    additiveVariableNodes: Node[];
-    additiveNonVariableNodes: Node[];
-  } {
-    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
-    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
-    return {
-      additiveVariableNodes,
-      additiveNonVariableNodes
-    };
-  }
-
-  private finalizeConfiguredImportedSurface(
+  private createConfiguredResultSurface(
     sourceRules: Rules,
     importedRules: Rules,
     additiveNodes: Node[]
   ): Rules {
-    const { additiveVariableNodes, additiveNonVariableNodes } = this.partitionAdditiveConfiguredNodes(additiveNodes);
+    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
+    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
     this.clearConfiguredImportBoundary(importedRules);
     if (additiveNonVariableNodes.length === 0) {
       this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
       return importedRules;
     }
 
-    return this.wrapConfiguredImportedSurface(
-      sourceRules,
-      importedRules,
-      additiveNonVariableNodes,
-      additiveVariableNodes
-    );
+    const finalRules = this.deriveClonedRulesSurface(sourceRules, [], { resetScopeFrame: true });
+    for (const newNode of additiveNonVariableNodes) {
+      finalRules.adopt(newNode);
+      finalRules.value.push(newNode);
+    }
+    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    finalRules.adopt(importedRules);
+    finalRules.value.push(importedRules);
+    return finalRules;
   }
 
   private applyConfiguredValues(sourceRules: Rules, withRules: Rules): Rules {
@@ -310,24 +302,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       ? this.createConfiguredImportedSurface(sourceRules)
       : this.createConfiguredReplacementSurface(sourceRules, replacementsByIndex);
 
-    return this.finalizeConfiguredImportedSurface(sourceRules, importedRules, newVariables);
-  }
-
-  private wrapConfiguredImportedSurface(
-    sourceRules: Rules,
-    importedChildRules: Rules,
-    additiveNonVariableNodes: Node[],
-    additiveVariableNodes: Node[]
-  ): Rules {
-    const finalRules = this.deriveClonedRulesSurface(sourceRules, [], { resetScopeFrame: true });
-    for (const newNode of additiveNonVariableNodes) {
-      finalRules.adopt(newNode);
-      finalRules.value.push(newNode);
-    }
-    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
-    finalRules.adopt(importedChildRules);
-    finalRules.value.push(importedChildRules);
-    return finalRules;
+    return this.createConfiguredResultSurface(sourceRules, importedRules, newVariables);
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
