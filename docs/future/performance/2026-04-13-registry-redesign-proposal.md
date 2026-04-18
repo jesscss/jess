@@ -1638,7 +1638,26 @@ that was baked in at render time.
 The current codebase cannot be rewritten all at once. The transition proceeds in
 narrow verifiable slices, each one removing a specific wrong pattern.
 
-**Slices completed:**
+One thing the slice plan needs to make explicit is that **Track 1 is not one
+thing**. It has three distinct slice families:
+
+1. **Lookup and binding transport** — move variable/param/loop binding reads
+   onto `ScopeFrame`, `varsByName`, and other direct runtime surfaces.
+2. **Canonical-tree convergence** — make mixins, imports, and `$for` all
+   evaluate the same shared source tree against different runtime frames rather
+   than simulating locality with wrappers, clones, or provenance hacks.
+3. **Eval/render API convergence** — replace "eval mutates/stores, later
+   `toTrimmedString()` reads" with per-node `render(ctx)` / `resolve(ctx)`
+   behavior, while still preserving real node boundaries for visitors and
+   deferred structures.
+
+The mistake to avoid is stuffing both (2) and (3) under one giant "Slice 13c".
+They are related, but they are different kinds of work and should be tracked as
+separate slices.
+
+### Track 1A — Lookup And Binding Transport
+
+These slices build the frame-driven lookup model:
 
 - Slices 1–4: mixin params moved from synthetic `VarDeclaration` nodes into
   `RuntimeVarBinding` cells on `Rules`. Params no longer go through the
@@ -1655,25 +1674,63 @@ narrow verifiable slices, each one removing a specific wrong pattern.
   path in `performLookup`. `runtimeVarBindings` kept as fallback. Only
   `liveSlotsByName` walked (not `declarationBucketsByName`) to preserve Less
   definition-site semantics for lexical vars.
+- Slice 10: remove `runtimeVarBindings` once confirmed all param lookups go
+  through `liveSlotsByName`; keep `@arguments` on the same live-slot path.
+- Slice 11: auto-wire nested `ScopeFrame` parents from real parent scope
+  surfaces rather than ad hoc transport nodes.
+- Slice 12: remove dead linear-lookup branches and retire the generic
+  declaration-registry hot path for ordinary variable reads.
 
-**Next slices:**
+### Track 1B — Canonical-Tree Convergence
 
-- **Slice 10:** Remove `runtimeVarBindings` from `Rules` once confirmed all
-  param lookups go through `liveSlotsByName`. Remove the fork/renderKey system.
-  Delete `resolution: 'linear'`. Delete the generic `DeclarationRegistry` hot
-  path. Clean up.
+These slices are about making the source tree shared and light:
+
+- Slice 13a: remove the active fork/renderKey runtime from lookup, eval-state
+  transport, and serializer state.
+- Slice 13b: move `$for` iteration bindings onto `ScopeFrame.liveSlotsByName`
+  and stop materializing synthetic declaration-shaped loop transport.
+- Slice 13c: finish **mixin** canonical-tree convergence:
+  params, rest params, `@arguments`, detached/callable rulesets, guard/default
+  guard evaluation, and caller-fallback discipline must all work from runtime
+  frames rather than wrapper-local mutation.
+- Slice 13d: finish **import** canonical-tree convergence:
+  configured `with`/`set` bindings, reference imports, guarded imported mixins,
+  detached closure visibility, and import-boundary ownership must all work from
+  explicit frame/boundary state rather than copied provenance.
+- Slice 13e: remove the remaining structural shells that exist only to fake
+  placement-local state:
+  additive non-variable import child wrappers, postlude/media carrier shells,
+  and any leftover multi-output mixin carriers.
+
+### Track 1C — Eval / Render API Convergence
+
+These slices are still Track 1. They should not disappear into Track 5 just
+because they touch serialization:
+
+- Slice 13f: establish the node-level `render(ctx)` / `resolve(ctx)` split for
+  literal/value/leaf nodes so output-producing leaves stop depending on stored
+  eval results.
+- Slice 13g: migrate materialization boundaries and expression nodes
+  (`Operation`, function calls, dynamic names, interpolated identifiers,
+  guard/value computations) so they compute, write, and discard rather than
+  storing per-placement results back onto nodes.
+- Slice 13h: migrate structural render ownership for `Rules`, `Ruleset`,
+  `AtRule`, `Ampersand`, and related nodes so live selector/render state moves
+  onto the active session context and `PrintOptions` shrinks to a transitional
+  bridge instead of a copied runtime bag.
+
+### Follow-On Tracks
 
 - **Track 2:** Node shape — direct instance fields on each node class, removing
   the `value = Proxy(...)` pattern.
-
 - **Track 3:** Less-compat adapter layer — explicit adapter classes replacing
   the transparent `Proxy` shim.
-
 - **Track 4:** Whitespace/trivia token proposal — `FormattingMap` replaces
   `pre`/`post` fields; static declaration names become plain `string`.
-
 - **Track 5:** Buffered render pass — typed `Segment[]` buffer with post-step
   for extend finalization, reference visibility, and `@media` bubbling.
+  This consumes the Track 1C `render/resolve` work; it should not be used as a
+  bucket for node-level eval/render merge slices that belong in Track 1.
   See "Relationship to Pre-Eval Elimination" above.
 
 Each slice keeps `pnpm --filter @jesscss/core test` green and keeps the focused

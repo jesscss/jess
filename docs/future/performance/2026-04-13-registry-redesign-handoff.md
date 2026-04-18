@@ -11,14 +11,15 @@ performance frontier anymore.
 
 The benchmark and architecture audits still point to four larger cost centers:
 
-1. **shared-tree eval/render isolation completion (Slice 13c + Track 5 follow-through)** —
-   the broad renderKey/fork runtime is now gone, but imported-tree sharing and
-   the remaining buffered-render work still need to fully harden the
-   "one canonical tree, no forks" target.
+1. **Track 1B/1C completion: shared-tree convergence plus eval/render merge** —
+   the broad renderKey/fork runtime is now gone, but mixin/import shell cleanup
+   and the node-level `render/resolve` migration still need to fully harden the
+   "one canonical tree, no forks, no retained per-placement eval state" target.
 2. **serializer backtracking / buffered render (Track 5)** — the audit shows
    `OutputWriter.mark/getSince/restore/capture` are still huge runtime costs.
-   Moving toward typed render buffers and deferred selector finalization is a
-   higher priority than more `Reference` cleanup.
+   Moving toward typed render buffers and deferred selector finalization is the
+   follow-through after Track 1C, not a bucket for node-level render migration
+   slices that belong in Track 1.
    Guardrail: this does **not** mean "skip the evaluated-node step and print
    strings straight from source nodes." The target is "no retained full
    evaluated tree": evaluate one node, produce the immediate evaluated/derived
@@ -48,9 +49,9 @@ Practical rule for the next agent:
 
 - do **not** keep iterating on `reference.ts` unless it directly unblocks one of
   the four items above
-- prefer planning / narrowing Slice 13 and Track 5 against the actual hot files
-  (`serialize-helper.ts`, `print.ts`, renderKey-bearing eval nodes) before
-  spending more time on lookup-node cleanup
+- prefer planning / narrowing Track 1B/1C and Track 5 against the actual hot
+  files (`rules.ts`, `import-style.ts`, `serialize-helper.ts`, `print.ts`,
+  render-bearing eval nodes) before spending more time on lookup-node cleanup
 - use the benchmark evidence in
   [2026-04-13-less-benchmark-audit.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-less-benchmark-audit.md)
   and
@@ -59,7 +60,15 @@ Practical rule for the next agent:
 
 ## Work Checklist
 
-### Track 1 — Registry Bypass (Transition Slices)
+Top-level track numbers stay stable so cross-doc references to Tracks 2–5 do
+not churn. The cleanup here is to split **Track 1** into three explicit slice
+families:
+
+- **Track 1A** — lookup and binding transport
+- **Track 1B** — canonical-tree convergence for mixins/imports/loops
+- **Track 1C** — eval/render API convergence (`eval` + `toTrimmedString` → `render/resolve`)
+
+### Track 1A — Lookup And Binding Transport
 
 - [x] Slices 1–4 — mixin params → `RuntimeVarBinding` cells; params bypass declaration registry
 - [x] Slice 5 — `varsByName` fast map on `Rules`; lexical variable lookup bypasses declaration registry
@@ -78,9 +87,9 @@ Practical rule for the next agent:
   - Done: leaf eval/storage, serializer fallback reads, lookup-side render-key
     threading, and node-level fork maps/caches are all removed from the active
     path.
-  - Remaining seam: no longer generic renderKey deletion; only `13c` import
-    sharing / binding-frame convergence and any narrowly-discovered cleanup
-    still coupled to the old model.
+  - Remaining seam: no longer generic renderKey deletion; only the Track 1B
+    canonical-tree cleanup slices (`13c`–`13e`) and any narrowly-discovered
+    follow-on cleanup still couple back to the old model.
   - Guardrails: `Context` remains singleton session state; `PrintOptions`
     keeps shrinking; `&` is live contextual selector state; end-state nodes
     should be very light, effectively immutable templates.
@@ -88,16 +97,35 @@ Practical rule for the next agent:
   Status:
   - Done: `$for` iteration variables now live in `ScopeFrame.liveSlotsByName`,
     and emitted loop output no longer retains iteration-local frame state.
-- [ ] Slice 13c — Finish converging mixins, imports, and `$for` on canonical-tree + binding-frame evaluation
+
+### Track 1B — Canonical-Tree Convergence
+
+- [x] Slice 13c — Finish **mixin** canonical-tree + binding-frame convergence
   Current status:
-  - Imports: mostly converged. `import-reference-issues.less` is now green on
-    the real Less fixture path, and selector-list callable rulesets now fall
-    back from the fast mixin lookup to the full registry. Remaining seam is
-    `import-reference.less`, now narrowed to multi-amp selector-list reference
-    composition (`& + &`-style mixed visible/original outputs) plus the media
-    carrier shape around imported postludes.
-  - Mixins: mostly converged. Remaining seam is dynamic/default-guard outer
-    wrappers and any remaining multi-output carrier shells.
+  - Done: params, rest params, `@arguments`, detached/callable rulesets,
+    dynamic/default guards, recursion prevention, and caller-fallback
+    discipline now ride `ScopeFrame` plus explicit wrapper state rather than
+    fork-era provenance transport.
+  - Remaining note: any still-surviving multi-output mixin carriers belong in
+    Slice 13e structural-shell cleanup, not here.
+
+- [x] Slice 13d — Finish **import** canonical-tree + binding-frame convergence
+  Current status:
+  - Done: configured `with/set` bindings, guarded imported mixins,
+    replacement/additive configured wrappers, reference-import callable parity,
+    detached closure visibility, and import-boundary ownership now work from
+    explicit frame/boundary state instead of copied provenance walks.
+  - Remaining note: postlude/media carrier normalization belongs in
+    Slice 13e structural-shell cleanup, not here.
+
+- [ ] Slice 13e — Remove remaining structural shells that only fake placement-local state
+  Current status:
+  - Scope intentionally narrowed: this is no longer "finish everything under
+    13c". It is just the leftover shell/carrier cleanup that survives after
+    mixin/import/loop binding convergence is already green.
+  - Expected surfaces: additive non-variable import child wrappers, imported
+    postlude/media carriers, and any mixin multi-output wrappers that still
+    exist only to carry output shape.
   - `$for`: frame/binding convergence is done. Only incidental structural-shell
     cleanup may remain.
 
@@ -171,6 +199,29 @@ Practical rule for the next agent:
     callable-body path.
   - `@jesscss/fns` `each()` now just returns a `For` over the canonical
     callback rules surface; loop frames stay owned by `$for`.
+
+### Track 1C — Eval / Render API Convergence
+
+- [ ] Slice 13f — Establish `render(ctx)` / `resolve(ctx)` ownership for leaf and value nodes
+  Goal:
+  - Replace "eval stores result, later `toTrimmedString()` reads it" with
+    "render or resolve now, then discard" for literal/value/leaf nodes.
+  - Keep this work visible in Track 1 instead of burying it under Track 5.
+
+- [ ] Slice 13g — Migrate materialization boundaries and expression nodes
+  Goal:
+  - `Operation`, function calls, interpolated identifiers, dynamic names, and
+    guard/value computations should compute via `resolve(ctx)`, write through
+    `render(ctx)`, and stop retaining per-placement eval results on nodes.
+  - This is the slice family that captures the `eval`/serialization merge for
+    value-producing nodes.
+
+- [ ] Slice 13h — Migrate structural render ownership and session state
+  Goal:
+  - `Rules`, `Ruleset`, `AtRule`, `Ampersand`, selector composition, and other
+    structural render nodes should move live state onto the active session
+    context, with `PrintOptions` shrinking to a transitional bridge.
+  - This is the final Track 1 bridge into Track 5's segmented-buffer design.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
@@ -196,8 +247,8 @@ Practical rule for the next agent:
   - Partly done: `Reference.evalNode()` is now mostly orchestration over
     extracted helpers/adapters rather than one giant type-switch.
   - Priority note: this is de-prioritized. Only touch `reference.ts` when it
-    directly helps `13c`, shared lookup ownership in `Rules`, runtime binding
-    generalization, or Track 5.
+    directly helps Track 1B shell cleanup, Track 1C render ownership, shared
+    lookup ownership in `Rules`, runtime binding generalization, or Track 5.
 - [ ] `FunctionRegistry` optimization — keep as plugin API but change granularity from per-`Rules` to per-stylesheet: one global registry for built-ins/plugins; one stylesheet-level registry created on demand when `registerFunction()` is called within a stylesheet; stylesheet registry falls through to global; `@compose` children see only the global (not the parent stylesheet registry); `@import` children see the parent stylesheet registry; O(1) lookup in common case (no stylesheet-local functions), O(depth of stylesheet registries between call site and global) otherwise — in practice 1-2 hops, never the full Rules-node depth
 
 ### Track 2 — Node Shape: Direct Instance Fields
@@ -628,7 +679,13 @@ render(op, ctx):
 
 No `op.set('result', result, renderKey)`. No per-call fork. Just compute → write → discard.
 
-**Current status**: the Track 1 slices (1–12b) have built the prerequisite for this by making all *variable and param lookups* context-driven via `ScopeFrame`/`varsByName`. The *structural evaluation* changes (Operation, Interpolated, SelectorPseudo, etc.) are the remaining work in Track 1 (Slice 13, fork/renderKey deletion) and depend on Track 5 (buffered render) for the full one-pass architecture.
+**Current status**: Track 1A built the lookup prerequisite by making variable
+and param reads context-driven via `ScopeFrame`/`varsByName`. Track 1B removed
+the active fork runtime and converged most shared-tree binding behavior. The
+remaining structural-evaluation work now belongs explicitly to Track 1C:
+`Operation`, `Interpolated`, selector/render ownership, and the gradual
+replacement of stored eval results with `render/resolve`. Track 5 then
+consumes that API shape for the segmented-buffer / post-step architecture.
 
 One explicit guardrail for the remaining `Ampersand` work:
 
@@ -761,10 +818,10 @@ Track 1 is no longer about outer renderKey plumbing. That runtime is gone.
 
 What remains:
 
-1. Reclassify Slice 13 in this doc from “active deletion seam” to “completed,
-   with import-sharing caveat tracked separately in Slice 13c”.
-2. Audit shared imported-AST behavior under the new canonical-only node model
-   and either close Slice 13c or narrow it to the exact remaining import path.
+1. Treat Track 1B as mostly a shell-cleanup lane now, not a generic
+   "finish 13c" bucket.
+2. Track eval/serialization merge work as explicit Track 1C slices
+   (`13f`/`13g`/`13h`) instead of implicitly burying it under Track 5.
 3. Keep the handoff compressed: remove stale references to `_renderKey`,
    `_childForks`, `getValue(renderKey)`, and wrapper renderKey transport as if
    they are still live work.
