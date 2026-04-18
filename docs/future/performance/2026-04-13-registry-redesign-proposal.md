@@ -139,6 +139,26 @@ Local child-specific values can still exist, but they should become explicit
 render-frame/session state rather than ad hoc copied options objects threaded
 through serializer calls.
 
+### Hard Requirement: Preserve Canonical Source Serialization
+
+Track 1C must **not** destroy the ability to serialize the canonical AST back
+out as authored Jess/Less-like source without evaluating it.
+
+That means the contracts stay split:
+
+- `node.toString()` remains the canonical source serializer during Track 1C.
+  It should describe the authored node shape, including wrappers such as
+  `*[ ... ]`, quoted syntax, references, and other source-level forms.
+- `node.render(ctx)` becomes the evaluated trimmed-output path.
+  It may resolve references or evaluate child payloads, but it does **not**
+  replace canonical source serialization.
+- `node.toTrimmedString()` should shrink toward a compatibility shim around the
+  node's render-owned trimmed syntax path so we do not duplicate syntax logic
+  while `toString()` still owns canonical source round-tripping.
+
+This is a hard requirement because the canonical tree must remain usable as a
+source-preserving representation, not just a CSS-emission template.
+
 ### Selector Bitset Guardrail
 
 `attachSelectorBitLibrary(...)` is a transitional helper, not target
@@ -556,8 +576,11 @@ The `render(node, ctx)` function dispatches by node type. Each case reads from
 
 `node.eval(ctx)` is the existing entry point — in the new model it will call
 `render(node, ctx)` internally. The current two-phase behavior (eval → mutate
-node, then serialize) is replaced by this single render pass. `node.toString()`
-/ `node.toTrimmedString()` remain for literal nodes that need no frame context.
+node, then serialize) is replaced by this single render pass for evaluated
+output. `node.toString()` remains the canonical source serializer; the
+node-level `render(ctx)` / `resolve(ctx)` work is about replacing
+`toTrimmedString()`-style evaluated emission, not about deleting source
+round-tripping.
 
 ### Literal nodes (Any, Color, Dimension, keyword, etc.)
 
@@ -1709,7 +1732,8 @@ because they touch serialization:
 
 - Slice 13f: establish the node-level `render(ctx)` / `resolve(ctx)` split for
   literal/value/leaf nodes so output-producing leaves stop depending on stored
-  eval results.
+  eval results, while `toString()` remains canonical source serialization and
+  `toTrimmedString()` shrinks toward a compatibility shim.
 - Slice 13g: migrate materialization boundaries and expression nodes
   (`Operation`, function calls, dynamic names, interpolated identifiers,
   guard/value computations) so they compute, write, and discard rather than

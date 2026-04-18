@@ -58,6 +58,32 @@ Practical rule for the next agent:
   [2026-04-13-registry-architecture-audit.md](/Users/matthew/git/oss/jess/docs/future/performance/2026-04-13-registry-architecture-audit.md)
   to justify the next slice
 
+## Hard Requirement: Preserve Canonical Source Serialization
+
+Track 1C is about collapsing evaluated output onto `render(ctx)` / `resolve(ctx)`.
+It is **not** permission to lose source-preserving serialization of canonical
+nodes.
+
+Keep these contracts distinct:
+
+- `toString()` remains the canonical source serializer for the shared AST.
+- `render(ctx)` is the evaluated trimmed-output path.
+- `toTrimmedString()` should shrink toward a compatibility shim around
+  render-owned trimmed syntax logic so source syntax does not get implemented
+  twice.
+
+Use this as the guardrail for ambiguous nodes:
+
+- `SelectorCapture.render()` without context should still serialize `*[ ... ]`
+  syntax.
+- `SelectorCapture.render(context)` may resolve the captured selector payload
+  for evaluated output.
+- `SelectorCapture.toString()` must continue to round-trip the authored wrapper.
+
+The same principle applies to quoted forms, references, URLs, interpolation,
+and any other node where canonical source syntax is not the same as evaluated
+output.
+
 ## Work Checklist
 
 Top-level track numbers stay stable so cross-doc references to Tracks 2–5 do
@@ -206,6 +232,9 @@ families:
   Goal:
   - Replace "eval stores result, later `toTrimmedString()` reads it" with
     "render or resolve now, then discard" for literal/value/leaf nodes.
+  - Preserve canonical source serialization: `toString()` stays the authored
+    AST serializer, while `toTrimmedString()` becomes a compatibility shim
+    around render-owned trimmed syntax where possible.
   - Keep this work visible in Track 1 instead of burying it under Track 5.
 
 - [ ] Slice 13g — Migrate materialization boundaries and expression nodes

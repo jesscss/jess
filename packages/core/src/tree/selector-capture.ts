@@ -1,7 +1,6 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { Selector } from './selector.js';
-import { SelectorList } from './selector-list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -9,16 +8,19 @@ export interface SelectorCapture extends Node<Selector> {
   eval(context: Context): MaybePromise<Selector>;
 }
 
+const isSelectorNode = (value: unknown): value is Selector => (
+  value !== null
+  && typeof value === 'object'
+  && 'isSelector' in value
+  && value.isSelector === true
+);
+
 /**
  * Explicit selector-capture wrapper used by parsers for selector-valued payloads
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
-  override valueOf(): string {
-    return String(this.value.valueOf());
-  }
-
-  override toTrimmedString(options?: PrintOptions): string {
+  private renderCaptureSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -28,14 +30,46 @@ export class SelectorCapture extends Node<Selector> {
     return w.getSince(mark);
   }
 
+  override valueOf(): string {
+    return String(this.value.valueOf());
+  }
+
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderCaptureSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    return this.renderCaptureSyntax(options);
+  }
+
   override evalNode(context: Context): MaybePromise<Selector> {
+    const requireSelector = (value: unknown): Selector => {
+      if (isSelectorNode(value)) {
+        return value;
+      }
+      throw new Error('SelectorCapture requires a selector-valued payload');
+    };
+
     const out = this.value.eval(context);
     if (isThenable(out)) {
-      return (out as Promise<Selector>).then((selector) => {
-        return selector;
-      });
+      return out.then(requireSelector);
     }
-    return out as Selector;
+    return requireSelector(out);
   }
 }
 
