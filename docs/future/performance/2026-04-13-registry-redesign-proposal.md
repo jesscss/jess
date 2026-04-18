@@ -583,11 +583,17 @@ node-level `render(ctx)` / `resolve(ctx)` work is about replacing
 `toTrimmedString()`-style evaluated emission, not about deleting source
 round-tripping.
 
+In the pseudocode below, `emitResolved(node, ctx)` means "write the already
+resolved/evaluated node to the live output buffer." For a pure literal that may
+delegate to the node's authored trimmed-syntax helper internally, but it stays
+part of the context-bound emission path rather than redefining
+`toTrimmedString()` as evaluated render.
+
 ### Literal nodes (Any, Color, Dimension, keyword, etc.)
 
 ```
 render(node, ctx):
-  ctx.outputBuffer.append(node.toTrimmedString())
+  emitResolved(node, ctx)
 ```
 
 The value is already in the node. No frame lookup needed. This is the vast
@@ -598,7 +604,7 @@ majority of nodes in a real stylesheet — most values are literals.
 ```
 render(ref, ctx):
   cell = resolveCell(ref.name, ctx.frame)
-  ctx.outputBuffer.append(cell.value.toTrimmedString())
+  emitResolved(cell.value, ctx)
 ```
 
 `resolveCell` is described in detail below. For a mixin param it is a direct
@@ -611,7 +617,7 @@ Either way: no registry, no Set, no sort.
 render(expr, ctx):
   args = expr.args.map(arg => resolve(arg, ctx))
   result = applyFunction(expr.fn, args)   // returns a Node
-  ctx.outputBuffer.append(result.toTrimmedString())
+  emitResolved(result, ctx)
   // result is discarded — not stored anywhere
 ```
 
@@ -646,7 +652,7 @@ render(expr[darken(@color, 10%)], ctx):
     resolve(Dimension(10, '%'), ctx)    // → Dimension(10, '%')
   ]
   result = builtins.darken(args[0], args[1])  // → Color(darker-blue)
-  ctx.outputBuffer.append(result.toTrimmedString())
+  emitResolved(result, ctx)
 ```
 
 A built-in cannot receive a `Reference` node — it needs the actual `Color`.
@@ -705,7 +711,7 @@ render(expr[@a + @b], ctx):
   lhs = resolve(Reference('a'), ctx)  // → Dimension(10, 'px')
   rhs = resolve(Reference('b'), ctx)  // → Dimension(5, 'px')
   result = lhs.operate(rhs, '+')      // → Dimension(15, 'px')
-  ctx.outputBuffer.append(result.toTrimmedString())
+  emitResolved(result, ctx)
 ```
 
 #### What stays a stream write (no materialization)
@@ -716,7 +722,7 @@ The vast majority of nodes do **not** require materialization:
   resolves the cell and appends the string in one step
 - A nested ruleset (`.inner { ... }`) → `render` composes the selector and
   recurses, never building an intermediate value
-- A plain literal anywhere → `node.toTrimmedString()` appended directly
+- A plain literal anywhere → `emitResolved(node, ctx)` writes it directly
 
 The rule: **if only the string representation is needed, stream-write via
 `render`. If the code needs to inspect, compare, compute with, or pass the

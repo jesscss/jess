@@ -707,7 +707,7 @@ render(op, ctx):
   left  = resolve(op.left, ctx)   // → Color, Dimension, etc. — discarded after use
   right = resolve(op.right, ctx)
   result = compute(left, op.operator, right)
-  ctx.outputBuffer.append(result.valueOf())
+  emitResolved(result, ctx)
   // result is GC'd — never stored on any AST node
 ```
 
