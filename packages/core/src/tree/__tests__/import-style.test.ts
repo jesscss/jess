@@ -1071,6 +1071,56 @@ describe('Style import', () => {
       expect(css).not.toContain('.light {\n  color: red;');
     });
 
+    it('keeps variable-only additive "with" configs visible to imported detached ruleset variable closures', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-detached-closure-configured.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        mixin({
+          name: any('.use-accent'),
+          rules: rules([
+            vardecl({
+              name: 'accent-content',
+              value: rules([
+                decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+              ])
+            }),
+            call({
+              name: ref({ key: 'accent-content' }, { type: 'variable' })
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library-detached-closure-configured.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'accentColor', value: any('purple') })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        }),
+        ruleset({
+          selector: el('.consumer'),
+          rules: rules([
+            call({
+              name: ref({ key: '.use-accent' }, { type: 'mixin-ruleset' }),
+              args: list([])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.consumer {');
+      expect(css).toContain('border-color: purple;');
+    });
+
     it('keeps replacement configs on an imported child rules surface when additive nodes are also present', async () => {
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
@@ -1256,6 +1306,65 @@ describe('Style import', () => {
       expect(css).toContain('color: red;');
       expect(css).toContain('border-color: purple;');
       expect(css).not.toContain('.light {\n  color: red;');
+    });
+
+    it('keeps child-surface additive "with" configs visible to imported detached ruleset variable closures', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-child-surface-detached-closure.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        mixin({
+          name: any('.use-accent'),
+          rules: rules([
+            vardecl({
+              name: 'accent-content',
+              value: rules([
+                decl({ name: any('border-color'), value: ref({ key: 'accentColor' }, { type: 'variable' }) })
+              ])
+            }),
+            call({
+              name: ref({ key: 'accent-content' }, { type: 'variable' })
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('library-child-surface-detached-closure.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'accentColor', value: any('purple') }),
+              ruleset({
+                selector: sellist([sel([el('.addon')])]),
+                rules: rules([
+                  decl({ name: any('display'), value: any('block') })
+                ])
+              })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        }),
+        vardecl({ name: 'accentColor', value: any('red') }),
+        ruleset({
+          selector: el('.consumer'),
+          rules: rules([
+            call({
+              name: ref({ key: '.use-accent' }, { type: 'mixin-ruleset' }),
+              args: list([])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.addon');
+      expect(css).toContain('.consumer {');
+      expect(css).toContain('border-color: purple;');
+      expect(css).not.toContain('border-color: red;');
     });
 
     it('throws if "set" is used more than once', async () => {
