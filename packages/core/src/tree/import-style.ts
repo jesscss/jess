@@ -182,13 +182,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
   }
 
-  private clearConfiguredImportBoundary(rules: Rules): Rules {
+  private clearConfiguredImportBoundary(rules: Rules): void {
     delete rules.options.importBoundary;
-    return rules;
-  }
-
-  private createConfiguredImportedSurface(sourceRules: Rules): Rules {
-    return this.deriveClonedRulesSurface(sourceRules, undefined, { preserveSourceNode: true });
   }
 
   private throwIfConfiguredReuseIsDisallowed(withValues: StyleImportValue['with'] | undefined, hasCachedEvaluation: boolean): void {
@@ -255,16 +250,20 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     };
   }
 
-  private createConfiguredReplacementSurface(sourceRules: Rules, replacementsByIndex: Map<number, Node>): Rules {
-    const replacedRules = this.createConfiguredImportedSurface(sourceRules);
-    replacedRules.value = [];
+  private createConfiguredImportedSurface(sourceRules: Rules, replacementsByIndex?: Map<number, Node>): Rules {
+    const importedRules = this.deriveClonedRulesSurface(sourceRules, undefined, { preserveSourceNode: true });
+    if (!replacementsByIndex?.size) {
+      return importedRules;
+    }
+
+    importedRules.value = [];
     for (let index = 0; index < sourceRules.value.length; index++) {
       const originalNode = sourceRules.value[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;
-      replacedRules.adopt(nextNode);
-      replacedRules.value.push(nextNode);
+      importedRules.adopt(nextNode);
+      importedRules.value.push(nextNode);
     }
-    return replacedRules;
+    return importedRules;
   }
 
   private createConfiguredResultSurface(
@@ -298,9 +297,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return sourceRules;
     }
 
-    const importedRules = replacementsByIndex.size === 0
-      ? this.createConfiguredImportedSurface(sourceRules)
-      : this.createConfiguredReplacementSurface(sourceRules, replacementsByIndex);
+    const importedRules = this.createConfiguredImportedSurface(
+      sourceRules,
+      replacementsByIndex.size > 0 ? replacementsByIndex : undefined
+    );
 
     return this.createConfiguredResultSurface(sourceRules, importedRules, newVariables);
   }
