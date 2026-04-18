@@ -503,8 +503,6 @@ export function compoundSelector(this: C, T: TokenMap) {
       DEF: () => {
         sel = $.SUBRULE2($.simpleSelector, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          /** Make sure we don't add implicit whitespace */
-          sel.pre = 0;
           selectors.push(sel);
         }
       }

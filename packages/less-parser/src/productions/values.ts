@@ -938,8 +938,6 @@ export function functionCall(this: P, T: TokenMap) {
           if (nameValue === 'unit' && args?.value[1] instanceof Any) {
             const unitArg = args.value[1];
             const quotedUnit = new Quoted(unitArg.valueOf(), { quote: '"' }, undefined, $.context);
-            quotedUnit.pre = unitArg.pre;
-            quotedUnit.post = unitArg.post;
             const newArgsData = [...args.value];
             newArgsData[1] = quotedUnit;
             args = new List(newArgsData, args.options, $.getLocationFromNodes(newArgsData), $.context);
