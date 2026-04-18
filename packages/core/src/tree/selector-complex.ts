@@ -44,6 +44,45 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return node;
   }
 
+  private renderComplexSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    let { value } = this;
+    let length = value.length;
+    const mark = w.mark();
+    let isFirstSelector = true;
+    const saved = savePrintState(options, ['ampersandFirst']);
+    for (let i = 0; i < length; i++) {
+      let component = value[i]!;
+      if (!isNode(component, N.Combinator)) {
+        options.ampersandFirst = isFirstSelector;
+        isFirstSelector = false;
+      }
+      if (isNode(component, N.Combinator)) {
+        if (isNode(value[i - 1], N.Nil)) {
+          continue;
+        }
+        let co = component.value;
+        if (co !== ' ') {
+          let out = w.capture(() => component.toString(options));
+          if (out !== '|') {
+            w.add(` ${out.trim()} `, component);
+          } else {
+            w.add(out.trim(), component);
+          }
+        } else {
+          let out = w.capture(() => component.toString(options));
+          w.add(` ${out.trim()}`, component);
+        }
+      } else {
+        let out = w.capture(() => component.toString(options));
+        w.add(out.trim(), component);
+      }
+    }
+    restorePrintState(options, saved);
+    return w.getSince(mark);
+  }
+
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
@@ -86,48 +125,27 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     this._requiredKeySet = requiredKeySet;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    let { value } = this;
-    let length = value.length;
-    const mark = w.mark();
-    let isFirstSelector = true;
-    const saved = savePrintState(options, ['ampersandFirst']);
-    for (let i = 0; i < length; i++) {
-      let component = value[i]!;
-      if (!isNode(component, N.Combinator)) {
-        options.ampersandFirst = isFirstSelector;
-        isFirstSelector = false;
-      }
-      /** Add some combinator spacing */
-      if (isNode(component, N.Combinator)) {
-        /** Skip spacing if the previous node is a Nil */
-        if (isNode(value[i - 1], N.Nil)) {
-          continue;
-        }
-        let co = component.value;
-        if (co !== ' ') {
-          // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
-          // pre spacing (default to single space when no explicit pre)
-          let out = w.capture(() => component.toString(options));
-          /** Namespace combinator traditionally written without spacing */
-          if (out !== '|') {
-            w.add(` ${out.trim()} `, component);
-          } else {
-            w.add(out.trim(), component);
-          }
-        } else {
-          let out = w.capture(() => component.toString(options));
-          w.add(` ${out.trim()}`, component);
-        }
-      } else {
-        let out = w.capture(() => component.toString(options));
-        w.add(out.trim(), component);
-      }
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
     }
-    restorePrintState(options, saved);
-    return w.getSince(mark);
+    return this.renderComplexSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    return this.renderComplexSyntax(options);
   }
 
   /**

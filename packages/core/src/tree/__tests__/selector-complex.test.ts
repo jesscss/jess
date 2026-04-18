@@ -1,4 +1,4 @@
-import { sel, compound, el, co, pseudo, sellist } from '..';
+import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -6,6 +6,45 @@ let context: Context;
 describe('Complex selector', () => {
   beforeEach(() => {
     context = new Context();
+  });
+
+  describe('render', () => {
+    test('renders complex selector syntax through render()', () => {
+      const node = sel([
+        el('a'),
+        co('>'),
+        el('.foo')
+      ]);
+
+      expect(node.render()).toBe('a > .foo');
+    });
+
+    test('renders resolved complex selector values through render(context)', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const rendered = sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]).render(context);
+
+      expect(rendered).toBe('a[data=foo] > .foo');
+    });
   });
 
   describe('keys', () => {
@@ -28,7 +67,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([co('>'), compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([co('>'), compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
@@ -41,7 +80,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: el('a') }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
@@ -53,7 +92,7 @@ describe('Complex selector', () => {
         compound([
           pseudo({ name: ':is', arg: sellist([el('a'), el('b')]) }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
@@ -72,7 +111,7 @@ describe('Complex selector', () => {
             ])
           }),
           el('#id'),
-          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) as any }) as any
+          pseudo({ name: ':is', arg: sel([compound([el('.two'), el('.one')])]) })
         ])
       ]);
       await sel2.eval(context);
