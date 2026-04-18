@@ -80,9 +80,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const currentStartsWithSpace = currentNodeOut.startsWith(' ');
       const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
       const hasSourceGap = trivia
-        ? Boolean(
-            trivia.after.get(prevNode.location[3]!)
-            ?? trivia.before.get(node.location[0]!)
+        ? (
+            trivia.after.has(prevNode.location[3]!)
+              ? Boolean(trivia.after.get(prevNode.location[3]!))
+              : trivia.before.has(node.location[0]!)
+                  ? Boolean(trivia.before.get(node.location[0]!))
+                  : undefined
           )
         : undefined;
       const hasExplicitNoSpaceBoundary = (
