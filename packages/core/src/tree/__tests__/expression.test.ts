@@ -1,10 +1,32 @@
-import { expr, any } from '../index.js';
+import { expr, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
 describe('Expression', () => {
   beforeEach(() => {
     context = new Context();
+  });
+
+  it('renders expression syntax through toTrimmedString()', () => {
+    const rule = expr(any('foo'));
+
+    expect(rule.toTrimmedString()).toBe('$(foo)');
+  });
+
+  it('renders resolved expression values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = expr(ref({ key: 'value' }, { type: 'variable' })).render(context);
+
+    expect(rendered).toBe('foo');
   });
 
   it('should serialize an expression', () => {
