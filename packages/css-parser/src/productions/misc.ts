@@ -41,7 +41,7 @@ export function layerAtRule(this: C, T: TokenMap) {
     $.OPTION(() => {
       const nameNode: Node = $.SUBRULE($.layerName, { ARGS: [ctx] });
       if (!RECORDING_PHASE) {
-        preludeNodes.push($.wrap(nameNode));
+        preludeNodes.push(nameNode);
       }
     });
 
@@ -55,8 +55,8 @@ export function layerAtRule(this: C, T: TokenMap) {
           $.CONSUME(T.RCurly);
           if (!RECORDING_PHASE) {
             return new AtRule({
-              name: $.wrap(new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context), true),
-              prelude: preludeNodes.length ? $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined,
+              name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
+              prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
               rules
             }, { nestable: true }, $.endRule(), this.context);
           }
@@ -69,14 +69,14 @@ export function layerAtRule(this: C, T: TokenMap) {
             $.CONSUME(T.Comma);
             let nameNode: Node = $.SUBRULE2($.layerName, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
-              preludeNodes.push($.wrap(nameNode));
+              preludeNodes.push(nameNode);
             }
           });
           $.CONSUME(T.Semi);
           if (!RECORDING_PHASE) {
             return new AtRule({
-              name: $.wrap(new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context), true),
-              prelude: preludeNodes.length ? $.wrap(new List(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context), 'both') : undefined
+              name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
+              prelude: preludeNodes.length ? new List(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined
             }, undefined, $.endRule(), this.context);
           }
         }
@@ -97,7 +97,7 @@ export function layerName(this: C, T: TokenMap) {
 
     const first = $.CONSUME(T.Ident);
     if (!RECORDING_PHASE) {
-      nodes.push($.wrap($.processValueToken(first)));
+      nodes.push($.processValueToken(first));
     }
 
     $.MANY({
@@ -105,7 +105,7 @@ export function layerName(this: C, T: TokenMap) {
       DEF: () => {
         const seg = $.CONSUME(T.DotName);
         if (!RECORDING_PHASE) {
-          nodes.push($.wrap($.processValueToken(seg)));
+          nodes.push($.processValueToken(seg));
         }
       }
     });
@@ -146,8 +146,8 @@ export function supportsAtRule(this: C, T: TokenMap, preludeRule?: Rule | string
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-        prelude: $.wrap(prelude, 'both'),
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        prelude: prelude,
         rules
       }, { nestable: true }, location, this.context);
     }
@@ -173,7 +173,7 @@ export function supportsCondition(this: C, T: TokenMap) {
         }
         const location = $.endRule();
         return new QueryCondition([
-          $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+          new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context),
           value
         ], undefined, location, this.context);
       }
@@ -194,7 +194,7 @@ export function supportsCondition(this: C, T: TokenMap) {
               const [,,, endOffset, endLine, endColumn] = right.location;
               left = new QueryCondition([
                 left,
-                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+                new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context),
                 right
               ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
             }
@@ -210,7 +210,7 @@ export function supportsCondition(this: C, T: TokenMap) {
               const [,,, endOffset, endLine, endColumn] = right.location;
               left = new QueryCondition([
                 left,
-                $.wrap(new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context)),
+                new Keyword(keyword.image, undefined, $.getLocationInfo(keyword), this.context),
                 right
               ], undefined, [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!], this.context);
             }
@@ -281,7 +281,7 @@ export function supportsInParens(this: C, T: TokenMap): ProductionRule {
           return;
         }
         const location = $.endRule();
-        return $.wrap(new Paren(value ? $.wrap(value, 'both') : undefined, undefined, location, this.context));
+        return new Paren(value ? value : undefined, undefined, location, this.context);
       }
     }
   ]);
@@ -307,7 +307,7 @@ export function functionCallLike(this: C, T: TokenMap) {
       DEF: () => {
         const node = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
         if (!RECORDING_PHASE) {
-          args.push($.wrap(node));
+          args.push(node);
         }
       }
     });
@@ -323,7 +323,7 @@ export function functionCallLike(this: C, T: TokenMap) {
     ]);
     if (!RECORDING_PHASE) {
       const location = $.endRule();
-      return $.wrap(new Call({ name: name.image.slice(0, -1), args: new List(seq ? [seq] : []) }, undefined, location, this.context));
+      return new Call({ name: name.image.slice(0, -1), args: new List(seq ? [seq] : []) }, undefined, location, this.context);
     }
   };
 }
@@ -414,7 +414,7 @@ export function functionCallArgs(this: C, T: TokenMap): ProductionRule {
     let commaNodes: Node[];
     let semiNodes: Node[];
     if (!RECORDING_PHASE) {
-      commaNodes = [$.wrap(node, true)];
+      commaNodes = [node];
       semiNodes = [];
     }
     let isSemiList = false;
@@ -427,7 +427,7 @@ export function functionCallArgs(this: C, T: TokenMap): ProductionRule {
             $.CONSUME(T.Comma);
             node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
-              commaNodes!.push($.wrap(node, true));
+              commaNodes!.push(node);
             }
           }
         },
@@ -448,7 +448,7 @@ export function functionCallArgs(this: C, T: TokenMap): ProductionRule {
             }
             node = $.SUBRULE3($.valueList, { ARGS: [ctx] });
             if (!RECORDING_PHASE) {
-              semiNodes.push($.wrap(node, true));
+              semiNodes.push(node);
             }
           }
         }
@@ -478,7 +478,7 @@ export function importAtRule(this: C, T: TokenMap) {
     let node: Node = $.SUBRULE($.importPrelude, { ARGS: [ctx] });
 
     if (!RECORDING_PHASE) {
-      preludeNodes!.push($.wrap(node));
+      preludeNodes!.push(node);
     }
 
     let extraNodes: Node[] | undefined;
@@ -495,7 +495,7 @@ export function importAtRule(this: C, T: TokenMap) {
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context)
       }, undefined, location, this.context);
     }
@@ -533,12 +533,10 @@ export function importPostlude(this: C, T: TokenMap): ProductionRule {
         let { endOffset, endLine, endColumn } = end;
         let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
         nodes!.push(
-          $.wrap(
-            new Call({
+          new Call({
               name: 'layer',
               args: new List([value])
             }, undefined, location, this.context)
-          )
         );
       }
     });
@@ -568,12 +566,10 @@ export function importPostlude(this: C, T: TokenMap): ProductionRule {
         let { endOffset, endLine, endColumn } = end;
         let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
         nodes!.push(
-          $.wrap(
-            new Call({
+          new Call({
               name: 'supports',
-              args: new List([$.wrap(value, 'both')])
+              args: new List([value])
             }, undefined, location, this.context)
-          )
         );
       }
     });
@@ -611,7 +607,7 @@ export function nestedAtRule(this: C, T: TokenMap) {
     $.MANY(() => {
       let value = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       if (!RECORDING_PHASE) {
-        preludeNodes.push($.wrap(value));
+        preludeNodes.push(value);
       }
     });
     $.CONSUME(T.LCurly);
@@ -621,8 +617,8 @@ export function nestedAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-        prelude: preludeNodes!.length ? $.wrap(new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context), 'both') : undefined,
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
         rules
       }, undefined, $.endRule(), this.context);
     }
@@ -637,13 +633,13 @@ export function nonNestedAtRule(this: C, T: TokenMap) {
     let preludeNodes: Node[] = [];
 
     let name = $.CONSUME(T.AtNonNested);
-    $.MANY(() => preludeNodes.push($.wrap($.SUBRULE($.anyOuterValue, { ARGS: [ctx] }))));
+    $.MANY(() => preludeNodes.push($.SUBRULE($.anyOuterValue, { ARGS: [ctx] })));
     $.CONSUME(T.Semi);
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
-        prelude: $.wrap(new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context))
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context)
       }, undefined, $.endRule(), this.context);
     }
   };
@@ -692,7 +688,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
     $.MANY(() => {
       let val = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] });
       if (!RECORDING_PHASE) {
-        preludeNodes.push($.wrap(val, 'both'));
+        preludeNodes.push(val);
       }
     });
     $.OR([
@@ -746,7 +742,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
                 $.MANY9(() => {
                   const value = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
                   if (!RECORDING_PHASE) {
-                    valueNodes.push($.wrap(value, 'both'));
+                    valueNodes.push(value);
                   }
                 });
               }
@@ -775,7 +771,7 @@ export function unknownAtRule(this: C, T: TokenMap) {
         }
       }
       return new AtRule({
-        name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context), true),
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
         prelude: preludeNodes!.length ? new Sequence(preludeNodes!, undefined, $.getLocationFromNodes(preludeNodes!), this.context) : undefined,
         rules
       }, undefined, $.endRule(), this.context);
@@ -813,7 +809,7 @@ export function anyOuterValue(this: C, T: TokenMap) {
         $.MANY(() => {
           let val = $.SUBRULE($.anyInnerValue, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
-            nodes.push($.wrap(val));
+            nodes.push(val);
           }
         });
         $.CONSUME(T.RParen);
@@ -843,7 +839,7 @@ export function anyOuterValue(this: C, T: TokenMap) {
         $.MANY2(() => {
           let node = $.SUBRULE2($.anyInnerValue, { ARGS: [ctx] });
           if (!RECORDING_PHASE) {
-            nodes.push($.wrap(node));
+            nodes.push(node);
           }
         });
         $.CONSUME(T.RSquare);
@@ -851,7 +847,7 @@ export function anyOuterValue(this: C, T: TokenMap) {
         if (!RECORDING_PHASE) {
           let location = $.endRule();
           return new Paren(
-            $.wrap(new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context), true),
+            new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context),
             undefined,
             location,
             this.context
@@ -894,7 +890,7 @@ export function anyInnerValue(this: C, T: TokenMap) {
           let location = $.endRule();
 
           return new Block(
-            $.wrap(new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context), 'both'),
+            new Sequence(nodes!, undefined, $.getLocationFromNodes(nodes!), this.context),
             { type: 'curly' },
             location,
             this.context
@@ -907,7 +903,7 @@ export function anyInnerValue(this: C, T: TokenMap) {
         let semi = $.CONSUME(T.Semi);
 
         if (!$.RECORDING_PHASE) {
-          return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), this.context));
+          return new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), this.context);
         }
       }
     }

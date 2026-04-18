@@ -2,6 +2,8 @@ import {
   type TreeContext,
   type Context
 } from '../context.js';
+import type { IToken } from 'chevrotain';
+import type { TriviaMap } from '../types/index.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
@@ -15,6 +17,30 @@ import { isPlainObject } from './util/collections.js';
 export type { TreeContext };
 
 const { isArray } = Array;
+
+function emitTrivia(
+  map: Map<number, IToken[]>,
+  offset: number | undefined,
+  options: PrintOptions
+): void {
+  if (offset === undefined) {
+    return;
+  }
+  const tokens = map.get(offset);
+  if (!tokens) {
+    return;
+  }
+  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+  if (emittedTrivia.has(tokens)) {
+    return;
+  }
+  emittedTrivia.add(tokens);
+  const writer = options.writer!;
+  for (const token of tokens) {
+    writer.add(token.image);
+  }
+}
+
 type AllNodeOptions = {
   /**
    * This seems harder to implement. For now, for anything that needs
@@ -1191,9 +1217,18 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let pre = w.capture(() => this.processPrePost('pre', '', options));
+    const trivia = (options.trivia
+      ?? this.treeContext?.opts?.trivia) as TriviaMap | undefined;
+    if (trivia && options.trivia !== trivia) {
+      options.trivia = trivia;
+    }
+    const pre = this.pre !== undefined
+      ? w.capture(() => this.processPrePost('pre', '', options))
+      : (trivia ? w.capture(() => emitTrivia(trivia.before, this.location[0], options)) : '');
     const bodyStr = w.capture(() => this.toTrimmedString(options));
-    let post = w.capture(() => this.processPrePost('post', '', options));
+    const post = this.post !== undefined
+      ? w.capture(() => this.processPrePost('post', '', options))
+      : (trivia ? w.capture(() => emitTrivia(trivia.after, this.location[3], options)) : '');
 
     let result = pre + bodyStr + post;
     // Trim output if flag is set

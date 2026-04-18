@@ -78,7 +78,7 @@ function wrapOuterExpressionIfNeeded($: P, node: Node, ctx: RuleContext | undefi
         parenFrames: getParenFrames(ctx),
         calcFrames: getCalcFrames(ctx)
       },
-      node.get('operator') as Operator,
+      node.value[1],
       node.left,
       node.right
     );
@@ -325,7 +325,11 @@ export function scssIdentValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
-    const ident = $.CONSUME($.T.Ident) as unknown as IToken;
+    const ident = (
+      $.isType($.T.PlainIdent)
+        ? $.CONSUME($.T.PlainIdent)
+        : $.CONSUME($.T.Ident)
+    ) as unknown as IToken;
 
     let kind: 'ruleset' | 'module-var' | 'module-fn' | undefined;
     let member: IToken | undefined;
@@ -445,7 +449,7 @@ function getScssValueAlts($: P, T: TokenMap, ctx: RuleContext = {}): Alt {
     },
     { GATE: () => $.LA(1).tokenType === $.T.DollarVariable, ALT: () => $.CONSUME($.T.DollarVariable) },
     {
-      GATE: () => $.isType($.T.Ident),
+      GATE: () => $.isType($.T.Ident) || $.LA(1).tokenType === $.T.PlainIdent,
       ALT: () => $.SUBRULE($.scssIdentValue, { ARGS: [ctx] })
     },
     { GATE: () => $.isType($.T.Dimension), ALT: () => $.CONSUME($.T.Dimension) },
@@ -505,7 +509,7 @@ export function expressionProduct(this: P, T: TokenMap) {
       }
       const right = $.SUBRULE2($.expressionValue, { ARGS: [ctx] }) as unknown as Node;
       left = new Operation(
-        [$.wrap(left, true), opToken.image as Operator, $.wrap(right)],
+        [left, opToken.image as Operator, right],
         undefined,
         $.getLocationFromNodes([left, right]),
         $.context
@@ -547,7 +551,7 @@ export function expressionSum(this: P, T: TokenMap) {
       }
 
       left = new Operation(
-        [$.wrap(left, true), op as Operator, $.wrap(right!)],
+        [left, op as Operator, right!],
         undefined,
         $.getLocationFromNodes([left, right!]),
         $.context
@@ -608,7 +612,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     let isSemiList = false;
 
     if (!$.RECORDING_PHASE) {
-      commaNodes = [$.wrap(node, true)];
+      commaNodes = [node];
       semiNodes = [];
     }
 
@@ -639,7 +643,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
           return;
         }
         node = parseCallArgument(ctx) as unknown as Node;
-        commaNodes!.push($.wrap(node, true));
+        commaNodes!.push(node);
         return;
       }
 
@@ -651,7 +655,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
         semiNodes!.push(commaNodes![0]!);
       }
       node = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
-      semiNodes!.push($.wrap(node, true));
+      semiNodes!.push(node);
     });
 
     const location = $.endRule();
@@ -716,7 +720,7 @@ export function parenValue(this: P, T: TokenMap) {
         parenFrames: [...getParenFrames(ctx), true]
       };
       const operation = new Operation(
-        [$.wrap(left!, true), '/', $.wrap(right!)],
+        [left!, '/', right!],
         undefined,
         $.getLocationFromNodes([left!, right!]),
         $.context
@@ -785,9 +789,9 @@ export function value(this: P, T: TokenMap, valueAlt?: AltContext) {
     }
     node = wrapOuterExpressionIfNeeded($, node, exprCtx, location);
     if (additionalValue) {
-      return $.wrap(new List([$.wrap(node, true), additionalValue], { sep: '/' }, location, $.context));
+      return new List([node, additionalValue], { sep: '/' }, location, $.context);
     }
-    return $.wrap(node);
+    return node;
   };
 }
 
@@ -814,10 +818,11 @@ export function functionCall(this: P, T: TokenMap) {
       return mapped as unknown as any;
     }
     const call = mapped as Call;
+    const { name, args } = call.value;
 
-    if (typeof call.name === 'string' && call.name === 'selector.parse') {
-      const args = isNode(call.args, N.List) ? (call.args as List).value : [];
-      const firstArg = args[0];
+    if (typeof name === 'string' && name === 'selector.parse') {
+      const argValues = isNode(args, N.List) ? (args as List).value : [];
+      const firstArg = argValues[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
@@ -849,12 +854,12 @@ export function functionCall(this: P, T: TokenMap) {
     // Plain Sass/Less-style function call: `foo(...)`
     // Parse as Call(name: Reference(type='function', fallbackValue: true)) so evaluation tries function registry,
     // but still serializes safely if unresolved.
-    if (typeof call.name === 'string') {
+    if (typeof name === 'string') {
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)
         : undefined;
       const ref = new Reference(
-        { key: call.name },
+        { key: name },
         { type: 'function', fallbackValue: true },
         loc,
         $.context
@@ -864,7 +869,7 @@ export function functionCall(this: P, T: TokenMap) {
       const { silentFail: silentFailIgnored, ...rest } = call.options ?? {};
       void silentFailIgnored;
       const nextOptions = Object.keys(rest).length > 0 ? rest : undefined;
-      return new Call({ name: ref, args: call.args }, nextOptions, loc, $.context);
+      return new Call({ name: ref, args }, nextOptions, loc, $.context);
     }
     return call;
   };
@@ -975,7 +980,7 @@ export function scssMapLiteral(this: P, T: TokenMap) {
       return;
     }
     const coll = new Collection(decls, undefined, location, $.context);
-    return $.wrap(coll);
+    return coll;
   };
 }
 
@@ -1013,13 +1018,10 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
       return;
     }
 
-    const nameNode = $.wrap(
-      new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context),
-      true
-    );
+    const nameNode = new Any(dv.image.slice(1), { role: 'property' }, $.getLocationInfo(dv), $.context);
 
     return new VarDeclaration(
-      { name: nameNode, value: $.wrap(value, 'both') },
+      { name: nameNode, value: value },
       { assign: (sawDefault ? '?:' : assign.image) as any, setDefined: sawGlobal },
       location,
       $.context
@@ -1039,7 +1041,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
             {
               ALT: () => {
                 $.CONSUME($.T.InterpolationStart);
-                $.SUBRULE($.valueSequence, { ARGS: [ctx] });
+                $.SUBRULE5($.valueSequence, { ARGS: [ctx] });
                 $.CONSUME($.T.RCurly);
               }
             },
@@ -1053,7 +1055,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
 
         if ($.LA(1).tokenType === $.T.InterpolationStart) {
           $.CONSUME($.T.InterpolationStart);
-          const expr = $.SUBRULE($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
+          const expr = $.SUBRULE5($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
           $.CONSUME($.T.RCurly);
           if (!$.RECORDING_PHASE) {
             source += INTERPOLATION_PLACEHOLDER;
@@ -1081,13 +1083,13 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
     const assign = $.CONSUME($.T.Assign);
     let value!: Node;
     if ($.LA(1).tokenType === $.T.LCurly) {
-      value = $.SUBRULE($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
+      value = $.SUBRULE6($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
     } else {
-      const initialValue = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+      const initialValue = $.SUBRULE7($.valueList, { ARGS: [ctx] }) as unknown as Node;
       if ($.LA(1).tokenType === $.T.LCurly) {
-        const nested = $.SUBRULE2($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
+        const nested = $.SUBRULE8($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
         value = new Sequence(
-          [$.wrap(initialValue, true, ctx), nested],
+          [initialValue, nested],
           undefined,
           $.getLocationFromNodes([initialValue, nested]),
           $.context
@@ -1106,18 +1108,15 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
       return;
     }
 
-    const nameNode = $.wrap(
-      new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context),
-      true
-    );
+    const nameNode = new Interpolated({ source, replacements }, { role: 'property' }, $.getLocationFromNodes(replacements), $.context);
     const isCustom = nameNode.valueOf().startsWith('--');
     const wrapCtx = isCustom ? { ...ctx, inCustomPropertyValue: true } : ctx;
     const DeclClass = isCustom ? CustomDeclaration : Declaration;
     return new DeclClass({
       name: nameNode,
-      value: $.wrap(value, 'both', wrapCtx),
+      value: value,
       important: important
-        ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both')
+        ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context)
         : undefined
     }, { assign: assign.image as any }, location, $.context);
   };
@@ -1143,7 +1142,7 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
       if ($.LA(1).tokenType === $.T.LCurly) {
         const nested = $.SUBRULE4($.scssNestedPropertyCollection, { ARGS: [ctx] }) as unknown as Node;
         value = new Sequence(
-          [$.wrap(initialValue, true, ctx), nested],
+          [initialValue, nested],
           undefined,
           $.getLocationFromNodes([initialValue, nested]),
           $.context
@@ -1162,12 +1161,12 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
       return;
     }
 
-    const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+    const nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context);
     return new Declaration({
       name: nameNode,
-      value: $.wrap(value, 'both', ctx),
+      value: value,
       important: important
-        ? $.wrap(new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context), 'both')
+        ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context)
         : undefined
     }, { assign: assign.image as any }, location, $.context);
   };
@@ -1195,11 +1194,11 @@ export function declaration(this: P, T: TokenMap, alt?: AltContext) {
       return;
     }
 
-    const nameNode = $.wrap(new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context), true);
+    const nameNode = new Any(name.image, { role: 'property' }, $.getLocationInfo(name), $.context);
     const value = new Sequence(nodes!, undefined, valueLocation, $.context);
     return new CustomDeclaration({
       name: nameNode,
-      value: $.wrap(value, 'both', { ...ctx, inCustomPropertyValue: true })
+      value: value
     }, { assign: assign.image as any }, location, $.context);
   };
 

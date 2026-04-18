@@ -307,7 +307,7 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
     if (isNode(node, N.Ruleset)) {
       const ruleset = node as Ruleset;
       if (!isNode(ruleset.selector, N.Nil)) {
-        ruleset.setData('selector', prefixAtRootSelector(ruleset.selector as Selector, context));
+        ruleset.set('selector', prefixAtRootSelector(ruleset.selector as Selector, context));
       }
       return ruleset;
     }
@@ -335,7 +335,7 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
     return node;
   };
 
-  rules.setData(rules.value.map((rule: Node) => transformRule(rule)));
+  rules.set(null, rules.value.map((rule: Node) => transformRule(rule)));
 }
 
 function findDisallowedExtendSelector(selector: any, allowed: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: any } | undefined {
@@ -480,10 +480,10 @@ export function importAtRule(this: P, T: TokenMap) {
           return;
         }
 
-        const preludeNodes = [$.wrap(prelude), ...(extraNodes ?? [])];
+        const preludeNodes = [prelude, ...(extraNodes ?? [])];
         imports.push(new AtRule(
           {
-            name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
+            name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
             prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
           },
           undefined,
@@ -1280,7 +1280,12 @@ export function scssIfAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
-    return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
+    return new If({
+      branches: [
+        ...conditions.map((condition, index) => ({ condition, rules: bodies[index]! })),
+        ...(elseBranch ? [{ rules: elseBranch }] : [])
+      ]
+    }, undefined, loc, $.context);
   };
 }
 
@@ -1319,7 +1324,7 @@ export function scssForAtRule(this: P, T: TokenMap) {
       },
       DEF: () => {
         const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
-        startNodes.push($.wrap(n, 'both'));
+        startNodes.push(n);
       }
     });
 
@@ -1341,7 +1346,7 @@ export function scssForAtRule(this: P, T: TokenMap) {
       GATE: () => $.LA(1).tokenType !== $.T.LCurly && $.LA(1).tokenType.name !== 'EOF',
       DEF: () => {
         const n = $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) as unknown as Node;
-        endNodes.push($.wrap(n, 'both'));
+        endNodes.push(n);
       }
     });
 
@@ -1363,13 +1368,14 @@ export function scssForAtRule(this: P, T: TokenMap) {
       return;
     }
     return new For({
-      vars: varDecl,
-      iterable: new Range(
-        { start: startExpr, end: endExpr },
-        { includeStart: true, includeEnd },
-        loc,
-        $.context
-      ),
+      pattern: { kind: 'single', value: varDecl },
+      iterable: {
+        kind: 'range',
+        start: startExpr,
+        end: endExpr,
+        includeStart: true,
+        includeEnd
+      },
       rules
     }, undefined, loc, $.context);
   };
@@ -1415,14 +1421,8 @@ export function scssEachAtRule(this: P, T: TokenMap) {
       return rawExpr;
     }
 
-    const expr = isNode(rawExpr, N.Expression)
-      ? rawExpr
-      : (() => {
-          const innerExpr = $.wrap(rawExpr, 'both');
-          // Prevent `$` + leading-space output like `$ list`.
-          innerExpr.pre = 0;
-          return new Expression(innerExpr, undefined, $.getLocationFromNodes([rawExpr]), $.context);
-        })();
+    const expr = isNode(rawExpr, N.Expression) ? rawExpr.value : rawExpr;
+    expr.pre = 0;
 
     $.CONSUME($.T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });
@@ -1431,9 +1431,12 @@ export function scssEachAtRule(this: P, T: TokenMap) {
     if ($.RECORDING_PHASE) {
       return;
     }
+    const pattern = vars.length === 1
+      ? { kind: 'single' as const, value: vars[0]! }
+      : { kind: 'tuple' as const, values: vars as [VarDeclaration, ...VarDeclaration[]] };
     return new For({
-      vars: vars.length === 1 ? vars[0]! : vars,
-      iterable: expr,
+      pattern,
+      iterable: { kind: 'node', value: expr },
       rules
     }, undefined, loc, $.context);
   };
@@ -1683,7 +1686,7 @@ export function scssMediaPrelude(this: P, T: TokenMap) {
           { ALT: () => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        nodes.push($.wrap(n));
+        nodes.push(n);
       }
     });
 
@@ -1735,7 +1738,7 @@ export function scssSupportsPrelude(this: P, T: TokenMap) {
           { ALT: () => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        nodes.push($.wrap(n));
+        nodes.push(n);
       }
     });
 
@@ -1767,8 +1770,8 @@ export function supportsAtRule(this: P, T: TokenMap) {
       return;
     }
     return new AtRule({
-      name: $.wrap(new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context), true),
-      prelude: $.wrap(prelude, 'both'),
+      name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+      prelude: prelude,
       rules
     }, { nestable: true }, location, $.context);
   };
@@ -1802,7 +1805,7 @@ export function scssContainerPrelude(this: P, T: TokenMap) {
           { ALT: () => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        nodes.push($.wrap(n));
+        nodes.push(n);
       }
     });
 
@@ -1854,7 +1857,7 @@ export function scssScopePrelude(this: P, T: TokenMap) {
           { ALT: () => $.SUBRULE($.anyOuterValue, { ARGS: [ctx] }) }
         ]) as unknown as Node;
 
-        nodes.push($.wrap(n));
+        nodes.push(n);
       }
     });
 
@@ -1953,7 +1956,7 @@ export function scssReturnAtRule(this: P, T: TokenMap) {
       return;
     }
     const name = new Any('result', { role: 'property' }, loc, $.context);
-    return new VarDeclaration({ name, value: $.wrap(value) }, undefined, loc, $.context);
+    return new VarDeclaration({ name, value: value }, undefined, loc, $.context);
   };
 }
 
@@ -2058,7 +2061,7 @@ export function scssDiagnosticAtRule(this: P, T: TokenMap) {
     // Extract level from @debug, @warn, or @error
     const level = keywordImage.slice(1) as 'debug' | 'warn' | 'error';
     return new Log(
-      { level, message: $.wrap(message, 'both') },
+      { level, message: message },
       undefined,
       loc,
       $.context
@@ -2151,7 +2154,7 @@ export function scssAtRootAtRule(this: P, T: TokenMap) {
     }
 
     const name = new Any(atKeyword.image, { role: 'atkeyword' }, $.getLocationInfo(atKeyword), $.context);
-    const atRule = new AtRule({ name, prelude: prelude ? $.wrap(prelude, 'both') : undefined, rules }, undefined, loc, $.context);
+    const atRule = new AtRule({ name, prelude: prelude ? prelude : undefined, rules }, undefined, loc, $.context);
     saveUnsupportedSyntaxError(
       $,
       atKeyword,

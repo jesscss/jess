@@ -129,7 +129,7 @@ export function guardOr(this: P, T: TokenMap) {
         let location = $.endRule();
         $.startRule();
         left = new Condition(
-          [$.wrap(left, true), 'or', $.wrap(right!)],
+          [left, 'or', right!],
           undefined,
           location,
           $.context
@@ -197,9 +197,9 @@ export function guardAnd(this: P, T: TokenMap) {
               if (!$.RECORDING_PHASE) {
                 right = new Condition(
                   [
-                    $.wrap(right, true),
+                    right,
                     normalizeComparisonOperator(op.image),
-                    $.wrap(compareRight)
+                    compareRight
                   ],
                   undefined,
                   $.getLocationFromNodes([right, compareRight]),
@@ -223,7 +223,7 @@ export function guardAnd(this: P, T: TokenMap) {
             let [,,, endOffset, endLine, endColumn] = right.location!;
             let [startOffset, startLine, startColumn] = $.getLocationInfo(not);
             right = new Condition(
-              [$.wrap(right, true)],
+              [right],
               { negate: true },
               [startOffset!, startLine!, startColumn!, endOffset!, endLine!, endColumn!],
               $.context
@@ -234,7 +234,7 @@ export function guardAnd(this: P, T: TokenMap) {
             return;
           }
           left = new Condition(
-            [$.wrap(left, true), 'and', $.wrap(right)],
+            [left, 'and', right],
             undefined,
             $.getLocationFromNodes([left, right]),
             $.context
@@ -269,7 +269,7 @@ export function guardInParens(this: P, T: TokenMap) {
         : undefined;
       node = new DefaultGuard('default()', undefined, location, $.context);
     }
-    node = $.wrap(node, 'both');
+    node = node;
     return new Paren(node, undefined, $.endRule(), $.context);
   };
 }
@@ -330,7 +330,7 @@ export function comparison(this: P, T: TokenMap) {
       right = new DefaultGuard('default()', undefined, location, $.context);
     }
     left = new Condition(
-      [$.wrap(left, true), normalizeComparisonOperator(op.image), $.wrap(right)],
+      [left, normalizeComparisonOperator(op.image), right],
       undefined,
       $.getLocationFromNodes([left, right]),
       $.context
@@ -390,9 +390,9 @@ export function layerName(this: P, T: TokenMap) {
 
     if (!RECORDING_PHASE) {
       if (first instanceof Node) {
-        nodes!.push($.wrap(first));
+        nodes!.push(first);
       } else {
-        nodes!.push($.wrap($.processValueToken(first)));
+        nodes!.push($.processValueToken(first));
       }
     }
 
@@ -402,7 +402,7 @@ export function layerName(this: P, T: TokenMap) {
       DEF: () => {
         const seg = $.CONSUME(T.DotName);
         if (!RECORDING_PHASE) {
-          nodes!.push($.wrap($.processValueToken(seg)));
+          nodes!.push($.processValueToken(seg));
         }
       }
     });
@@ -431,7 +431,7 @@ export function keyframesName(this: P, T: TokenMap) {
         GATE: () => $.isType(T.Ident) && !$.isType(T.InterpolatedIdent),
         ALT: () => {
           const tok = $.CONSUME(T.Ident);
-          node = $.wrap($.processValueToken(tok));
+          node = $.processValueToken(tok);
         } },
       { ALT: () => node = $.SUBRULE($.string, { ARGS: [] }) }
     ]);
@@ -506,7 +506,7 @@ export function mixinName(this: P, T: TokenMap) {
           nameNode = new Reference({ target: target instanceof Call ? target : target instanceof Reference ? target : undefined, key: nameValue }, { type: 'mixin-ruleset', role: 'name' }, location, $.context);
         }
       } else {
-        nameNode = $.wrap(new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), $.context), true);
+        nameNode = new Any(nameValue, { role: 'name' }, $.getLocationInfo(name), $.context);
       }
     }
     return nameNode;
@@ -699,7 +699,7 @@ export function mixinArgList(this: P, T: TokenMap) {
     $.startRule();
     const first = $.SUBRULE($.mixinArg, { ARGS: [ctx] });
 
-    let commaNodes: Node[] | undefined = [$.wrap(first, true)];
+    let commaNodes: Node[] | undefined = [first];
     const semiNodes: Node[] = [];
     let isSemiList = false;
 
@@ -741,7 +741,7 @@ export function mixinArgList(this: P, T: TokenMap) {
         const comma = $.CONSUME(T.Comma);
         const node = $.SUBRULE2($.mixinArg, { ARGS: [ctx] });
         if (commaNodes) {
-          commaNodes.push($.wrap(node, true));
+          commaNodes.push(node);
         } else {
           $.SAVE_ERROR(
             new NoViableAltException(
@@ -750,7 +750,7 @@ export function mixinArgList(this: P, T: TokenMap) {
               $.LA(0)
             )
           );
-          semiNodes.push($.wrap(node, true));
+          semiNodes.push(node);
         }
         continue;
       }
@@ -767,13 +767,13 @@ export function mixinArgList(this: P, T: TokenMap) {
       ctx.allowComma = true;
       const node = $.SUBRULE3($.mixinArg, { ARGS: [ctx] });
       ctx.allowComma = prevAllow;
-      semiNodes.push($.wrap(node, true));
+      semiNodes.push(node);
     }
 
     let location = $.endRule();
     let nodes = isSemiList ? semiNodes : commaNodes!;
     let sep: ';' | ',' = isSemiList ? ';' : ',';
-    const result: List = $.wrap(new List(nodes, { sep }, location, $.context), 'both');
+    const result: List = new List(nodes, { sep }, location, $.context);
     return result;
   };
 }

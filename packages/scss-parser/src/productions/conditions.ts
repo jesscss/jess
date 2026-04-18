@@ -47,7 +47,7 @@ export function scssConditionOr(this: P, T: TokenMap) {
         let location = $.endRule();
         $.startRule();
         left = new Condition(
-          [$.wrap(left, true), 'or', $.wrap(right!)],
+          [left, 'or', right!],
           undefined,
           location,
           $.context
@@ -96,7 +96,7 @@ export function scssConditionAnd(this: P, T: TokenMap) {
           return;
         }
         left = new Condition(
-          [$.wrap(left, true), 'and', $.wrap(right)],
+          [left, 'and', right],
           undefined,
           $.getLocationFromNodes([left, right]),
           $.context
@@ -137,7 +137,7 @@ export function scssConditionInParens(this: P, T: TokenMap) {
       }
     ]);
 
-    node = $.wrap(node, 'both');
+    node = node;
     return new Paren(node, undefined, $.endRule(), $.context);
   };
 }
@@ -212,7 +212,7 @@ export function scssComparison(this: P, T: TokenMap) {
       opStr = '=';
     }
     const cond = new Condition(
-      [$.wrap(left, true), opStr as any, $.wrap(right)],
+      [left, opStr as any, right],
       wasNotEqual ? { negate: true } : undefined,
       $.getLocationFromNodes([left, right]),
       $.context

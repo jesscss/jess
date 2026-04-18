@@ -7,11 +7,11 @@
  * - Token category matching via categoryMatchesMap for gate predicates
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
-import type { IToken, TokenType, ParserMethod } from '@chevrotain/types';
+import type { TokenType, ParserMethod } from '@chevrotain/types';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { LocationInfo, OptionalLocation } from '@jesscss/core';
+import type { IParseResult, LocationInfo, OptionalLocation } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -212,6 +212,13 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   get input(): IToken[] {
     return this.tokVector;
+  }
+
+  get trivia(): IParseResult['trivia'] {
+    return {
+      before: this.preSkippedTokenMap,
+      after: this.postSkippedTokenMap
+    };
   }
 
   protected addUsedSkippedTokens(tokens: IToken[] | undefined): void {
@@ -495,74 +502,15 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
     }
-    const rules: Node[] = [];
-
-    const processPrePost = (prePost: Node['pre']) => {
-      if (isArray(prePost)) {
-        const remainder: Array<string | Node> = [];
-        for (let i = 0; i < prePost.length; i++) {
-          const item = prePost[i]!;
-          if (item instanceof Node) {
-            const prev = remainder.length > 0 ? remainder[remainder.length - 1] : undefined;
-            if (typeof prev === 'string') {
-              item.pre = [prev];
-              remainder.pop();
-            }
-            const next = prePost[i + 1];
-            if (typeof next === 'string') {
-              (item as Node & { post?: unknown }).post = [next];
-              i++;
-            }
-            rules.push(item);
-          } else {
-            remainder.push(item);
-          }
-        }
-        return remainder.length === 0 ? 0 : remainder;
-      }
-      return prePost;
-    };
-
-    for (const rule of existingRules) {
-      if (rule.pre === undefined) {
-        const pre = this.getPrePost(rule.location[0]!);
-        rule.pre = processPrePost(pre) as Node['pre'];
-      }
-      rules.push(rule);
-    }
-    const tail = this.getPrePost(nextTokenLocation[0]!);
-    const remainder = processPrePost(tail) as 0 | 1 | Array<string | Comment | Nil> | undefined;
-    const returnRules = new Rules(
-      rules,
+    return new Rules(
+      existingRules,
       undefined,
-      rules.length ? this.getLocationFromNodes(rules) : undefined,
+      existingRules.length ? this.getLocationFromNodes(existingRules) : nextTokenLocation,
       this.context
     );
-    returnRules.post = remainder;
-    return returnRules;
   }
 
   protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', ctx?: RuleContext): T {
-    if (!(node instanceof Node)) {
-      return node;
-    }
-    if (post) {
-      if (node.post === undefined) {
-        const offset = node.location[3];
-        if (offset !== undefined) {
-          node.post = this.getPrePost(offset, true, ctx);
-        }
-      }
-      if (post !== 'both') {
-        return node;
-      }
-    }
-    if (!post || post === 'both') {
-      const offset = node.location[0];
-      if (offset !== undefined && node.pre === undefined) {
-        node.pre = this.getPrePost(offset, false, ctx) as Node['pre'];
-      }
-    }
     return node;
   }
 

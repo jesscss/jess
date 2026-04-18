@@ -165,7 +165,7 @@ export function main(this: P, T: TokenMap) {
     });
 
     const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
-    return $.wrap(withComments, true);
+    return withComments;
   };
 }
 
@@ -245,6 +245,6 @@ export function declarationList(this: P, T: TokenMap) {
     }
 
     const withComments = $.getRulesWithComments(rules, $.getLocationInfo($.LA(1)));
-    return $.wrap(withComments, true);
+    return withComments;
   };
 }

@@ -1,4 +1,6 @@
 import type { Context } from '../../context.js';
+import type { IToken } from 'chevrotain';
+import type { TriviaMap } from '../../types/index.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
@@ -30,6 +32,8 @@ export type PrintOptions = {
   composedSelectorCache?: WeakMap<Ruleset, Selector>;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
+  trivia?: TriviaMap;
+  emittedTrivia?: Set<IToken[]>;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -67,6 +71,7 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
   options.referenceRenderEnabled ??= true;
   options.referenceFilterTargets ??= false;
   options.composedSelectorCache ??= new WeakMap();
+  options.emittedTrivia ??= new Set();
 }
 
 export interface OutputWriter {
@@ -153,6 +158,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
+  state.trivia = seed?.trivia;
+  state.emittedTrivia = new Set();
 
   if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
     state.collapseNesting = Boolean(context.opts.collapseNesting);

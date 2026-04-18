@@ -62,30 +62,6 @@ function getBindingDeclarations(pattern: ForPattern): VarDeclaration[] {
   return [];
 }
 
-function patternToNode(pattern: ForPattern): Node {
-  if (pattern.kind === 'single') {
-    return pattern.value;
-  }
-  return new Block(new List([...pattern.values], { sep: ',' }), { type: 'square' });
-}
-
-function iterableToNode(iterable: ForIterable): Node {
-  if (iterable.kind === 'node') {
-    return iterable.value;
-  }
-  return new Range(
-    {
-      start: iterable.start,
-      end: iterable.end,
-      step: iterable.step
-    },
-    {
-      includeStart: iterable.includeStart,
-      includeEnd: iterable.includeEnd
-    }
-  );
-}
-
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
     yield* resolveEntries(await input.value.eval(context), context);
@@ -127,6 +103,23 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
   yield [input, 0];
 }
 
+function iterableToNode(iterable: ForIterable): Node {
+  if (iterable.kind === 'node') {
+    return iterable.value;
+  }
+  return new Range(
+    {
+      start: iterable.start,
+      end: iterable.end,
+      step: iterable.step
+    },
+    {
+      includeStart: iterable.includeStart,
+      includeEnd: iterable.includeEnd
+    }
+  );
+}
+
 export type IfBranch = {
   /** Undefined means "else" branch */
   condition?: Node;
@@ -153,6 +146,10 @@ export class If extends Node<IfValue> {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const branch of value.branches) {
+      if (branch.condition) {
+        this.adopt(branch.condition);
+      }
+      this.adopt(branch.rules);
       makeDirectiveRulesPublic(branch.rules);
     }
   }
@@ -212,6 +209,19 @@ export class For extends Node<StructuredLoopValue> {
   constructor(value: StructuredLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    for (const decl of getBindingDeclarations(value.pattern)) {
+      this.adopt(decl);
+    }
+    if (value.iterable.kind === 'node') {
+      this.adopt(value.iterable.value);
+    } else {
+      this.adopt(value.iterable.start);
+      this.adopt(value.iterable.end);
+      if (value.iterable.step) {
+        this.adopt(value.iterable.step);
+      }
+    }
+    this.adopt(value.rules);
     makeDirectiveRulesPublic(value.rules);
   }
 
@@ -293,11 +303,44 @@ export class For extends Node<StructuredLoopValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const emitTrimmed = (node: Node) => {
+      const out = w.capture(() => node.toString(options));
+      w.add(out.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), node);
+    };
+
     w.add('$for ', this);
     w.add('(');
-    patternToNode(this.value.pattern).toString(options);
+    if (this.value.pattern.kind === 'single') {
+      this.value.pattern.value.toString(options);
+    } else {
+      w.add('[');
+      const values = this.value.pattern.values;
+      for (let i = 0; i < values.length; i++) {
+        values[i]!.toString(options);
+        if (i < values.length - 1) {
+          w.add(', ');
+        }
+      }
+      w.add(']');
+    }
     w.add(' of ');
-    iterableToNode(this.value.iterable).toString(options);
+    if (this.value.iterable.kind === 'node') {
+      this.value.iterable.value.toString(options);
+    } else {
+      emitTrimmed(this.value.iterable.start);
+      if (!this.value.iterable.includeStart) {
+        w.add('>');
+      }
+      w.add(' to ');
+      if (!this.value.iterable.includeEnd) {
+        w.add('<');
+      }
+      emitTrimmed(this.value.iterable.end);
+      if (this.value.iterable.step) {
+        w.add(' step ');
+        emitTrimmed(this.value.iterable.step);
+      }
+    }
     w.add(')');
     w.add(' ');
     this.value.rules.toBraced(options);

@@ -79,7 +79,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     let isSemiList = false;
 
     if (!$.RECORDING_PHASE) {
-      commaNodes = [$.wrap(node, true)];
+      commaNodes = [node];
       semiNodes = [];
     }
 
@@ -105,7 +105,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
       if (!isSemiList && $.isType($.T.Comma)) {
         $.CONSUME($.T.Comma);
         node = $.SUBRULE2($.valueSequence, { ARGS: [ctx] }) as unknown as Node;
-        commaNodes!.push($.wrap(node, true));
+        commaNodes!.push(node);
         return;
       }
 
@@ -117,7 +117,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
         semiNodes!.push(commaNodes![0]!);
       }
       node = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
-      semiNodes!.push($.wrap(node, true));
+      semiNodes!.push(node);
     });
 
     const loc = $.endRule();
@@ -193,7 +193,7 @@ export function jessVarWithAccessors(this: P, T: TokenMap) {
     }
 
     $.endRule();
-    return $.wrap(node);
+    return node;
   };
 }
 
@@ -249,7 +249,7 @@ export function value(this: P, T: TokenMap) {
 
     if ($.LA(1).tokenType === $.T.DollarVariable) {
       const token = $.CONSUME($.T.DollarVariable) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if (
@@ -266,32 +266,32 @@ export function value(this: P, T: TokenMap) {
 
     if ($.isType($.T.PlainIdent)) {
       const token = $.CONSUME($.T.PlainIdent) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if ($.isType($.T.Ident)) {
       const token = $.CONSUME($.T.Ident) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if ($.isType($.T.Dimension)) {
       const token = $.CONSUME($.T.Dimension) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if ($.isType($.T.Number)) {
       const token = $.CONSUME($.T.Number) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if ($.isType($.T.Color)) {
       const token = $.CONSUME($.T.Color) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if ($.LA(1).tokenType === $.T.UnicodeRange) {
       const token = $.CONSUME($.T.UnicodeRange) as unknown as IToken;
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
 
     if ($.LA(1).tokenType === $.T.SingleQuoteStart || $.LA(1).tokenType === $.T.DoubleQuoteStart) {

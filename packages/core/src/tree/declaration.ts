@@ -146,7 +146,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
-    const normalizedName = String(name).replace(/\s+$/, '');
+    const normalizedName = w.capture(() => name.toTrimmedString(options)).replace(/\s+$/, '');
     w.add(`${normalizedName}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');

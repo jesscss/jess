@@ -241,7 +241,7 @@ export function expressionSum(this: P, T: TokenMap) {
       }
 
       const operation = new Operation(
-        [$.wrap(left, true), op as Operator, $.wrap(right!)],
+        [left, op as Operator, right!],
         undefined,
         $.getLocationFromNodes([left, right!]),
         $.context
@@ -287,15 +287,15 @@ export function expressionProduct(this: P, T: TokenMap) {
 
       if (op.image === '/' && !shouldParseSlashDivision($, T, ctx, left, right)) {
         if (isNode(left, N.List) && left.options?.sep === '/') {
-          left = new List([...left.value, $.wrap(right, true)], { sep: '/' }, location, $.context);
+          left = new List([...left.value, right], { sep: '/' }, location, $.context);
         } else {
-          left = new List([$.wrap(left, true), $.wrap(right, true)], { sep: '/' }, location, $.context);
+          left = new List([left, right], { sep: '/' }, location, $.context);
         }
         continue;
       }
 
       const operation = new Operation(
-        [$.wrap(left, true), op!.image as Operator, $.wrap(right)],
+        [left, op!.image as Operator, right],
         undefined,
         location,
         $.context
@@ -355,7 +355,7 @@ export function customValue(this: P, T: TokenMap) {
     }
 
     if (!$.RECORDING_PHASE) {
-      return $.wrap($.processValueToken(token, ctx), undefined, ctx);
+      return $.processValueToken(token, ctx);
     }
   };
 }
@@ -368,7 +368,7 @@ export function innerCustomValue(this: P, T: TokenMap) {
       if ($.RECORDING_PHASE) {
         return;
       }
-      return $.wrap(new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context));
+      return new Any(semi.image, { role: 'semi' }, $.getLocationInfo(semi), $.context);
     }
     return $.SUBRULE($.customValue, { ARGS: [ctx] });
   };
@@ -443,10 +443,10 @@ export function customBlock(this: P, T: TokenMap) {
     if (type) {
       const seqLoc = nodes!.length ? $.getLocationFromNodes(nodes!) : undefined;
       const seq = new Sequence(nodes!, undefined, seqLoc, $.context);
-      return $.wrap(new Block($.wrap(seq, true, ctx), { type }, location, $.context), undefined, ctx);
+      return new Block(seq, { type }, location, $.context);
     }
-    const startNode = $.wrap(new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context), undefined, ctx);
-    const endNode = $.wrap(new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context), undefined, ctx);
+    const startNode = new Any(start!.image, { role: 'any' }, $.getLocationInfo(start!), $.context);
+    const endNode = new Any(end!.image, { role: 'any' }, $.getLocationInfo(end!), $.context);
     return new Sequence([startNode, ...nodes!, endNode], undefined, location, $.context);
   };
 }
@@ -483,15 +483,15 @@ export function expressionValue(this: P, T: TokenMap) {
             $.OPTION3(() => {
               $.CONSUME(T.Semi);
               isSemiList = true;
-              semiNodes.push($.wrap(node, true));
+              semiNodes.push(node);
               node = $.SUBRULE2($.valueList, { ARGS: [innerCtx] });
-              semiNodes.push($.wrap(node, true));
+              semiNodes.push(node);
               $.MANY({
                 GATE: () => $.isType(T.Semi),
                 DEF: () => {
                   $.CONSUME2(T.Semi);
                   node = $.SUBRULE3($.valueList, { ARGS: [innerCtx] });
-                  semiNodes.push($.wrap(node, true));
+                  semiNodes.push(node);
                 }
               });
             });
@@ -503,7 +503,7 @@ export function expressionValue(this: P, T: TokenMap) {
           $.CONSUME(T.RParen);
 
           let location = $.endRule();
-          node = $.wrap(node, 'both');
+          node = node;
           return new Paren(node, { escaped: !!escape }, location, $.context);
         }
       },
@@ -652,9 +652,9 @@ export function ifFunction(this: P, T: TokenMap) {
       isCssBranch = true;
       const branches: Node[] = [];
       const pushBranch = (condition: Node, value: Node) => {
-        const sep = $.wrap(new Any(':', { role: 'operator' }, undefined, $.context), true);
+        const sep = new Any(':', { role: 'operator' }, undefined, $.context);
         const loc = $.getLocationFromNodes([condition, value]);
-        branches.push(new Sequence([$.wrap(condition, true), sep, $.wrap(value, true)], undefined, loc, $.context));
+        branches.push(new Sequence([condition, sep, value], undefined, loc, $.context));
       };
 
       $.CONSUME(T.Assign);
@@ -895,7 +895,7 @@ export function varReference(this: P, T: TokenMap) {
       { ALT: () => undefined }
     ]);
 
-    return $.wrap(node!);
+    return node!;
   };
 }
 
@@ -1025,7 +1025,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
     try {
       let node = $.SUBRULE($.callArgument, { ARGS: [argCtx] });
 
-      commaNodes = [$.wrap(node, true)];
+      commaNodes = [node];
 
       // First, consume any comma-separated arguments
       $.MANY({
@@ -1033,7 +1033,7 @@ export function functionCallArgs(this: P, T: TokenMap) {
         DEF: () => {
           $.CONSUME(T.Comma);
           node = $.SUBRULE2($.callArgument, { ARGS: [argCtx] });
-          commaNodes!.push($.wrap(node, true));
+          commaNodes!.push(node);
         }
       });
 
@@ -1050,14 +1050,14 @@ export function functionCallArgs(this: P, T: TokenMap) {
         }
 
         node = $.SUBRULE3($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
-        semiNodes.push($.wrap(node, true));
+        semiNodes.push(node);
 
         $.MANY2({
           GATE: () => $.isType(T.Semi),
           DEF: () => {
             $.CONSUME2(T.Semi);
             node = $.SUBRULE4($.callArgument, { ARGS: [{ ...argCtx, allowComma: true }] });
-            semiNodes.push($.wrap(node, true));
+            semiNodes.push(node);
           }
         });
       });
@@ -1172,7 +1172,7 @@ export function value(this: P, T: TokenMap) {
       if (!(node instanceof Node)) {
         node = $.processValueToken(node);
       }
-      return $.wrap(node);
+      return node;
     }
   };
 }
