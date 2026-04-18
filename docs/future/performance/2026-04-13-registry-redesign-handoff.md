@@ -239,7 +239,7 @@ families:
     "render or resolve now, then discard" for literal/value/leaf nodes.
   - Preserve canonical source serialization: `toString()` stays the authored
     AST serializer, while `toTrimmedString()` becomes a compatibility shim
-    around render-owned trimmed syntax where possible.
+    around authored trimmed-syntax helpers where possible.
   - Keep this work visible in Track 1 instead of burying it under Track 5.
 
 - [ ] Slice 13g — Migrate materialization boundaries and expression nodes
