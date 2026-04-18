@@ -754,6 +754,12 @@ function lookupIndexReference(
   if (typeof valueKey === 'number') {
     return targetRules.at(valueKey);
   }
+  if (!isNode(env.keyNode, N.Quoted)) {
+    const live = lookupRuntimeVarBinding(targetRules, getLookupKeyString(valueKey), env.context);
+    if (live) {
+      return live;
+    }
+  }
   const keyStr = getLookupKeyString(valueKey);
   return targetRules.find('declaration', keyStr, getIndexReferenceFilterType(env.keyNode), opts);
 }

@@ -24,10 +24,17 @@ Current outer-proof buckets:
   - `tests-unit/operations/operations-advanced.less`
     no longer crashes on preserved slash-list operands like
     `@div-op: 10px / 2; result: @div-op * 2;`
-- likely semantic regressions worth reproing in focused core tests first
   - `tests-unit/import/import-reference.less`
+    no longer throws `ReferenceError: 'fallback' is not defined`; unquoted
+    indexed refs (the parser-normalized at-rule-prelude shape) now consult
+    live runtime var bindings
   - `tests-unit/import/import-remote.less`
+    same `fallback` runtime failure removed by the indexed-ref live-binding fix
+- likely semantic regressions worth reproing in focused core tests first
   - `tests-unit/media/media.less`
+    the `fallback` runtime failure is gone; the remaining drift is nested
+    `@media` composition / flattening parity (`@media a { @media b { ... } }`
+    vs `@media a and b { ... }`)
   - `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
   - `tests-unit/mixins-guards/mixins-guards.less`
   - `tests-unit/mixins-interpolated/mixins-interpolated.less`

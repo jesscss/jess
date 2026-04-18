@@ -707,6 +707,91 @@ describe('AtRule', () => {
         }
       `);
     });
+
+    it('should handle mixin with nested @media using indexed parameter references', async () => {
+      const createMixinRoot = (args: Node[] = []) => {
+        const mixinDef = mixin({
+          name: any('.mediaMixin'),
+          params: list([
+            vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
+          ]),
+          rules: rules([
+            decl({
+              name: 'background',
+              value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
+            }),
+            atrule({
+              name: any('@media', { role: 'atkeyword' }),
+              prelude: seq([any('handheld', { role: 'keyword' })]),
+              rules: rules([
+                decl({
+                  name: 'background',
+                  value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
+                }),
+                atrule({
+                  name: any('@media', { role: 'atkeyword' }),
+                  prelude: paren(decl({
+                    name: 'max-width',
+                    value: ref({ key: 'fallback' }, { type: 'index' })
+                  })),
+                  rules: rules([
+                    decl({
+                      name: 'background',
+                      value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        });
+
+        const callSite = ruleset({
+          selector: sel([el('.a')]),
+          rules: rules([
+            call({
+              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
+              args: list(args)
+            })
+          ])
+        });
+
+        return rules([mixinDef, callSite]);
+      };
+
+      const explicitRoot = createMixinRoot([dimension([100, 'px'])]);
+      context.root = explicitRoot;
+      const explicitEvald = await explicitRoot.eval(context);
+
+      expect(explicitEvald.toString()).toBeString(`
+        .a {
+          background: black;
+          @media handheld {
+            background: white;
+            @media (max-width: 100px) {
+              background: red;
+            }
+          }
+        }
+      `);
+
+      const defaultContext = new Context();
+      const defaultRoot = createMixinRoot();
+      defaultContext.root = defaultRoot;
+      const defaultEvald = await defaultRoot.eval(defaultContext);
+
+      expect(defaultEvald.toString()).toBeString(`
+        .a {
+          background: black;
+          @media handheld {
+            background: white;
+            @media (max-width: 200px) {
+              background: red;
+            }
+          }
+        }
+      `);
+    });
   });
 
   describe('multiple @media rules', () => {
