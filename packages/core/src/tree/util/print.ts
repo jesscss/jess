@@ -88,6 +88,11 @@ export interface OutputWriter {
 
 export type BoundaryIntent = 'implicit' | 'explicit_none' | 'explicit_space';
 
+export type BoundaryIntentOptions = {
+  preIntent?: BoundaryIntent;
+  postIntent?: BoundaryIntent;
+};
+
 export type CapturedOutput = {
   text: string;
   leadingIntent: BoundaryIntent;

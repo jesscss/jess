@@ -6,9 +6,14 @@ import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../types/index.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
-import type { Class, AbstractClass, Tagged, Writable } from 'type-fest';
+import type { Class, AbstractClass, Tagged } from 'type-fest';
 import type { Comment } from './comment.js';
-import { type PrintOptions, getPrintOptions, prepareContextPrintState } from './util/print.js';
+import {
+  type BoundaryIntentOptions,
+  type PrintOptions,
+  getPrintOptions,
+  prepareContextPrintState
+} from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -56,6 +61,8 @@ type AllNodeOptions = {
    * if we wanted a concrete syntax tree.
    */
   semi?: boolean;
+  preIntent?: BoundaryIntentOptions['preIntent'];
+  postIntent?: BoundaryIntentOptions['postIntent'];
 };
 
 /**
@@ -1217,20 +1224,44 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const trivia = (options.trivia
-      ?? this.treeContext?.opts?.trivia) as TriviaMap | undefined;
+    const trivia = options.context
+      ? undefined
+      : (options.trivia
+          ?? this.treeContext?.opts?.trivia) as TriviaMap | undefined;
     if (trivia && options.trivia !== trivia) {
       options.trivia = trivia;
     }
+    const intentPre = this._options?.preIntent;
+    const intentPost = this._options?.postIntent;
     const pre = this.pre !== undefined
       ? w.capture(() => this.processPrePost('pre', '', options))
-      : (trivia ? w.capture(() => emitTrivia(trivia.before, this.location[0], options)) : '');
+      : (intentPre === undefined && trivia
+          ? w.capture(() => emitTrivia(trivia.before, this.location[0], options))
+          : '');
+    const preIntent = this.pre === 0
+      ? 'explicit_none'
+      : (this.pre === 1 || pre === ' ')
+          ? 'explicit_space'
+          : (!pre ? intentPre : undefined);
     const bodyStr = w.capture(() => this.toTrimmedString(options));
     const post = this.post !== undefined
       ? w.capture(() => this.processPrePost('post', '', options))
-      : (trivia ? w.capture(() => emitTrivia(trivia.after, this.location[3], options)) : '');
+      : (intentPost === undefined && trivia
+          ? w.capture(() => emitTrivia(trivia.after, this.location[3], options))
+          : '');
+    const postIntent = this.post === 0
+      ? 'explicit_none'
+      : (this.post === 1 || post === ' ')
+          ? 'explicit_space'
+          : (!post ? intentPost : undefined);
 
     let result = pre + bodyStr + post;
+    if (preIntent) {
+      w.signalBoundaryIntent('pre', preIntent);
+    }
+    if (postIntent) {
+      w.signalBoundaryIntent('post', postIntent);
+    }
     // Trim output if flag is set
     w.add(result, this);
     return w.getSince(mark);
