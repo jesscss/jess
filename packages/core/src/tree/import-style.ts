@@ -155,7 +155,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       resetScopeFrame?: boolean;
     }
   ): Rules {
-    const wrapped = anchorRules.clone(false) as Rules;
+    const wrapped = childNodes !== undefined
+      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, anchorRules.location, anchorRules.treeContext).inherit(anchorRules)
+      : anchorRules.clone(false) as Rules;
     if (options?.resetScopeFrame) {
       wrapped.scopeFrame = undefined;
     }
@@ -178,13 +180,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createInlineImportSourceCarrier(context: Context, sourceNode: Node): Rules {
     return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
-  }
-
-  private createConfiguredWrapperSurface(sourceRules: Rules): Rules {
-    const wrapperRules = new Rules([], sourceRules.options ? { ...sourceRules.options } : undefined, sourceRules.location, sourceRules.treeContext);
-    wrapperRules.inherit(sourceRules);
-    wrapperRules.scopeFrame = undefined;
-    return wrapperRules;
   }
 
   private clearConfiguredImportBoundary(rules: Rules): Rules {
@@ -324,8 +319,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     additiveNonVariableNodes: Node[],
     additiveVariableNodes: Node[]
   ): Rules {
-    const finalRules = this.createConfiguredWrapperSurface(sourceRules);
-    finalRules.value = [];
+    const finalRules = this.deriveClonedRulesSurface(sourceRules, [], { resetScopeFrame: true });
     for (const newNode of additiveNonVariableNodes) {
       finalRules.adopt(newNode);
       finalRules.value.push(newNode);
