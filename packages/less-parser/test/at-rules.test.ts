@@ -103,18 +103,39 @@ describe('mediaInParens', () => {
             '@media'
           )
         prelude: 
-          (Reference
-              type: 'variable'
-            target: 
-              (Call
-                name: 
-                  (Reference [role=name]
-                      type: 'mixin-ruleset'
-                      role: 'name'
-                    key:
-                      ['#ns', '.breakpoint']
-                    rawKey: '#ns > .breakpoint'
-                  )
+          (Expression
+            (Reference
+                type: 'variable'
+              target: 
+                (Call
+                  name: 
+                    (Reference [role=name]
+                        type: 'mixin-ruleset'
+                        role: 'name'
+                      key:
+                        ['#ns', '.breakpoint']
+                      rawKey: '#ns > .breakpoint'
+                    )
+      `);
+  });
+
+  it('should parse simple bare variable media query at top level as indexed reference', () => {
+    const { errors, tree } = parse('@media @breakpoint { }', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (AtRule
+          nestable: true
+        name: 
+          (Any [role=atkeyword]
+              role: 'atkeyword'
+            '@media'
+          )
+        prelude: 
+          (Reference [role=ident]
+              type: 'index'
+              role: 'ident'
+            key: 'breakpoint'
+          )
       `);
   });
 });
