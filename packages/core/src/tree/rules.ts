@@ -3178,7 +3178,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const items = node.value as Node[];
       if (items.length > 0) {
-        items[0]!.pre = 0;
+        items[0]!.options.preIntent = 'explicit_none';
       }
       for (const item of items) {
         if (isNode(item, N.List | N.Sequence)) {
@@ -3192,7 +3192,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const items = node.value as Node[];
-      if (items.length > 0 && items[0]!.pre !== 0) {
+      if (items.length > 0 && items[0]!.options.preIntent !== 'explicit_none') {
         return true;
       }
       for (const item of items) {

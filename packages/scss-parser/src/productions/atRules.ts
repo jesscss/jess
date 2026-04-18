@@ -278,8 +278,6 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
       selector.location,
       context
     );
-    list.pre = selector.pre;
-    list.post = selector.post;
     return list as Selector;
   }
 
@@ -291,14 +289,10 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
       selector.location,
       context
     );
-    complex.pre = selector.pre;
-    complex.post = selector.post;
     return complex as Selector;
   }
 
   const complex = new ComplexSelector([amp, selector] as any, undefined, selector.location, context);
-  complex.pre = selector.pre;
-  complex.post = selector.post;
   return complex as Selector;
 }
 
@@ -1422,7 +1416,6 @@ export function scssEachAtRule(this: P, T: TokenMap) {
     }
 
     const expr = isNode(rawExpr, N.Expression) ? rawExpr.value : rawExpr;
-    expr.pre = 0;
 
     $.CONSUME($.T.LCurly);
     const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: !!ctx.inner }] });

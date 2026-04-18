@@ -69,44 +69,33 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     for (let i = 1; i < length; i++) {
       const prevNode = value[i - 1]!;
       const node = value[i]!;
-      // For sequences, normalize spacing based on actual serialized output (including pre/post)
-      // If direct child has explicit pre === 0, respect that (no space)
-      if (node.pre === 0) {
-        // Explicitly no space - respect that, but still use toString() to preserve comments
-        node.toString(options);
-      } else {
-        // Check what's already written (previous node's output) to see if it ends with space
-        const currentMark = w.mark();
-        const writtenSoFar = w.getSince(mark);
-        const prevEndsWithSpace = writtenSoFar.endsWith(' ');
-        w.restore(currentMark);
+      const currentMark = w.mark();
+      const writtenSoFar = w.getSince(mark);
+      const prevEndsWithSpace = writtenSoFar.endsWith(' ');
+      w.restore(currentMark);
 
-        // Capture current node's output to check if it starts with space
-        // This captures the serialized output including pre/post from child nodes
-        const currentCaptured = w.captureWithMeta(() => node.toString(options));
-        const currentNodeOut = currentCaptured.text;
-        const currentStartsWithSpace = currentNodeOut.startsWith(' ');
-        const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
-        const hasSourceGap = trivia
-          ? Boolean(
+      // This captures the serialized output including trivia and explicit boundary intents.
+      const currentCaptured = w.captureWithMeta(() => node.toString(options));
+      const currentNodeOut = currentCaptured.text;
+      const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+      const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+      const hasSourceGap = trivia
+        ? Boolean(
             trivia.after.get(prevNode.location[3]!)
             ?? trivia.before.get(node.location[0]!)
           )
-          : undefined;
-        const hasExplicitNoSpaceBoundary = (
-          prevTrailingIntent === 'explicit_none'
-          || currentCaptured.leadingIntent === 'explicit_none'
-          || hasSourceGap === false
-        );
+        : undefined;
+      const hasExplicitNoSpaceBoundary = (
+        prevTrailingIntent === 'explicit_none'
+        || currentCaptured.leadingIntent === 'explicit_none'
+        || hasSourceGap === false
+      );
 
-        if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
-          // No space present - add single space before node
-          w.add(' ');
-        }
-        // Write the captured output (node was already serialized in capture())
-        w.add(currentNodeOut);
-        prevTrailingIntent = currentCaptured.trailingIntent;
+      if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
+        w.add(' ');
       }
+      w.add(currentNodeOut);
+      prevTrailingIntent = currentCaptured.trailingIntent;
     }
 
     return w.getSince(mark);
@@ -123,12 +112,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       /** Inference not working in this class? */
       const values = b.value.map(v => v.clone(true));
       if (values.length) {
-        values[0]!.pre = 1;
+        values[0]!.options.preIntent = 'explicit_space';
       }
       newSequence.value.push(...values);
     } else {
       b = b.clone(true);
-      b.pre = 1;
+      b.options.preIntent = 'explicit_space';
       newSequence.value.push(b);
     }
     return newSequence;
@@ -212,7 +201,7 @@ export const spaced = (
   options?: SequenceOptions
 ) => {
   for (let i = 1; i < value.length; i++) {
-    value[i]!.pre = 1;
+    value[i]!.options.preIntent = 'explicit_space';
   }
   return new Sequence(value, options);
 };
