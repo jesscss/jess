@@ -39,6 +39,27 @@ describe('Sequence', () => {
     expect(rendered).toBe('10 20 30');
   });
 
+  it('resolves sequence values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('mid'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await seq([
+      num(10),
+      ref({ key: 'mid' }, { type: 'variable' }),
+      num(30)
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('10 20 30');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('should serialize to a single value', () => {
     let rule = seq([num(10), num(20), num(30)]);
     expect(`${rule}`).toBe('10 20 30');

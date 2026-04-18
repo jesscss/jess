@@ -61,6 +61,27 @@ describe('Attribute Selector', () => {
     expect(rendered).toBe('[data=foo]');
   });
 
+  test('resolves attribute selector values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const resolved = await attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    }).resolve(context);
+
+    expect(`${resolved}`).toBe('[data=foo]');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {
     context = new Context({
       collapseNesting: true,
