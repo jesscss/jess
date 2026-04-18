@@ -41,7 +41,7 @@ Every node in the current system plays three roles simultaneously:
 2. **Lookup engine** — during evaluation, `Rules.find(...)` traverses the node
    graph to resolve variable references
 3. **Result container** — after evaluation, the node holds its own evaluated
-   output, which `toTrimmedString()` later reads to produce CSS
+   output, which the evaluated emission path later reads to produce CSS
 
 These three roles fight each other.
 
@@ -76,8 +76,8 @@ The current system has two separate passes:
 pass 1 — eval:    walk the (cloned) node tree, resolve references,
                   store results back onto the cloned nodes
 
-pass 2 — serialize: walk the (cloned) node tree again, read stored
-                    results, build the CSS output string
+pass 2 — serialize: walk the (cloned) node tree again, read that stored
+                    evaluated output, build the CSS output string
 ```
 
 This is why nodes need to be result containers. If you separate eval from
