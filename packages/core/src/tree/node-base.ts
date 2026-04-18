@@ -175,7 +175,7 @@ export abstract class Node<
   /** Assigned in index to avoid circularity */
   declare readonly treeContext: TreeContext;
 
-  private _options: O & AllNodeOptions | undefined;
+  protected _options: O & AllNodeOptions | undefined;
   get options(): O & AllNodeOptions {
     return (this._options ??= {} as O & AllNodeOptions);
   }
