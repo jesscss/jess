@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Log, Any, Quoted, Nil } from '..';
+import { Log, Any, Quoted, Nil } from '../index.js';
 import { Context } from '../../context.js';
 import { logger } from '../../logger.js';
 
@@ -79,5 +79,30 @@ describe('Log node', () => {
     // The logger should receive the evaluated value
     expect(logSpy).toHaveBeenCalledWith('test message');
     expect(result).toBeInstanceOf(Nil);
+  });
+
+  it('keeps source serializers empty for invisible log nodes', () => {
+    const logNode = new Log({
+      level: 'debug',
+      message: new Quoted('Debug message')
+    });
+
+    expect(logNode.toTrimmedString()).toBe('');
+    expect(logNode.toString()).toBe('');
+  });
+
+  it('resolves log nodes without touching render state', async () => {
+    const logSpy = vi.fn();
+    logger.log = logSpy;
+    const logNode = new Log({
+      level: 'debug',
+      message: new Any('test message')
+    });
+
+    const resolved = await logNode.resolve(context);
+
+    expect(logSpy).toHaveBeenCalledWith('test message');
+    expect(resolved).toBeInstanceOf(Nil);
+    expect(context.printState.writer).toBeUndefined();
   });
 });
