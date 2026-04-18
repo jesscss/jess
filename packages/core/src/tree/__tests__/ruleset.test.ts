@@ -29,6 +29,43 @@ describe('Rule', () => {
     `);
   });
 
+  it('renders a ruleset through render(context)', () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
+        decl({ name: 'color', value: any('#eee') })
+      ])
+    });
+
+    expect(node.render(context)).toBeString(`
+      foo {
+        border: 1px solid black;
+        color: #eee;
+      }
+    `);
+  });
+
+  it('resolves a ruleset without touching render state', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'border', value: spaced([any('1px'), any('solid'), any('black')]) }),
+        decl({ name: 'color', value: any('#eee') })
+      ])
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      foo {
+        border: 1px solid black;
+        color: #eee;
+      }
+    `);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('getHeaderString keeps reference target filtering render-local', () => {
     const node = ruleset({
       selector: sellist([sel([el('.foo')])]),

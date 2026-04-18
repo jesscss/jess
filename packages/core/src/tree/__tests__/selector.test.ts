@@ -1,8 +1,11 @@
 // import { Selector } from '../selector-sequence'
-import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '..';
+import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
+import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node.js'
+
+let context: Context;
 
 /** @todo - move to https://github.com/SamVerschueren/tsd */
 // test('Test types', () => {
@@ -10,6 +13,10 @@ import { isNode } from '../util/is-node.js';
 // })
 
 describe('Selector', () => {
+  beforeEach(() => {
+    context = new Context();
+  });
+
   describe('serialization', () => {
     it('should serialize to a selector', () => {
       let rule = sel([
@@ -29,6 +36,29 @@ describe('Selector', () => {
         el('#bar')
       ]);
       expect(`${rule}`).toBe('.foo #bar');
+    });
+
+    it('renders selector sequences through render(context)', () => {
+      const rule = sel([
+        el('.foo'),
+        co('>'),
+        el('#bar')
+      ]);
+
+      expect(rule.render(context)).toBe('.foo > #bar');
+    });
+
+    it('resolves selector sequences without touching render state', async () => {
+      const rule = sel([
+        el('.foo'),
+        co('>'),
+        el('#bar')
+      ]);
+
+      const resolved = await rule.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.foo > #bar');
+      expect(context.printState.writer).toBeUndefined();
     });
   });
 
