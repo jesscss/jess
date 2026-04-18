@@ -385,12 +385,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       scope.mixinsByName ??= new Map();
 
       const results: MixinEntry[] = [];
-      const wrapCallableForScope = (candidate: MixinEntry): MixinEntry => {
-        if (!isNode(candidate, N.Mixin) || candidate.parent === scope) {
-          return candidate;
-        }
-        return callableRulesEntry(candidate.value, scope, candidate.index);
-      };
       const candidates = scope.mixinsByName.get(key);
       if (candidates) {
         for (let i = candidates.length - 1; i >= 0; i--) {
@@ -398,7 +392,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
             continue;
           }
-          results.push(wrapCallableForScope(candidate));
+          results.push(candidate);
         }
       }
 
@@ -479,12 +473,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       visited.add(scope);
 
       const results: MixinEntry[] = [];
-      const wrapCallableForScope = (candidate: MixinEntry): MixinEntry => {
-        if (!isNode(candidate, N.Mixin) || candidate.parent === scope) {
-          return candidate;
-        }
-        return callableRulesEntry(candidate.value, scope, candidate.index);
-      };
       const registry = scope.getRegistry('mixin');
       registry.indexPendingItems();
       const entries = registry.index.get(key) ?? [];
@@ -497,7 +485,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!options?.includeRulesets && isNode(candidate, N.Ruleset)) {
           continue;
         }
-        results.push(wrapCallableForScope(candidate));
+        results.push(candidate);
       }
 
       const childEntries = scope._rulesSet as Array<{
@@ -3255,6 +3243,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
       output.scopeFrame = undefined;
       return output;
     }
+    function cloneRulesetCallableRules(sourceRules: Rules, deep: boolean): Rules {
+      const clonedRules = sourceRules.clone(deep);
+      clonedRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
+      return clonedRules;
+    }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
       signature: List<Node> | undefined;
@@ -3660,7 +3653,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = (candidate as Ruleset).value.rules;
         const sourceRules = getRootSourceRules(candidateRules);
         emptyOutputSourceRules ??= sourceRules;
-        let rules = sourceRules.clone(true);
+        let rules = cloneRulesetCallableRules(sourceRules, true);
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
@@ -3692,7 +3685,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!isNode(candidate, N.Mixin) && !candidate.value.name && !candidate.value.params && !candidate.value.guard) {
         const sourceRules = getRootSourceRules(candidate.value.rules);
         emptyOutputSourceRules ??= sourceRules;
-        let unlocked = sourceRules.clone(false);
+        let unlocked = cloneRulesetCallableRules(sourceRules, false);
         // Adopt to the call-site parent (the args List of the outer mixin call).
         // This establishes the correct parent chain for variable lookup — walking up
         // from the args List reaches the calling mixin's body where definition-site
@@ -3718,6 +3711,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
+      if (isNode(candidate, N.Mixin)) {
+        rules.parent = candidate.value.rules.parent;
+      }
       // Mixin body vars should follow the same leaky/non-leaky visibility model as
       // rulesets: visible outside only in Less/leaky mode, while remaining available
       // as same-scope siblings during body evaluation either way.
@@ -3758,12 +3754,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
       const definitionFrame: ScopeFrame | undefined = isNode(candidate.parent, N.Rules)
         ? (candidate.parent as Rules).getScopeFrame()
         : undefined;
+      const lexicalScopeFrame = definitionFrame ?? parentFrame;
       const fallbackScopeFrame = (
-        definitionFrame
-        && definitionFrame !== parentFrame
+        thisContext.leakyRules === true
+        && parentFrame
+        && parentFrame !== lexicalScopeFrame
       )
-        ? definitionFrame
-        : parentFrame;
+        ? parentFrame
+        : undefined;
       let usesPreboundParamGuardOuterRules = false;
       if (candidate.value.params || paramBindings.length > 0) {
         const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
@@ -3804,8 +3802,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
             readonly: true
           });
         }
-        // Wire the ScopeFrame with call-site parent and the populated live slots.
-        scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, parentFrame, liveSlots);
+        // Wire the ScopeFrame so default-param / lexical resolution stays on the
+        // definition side, while unresolved body vars can still fall back to the caller.
+        scopeOwner.scopeFrame = buildScopeFrame(undefined, scopeOwner, lexicalScopeFrame, liveSlots);
         scopeOwner.scopeFrame.fallbackFrame = fallbackScopeFrame;
         if (outerRules) {
           outerRules.scopeFrame = scopeOwner.scopeFrame;

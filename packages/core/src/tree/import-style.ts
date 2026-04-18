@@ -174,6 +174,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return sourceRules.clone(false) as Rules;
   }
 
+  private throwIfConfiguredReuseIsDisallowed(withValues: StyleImportValue['with'] | undefined, hasCachedEvaluation: boolean): void {
+    if (!withValues || !hasCachedEvaluation) {
+      return;
+    }
+
+    if (withValues.type === 'set' || this.options.type === 'compose') {
+      throw new Error('Cannot configure a stylesheet more than once.');
+    }
+  }
+
   private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Rules> {
     if (isNode(withNode, N.Reference)) {
       const evaluated = await withNode.eval(context);
@@ -603,11 +613,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // - Subsequent compose imports default to "reference" mode unless `multiple: true` is set,
         //   so rulesets / at-rules are not output again.
         if (type === 'compose' && evaldRules) {
-          if (withValues) {
           // Sass-style: once configured, cannot be configured again.
           // (We keep parsing show/hide/prefix metadata elsewhere; this is for with/set configs.)
-            throw new Error('Cannot configure a stylesheet more than once.');
-          }
+          this.throwIfConfiguredReuseIsDisallowed(withValues, true);
           // Reuse cached evaluated rules tree.
           rules = evaldRules;
           // Default: de-dupe output for compose re-imports unless explicitly multiple.
@@ -622,10 +630,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         }
 
         if (withValues) {
-        // Once configured, cannot be configured again (handled above for compose+cache).
-          if (withValues.type === 'set' && evaldRules) {
-            throw new Error('Cannot configure a stylesheet more than once.');
-          }
+          this.throwIfConfiguredReuseIsDisallowed(withValues, Boolean(evaldRules));
           const withRules = await this.resolveConfiguredRulesInput(context, withValues.node);
           rules = this.applyConfiguredValues(rules, withRules);
         }

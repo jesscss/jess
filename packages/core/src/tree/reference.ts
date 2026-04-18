@@ -1319,13 +1319,20 @@ function finalizeRuntimeVarBindingResult(
   };
   const evaluatedBinding = (() => {
     binding.value.frozen = true;
+    const savedRulesContext = context.rulesContext;
+    if (isNode(bindingSource, N.VarDeclaration) && bindingSource.options?.paramVar) {
+      context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
+    }
     try {
       return binding.value.eval(context);
     } catch (error) {
+      context.rulesContext = savedRulesContext;
       if (bindingSource) {
         context.searchScope.delete(bindingSource);
       }
       throw error;
+    } finally {
+      context.rulesContext = savedRulesContext;
     }
   })();
   if (isThenable(evaluatedBinding)) {

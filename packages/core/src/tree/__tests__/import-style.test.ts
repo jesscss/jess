@@ -1301,6 +1301,42 @@ describe('Style import', () => {
         await node2.eval(context);
       }).rejects.toThrow('Cannot configure a stylesheet more than once');
     });
+
+    it('throws if compose "with" is used after the module is already cached', async () => {
+      const libraryPath = resolve(process.cwd(), 'library-compose-with-cache.jess');
+      context.sourceTrees.set(libraryPath, rules([
+        vardecl({ name: 'var', value: any('value') })
+      ]));
+
+      const node1 = rules([
+        style({
+          path: quoted(any('library-compose-with-cache.jess'))
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+      await node1.eval(context);
+
+      const node2 = rules([
+        style({
+          path: quoted(any('library-compose-with-cache.jess')),
+          with: {
+            node: rules([
+              vardecl({ name: 'var', value: any('second') })
+            ]),
+            type: 'with'
+          }
+        }, {
+          type: 'compose',
+          namespace: '*'
+        })
+      ]);
+
+      await expect(async () => {
+        await node2.eval(context);
+      }).rejects.toThrow('Cannot configure a stylesheet more than once');
+    });
   });
 
   describe('multiple imports', () => {
