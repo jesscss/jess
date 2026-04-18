@@ -69,8 +69,8 @@ Keep these contracts distinct:
 - `toString()` remains the canonical source serializer for the shared AST.
 - `render(ctx)` is the evaluated trimmed-output path.
 - `toTrimmedString()` should shrink toward a compatibility shim around
-  render-owned trimmed syntax logic so source syntax does not get implemented
-  twice.
+  node-owned trimmed syntax helpers so authored syntax does not get
+  implemented twice while `render(ctx)` stays context-bound.
 
 Use this as the guardrail for ambiguous nodes:
 

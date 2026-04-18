@@ -23,7 +23,7 @@ describe('Selector render contract', () => {
     context = new Context();
   });
 
-  it('keeps selector capture toString canonical while render(context) resolves its payload', async () => {
+  it('keeps selector capture source serializers canonical while render(context) resolves its payload', async () => {
     const node = rules([
       vardecl({
         name: any('capture-selector'),
@@ -37,10 +37,11 @@ describe('Selector render contract', () => {
     const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
 
     expect(selector.toString()).toBe('*[$capture-selector]');
+    expect(selector.toTrimmedString()).toBe('*[$capture-selector]');
     expect(selector.render(context)).toBe('.foo');
   });
 
-  it('keeps pseudo-selector toString canonical while render(context) resolves selector-list arguments', async () => {
+  it('keeps pseudo-selector source serializers canonical while render(context) resolves selector-list arguments', async () => {
     const node = rules([
       vardecl({
         name: any('capture-selector-list'),
@@ -57,10 +58,11 @@ describe('Selector render contract', () => {
     });
 
     expect(selector.toString()).toBe(':is($capture-selector-list)');
+    expect(selector.toTrimmedString()).toBe(':is($capture-selector-list)');
     expect(selector.render(context)).toBe(':is(.foo, .bar)');
   });
 
-  it('keeps complex selector toString canonical while render(context) resolves nested selector values', async () => {
+  it('keeps complex selector source serializers canonical while render(context) resolves nested selector values', async () => {
     const node = rules([
       vardecl({
         name: any('attr-name'),
@@ -85,6 +87,7 @@ describe('Selector render contract', () => {
     ]);
 
     expect(selector.toString()).toBe('a[data=$attr-name] > .foo');
+    expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
     expect(selector.render(context)).toBe('a[data=foo] > .foo');
   });
 });

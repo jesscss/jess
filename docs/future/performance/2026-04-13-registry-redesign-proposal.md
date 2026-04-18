@@ -153,8 +153,9 @@ That means the contracts stay split:
   It may resolve references or evaluate child payloads, but it does **not**
   replace canonical source serialization.
 - `node.toTrimmedString()` should shrink toward a compatibility shim around the
-  node's render-owned trimmed syntax path so we do not duplicate syntax logic
-  while `toString()` still owns canonical source round-tripping.
+  node's authored trimmed-syntax helpers so we do not duplicate source syntax
+  logic while `render(ctx)` stays explicitly context-bound and `toString()`
+  still owns canonical source round-tripping.
 
 This is a hard requirement because the canonical tree must remain usable as a
 source-preserving representation, not just a CSS-emission template.
@@ -1733,7 +1734,8 @@ because they touch serialization:
 - Slice 13f: establish the node-level `render(ctx)` / `resolve(ctx)` split for
   literal/value/leaf nodes so output-producing leaves stop depending on stored
   eval results, while `toString()` remains canonical source serialization and
-  `toTrimmedString()` shrinks toward a compatibility shim.
+  `toTrimmedString()` shrinks toward a compatibility shim around authored
+  trimmed syntax helpers.
 - Slice 13g: migrate materialization boundaries and expression nodes
   (`Operation`, function calls, dynamic names, interpolated identifiers,
   guard/value computations) so they compute, write, and discard rather than
