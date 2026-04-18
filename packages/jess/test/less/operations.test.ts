@@ -136,6 +136,19 @@ describe('Operations', () => {
       expect(css).toContain('area: 5000px');
     });
 
+    it('preserves slash-list variable values inside later operations in parens-division mode', async () => {
+      const lessCode = `
+        @div-op: 10px / 2;
+
+        .test {
+          result: @div-op * 2;
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('result: 10px / 2 * 2');
+    });
+
     it('should preserve spacing', async () => {
       const lessCode = `
         .test {

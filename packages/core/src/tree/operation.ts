@@ -22,6 +22,10 @@ export type OperationValue = [
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
+  private static isPreservedSlashList(node: Node): boolean {
+    return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
+  }
+
   private withOperands(left: Node, right: Node): this {
     const node = this.clone();
     node.set(null, [left, this.value[1], right]);
@@ -52,6 +56,12 @@ export class Operation extends Node<OperationValue> {
     let [left, op, right] = n.value;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
+      if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
+        if (l === left && r === right) {
+          return n;
+        }
+        return n.withOperands(l, r);
+      }
       if (context.shouldOperate(op, l, r)) {
         if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested

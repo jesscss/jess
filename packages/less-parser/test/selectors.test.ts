@@ -230,6 +230,19 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Extend');
     });
 
+    it('should parse compound selectors that glue a class onto an ampersand before :extend()', () => {
+      const { errors, tree } = parser.parse(`
+        .first-level {
+          .second-level {
+            .active&:extend(.extend-this) { }
+            &.active2:extend(.extend-this) { }
+          }
+        }
+      `);
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Extend');
+    });
+
     it('should not parse extend within a psuedo selector', () => {
       const { errors } = parser.parse(`
         .test:is(.a:extend(.b)) {}

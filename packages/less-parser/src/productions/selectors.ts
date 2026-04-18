@@ -597,7 +597,8 @@ export function ampersandExtend(this: P, T: TokenMap) {
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
-    $.CONSUME(T.AmpersandExtend);
+    $.CONSUME(T.Ampersand);
+    $.CONSUME(T.Extend);
     ctx.inExtend = true;
     $.SUBRULE($.selectorList, { ARGS: [ctx] });
     ctx.inExtend = false;

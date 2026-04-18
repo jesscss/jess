@@ -407,6 +407,8 @@ export function stylesheet(this: P, T: TokenMap) {
 export function main(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const isAmpersandExtendStart = () =>
+      $.LA(1).tokenType === T.Ampersand && $.LA(2).tokenType === T.Extend;
     const isMixinOrQualifiedStart = () => {
       const next = $.LA(1).tokenType;
       return next === T.DotName || next === T.HashName || next === T.ColorIdentStart;
@@ -424,7 +426,10 @@ export function main(this: P, T: TokenMap) {
       let isVariable = isVariableLike($, T);
       return [
         { ALT: () => $.SUBRULE($.functionCall, { ARGS: [ctx] }) },
-        { ALT: () => $.SUBRULE2($.ampersandExtend, { ARGS: [ctx] }) },
+        {
+          GATE: isAmpersandExtendStart,
+          ALT: () => $.SUBRULE2($.ampersandExtend, { ARGS: [ctx] })
+        },
         {
           GATE: isMixinOrQualifiedStart,
           ALT: () => $.SUBRULE3($.mixinOrQualifiedRule, { ARGS: [ctx] })
@@ -544,6 +549,8 @@ export function declarationList(this: P, T: TokenMap) {
     const isCustomPropertyStart = () =>
       $.isType(T.InterpolatedCustomProperty) || $.isType(T.CustomProperty);
     const isAtRuleStart = () => $.matchToken($.LA(1), T.AtName);
+    const isAmpersandExtendStart = () =>
+      $.LA(1).tokenType === T.Ampersand && $.LA(2).tokenType === T.Extend;
     const shouldTryQualifiedRule = () =>
       !isCustomPropertyStart()
       && !isMixinOrQualifiedStart()
@@ -567,7 +574,10 @@ export function declarationList(this: P, T: TokenMap) {
           GATE: () => !isVariable && isAtRuleStart(),
           ALT: () => $.SUBRULE3($.innerAtRule, { ARGS: [ctx] })
         },
-        { ALT: () => $.SUBRULE4($.ampersandExtend, { ARGS: [ctx] }) },
+        {
+          GATE: isAmpersandExtendStart,
+          ALT: () => $.SUBRULE4($.ampersandExtend, { ARGS: [ctx] })
+        },
         {
           GATE: () => $.check(T.FunctionStart),
           ALT: () => {

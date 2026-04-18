@@ -31,7 +31,6 @@ export type LessExtraTokenType =
   | 'GtEqAlias'
   | 'LtEqAlias'
   | 'Extend'
-  | 'AmpersandExtend'
   | 'AmpersandLParen'
   | 'AmpersandTemplateContents'
   | 'AmpersandTemplateEnd'
@@ -157,11 +156,6 @@ function $preBuildTokens() {
       }
     ],
     Ampersand: [
-      {
-        name: 'AmpersandExtend',
-        pattern: /&:extend\(/,
-        categories: ['BlockMarker']
-      },
       {
         name: 'AmpersandLParen',
         pattern: /&\(/,

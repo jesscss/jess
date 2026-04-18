@@ -4,6 +4,64 @@ Date: `2026-04-13`
 Branch: `dev`
 Checkpoint commit: `ddf46b1c` (`Narrow reference import parity seam`)
 
+## Baseline Recovery Checkpoint
+
+`packages/jess/test/less/all-less.test.ts` is currently red again, even after a
+full rebuild of `@jesscss/core`, `@jesscss/less-parser`,
+`@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and `jess`.
+
+That means the current gap is not stale build output. Treat the drift below as
+real parser/runtime/serialization regressions until each item is reduced to a
+focused proof and fixed.
+
+Current outer-proof buckets:
+
+- just-fixed hard parser/runtime regressions
+  - `tests-unit/selectors/selectors.less`
+    `.active&:extend(.extend-this) {}` is now covered by focused
+    `less-parser` selector tests after removing the fused `AmpersandExtend`
+    token and parsing `&` + `:extend(...)` structurally instead
+  - `tests-unit/operations/operations-advanced.less`
+    no longer crashes on preserved slash-list operands like
+    `@div-op: 10px / 2; result: @div-op * 2;`
+- likely semantic regressions worth reproing in focused core tests first
+  - `tests-unit/import/import-reference.less`
+  - `tests-unit/import/import-remote.less`
+  - `tests-unit/media/media.less`
+  - `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
+  - `tests-unit/mixins-guards/mixins-guards.less`
+  - `tests-unit/mixins-interpolated/mixins-interpolated.less`
+  - `tests-unit/property-accessors/property-accessors.less`
+  - `tests-unit/rulesets/rulesets.less`
+  - `tests-unit/functions/functions.less`
+  - `tests-unit/ie-filters/ie-filters.less`
+  - `tests-unit/nesting/nesting.less`
+- extend-path regressions / warning drift
+  - `tests-unit/extend-chaining/extend-chaining.less`
+  - `tests-unit/extend-nest/extend-nest.less`
+  - `tests-unit/extend-selector/extend-selector.less`
+  - `tests-unit/extend/extend.less`
+  - related `extend-*` fixtures in the same run
+- formatting / serialization parity drift
+  - comments / whitespace / css-3 / css-grid
+  - selected color-function output forms
+  - selected URL / shorthand / `!important` formatting
+  - declaration ordering / grouping drift in fixtures like
+    `property-accessors.less` and `whitespace.less`
+- new deprecation-warning surfaces now visible in outer parity
+  - bare at-rule-prelude vars in Less fixtures
+  - bare custom-property value vars
+  These warnings may be correct, but the fixture contract needs an explicit
+  decision instead of letting them drift silently through the baseline.
+
+Recovery order:
+
+1. Reproduce hard parser/runtime failures in focused parser/core tests.
+2. Fix true behavior regressions before touching formatting-only parity.
+3. Re-run `all-less.test.ts` after each discrete slice.
+4. Do not mark the baseline green again in docs until the direct outer proof is
+   actually green.
+
 ## Priority Reset
 
 Recent work cleaned up `reference.ts`, but that is **not** the highest-leverage
