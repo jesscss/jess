@@ -26,6 +26,28 @@ describe('Call', () => {
     expect(`${rule}`).toBe('$rgb?(100, 100, 100)');
   });
 
+  it('renders CSS calls through render(context)', () => {
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.render(context)).toBe('rgb(100, 100, 100)');
+  });
+
+  it('resolves CSS calls without touching render state', async () => {
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(true);
+    expect(resolved.toTrimmedString()).toBe('rgb(100, 100, 100)');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   /** @todo */
   it('should serialize a mixin call', () => {
     let rule = call({

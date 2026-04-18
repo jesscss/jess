@@ -3,6 +3,40 @@ import { Context } from '../../context.js';
 import { rules, decl, any, list, vardecl, call, fn, nil, ref } from '../index.js';
 
 describe('Func', () => {
+  it('serializes function definitions through toTrimmedString()', () => {
+    const node = fn({
+      name: any('answer'),
+      body: rules([
+        decl({ name: 'return', value: any('42') })
+      ])
+    });
+
+    expect(node.toTrimmedString()).toBeString(`
+      $function answer() {
+        return: 42;
+      }
+    `);
+  });
+
+  it('resolves function definitions without touching render state', async () => {
+    const ctx = new Context();
+    const node = fn({
+      name: any('answer'),
+      body: rules([
+        decl({ name: 'return', value: any('42') })
+      ])
+    });
+
+    const resolved = await node.resolve(ctx);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      $function answer() {
+        return: 42;
+      }
+    `);
+    expect(ctx.printState.writer).toBeUndefined();
+  });
+
   it('evaluates a stylesheet function and returns return: value', async () => {
     const ctx = new Context({ leakyRules: true });
     ctx.depth = 2;
