@@ -54,6 +54,29 @@ describe('Condition', () => {
       expect(node.toTrimmedString()).toBe('(true = true)');
       expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
     });
+
+    it('renders evaluated condition values through render(context)', () => {
+      const node = condition([
+        bool(true),
+        '=',
+        bool(false)
+      ]);
+
+      expect(node.render(context)).toBe('false');
+    });
+
+    it('resolves conditions without touching render state', async () => {
+      const node = condition([
+        bool(true),
+        '=',
+        bool(false)
+      ]);
+
+      const resolved = await node.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('false');
+      expect(context.printState.writer).toBeUndefined();
+    });
   });
 
   describe('evaluation', () => {

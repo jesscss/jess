@@ -1,4 +1,4 @@
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -16,6 +16,39 @@ describe('Declaration', () => {
 
     expect(rule.toTrimmedString()).toBe('color: #eee');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('renders resolved declarations through render(context)', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const rendered = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    }).render(context);
+
+    expect(rendered).toBe('color: red');
+  });
+
+  it('resolves declarations without touching render state', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const resolved = await decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    }).resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('color: red');
+    expect(context.printState.writer).toBeUndefined();
   });
 
   it('serializes important declarations with one space before !important', async () => {
