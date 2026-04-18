@@ -84,6 +84,11 @@ The same principle applies to quoted forms, references, URLs, interpolation,
 and any other node where canonical source syntax is not the same as evaluated
 output.
 
+Implementation note: the current `context.printState <-> printState.context`
+cycle is transitional convenience state, not target architecture. Track 1C
+should keep treating `PrintOptions` as a temporary render-state carrier while
+ownership moves more explicitly onto `Context`/session state.
+
 ## Work Checklist
 
 Top-level track numbers stay stable so cross-doc references to Tracks 2–5 do

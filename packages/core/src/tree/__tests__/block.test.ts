@@ -28,4 +28,21 @@ describe('Block', () => {
 
     expect(rendered).toBe('{foo}');
   });
+
+  it('resolves block values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await block(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
+
+    expect(`${resolved}`).toBe('{foo}');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });

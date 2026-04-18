@@ -49,6 +49,26 @@ describe('List', () => {
     expect(rendered).toBe('1 2 3, four');
   });
 
+  it('resolves list values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('four')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await list([
+      spaced([num(1), any('2'), any('3')]),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('1 2 3, four');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('should serialize to a list', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
     expect(`${rule}`).toBe('1 2 3, four');
