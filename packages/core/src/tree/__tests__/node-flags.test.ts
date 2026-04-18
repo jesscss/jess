@@ -31,6 +31,7 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
       expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
+      expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
     });
 
     it('Dimension should be F_STATIC', () => {

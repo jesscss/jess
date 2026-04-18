@@ -53,7 +53,7 @@ export class Any<
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
-    if (this.options.role === 'charset') {
+    if (this._options?.role === 'charset') {
       if (!context.currentCharset) {
         /** @todo - Throw error in the future? */
         context.currentCharset = this;

@@ -72,7 +72,7 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    const { silentFail } = this.options;
+    const silentFail = this._options?.silentFail;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -101,7 +101,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     }
     w.add(')');
-    if (this.options?.markImportant) {
+    if (this._options?.markImportant) {
       w.add(' !important');
     }
     if (contentNode) {
@@ -132,7 +132,7 @@ export class Call extends Node<CallValue, CallOptions> {
   override async evalNode(context: Context): Promise<Node> {
     let { name } = this.value;
     let args = this.value.args;
-    let { markImportant } = this.options;
+    let markImportant = this._options?.markImportant;
     const preservesRulesLikeVariableTarget = isNode(name, N.Reference) && name.options?.type === 'variable';
     const markCallDeclarationOutput = !(
       isNode(this.value.name, N.Reference)
@@ -265,7 +265,7 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           throw e;
         }
-        if (!this.options?.silentFail) {
+        if (!this._options?.silentFail) {
           throw e;
         }
         let newCall = this.clone().inherit(this);
@@ -340,7 +340,7 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           throw e;
         }
-        if (!this.options?.silentFail || shouldRethrowForMode) {
+        if (!this._options?.silentFail || shouldRethrowForMode) {
           throw e;
         }
         let newCall = this.clone().inherit(this);

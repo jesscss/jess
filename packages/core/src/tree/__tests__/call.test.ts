@@ -15,6 +15,7 @@ describe('Call', () => {
       args: list([num(100), num(100), num(100)])
     });
     expect(`${rule}`).toBe('rgb(100, 100, 100)');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
   it('should serialize an optional function lookup', () => {
