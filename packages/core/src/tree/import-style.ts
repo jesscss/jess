@@ -182,6 +182,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
   }
 
+  private getPostludeNodes(postlude?: Node): Node[] {
+    if (!postlude) {
+      return [];
+    }
+    return isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
+  }
+
+  private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
+    const wrappedAtRule = new AtRule({
+      name: new Any(name, { role: 'atkeyword' }),
+      prelude,
+      rules
+    });
+    return this.deriveClonedRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
+  }
+
   private clearConfiguredImportBoundary(rules: Rules): void {
     delete rules.options.importBoundary;
   }
@@ -362,13 +378,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
     const preludeNodes: Node[] = [pathNode];
-    const postlude = this.options.importOptions?.postlude;
-    if (postlude) {
-      const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List)
-        ? postlude.value
-        : [postlude];
-      preludeNodes.push(...postludeNodes);
-    }
+    preludeNodes.push(...this.getPostludeNodes(this.options.importOptions?.postlude));
     const prelude = preludeNodes.length === 1
       ? preludeNodes[0]
       : new Sequence(preludeNodes, undefined, undefined, this.treeContext);
@@ -796,7 +806,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!postlude) {
       return rules;
     }
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
+    const postludeNodes = this.getPostludeNodes(postlude);
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
@@ -806,23 +816,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const args = current.value.args?.value ?? [];
           const prelude = args.length <= 1 ? args[0] : current.value.args;
           if (prelude) {
-            const wrappedAtRule = new AtRule({
-              name: new Any(`@${callName}`, { role: 'atkeyword' }),
-              prelude,
-              rules: wrappedRules
-            });
-            wrappedRules = this.deriveClonedRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
+            wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
             continue;
           }
         }
       }
 
-      const mediaAtRule = new AtRule({
-        name: new Any('@media', { role: 'atkeyword' }),
-        prelude: current,
-        rules: wrappedRules
-      });
-      wrappedRules = this.deriveClonedRulesSurface(anchorRules, [mediaAtRule], { resetScopeFrame: true });
+      wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, '@media', current);
     }
 
     return wrappedRules;

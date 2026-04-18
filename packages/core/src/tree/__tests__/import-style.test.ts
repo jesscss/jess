@@ -1861,7 +1861,39 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = (await node.eval(inlineContext)).toString({ context: inlineContext });
+      const evald = await node.eval(inlineContext);
+      const wrappedImport = evald.at(0);
+      expect(wrappedImport).toBeInstanceOf(RulesClass);
+      if (!(wrappedImport instanceof RulesClass)) {
+        throw new Error('Expected inline wrapped import to be Rules');
+      }
+      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
+      if (!isNode(wrappedImport.value[0], N.AtRule)) {
+        throw new Error('Expected inline wrapped import child to be AtRule');
+      }
+      expect(`${wrappedImport.value[0].value.name}`).toBe('@layer');
+      const supportsRules = wrappedImport.value[0].value.rules;
+      expect(supportsRules).toBeInstanceOf(RulesClass);
+      if (!(supportsRules instanceof RulesClass)) {
+        throw new Error('Expected @layer rules to be wrapped in Rules');
+      }
+      expect(isNode(supportsRules.value[0], N.AtRule)).toBe(true);
+      if (!isNode(supportsRules.value[0], N.AtRule)) {
+        throw new Error('Expected @layer child to be AtRule');
+      }
+      expect(`${supportsRules.value[0].value.name}`).toBe('@supports');
+      const mediaRules = supportsRules.value[0].value.rules;
+      expect(mediaRules).toBeInstanceOf(RulesClass);
+      if (!(mediaRules instanceof RulesClass)) {
+        throw new Error('Expected @supports rules to be wrapped in Rules');
+      }
+      expect(isNode(mediaRules.value[0], N.AtRule)).toBe(true);
+      if (!isNode(mediaRules.value[0], N.AtRule)) {
+        throw new Error('Expected @supports child to be AtRule');
+      }
+      expect(`${mediaRules.value[0].value.name}`).toBe('@media');
+
+      const css = evald.toString({ context: inlineContext });
       expect(css).toContain('@layer theme');
       expect(css).toContain('@supports (display: grid)');
       expect(css).toContain('@media screen and (min-width: 600px)');
