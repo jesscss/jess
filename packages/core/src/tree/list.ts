@@ -27,6 +27,32 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  private renderListSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    let { sep = ',' } = this.options ?? {};
+    let { value } = this;
+    let length = value.length;
+    const mark = w.mark();
+    if (value.length === 0) {
+      return '';
+    }
+    let item = value[0]!;
+    let out = w.capture(() => item.toString(options));
+    w.add(out.replace(LIST_ITEM_TRIM, ''), item);
+    for (let i = 1; i < length; i++) {
+      item = value[i]!;
+      if (sep === '/') {
+        w.add(' / ');
+      } else {
+        w.add(`${sep} `);
+      }
+      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
+      w.add(out);
+    }
+    return w.getSince(mark);
+  }
+
   get length() {
     return this.value.length;
   }
@@ -41,32 +67,27 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
 
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderListSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    let { sep = ',' } = this.options ?? {};
-    let { value } = this;
-    let length = value.length;
-    const mark = w.mark();
-    if (value.length === 0) {
-      return '';
-    }
-    // Print first item as-is
-    let item = value[0]!;
-    let out = w.capture(() => item.toString(options));
-    w.add(out.replace(LIST_ITEM_TRIM, ''), item);
-    // Subsequent items: emit sep; capture next item to decide spacing precisely
-    for (let i = 1; i < length; i++) {
-      item = value[i]!;
-      if (sep === '/') {
-        w.add(' / ');
-      } else {
-        w.add(`${sep} `);
-      }
-      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
-      w.add(out);
-    }
-    return w.getSince(mark);
+    return this.renderListSyntax(options);
   }
 
   override compare(other: Node) {

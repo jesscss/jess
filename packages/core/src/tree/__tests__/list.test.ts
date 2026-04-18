@@ -1,4 +1,4 @@
-import { TreeContext, list, spaced, num, any } from '../index.js';
+import { TreeContext, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 
 describe('List compare', () => {
@@ -23,6 +23,32 @@ describe('List', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  it('renders list syntax through render()', () => {
+    const rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
+
+    expect(rule.render()).toBe('1 2 3, four');
+  });
+
+  it('renders resolved list values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('four')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = list([
+      spaced([num(1), any('2'), any('3')]),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]).render(context);
+
+    expect(rendered).toBe('1 2 3, four');
+  });
+
   it('should serialize to a list', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
     expect(`${rule}`).toBe('1 2 3, four');
