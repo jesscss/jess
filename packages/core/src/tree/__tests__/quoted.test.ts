@@ -13,6 +13,13 @@ describe('quoted', () => {
     expect(quoted('hello').toTrimmedString()).toBe('"hello"');
   });
 
+  it('does not allocate options when rendering quoted syntax with defaults', () => {
+    const rule = quoted('hello');
+
+    expect(rule.toTrimmedString()).toBe('"hello"');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
   it('renders a resolved quoted value through render(context)', async () => {
     const node = rules([
       vardecl({

@@ -161,7 +161,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       },
       (values) => {
         const filtered = values.filter(n => n && !(n instanceof Nil));
-        if (filtered.length === 1 && !this.options.preserveWhitespace) {
+        if (filtered.length === 1 && !this._options?.preserveWhitespace) {
           return filtered[0]!;
         }
         const unchanged = (

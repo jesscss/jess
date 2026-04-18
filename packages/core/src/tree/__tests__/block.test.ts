@@ -13,6 +13,13 @@ describe('Block', () => {
     expect(block(any('foo')).toTrimmedString()).toBe('{foo}');
   });
 
+  it('does not allocate options when rendering block syntax with defaults', () => {
+    const rule = block(any('foo'));
+
+    expect(rule.toTrimmedString()).toBe('{foo}');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
   it('renders resolved block values through render(context)', async () => {
     const node = rules([
       vardecl({

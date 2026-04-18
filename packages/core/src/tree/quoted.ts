@@ -29,7 +29,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { quote = '"', escaped } = this.options ?? {};
+    const quote = this._options?.quote ?? '"';
+    const escaped = this._options?.escaped;
     let escapeChar = escaped ? '~' : '';
     if (escapeChar) {
       w.add(escapeChar, this);

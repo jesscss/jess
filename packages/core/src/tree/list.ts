@@ -30,7 +30,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   private renderListSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { sep = ',' } = this.options ?? {};
+    const sep = this._options?.sep ?? ',';
     let { value } = this;
     let length = value.length;
     const mark = w.mark();

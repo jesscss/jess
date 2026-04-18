@@ -19,6 +19,15 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
+  it('does not allocate options when resolving a default single-item sequence', async () => {
+    const rule = seq([num(10)]);
+
+    const resolved = await rule.resolve(context);
+
+    expect(`${resolved}`).toBe('10');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
   it('renders resolved sequence values through render(context)', async () => {
     const node = rules([
       vardecl({

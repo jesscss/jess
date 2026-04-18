@@ -30,6 +30,13 @@ describe('List', () => {
     expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
 
+  it('does not allocate options when rendering list syntax with defaults', () => {
+    const rule = list([num(1), num(2), num(3)]);
+
+    expect(rule.toTrimmedString()).toBe('1, 2, 3');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
   it('renders resolved list values through render(context)', async () => {
     const node = rules([
       vardecl({

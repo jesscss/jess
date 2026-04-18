@@ -19,7 +19,7 @@ export class Block extends Node<Node, BlockOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { type } = this.options ?? {};
+    const type = this._options?.type;
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
