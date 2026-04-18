@@ -20,39 +20,13 @@ export class SelectorList extends Selector<Selector[]> {
     return node;
   }
 
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const { value } = this;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    for (const selector of value) {
-      selector.keySetLibrary ??= library;
-      keySet = keySet.or(selector.keySet);
-      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    // SelectorLists represent alternatives - requiredKeySet is empty
-    // (any branch could match, so no single key is "required")
-    this._requiredKeySet = library.getBitset();
-  }
-
-  /** Normalize selectors on separate lines with indentation */
-  override toTrimmedString(options?: PrintOptions) {
+  private renderSelectorListSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     let depth = options.depth!;
     let space = ''.padStart(depth * 2);
-    // Flatten generated top-level `:is(...)` items into the selector list.
-    // This matches Less output expectations when an extend created an :is() and it ended up being
-    // the whole selector-list item.
     const value: Selector[] = [];
     for (const item of this.value) {
-      // Flatten `:is(a, b)` selector-list items into `a, b`.
-      // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
       if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
         const arg = item.value.arg;
         if (arg && isNode(arg, N.SelectorList)) {
@@ -104,7 +78,6 @@ export class SelectorList extends Selector<Selector[]> {
     let out = w.capture(() => item.toString(options));
     w.add(out.trim(), item);
 
-    // Subsequent items: emit sep; capture next item to decide spacing precisely
     for (let i = 1; i < length; i++) {
       item = value[i]!;
       w.add(`,\n${space}`);
@@ -112,6 +85,50 @@ export class SelectorList extends Selector<Selector[]> {
       w.add(out);
     }
     return w.getSince(mark);
+  }
+
+  protected override computeKeySets(): void {
+    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
+      return;
+    }
+    const library = this._requireKeySetLibrary();
+    const { value } = this;
+    let keySet = library.getBitset();
+    let visibleKeySet = library.getBitset();
+    for (const selector of value) {
+      selector.keySetLibrary ??= library;
+      keySet = keySet.or(selector.keySet);
+      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
+    }
+    this._keySet = keySet;
+    this._visibleKeySet = visibleKeySet;
+    // SelectorLists represent alternatives - requiredKeySet is empty
+    // (any branch could match, so no single key is "required")
+    this._requiredKeySet = library.getBitset();
+  }
+
+  /** Normalize selectors on separate lines with indentation */
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderSelectorListSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
+  override toTrimmedString(options?: PrintOptions) {
+    return this.renderSelectorListSyntax(options);
   }
 
   override valueOf() {

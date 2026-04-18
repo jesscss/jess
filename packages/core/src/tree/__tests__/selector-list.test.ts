@@ -1,10 +1,26 @@
-import { sel, sellist, el, co } from '..';
+import { any, attr, co, compound, el, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { Context } from '../../context.js';
 
 /**
  * @todo - add tests for list bubbling
  */
 describe('Selector list', () => {
+  let context: Context;
+
+  beforeEach(() => {
+    context = new Context();
+  });
+
   describe('equality', () => {
+    test('renders selector-list syntax through render()', () => {
+      const node = sellist([
+        el('.foo'),
+        el('.bar')
+      ]);
+
+      expect(node.render()).toBe('.foo,\n.bar');
+    });
+
     /** @todo - add test for non-equality */
     test('basic list equality', () => {
       /** a b, a c */
@@ -37,5 +53,31 @@ describe('Selector list', () => {
       expect(sel1.compare(sel2)).toBe(0);
       expect(sel2.compare(sel1)).toBe(0);
     });
+  });
+
+  test('renders resolved selector-list values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
+        })
+      ]),
+      el('.bar')
+    ]).render(context);
+
+    expect(rendered).toBe('a[data=foo],\n.bar');
   });
 });
