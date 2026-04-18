@@ -80,4 +80,31 @@ describe('Selector list', () => {
 
     expect(rendered).toBe('a[data=foo],\n.bar');
   });
+
+  test('resolves selector-list values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
+        })
+      ]),
+      el('.bar')
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo],\n.bar');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });

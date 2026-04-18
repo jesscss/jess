@@ -63,6 +63,30 @@ describe('Compound Selector', () => {
     expect(rendered).toBe('a[data=foo]');
   });
 
+  test('resolves compound selector values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]).resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   describe('keys', () => {
     test('simple compound', async () => {
       let sel1 = compound([

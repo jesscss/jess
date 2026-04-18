@@ -45,6 +45,34 @@ describe('Complex selector', () => {
 
       expect(rendered).toBe('a[data=foo] > .foo');
     });
+
+    test('resolves complex selector values without touching render state', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const resolved = await sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]).resolve(context);
+
+      expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(context.printState.writer).toBeUndefined();
+    });
   });
 
   describe('keys', () => {

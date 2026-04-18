@@ -31,4 +31,24 @@ describe('PseudoSelector', () => {
 
     expect(rendered).toBe(':is(.foo, .bar)');
   });
+
+  it('resolves pseudo selector values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([el('.foo'), el('.bar')])
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    }).resolve(context);
+
+    expect(`${resolved}`).toBe(':is(.foo, .bar)');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });
