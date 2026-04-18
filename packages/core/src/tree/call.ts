@@ -133,6 +133,7 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name } = this.value;
     let args = this.value.args;
     let { markImportant } = this.options;
+    const preservesRulesLikeVariableTarget = isNode(name, N.Reference) && name.options?.type === 'variable';
     const markCallDeclarationOutput = !(
       isNode(this.value.name, N.Reference)
       && (this.value.name.options?.type === 'mixin'
@@ -165,7 +166,19 @@ export class Call extends Node<CallValue, CallOptions> {
     context.callStack.push(this);
     context.parenFrames.push(false);
 
-    let n = typeof name === 'string' ? name : await name.eval(context);
+    let n: string | Node | unknown;
+    if (typeof name === 'string') {
+      n = name;
+    } else if (preservesRulesLikeVariableTarget) {
+      const callableName = name.clone();
+      callableName.options = {
+        ...callableName.options,
+        preserveRulesLike: true
+      };
+      n = await callableName.eval(context);
+    } else {
+      n = await name.eval(context);
+    }
     // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
     if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
       n = await n.eval(context);
@@ -198,6 +211,12 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       return result;
     } else if (isNode(n, N.Rules | N.Collection)) {
+      if (preservesRulesLikeVariableTarget) {
+        const sourceParent = (n as Node & { sourceNode?: Node }).sourceNode?.parent;
+        if (sourceParent) {
+          n.parent = sourceParent;
+        }
+      }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
       if (args && args.value.length > 0) {

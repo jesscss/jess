@@ -254,9 +254,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
     // source tree can shadow a live wrapper frame that actually carries live slots.
-    newRules.scopeFrame = this.scopeFrame?.liveSlotsByName.size
-      ? buildScopeFrame(undefined, newRules, this.scopeFrame.parent, new Map(this.scopeFrame.liveSlotsByName))
-      : undefined;
+    if (this.scopeFrame?.liveSlotsByName.size || this.scopeFrame?.fallbackFrame) {
+      newRules.scopeFrame = buildScopeFrame(
+        undefined,
+        newRules,
+        this.scopeFrame.parent,
+        new Map(this.scopeFrame.liveSlotsByName)
+      );
+      newRules.scopeFrame.fallbackFrame = this.scopeFrame.fallbackFrame;
+    } else {
+      newRules.scopeFrame = undefined;
+    }
 
     return newRules;
   }
@@ -3686,11 +3694,18 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const sourceRules = getRootSourceRules(candidate.value.rules);
         emptyOutputSourceRules ??= sourceRules;
         let unlocked = cloneRulesetCallableRules(sourceRules, false);
+        const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
+        const parentFrame = isNode(callSiteRules, N.Rules)
+          ? (callSiteRules as Rules).getScopeFrame()
+          : undefined;
         // Adopt to the call-site parent (the args List of the outer mixin call).
         // This establishes the correct parent chain for variable lookup — walking up
         // from the args List reaches the calling mixin's body where definition-site
         // variables (e.g. @hover-background) are registered.
         candidate.parent!.adopt(unlocked);
+        if (thisContext.leakyRules === true && parentFrame) {
+          unlocked.getScopeFrame().fallbackFrame = parentFrame;
+        }
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
         unlocked.options.referenceMode = false;

@@ -88,6 +88,7 @@ export type ReferenceOptions = {
   fallbackValue?: Node | true;
   filter?: (node: Node) => boolean;
   role?: AnyRole;
+  preserveRulesLike?: boolean;
 };
 
 const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
@@ -1320,7 +1321,14 @@ function finalizeRuntimeVarBindingResult(
   const evaluatedBinding = (() => {
     binding.value.frozen = true;
     const savedRulesContext = context.rulesContext;
-    if (isNode(bindingSource, N.VarDeclaration) && bindingSource.options?.paramVar) {
+    const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
+      bindingSource.options?.paramVar
+      || (
+        context.leakyRules !== true
+        && isNode(binding.value, N.Rules | N.Collection)
+      )
+    );
+    if (shouldUseDefinitionRulesContext) {
       context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
     }
     try {
@@ -1414,6 +1422,16 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
+  if (
+    referenceNode.options?.preserveRulesLike === true
+    && isNode(declaration.value.value, N.Rules | N.Collection)
+  ) {
+    const directValue = declaration.value.value;
+    const preservedValue = directValue.clone(false) as Node & { sourceNode?: Node };
+    preservedValue.parent = directValue.parent;
+    preservedValue.sourceNode = directValue;
+    return preservedValue;
+  }
   return withReferenceSearchScope(context, declaration, () => pipe(
     () => evaluateDeclarationReferenceValue({
       declValue: declaration.value.value,

@@ -1,4 +1,4 @@
-import { Any, JsFunction, any, call, coll, decl, list, num, ref, rules, vardecl } from '../index.js';
+import { Any, JsFunction, any, call, coll, decl, el, list, num, ref, rules, ruleset, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -77,6 +77,53 @@ describe('Call', () => {
     }
     expect(Reflect.has(result, 'sourceParent')).toBe(false);
     expect(result.options.callDeclarationOutput).toBe(true);
+  });
+
+  it('does not let detached ruleset calls read caller scope in non-leaky mode', async () => {
+    context = new Context({ leakyRules: false });
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: ref('mode', { type: 'variable' }) })
+        ])
+      }),
+      ruleset({
+        selector: el('.use-theme'),
+        rules: rules([
+          vardecl({ name: 'mode', value: any('dark') }),
+          call({ name: ref('themeBlock', { type: 'variable' }) })
+        ])
+      })
+    ]);
+
+    context.root = root;
+
+    await expect(root.eval(context)).rejects.toThrow(/mode/);
+  });
+
+  it('lets detached ruleset calls read caller scope in leaky mode', async () => {
+    context = new Context({ leakyRules: true });
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: ref('mode', { type: 'variable' }) })
+        ])
+      }),
+      ruleset({
+        selector: el('.use-theme'),
+        rules: rules([
+          vardecl({ name: 'mode', value: any('dark') }),
+          call({ name: ref('themeBlock', { type: 'variable' }) })
+        ])
+      })
+    ]);
+
+    context.root = root;
+
+    const evald = await root.eval(context);
+    expect(String(evald)).toContain('color: dark;');
   });
 
   // it('should serialize to a module', () => {
