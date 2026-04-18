@@ -1647,10 +1647,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     return '';
   }
 
-  /**
-   * @note - A reference renders a $ only if it has no target.
-   */
-  override toTrimmedString(options?: PrintOptions): string {
+  private renderReferenceSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -1715,6 +1712,32 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       w.add('?');
     }
     return w.getSince(mark);
+  }
+
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderReferenceSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
+  /**
+   * @note - A reference renders a $ only if it has no target.
+   */
+  override toTrimmedString(options?: PrintOptions): string {
+    return this.renderReferenceSyntax(options);
   }
 
   /**
