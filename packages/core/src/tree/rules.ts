@@ -3698,10 +3698,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const parentFrame = isNode(callSiteRules, N.Rules)
           ? (callSiteRules as Rules).getScopeFrame()
           : undefined;
-        // Adopt to the call-site parent (the args List of the outer mixin call).
-        // This establishes the correct parent chain for variable lookup — walking up
-        // from the args List reaches the calling mixin's body where definition-site
-        // variables (e.g. @hover-background) are registered.
+        // Detached ruleset calls keep their definition-side parent chain intact.
+        // Caller ancestry is additive and only exposed through fallbackFrame when
+        // leakyRules is enabled.
         candidate.parent!.adopt(unlocked);
         if (thisContext.leakyRules === true && parentFrame) {
           unlocked.getScopeFrame().fallbackFrame = parentFrame;

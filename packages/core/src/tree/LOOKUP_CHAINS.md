@@ -4,10 +4,10 @@ This note documents the intended scope model for variable/mixin lookup.
 
 ## Two Chains
 
-- `parent` chain: definition/evaluation structure (lexical ancestry).
-- `sourceParent` chain: call-site/source ancestry used for fallback behaviors (notably Less-style leaky lookups).
+- `parent` chain: the primary lexical / current-placement lookup path.
+- `fallbackFrame`: optional secondary caller lookup lane used only when `leakyRules` is enabled.
 
-Both are needed; they represent different questions.
+Both are needed; they answer different lookup questions without rebasing the primary parent walk.
 
 ## Detached Rulesets / Mixin Calls
 
@@ -25,11 +25,11 @@ For untargeted variable lookup in `Reference`:
 
 1. Resolve against `resolvedTarget` (primary scope).
 2. If unresolved and `leakyRules` is enabled, fallback to:
-   - `rulesParent`
-   - then `sourceRulesParent`
+   - the active `Rules.scopeFrame`
+   - then any chained `fallbackFrame`
 
-The fallback chain allows call-site style resolution without overriding primary lexical resolution.
+The fallback lane allows caller-style resolution without overriding primary lexical resolution.
 
 ## Rule of Thumb
 
-If a fix requires "remove things after eval," re-check whether those nodes should have been in emitted output scope at all. Prefer modeling scope through wrapper ancestry over post-hoc cleanup.
+If a fix requires "remove things after eval," re-check whether those nodes should have been in emitted output scope at all. Prefer modeling scope through wrapper ancestry plus explicit fallback lanes over post-hoc cleanup.

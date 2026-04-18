@@ -1659,6 +1659,94 @@ describe('Style import', () => {
       `);
     });
 
+    it('import-reference: reference-imported mixins preserve detached ruleset variable closures', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-detached-closure.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.use-theme'),
+          params: list([
+            any('background', { role: 'property' })
+          ]),
+          rules: rules([
+            vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+            vardecl({
+              name: 'hover-content',
+              value: rules([
+                decl({ name: any('background-color'), value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+              ])
+            }),
+            call({
+              name: ref({ key: 'hover-content' }, { type: 'variable' })
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({ path: quoted(any('reference-detached-closure.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.consumer'),
+          rules: rules([
+            call({
+              name: ref({ key: '.use-theme' }, { type: 'mixin-ruleset' }),
+              args: list([any('blue')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.consumer {');
+      expect(css).toContain('background-color: blue;');
+    });
+
+    it('import-reference: reference-imported detached ruleset variable closures prefer imported local vars over caller globals', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-detached-shadowing.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.use-theme'),
+          params: list([
+            any('background', { role: 'property' })
+          ]),
+          rules: rules([
+            vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+            vardecl({
+              name: 'hover-content',
+              value: rules([
+                decl({ name: any('background-color'), value: ref({ key: 'hover-background' }, { type: 'variable' }) })
+              ])
+            }),
+            call({
+              name: ref({ key: 'hover-content' }, { type: 'variable' })
+            })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        vardecl({ name: 'hover-background', value: any('red') }),
+        style({ path: quoted(any('reference-detached-shadowing.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.consumer'),
+          rules: rules([
+            call({
+              name: ref({ key: '.use-theme' }, { type: 'mixin-ruleset' }),
+              args: list([any('blue')])
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = `${evald}`;
+
+      expect(css).toContain('.consumer {');
+      expect(css).toContain('background-color: blue;');
+      expect(css).not.toContain('background-color: red;');
+    });
+
     it('import-reference: reference-imported mixin guards read caller scope while params stay live-bound', async () => {
       const referencedPath = resolve(process.cwd(), 'reference-mixin-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
