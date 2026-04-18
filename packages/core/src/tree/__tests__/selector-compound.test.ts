@@ -1,4 +1,4 @@
-import { compound, sel, el, pseudo, type SimpleSelector } from '..';
+import { any, attr, compound, el, pseudo, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -12,6 +12,19 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
+    test('renders compound selector syntax through render()', () => {
+      const node = compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: any('bar')
+        })
+      ]);
+
+      expect(node.render()).toBe('a[data=bar]');
+    });
+
     test('same value', () => {
       let sel1 = compound([
         el('a'),
@@ -25,6 +38,29 @@ describe('Compound Selector', () => {
       ]).valueOf();
       expect(sel1).toEqual(sel2);
     });
+  });
+
+  test('renders resolved compound selector values through render(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const rendered = compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]).render(context);
+
+    expect(rendered).toBe('a[data=foo]');
   });
 
   describe('keys', () => {

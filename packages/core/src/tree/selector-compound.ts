@@ -25,6 +25,24 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return node;
   }
 
+  private renderCompoundSyntax(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const value = this.value;
+    for (let i = 0; i < value.length - 1; i++) {
+      value[i]!.post = undefined;
+    }
+    const w = options.writer!;
+    const mark = w.mark();
+    const saved = savePrintState(options, ['ampersandFirst']);
+    for (let i = 0; i < value.length; i++) {
+      options.ampersandFirst = (i === 0);
+      const out = w.capture(() => value[i]!.toString(options));
+      w.add(out.trim(), value[i]!);
+    }
+    restorePrintState(options, saved);
+    return w.getSince(mark);
+  }
+
   protected override computeKeySets(): void {
     if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
       return;
@@ -71,23 +89,27 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     return value;
   }
 
+  override render(context: Context, options?: PrintOptions): string;
+  override render(options?: PrintOptions): string;
+  override render(
+    contextOrOptions?: Context | PrintOptions,
+    maybeOptions?: PrintOptions
+  ): string {
+    const context = (
+      contextOrOptions
+      && typeof contextOrOptions === 'object'
+      && 'opts' in contextOrOptions
+    )
+      ? contextOrOptions as Context
+      : undefined;
+    if (context) {
+      return super.render(context, maybeOptions);
+    }
+    return this.renderCompoundSyntax(contextOrOptions as PrintOptions | undefined);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const value = this.value;
-    for (let i = 0; i < value.length - 1; i++) {
-      value[i]!.post = undefined;
-    }
-    // Set ampersandFirst for each component so Ampersand knows its position
-    const w = options.writer!;
-    const mark = w.mark();
-    const saved = savePrintState(options, ['ampersandFirst']);
-    for (let i = 0; i < value.length; i++) {
-      options.ampersandFirst = (i === 0);
-      const out = w.capture(() => value[i]!.toString(options));
-      w.add(out.trim(), value[i]!);
-    }
-    restorePrintState(options, saved);
-    return w.getSince(mark);
+    return this.renderCompoundSyntax(options);
   }
 
   override evalNode(context: Context): MaybePromise<CompoundSelector | Selector | Nil> {
