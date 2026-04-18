@@ -174,6 +174,19 @@ function loc(node: Node): LocationInfo | undefined {
   return location.length === 6 ? (location as LocationInfo) : undefined;
 }
 
+function wrapAtRulePreludeExpression(this: P, node: Node, ctx: RuleContext | undefined): Node {
+  if (!this.wrapOuterExpressions || ctx?.atRulePreludeBareVariableAs !== 'index') {
+    return node;
+  }
+  if (node instanceof Expression) {
+    return node;
+  }
+  if (isNode(node, N.Reference) && !node.value.target && typeof node.value.key === 'string') {
+    return node;
+  }
+  return new Expression(node, undefined, loc(node), this.context);
+}
+
 export function wrapOuterExpressionIfNeeded(this: P, node: Node, ctx: RuleContext | undefined): Node {
   if (!this.wrapOuterExpressions) {
     return node;
@@ -722,7 +735,10 @@ export function mediaInParens(this: P, T: TokenMap) {
           || $.isType(T.ColorIdentStart)
           || $.isType(T.InterpolatedSelector)
         ),
-        ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+        ALT: () => {
+          const node = $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
+          return wrapAtRulePreludeExpression.call($, node, ctx);
+        }
       },
       {
         ALT: () => $.SUBRULE($.mediaFeature, { ARGS: [ctx] })
@@ -742,21 +758,22 @@ export function mediaInParens(this: P, T: TokenMap) {
 export function mediaQuery(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
     return $.OR2([
       {
         GATE: () => $.startsMediaCondition(T),
-        ALT: () => $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [preludeCtx] })
       },
       {
         GATE: () => isEscapedString($, T),
-        ALT: () => $.SUBRULE($.lessMediaQueryFromString, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE($.lessMediaQueryFromString, { ARGS: [preludeCtx] })
       },
       {
         GATE: () => startsLessMediaQueryReference($, T),
-        ALT: () => $.SUBRULE2($.lessMediaQueryFromReference, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE2($.lessMediaQueryFromReference, { ARGS: [preludeCtx] })
       },
       {
-        ALT: () => $.SUBRULE7($.mediaTypeQuery, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE7($.mediaTypeQuery, { ARGS: [preludeCtx] })
       }
     ]);
   };
@@ -779,7 +796,12 @@ export function lessMediaQueryFromReference(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const first = $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
-    return $.SUBRULE2($.lessMediaQueryTail, { ARGS: [{ ...ctx, startValue: first }] });
+    return $.SUBRULE2($.lessMediaQueryTail, {
+      ARGS: [{
+        ...ctx,
+        startValue: wrapAtRulePreludeExpression.call($, first, ctx)
+      }]
+    });
   };
 }
 
@@ -804,7 +826,10 @@ export function lessMediaQueryTail(this: P, T: TokenMap) {
           },
           {
             GATE: () => startsLessMediaQueryReference($, T),
-            ALT: () => $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+            ALT: () => {
+              const next = $.SUBRULE2($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
+              return wrapAtRulePreludeExpression.call($, next, ctx);
+            }
           },
           {
             GATE: () => $.startsMediaCondition(T),
@@ -904,9 +929,9 @@ export function mediaFeature(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   const location = $.endRule();
                   return new Declaration({
-                      name: createFeatureIdentNode(ident, 'property'),
-                      value: value
-                    }, undefined, location, $.context);
+                    name: createFeatureIdentNode(ident, 'property'),
+                    value: value
+                  }, undefined, location, $.context);
                 }
               }
             },
@@ -1030,7 +1055,10 @@ export function mfNonIdentifierValue(this: P, T: TokenMap) {
           const next = $.LA(1);
           return next.tokenType === T.AtKeyword || next.tokenType === T.PropertyReference || next.tokenType === T.NestedReference;
         },
-        ALT: () => $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] })
+        ALT: () => {
+          const node = $.SUBRULE($.valueReference, { ARGS: [{ ...ctx, requireAccessorsAfterMixinCall: true }] });
+          return wrapAtRulePreludeExpression.call($, node, ctx);
+        }
       },
       {
         ALT: () => {

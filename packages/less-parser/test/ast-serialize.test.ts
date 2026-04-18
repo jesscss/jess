@@ -290,6 +290,36 @@ describe('serializeTypes coverage', () => {
     expect(errors.length).toBe(0);
     expect(serializeTypes(tree)).toContainString('(InterpolatedSelector');
   });
+
+  test('at-rule bare variables normalize to indexed references outside declaration values', () => {
+    const { errors, tree } = parser.parse('@media @mode { .foo { color: red; } }');
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toContain('@media $[mode]');
+  });
+
+  test('media feature bare variables normalize to indexed references outside declaration values', () => {
+    const { errors, tree } = parser.parse('@media (min-width: @size) { .foo { color: red; } }');
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toContain('@media (min-width: $[size])');
+  });
+
+  test('at-rule prelude accessor references are wrapped as Expression nodes', () => {
+    const { errors, tree } = parser.parse('@media @breakpoints[mobile] { .foo { color: red; } }');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContainString(`
+      prelude: 
+        (Expression
+          (Reference
+            target: 
+              (Reference
+                key: 'breakpoints'
+              )
+            key: 
+              (Quoted 'mobile')
+          )
+        )
+    `);
+  });
 });
 
 test('rest parameter in mixin', () => {

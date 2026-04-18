@@ -105,6 +105,7 @@ export type RuleContext = CssRuleContext & {
   inFunctionArgs?: boolean;
   allowMixinCallWithoutAccessor?: boolean;
   startValue?: Node;
+  atRulePreludeBareVariableAs?: 'index';
 };
 
 export class LessRecursiveParser extends CssRecursiveParser {
@@ -172,6 +173,27 @@ export class LessRecursiveParser extends CssRecursiveParser {
           'variable-in-unknown-value'
         );
         return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
+      }
+      if (ctx?.atRulePreludeBareVariableAs === 'index') {
+        const nextToken = this.LA(1).tokenType;
+        const hasExplicitAccessorOrCall = this.noSep()
+          && (nextToken === T.LSquare || nextToken === T.LParen);
+        if (hasExplicitAccessorOrCall) {
+          return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
+        }
+        const atName = token.image;
+        const ident = token.image.slice(1);
+        this.warnDeprecation(
+          `"${atName}" in at-rule preludes is deprecated. Use "@{${ident}}" in Less; outside declaration values this is normalized to indexed lookup syntax.`,
+          token,
+          'at-rule-prelude-variable'
+        );
+        return new Reference(
+          { key: ident },
+          { type: 'index', role: 'ident' },
+          this.getLocationInfo(token),
+          this.context
+        );
       }
       return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
     } else if (tokenType.name === 'PropertyReference') {

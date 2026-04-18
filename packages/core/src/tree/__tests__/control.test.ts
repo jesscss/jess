@@ -11,7 +11,9 @@ import {
   Rules,
   Sequence,
   VarDeclaration,
+  While,
   any,
+  bool,
   call,
   decl,
   expr,
@@ -93,6 +95,124 @@ function normalizePattern(pattern: any) {
 }
 
 describe('Control Nodes', () => {
+  it('serializes $if source syntax through toTrimmedString()', () => {
+    const node = new If({
+      branches: [
+        {
+          condition: bool(true),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }
+      ]
+    });
+
+    expect(node.toTrimmedString()).toBeString(`
+      $if (true) {
+        color: red;
+      } $else {
+        color: blue;
+      }
+    `);
+  });
+
+  it('keeps direct $if render(context) on source syntax until parent Rules owns evaluated emission', () => {
+    const context = new Context();
+    const node = new If({
+      branches: [
+        {
+          condition: bool(true),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }
+      ]
+    });
+
+    expect(node.render(context)).toBeString(`
+      $if (true) {
+        color: red;
+      } $else {
+        color: blue;
+      }
+    `);
+    expect(context.printState.writer?.toString()).toBeString(`
+      $if (true) {
+        color: red;
+      } $else {
+        color: blue;
+      }
+    `);
+  });
+
+  it('serializes $for source syntax through toTrimmedString()', () => {
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    expect(node.toTrimmedString()).toBeString(`
+      $for ($value of a, b) {
+        item: $value;
+      }
+    `);
+  });
+
+  it('keeps direct $for render(context) on source syntax until parent Rules owns evaluated emission', () => {
+    const context = new Context();
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    expect(node.render(context)).toBeString(`
+      $for ($value of a, b) {
+        item: $value;
+      }
+    `);
+    expect(context.printState.writer?.toString()).toBeString(`
+      $for ($value of a, b) {
+        item: $value;
+      }
+    `);
+  });
+
+  it('serializes $while source syntax through toTrimmedString()', () => {
+    const node = new While({
+      condition: bool(true),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    expect(node.toTrimmedString()).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+  });
+
+  it('keeps direct $while render(context) on source syntax', () => {
+    const context = new Context();
+    const node = new While({
+      condition: bool(true),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    expect(node.render(context)).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+    expect(context.printState.writer?.toString()).toBeString(`
+      $while (true) {
+        color: red;
+      }
+    `);
+  });
+
   it('evaluates $for with block pattern + expression iterable', async () => {
     const context = new Context();
     const pattern = makePattern(['value', 'key', 'index'], 'block');
