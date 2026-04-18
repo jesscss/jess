@@ -165,6 +165,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return wrapperRules;
   }
 
+  private deriveSingleChildWrapperSurface(anchorRules: Rules, wrappedNode: Node): Rules {
+    const wrapped = anchorRules.clone(false) as Rules;
+    wrapped.value = [wrappedNode];
+    wrapped.scopeFrame = undefined;
+    return wrapped;
+  }
+
   private clearConfiguredImportBoundary(rules: Rules): Rules {
     delete rules.options.importBoundary;
     return rules;
@@ -589,7 +596,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = new Any(source, { role: 'any' });
           const sourceRules = this.createInlineImportSourceCarrier(context, sourceNode);
-          rules = this.wrapInlineSourceWithPostlude(sourceRules, importOptions!.postlude);
+          rules = this.wrapRulesWithPostlude(sourceRules, sourceRules, importOptions!.postlude);
         } else {
           try {
             ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
@@ -744,7 +751,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         // clearing it here defeats dedupe suppression entirely.
         let finalRules = node.getFinalRules(rules);
         if (importOptions!.postlude && !isInlineImport) {
-          finalRules = this.wrapEvaluatedRulesWithPostlude(finalRules, importOptions!.postlude);
+          finalRules = this.wrapRulesWithPostlude(finalRules, finalRules, importOptions!.postlude);
         }
 
         // For import type, register the final Rules as a child root of the parent
@@ -800,69 +807,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return finalize(finalPath, this.toImportPathNode(maybePath));
   }
 
-  /**
-   * Applies CSS import postlude wrappers around inline source content.
-   * Falls back to `@media <postlude>` for plain query nodes.
-   */
-  private wrapInlineSourceWithPostlude(sourceRules: Rules, postlude?: Node): Rules {
-    const anchorRules = sourceRules;
-    const deriveInlineWrapper = (wrappedNode: Node): Rules => {
-      const wrapped = anchorRules.clone(false) as Rules;
-      wrapped.value = [wrappedNode];
-      wrapped.scopeFrame = undefined;
-      return wrapped;
-    };
-    if (!postlude) {
-      return sourceRules;
-    }
-
-    let wrappedRules = sourceRules;
-    const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
-
-    for (let i = postludeNodes.length - 1; i >= 0; i--) {
-      const current = postludeNodes[i]!;
-
-      if (isNode(current, N.Call)) {
-        const callName = String(current.value.name).toLowerCase();
-        if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
-          if (prelude) {
-            wrappedRules = deriveInlineWrapper(new AtRule({
-              name: new Any(`@${callName}`, { role: 'atkeyword' }),
-              prelude,
-              rules: wrappedRules
-            }));
-            continue;
-          }
-        }
-      }
-
-      wrappedRules = deriveInlineWrapper(new AtRule({
-        name: new Any('@media', { role: 'atkeyword' }),
-        prelude: current,
-        rules: wrappedRules
-      }));
-    }
-
-    return wrappedRules;
-  }
-
-  /**
-   * Applies CSS import postlude wrappers around evaluated stylesheet rules.
-   * Used for Less-style imports with media/layer/supports postludes.
-   */
-  private wrapEvaluatedRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
+  private wrapRulesWithPostlude(anchorRules: Rules, rules: Rules, postlude?: Node): Rules {
     if (!postlude) {
       return rules;
     }
-    const anchorRules = rules;
-    const derivePostludeWrapper = (wrappedNode: Node): Rules => {
-      const wrapped = anchorRules.clone(false) as Rules;
-      wrapped.value = [wrappedNode];
-      wrapped.scopeFrame = undefined;
-      return wrapped;
-    };
     const postludeNodes: Node[] = isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
     let wrappedRules: Rules = rules;
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
@@ -878,7 +826,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               prelude,
               rules: wrappedRules
             });
-            wrappedRules = derivePostludeWrapper(wrappedAtRule);
+            wrappedRules = this.deriveSingleChildWrapperSurface(anchorRules, wrappedAtRule);
             continue;
           }
         }
@@ -889,7 +837,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         prelude: current,
         rules: wrappedRules
       });
-      wrappedRules = derivePostludeWrapper(mediaAtRule);
+      wrappedRules = this.deriveSingleChildWrapperSurface(anchorRules, mediaAtRule);
     }
 
     return wrappedRules;

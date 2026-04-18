@@ -1808,6 +1808,13 @@ describe('Style import', () => {
         })
       ]);
       const evald = await node.eval(inlineContext);
+      const wrappedImport = evald.at(0);
+      expect(wrappedImport).toBeInstanceOf(RulesClass);
+      if (!(wrappedImport instanceof RulesClass)) {
+        throw new Error('Expected inline wrapped import to be Rules');
+      }
+      expect(wrappedImport.value).toHaveLength(1);
+      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
       expect(evald.toString({ context: inlineContext })).toContain('@media (min-width: 600px)');
       expect(evald.toString({ context: inlineContext })).toContain('#css { color: yellow; }');
     });
