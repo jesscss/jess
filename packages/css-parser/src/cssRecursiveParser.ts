@@ -338,7 +338,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       || tt3 === SelectorPseudoClass
       || this.matchToken(this.LA(3), FunctionStart)
     ) {
-      return true;
+      return this.hasLCurlyAhead();
     }
     if (!this.matchToken(this.LA(3), Ident)) {
       return false;
