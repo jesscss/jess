@@ -1050,6 +1050,10 @@ export abstract class Node<
     return Node.evalStatic(this, context);
   }
 
+  resolve(context: Context): MaybePromise<Node> {
+    return this.eval(context);
+  }
+
   /**
    * This is used when a Node will replace another node.
    */
@@ -1214,6 +1218,10 @@ export abstract class Node<
       : undefined;
     if (context) {
       const options = prepareContextPrintState(context, maybeOptions);
+      const resolved = this.resolve(context);
+      if (!isThenable(resolved)) {
+        return resolved.toTrimmedString(options);
+      }
       return this.toTrimmedString(options);
     }
     const options = getPrintOptions(contextOrOptions as PrintOptions | undefined);

@@ -51,6 +51,22 @@ describe('reference', () => {
   });
 
   describe('get from scope', () => {
+    it('renders a resolved variable value through render(context)', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const rendered = ref({ key: 'foo' }, { type: 'variable' }).render(context);
+
+      expect(rendered).toBe('red');
+    });
+
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({
