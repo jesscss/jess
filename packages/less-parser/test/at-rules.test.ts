@@ -82,8 +82,9 @@ describe('mediaInParens', () => {
         prelude: 
           (List
             [
-              (Reference
-                  type: 'variable'
+              (Reference [role=ident]
+                  type: 'index'
+                  role: 'ident'
                 key: 'breakpoint'
               )
               (QueryCondition

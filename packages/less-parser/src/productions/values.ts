@@ -820,6 +820,27 @@ export function varReference(this: P, T: TokenMap) {
               $.context
             );
           }
+          if (ctx.atRulePreludeBareVariableAs === 'index') {
+            const nextToken = $.LA(1).tokenType;
+            const hasExplicitAccessorOrCall = $.noSep()
+              && (nextToken === T.LSquare || nextToken === T.LParen);
+            if (hasExplicitAccessorOrCall) {
+              return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), $.context);
+            }
+            const atName = token.image;
+            const ident = token.image.slice(1);
+            $.warnDeprecation(
+              `"${atName}" in at-rule preludes is deprecated. Use "@{${ident}}" in Less; outside declaration values this is normalized to indexed lookup syntax.`,
+              token,
+              'at-rule-prelude-variable'
+            );
+            return new Reference(
+              { key: ident },
+              { type: 'index', role: 'ident' },
+              $.getLocationInfo(token),
+              $.context
+            );
+          }
           return new Reference(token.image.slice(1), { type: 'variable' }, $.getLocationInfo(token), $.context);
         }
       }

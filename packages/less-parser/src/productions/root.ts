@@ -742,21 +742,22 @@ export function mediaInParens(this: P, T: TokenMap) {
 export function mediaQuery(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
     return $.OR2([
       {
         GATE: () => $.startsMediaCondition(T),
-        ALT: () => $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE($.mediaConditionWithoutOr, { ARGS: [preludeCtx] })
       },
       {
         GATE: () => isEscapedString($, T),
-        ALT: () => $.SUBRULE($.lessMediaQueryFromString, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE($.lessMediaQueryFromString, { ARGS: [preludeCtx] })
       },
       {
         GATE: () => startsLessMediaQueryReference($, T),
-        ALT: () => $.SUBRULE2($.lessMediaQueryFromReference, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE2($.lessMediaQueryFromReference, { ARGS: [preludeCtx] })
       },
       {
-        ALT: () => $.SUBRULE7($.mediaTypeQuery, { ARGS: [ctx] })
+        ALT: () => $.SUBRULE7($.mediaTypeQuery, { ARGS: [preludeCtx] })
       }
     ]);
   };

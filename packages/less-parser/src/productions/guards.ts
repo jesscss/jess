@@ -371,6 +371,7 @@ export function innerAtRule(this: P, _T: TokenMap) {
 export function layerName(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
     $.startRule();
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let nodes: Node[];
@@ -380,7 +381,7 @@ export function layerName(this: P, T: TokenMap) {
 
     // First segment: variable reference or plain ident
     const first = $.OR([
-      { ALT: () => $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
+      { ALT: () => $.SUBRULE($.valueReference, { ARGS: [preludeCtx] }) },
       {
         GATE: () => $.isType(T.Ident),
         ALT: () => $.CONSUME(T.Ident)
@@ -422,9 +423,10 @@ export function layerName(this: P, T: TokenMap) {
 export function keyframesName(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
+    const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
     let node: Node | undefined;
     $.OR([
-      { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [ctx] }) },
+      { ALT: () => node = $.SUBRULE($.valueReference, { ARGS: [preludeCtx] }) },
       {
         GATE: () => $.isType(T.Ident) && !$.isType(T.InterpolatedIdent),
         ALT: () => {
