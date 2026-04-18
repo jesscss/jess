@@ -28,4 +28,21 @@ describe('quoted', () => {
 
     expect(rendered).toBe('"hello"');
   });
+
+  it('resolves quoted values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('message'),
+        value: any('hello')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await quoted(ref({ key: 'message' }, { type: 'variable' })).resolve(context);
+
+    expect(`${resolved}`).toBe('"hello"');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });

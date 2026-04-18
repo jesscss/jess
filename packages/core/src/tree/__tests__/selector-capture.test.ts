@@ -28,4 +28,21 @@ describe('SelectorCapture', () => {
 
     expect(rendered).toBe('.foo');
   });
+
+  it('resolves selector capture values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).resolve(context);
+
+    expect(`${resolved}`).toBe('.foo');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });

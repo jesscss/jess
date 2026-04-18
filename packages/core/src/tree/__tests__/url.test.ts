@@ -28,4 +28,21 @@ describe('url', () => {
 
     expect(rendered).toBe('url("image.png")');
   });
+
+  it('resolves url values without touching render state', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const resolved = await url(quoted(ref({ key: 'asset' }, { type: 'variable' }))).resolve(context);
+
+    expect(`${resolved}`).toBe('url("image.png")');
+    expect(context.printState.writer).toBeUndefined();
+  });
 });
