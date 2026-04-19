@@ -32,9 +32,10 @@ Current outer-proof buckets:
     same `fallback` runtime failure removed by the indexed-ref live-binding fix
 - likely semantic regressions worth reproing in focused core tests first
   - `tests-unit/media/media.less`
-    the `fallback` runtime failure is gone; the remaining drift is nested
-    `@media` composition / flattening parity (`@media a { @media b { ... } }`
-    vs `@media a and b { ... }`)
+    fixed in Jess terms: no nested `@media` / `@supports` query merging should
+    be reintroduced here. The Less.js alpha fixture was updated to the
+    intentional nested-media Jess output, with the old expectation copied into
+    the linked Less.js `legacy/` fixture folder.
   - `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
   - `tests-unit/mixins-guards/mixins-guards.less`
   - `tests-unit/mixins-interpolated/mixins-interpolated.less`
@@ -46,9 +47,14 @@ Current outer-proof buckets:
       Less `color()` normalizes parsed named-color nodes to hex output
     - fixed: `hsv(...)` now serializes with Less-compatible hex output
     - fixed: `mix(#ff0000, transparent)` now serializes as `rgba(...)`
-    - remaining: `hsl(380, 150%, 150%)` clamp canonicalization,
-      custom-property `if()` empty-output behavior, and comma-vs-semicolon
-      list preservation for `@list-2`
+    - fixed: `hsl(380, 150%, 150%)` clamp canonicalization
+    - fixed: custom-property output now keeps the narrowed Jess contract:
+      reference/interpolation resolution is allowed in evaluated custom values,
+      but generic calls are not widened into a general custom-value eval path
+    - fixture drift fixed in linked Less.js alpha data: `--e:` now matches
+      Jess's no-space custom-property surface
+    - remaining semantic drift: comma-vs-semicolon list preservation for
+      `list-3`
   - `tests-unit/ie-filters/ie-filters.less`
   - `tests-unit/nesting/nesting.less`
 - extend-path regressions / warning drift

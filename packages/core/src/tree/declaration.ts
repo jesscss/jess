@@ -75,6 +75,18 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
   important?: Any<'flag'>;
 };
 
+const shouldResolveCustomPropertyValue = (node: Node): boolean => {
+  if (isNode(node, N.Reference) || node.type === 'Interpolated') {
+    return true;
+  }
+  for (const child of node.children(true)) {
+    if (isNode(child) && shouldResolveCustomPropertyValue(child)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /**
  * A continuous collection of nodes.
  *
@@ -158,7 +170,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       //   drop that trailing line break so semicolon insertion stays inline.
       // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
       //   insert a single separator space for stable CSS output.
-      let customOut = w.capture(() => value.toString(options));
+      const renderStructuredCustomValue = Boolean(options.context && shouldResolveCustomPropertyValue(value));
+      let customOut = renderStructuredCustomValue
+        ? w.capture(() => value.render(options.context!, options))
+        : w.capture(() => value.toString(options));
       customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
       customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
       w.add(customOut, value);
@@ -378,10 +393,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         if (value instanceof Node) {
           const isCustomProperty = name.valueOf().startsWith('--');
           if (isCustomProperty) {
-            const hasInterpolation =
-              value.type === 'Interpolated'
-              || [...value.children(true)].some(child => child.type === 'Interpolated');
-            if (!hasInterpolation) {
+            if (!shouldResolveCustomPropertyValue(value)) {
               return node;
             }
             context.inCustom = true;

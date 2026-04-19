@@ -1,5 +1,6 @@
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call } from '../index.js';
 import { Context } from '../../context.js';
+import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 
 let context: Context;
 describe('Declaration', () => {
@@ -49,6 +50,65 @@ describe('Declaration', () => {
 
     expect(resolved.toTrimmedString()).toBe('color: red');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('renders indexed references inside custom property values through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('tone'),
+        value: any('red')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: any('--custom'),
+      value: ref({ key: 'tone' }, { type: 'index' })
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:$[tone]');
+    expect(node.render(context)).toBe('--custom:red');
+  });
+
+  it('renders interpolated custom property values through render(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('tone'),
+        value: any('red')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: any('--custom'),
+      value: interpolated({
+        source: `prefix-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'tone' }, { type: 'variable' })]
+      })
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:prefix-$tone');
+    expect(node.render(context)).toBe('--custom:prefix-red');
+  });
+
+  it('preserves generic calls in custom property values during render(context)', () => {
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: 'if',
+        args: new List([
+          call({ name: 'not', args: new List([any('true')]) }),
+          any('5')
+        ])
+      })
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:if(not(true), 5)');
+    expect(node.render(context)).toBe('--custom:if(not(true), 5)');
   });
 
   it('serializes important declarations with one space before !important', async () => {

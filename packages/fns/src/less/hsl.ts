@@ -50,6 +50,14 @@ function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: 
   return alphaValue;
 }
 
+function coerceNumericArg(arg: unknown): number {
+  const num = Number(arg);
+  if (Number.isNaN(num)) {
+    throw new Error('Invalid arguments for hsl function');
+  }
+  return num;
+}
+
 const hsl = defineFunction(
   'hsl',
   async function(this: FunctionThis, ...args: any[]) {
@@ -161,28 +169,39 @@ const hsl = defineFunction(
     // Handle overloaded signatures - check Dimension signature first (most common)
     if (args.length >= 3 && !(args[0] instanceof Color)) {
       // [Dimension, Dimension, Dimension, Dimension?] - h, s, l, optional alpha
-      let h: number = args[0] as number;
-      let s: number = args[1] as number;
-      let l: number = args[2] as number;
-      let alpha: number = args[3] !== undefined ? (args[3] as number) : 1;
-      const hueChannel = getRawHueChannel(this?.rawArgs, h);
+      let h = coerceNumericArg(args[0]);
+      let s = coerceNumericArg(args[1]);
+      let l = coerceNumericArg(args[2]);
+      let alpha = args[3] !== undefined ? coerceNumericArg(args[3]) : 1;
+      h = ((h % 360) + 360) % 360;
+      s = Math.max(0, Math.min(1, s));
+      l = Math.max(0, Math.min(1, l));
       const alphaChannel = getRawAlphaChannel(this?.rawArgs, alpha, args[3] !== undefined);
-
-      const color = new Color({
-        hsl: [hueChannel, s, l],
+      const clampedHslColor = new Color({
+        hsl: [getRawHueChannel(this?.rawArgs, h), s, l],
         alpha: alphaChannel
       }, {
         format: ColorFormat.HSL,
         modernSyntax
       });
 
-      // Preserve raw channel values here; clamping happens at Color output/getters.
-      color.value.node = undefined;
+      if (s === 0 || l === 0 || l === 1) {
+        const canonicalColor = new Color({
+          rgb: clampedHslColor.rgb,
+          alpha: alphaChannel
+        }, {
+          format: ColorFormat.HSL,
+          modernSyntax
+        });
+        canonicalColor.value.node = undefined;
+        return canonicalColor;
+      }
 
-      return color;
+      clampedHslColor.value.node = undefined;
+      return clampedHslColor;
     } else if (args.length === 1 && args[0] instanceof Color) {
       // [Color] - clone the color and set format to HSL
-      const inputColor = args[0] as Color;
+      const [inputColor] = args;
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.HSL;
       cloned.options.modernSyntax = modernSyntax;
@@ -190,7 +209,7 @@ const hsl = defineFunction(
       return cloned;
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - clone color, set format to HSL, and optionally set alpha
-      const inputColor = args[0] as Color;
+      const [inputColor] = args;
       const cloned = inputColor.clone();
       cloned.options.format = ColorFormat.HSL;
       cloned.options.modernSyntax = modernSyntax;
@@ -198,7 +217,10 @@ const hsl = defineFunction(
 
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
-        const alpha = args[1] as number;
+        if (typeof args[1] !== 'number') {
+          throw new Error('Invalid arguments for hsl function');
+        }
+        const alpha = args[1];
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
         cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
       }

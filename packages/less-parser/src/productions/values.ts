@@ -313,8 +313,17 @@ export function customValue(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     if (
-      $.isType(T.LParen)
+      $.isType(T.UrlStart)
+      || $.isType(T.Var)
+      || $.isType(T.Calc)
+      || $.isType(T.IfFunction)
+      || $.isType(T.BooleanFunction)
       || $.isType(T.FunctionStart)
+    ) {
+      return $.SUBRULE($.functionCall, { ARGS: [ctx] });
+    }
+    if (
+      $.isType(T.LParen)
       || $.isType(T.FunctionalPseudoClass)
       || $.isType(T.LSquare)
       || $.isType(T.LCurly)

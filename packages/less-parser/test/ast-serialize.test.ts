@@ -87,6 +87,20 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('custom property generic function value stays structured', () => {
+    const { errors, tree } = parser.parse('--custom: if(not(true), 5)', 'declaration');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContainString(`
+      (CustomDeclaration
+        name: 
+          (Any [role=property] '--custom')
+        value: 
+          (Sequence
+            [
+              (Call
+    `);
+  });
+
   test('mixin definition', () => {
     const { errors, tree } = parser.parse('.mixin(@color) { color: @color; }');
     expect(errors.length).toBe(0);
