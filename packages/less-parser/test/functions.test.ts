@@ -59,9 +59,49 @@ describe('functionCallArgs', () => {
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Call');
-    expect(out).toContainString("type: 'function'");
-    expect(out).toContainString("(Color");
-    expect(out).toContainString("node: 'plum'");
+    expect(out).toContainString('type: \'function\'');
+    expect(out).toContainString('(Color');
+    expect(out).toContainString('node: \'plum\'');
+  });
+
+  it('serializes comma-root function args as a comma List', () => {
+    const { errors, tree } = parser.parse('func(a, b, c)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Reference\n          type: \'function\'');
+    expect(out).toContainString('key: \'func\'');
+    expect(out).toContainString('args: \n  (List');
+    expect(out).not.toContainString('sep: \';\'');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
+
+  it('serializes semicolon-root function args as a semicolon List', () => {
+    const { errors, tree } = parser.parse('func(a; b; c)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Reference\n          type: \'function\'');
+    expect(out).toContainString('key: \'func\'');
+    expect(out).toContainString('(List\n          sep: \';\'');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
+
+  it('preserves escaped nested comma values inside semicolon-root function args', () => {
+    const { errors, tree } = parser.parse('func(~(a, b); c)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(List\n          sep: \';\'');
+    expect(out).toContainString('(Paren\n              escaped: true');
+    expect(out).toContainString('(List\n                [');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
   });
 });
 

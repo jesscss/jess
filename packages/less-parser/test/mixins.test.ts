@@ -38,6 +38,50 @@ describe('mixinArgList', () => {
     const { errors } = parse('(@a; @b)', 'mixinArgs');
     expect(errors.length).toBe(0);
   });
+
+  it('serializes comma-root mixin args as a comma List', () => {
+    const { errors, tree } = parse('.mixin(a, b, c)', 'mixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Reference [role=name]');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('key: \'.mixin\'');
+    expect(out).toContainString('(BasicSelector \'.mixin\')');
+    expect(out).toContainString('(List\n          sep: \',\'');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
+
+  it('serializes semicolon-root mixin args as a semicolon List', () => {
+    const { errors, tree } = parse('.mixin(a; b; c)', 'mixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Reference [role=name]');
+    expect(out).toContainString('type: \'mixin-ruleset\'');
+    expect(out).toContainString('key: \'.mixin\'');
+    expect(out).toContainString('(BasicSelector \'.mixin\')');
+    expect(out).toContainString('(List\n          sep: \';\'');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
+
+  it('preserves escaped nested comma values inside semicolon-root mixin args', () => {
+    const { errors, tree } = parse('.mixin(~(a, b); c)', 'mixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Reference [role=name]');
+    expect(out).toContainString('key: \'.mixin\'');
+    expect(out).toContainString('(List\n          sep: \';\'');
+    expect(out).toContainString('(Paren\n              escaped: true');
+    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
 });
 
 describe('mixinArg', () => {
