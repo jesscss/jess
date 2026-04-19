@@ -2601,9 +2601,11 @@ describe('Style import', () => {
     });
 
     it('import-reference-issues: repeated reference/multiple imports keep import-site-local parent chains', async () => {
+      const localContext = createTestContext();
+      localContext.opts.collapseNesting = true;
       const nestedPath = resolve(process.cwd(), 'import-reference-issues/multiple-import-nested.jess');
       const importPath = resolve(process.cwd(), 'import-reference-issues/multiple-import.jess');
-      context.sourceTrees.set(nestedPath, rules([
+      localContext.sourceTrees.set(nestedPath, rules([
         ruleset({
           selector: sellist([sel([el('should')])]),
           rules: rules([
@@ -2623,7 +2625,7 @@ describe('Style import', () => {
           ])
         })
       ]));
-      context.sourceTrees.set(importPath, rules([
+      localContext.sourceTrees.set(importPath, rules([
         any('/*\n  tralala\n*/'),
         ruleset({
           selector: sellist([sel([el('.fix')])]),
@@ -2670,11 +2672,21 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const out = evald.toString({ context });
-      expect(out).toContain('.fix');
-      expect(out).toContain('.something');
-      expect(out).toContain('show-all-content');
+      const evald = await node.eval(localContext);
+      const out = evald.toString({ context: localContext });
+      expect(out).toBeString(`
+        show-all-content {
+          /*
+          tralala
+        */
+        }
+        show-all-content .fix {
+          fix: fix;
+        }
+        show-all-content .something {
+          inside: something;
+        }
+      `);
       expect(out).not.toContain('#do-not-show-import .fix');
       expect(out).not.toContain('#do-not-show-import .something');
       expect(out).not.toContain('should {\n  be: invisible;');

@@ -125,6 +125,21 @@ const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   if (options?.context) {
     if (options !== options.context.printState) {
+      const hasExplicitPrintState = (
+        options.writer !== undefined
+        || options.inFrames !== undefined
+        || options.treeFrames !== undefined
+        || options.lastRenderedFrames !== undefined
+        || options.frameHeaders !== undefined
+      );
+      if (hasExplicitPrintState) {
+        const detached = options;
+        if (detached.collapseNesting === undefined && detached.context?.opts?.collapseNesting !== undefined) {
+          detached.collapseNesting = Boolean(detached.context.opts.collapseNesting);
+        }
+        ensureFinalPrintOptions(detached);
+        return detached;
+      }
       return prepareContextPrintState(options.context, options);
     }
     const resolved = options.context.printState;

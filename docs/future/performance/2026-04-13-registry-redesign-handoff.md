@@ -231,6 +231,25 @@ cycle is transitional convenience state, not target architecture. Track 1C
 should keep treating `PrintOptions` as a temporary render-state carrier while
 ownership moves more explicitly onto `Context`/session state.
 
+Concrete regression found while recovering `import-reference-issues`:
+
+- forked preview/inline print states were still carrying `context`
+- `getPrintOptions()` treated any context-bearing non-`context.printState`
+  object as a request to rebase onto the live `context.printState`
+- that let preview/child serialization silently replace the active frame arrays
+  under a caller mid-render
+- symptom: inline container serialization could return CSS with a missing final
+  closing brace even though the child container itself serialized correctly in
+  isolation
+
+Working rule from that fix:
+
+- if a caller passes an explicit forked print state (`writer` / frame arrays
+  already present), `getPrintOptions()` must keep it detached even when it also
+  carries `context`
+- rebasing onto `context.printState` is only correct for fresh top-level entry
+  into printing, not for preview/fork child paths
+
 ## Work Checklist
 
 Top-level track numbers stay stable so cross-doc references to Tracks 2–5 do
