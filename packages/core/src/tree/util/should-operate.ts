@@ -1,7 +1,5 @@
 import type { MathMode } from '../../types/modes.js';
 import type { Operator } from './calculate.js';
-import { isNode } from './is-node.js';
-import { N } from '../node-type.js';
 import type { Node } from '../node.js';
 
 export type MathFrameState = {
@@ -29,31 +27,14 @@ export function isInParens(parenFrames: ReadonlyArray<boolean>): boolean {
 export function shouldOperateWithMathFrames(
   state: MathFrameState,
   op: Operator,
-  left: Node,
-  right: Node
+  _left: Node,
+  _right: Node
 ): boolean {
   const { mathMode, calcFrames } = state;
   const inParens = isInParens(state.parenFrames);
   const inCalc = calcFrames !== 0;
 
   if (inCalc) {
-    /** Only collapse safe units */
-    if (isNode(left, N.Dimension) && isNode(right, N.Dimension)) {
-      const lUnit = left.value.unit;
-      const rUnit = right.value.unit;
-      if ((op === '+' || op === '-') && lUnit === rUnit) {
-        return true;
-      }
-      /** Can't make square units */
-      if (op === '*' && (!lUnit || !rUnit)) {
-        return true;
-      }
-      /** Can't divide by a unit */
-      if (op === '/' && !rUnit) {
-        return true;
-      }
-    }
-
     return false;
   }
 

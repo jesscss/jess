@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import {
   any,
   interpolated,
+  quoted,
   ref,
   rules,
   type Rules as RulesClass,
@@ -63,5 +64,14 @@ describe('Interpolated', () => {
 
     expect(resolved.toTrimmedString()).toBe('hello-world');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('preserves quoted replacement syntax when requested', () => {
+    const node = interpolated({
+      source: `progid:test(value=${INTERPOLATION_PLACEHOLDER})`,
+      replacements: [quoted('#000000', { quote: '"' })]
+    }, { preserveQuotedSyntax: true });
+
+    expect(node.toTrimmedString()).toBe('progid:test(value="#000000")');
   });
 });

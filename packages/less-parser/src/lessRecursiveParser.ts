@@ -16,6 +16,7 @@ import {
   Reference,
   DefaultGuard,
   Interpolated,
+  INTERPOLATION_PLACEHOLDER,
   Any,
   Bool,
   type MathMode,
@@ -24,7 +25,7 @@ import {
   type ComplexSelector,
   type Selector
 } from '@jesscss/core';
-import { getInterpolatedOrString } from './utils.js';
+import { createInterpolatedReference, getInterpolatedOrString } from './utils.js';
 
 import { type LessExtraTokenType } from './lessTokens.js';
 
@@ -119,6 +120,40 @@ export class LessRecursiveParser extends CssRecursiveParser {
   mathMode: MathMode;
   /** See `LessParserConfig.wrapOuterExpressions` */
   wrapOuterExpressions: boolean;
+
+  private processLegacyMSFilterToken(token: IToken): Node {
+    const location = this.getLocationInfo(token);
+    const source = token.image.replace(/\s*=\s*/g, '=');
+    const matches = [...source.matchAll(/@([_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*)/g)];
+
+    if (matches.length === 0) {
+      return new Any(source, { type: token.tokenType?.name }, location, this.context);
+    }
+
+    const templatedSource = source.replace(
+      /@([_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*)/g,
+      (_full, _name, offset: number, fullSource: string) => {
+        const prefix = fullSource.slice(0, offset);
+        const key = prefix.match(/([A-Za-z]+)=$/)?.[1];
+        if (key && /colorstr$/i.test(key)) {
+          return `"${INTERPOLATION_PLACEHOLDER}"`;
+        }
+        return INTERPOLATION_PLACEHOLDER;
+      }
+    );
+
+    return new Interpolated(
+      {
+        source: templatedSource,
+        replacements: matches.map(match =>
+          createInterpolatedReference('@', match[1]!, location, this.context)
+        )
+      },
+      { role: 'any' },
+      location,
+      this.context
+    );
+  }
 
   constructor(
     T: TokenMap,
@@ -224,6 +259,8 @@ export class LessRecursiveParser extends CssRecursiveParser {
       } else {
         return new Any(result, { role: 'ident' }, this.getLocationInfo(token), this.context);
       }
+    } else if (tokenType === T['LegacyMSFilter']) {
+      return this.processLegacyMSFilterToken(token);
     } else if (tokenType === T['PlainIdent']) {
       const image = token.image;
       if (image === 'true' || image === 'false') {

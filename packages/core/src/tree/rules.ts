@@ -18,7 +18,6 @@ import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
   type PrintOptions,
-  forkPrintOptions,
   getPrintOptions,
   savePrintState,
   restorePrintState
@@ -1622,11 +1621,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const childReferenceRenderEnabled = childReferenceMode
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
-        const previewOut = w.capture(() => n.toTrimmedString(forkPrintOptions(options, {
-          depth,
-          referenceMode: childReferenceMode,
-          referenceRenderEnabled: childReferenceRenderEnabled
-        })));
+        const previewSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+        options.depth = depth;
+        options.referenceMode = childReferenceMode;
+        options.referenceRenderEnabled = childReferenceRenderEnabled;
+        const previewOut = w.capture(() => n.toTrimmedString(getPrintOptions(options)));
+        restorePrintState(options, previewSaved);
         let childRule: string | undefined;
         if (previewOut) {
           closeRenderedFramesToBaseline();

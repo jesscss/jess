@@ -101,6 +101,21 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('legacy IE filter values stay structured enough to evaluate embedded variables', () => {
+    const { errors, tree } = parser.parse(`
+      @fat: 0;
+      @cloudhead: "#000000";
+      .nav {
+        filter: progid:DXImageTransform.Microsoft.gradient(startColorstr="#333333", endColorstr=@cloudhead, GradientType=@fat);
+      }
+    `);
+    expect(errors.length).toBe(0);
+    const serialized = serializeTypes(tree);
+    expect(serialized).toContain('(Interpolated [role=any]');
+    expect(serialized).toContain('key: \'cloudhead\'');
+    expect(serialized).toContain('key: \'fat\'');
+  });
+
   test('mixin definition', () => {
     const { errors, tree } = parser.parse('.mixin(@color) { color: @color; }');
     expect(errors.length).toBe(0);

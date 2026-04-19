@@ -1,8 +1,9 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated } from '../index.js';
 import { Context } from '../../context.js';
 import { F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
+import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 
 let context: Context;
 
@@ -25,6 +26,37 @@ describe('Rule', () => {
         color: #eee;
         border: 1px solid black;
         color: #eee;
+      }
+    `);
+  });
+
+  it('coalesces adjacent identical headers for interpolated and literal rulesets', () => {
+    const node = rules([
+      ruleset({
+        selector: sellist([sel([el('.foo')])]),
+        rules: rules([
+          decl({ name: 'a', value: any('1') })
+        ])
+      }),
+      ruleset({
+        selector: sellist([
+          sel([
+            interpolated({
+              source: INTERPOLATION_PLACEHOLDER,
+              replacements: [any('.foo')]
+            })
+          ])
+        ]),
+        rules: rules([
+          decl({ name: 'a', value: any('2') })
+        ])
+      })
+    ]);
+
+    expect(`${node}`).toBeString(`
+      .foo {
+        a: 1;
+        a: 2;
       }
     `);
   });

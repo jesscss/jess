@@ -39,6 +39,12 @@ describe('declaration', () => {
     expect(tree?.value.value.value?.[0]?.type).toBe('Call');
   });
 
+  it('should parse legacy IE filter declarations as structured interpolated values', () => {
+    const { errors, tree } = parse('filter: progid:DXImageTransform.Microsoft.Alpha(opacity=@fat)', 'declaration');
+    expect(errors.length).toBe(0);
+    expect(tree?.value.value.type).toBe('Interpolated');
+  });
+
   it('normalizes Less property merge "+:" to the list-merge assign form', () => {
     const { errors, tree } = parse('src+: url(foo)', 'declaration');
     expect(errors.length).toBe(0);

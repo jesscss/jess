@@ -53,6 +53,10 @@ export type InterpolatedValue = {
   replacements: Node[];
 };
 
+export type InterpolatedOptions<Role extends AnyRole = AnyRole> = AnyOptions<Role> & {
+  preserveQuotedSyntax?: boolean;
+};
+
 /**
  * Merge an interface to declare the specific types
  *
@@ -65,7 +69,7 @@ export type InterpolatedValue = {
  */
 export interface Interpolated<
   Role extends AnyRole = AnyRole
-> extends Node<InterpolatedValue, AnyOptions<Role>> {
+> extends Node<InterpolatedValue, InterpolatedOptions<Role>> {
   eval(context: Context): MaybePromise<Any<Role>>;
 }
 /**
@@ -81,8 +85,8 @@ export interface Interpolated<
  */
 export class Interpolated<
   Role extends AnyRole = AnyRole
-> extends Node<InterpolatedValue, AnyOptions<Role>> {
-  constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
+> extends Node<InterpolatedValue, InterpolatedOptions<Role>> {
+  constructor(value: InterpolatedValue, options?: InterpolatedOptions<Role>, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Interpolated nodes are always non-static and may be async
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
@@ -111,7 +115,7 @@ export class Interpolated<
         if (isNode(replacement, N.Reference)) {
           // Preserve exact interpolation reference syntax (including quoted property keys).
           result = w.capture(() => replacement.toTrimmedString(printOpts));
-        } else if (isNode(replacement, N.Quoted)) {
+        } else if (isNode(replacement, N.Quoted) && !this.options.preserveQuotedSyntax) {
           // Interpolated string slots merge raw string content.
           // Using valueOf() avoids re-emitting inner quote delimiters.
           result = String(replacement.valueOf());

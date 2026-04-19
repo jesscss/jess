@@ -1370,7 +1370,6 @@ function finalizeRuntimeVarBindingResult(
     return cloneReferenceResultNode(referenceNode, evald);
   };
   const evaluatedBinding = (() => {
-    binding.value.frozen = true;
     const savedRulesContext = context.rulesContext;
     const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
       bindingSource.options?.paramVar
@@ -1383,7 +1382,7 @@ function finalizeRuntimeVarBindingResult(
       context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
     }
     try {
-      return binding.value.eval(context);
+      return evaluateReferenceValueNode(binding.value, context);
     } catch (error) {
       context.rulesContext = savedRulesContext;
       if (bindingSource) {
@@ -1497,6 +1496,85 @@ function finalizeDeclarationReferenceResult(
   ));
 }
 
+function evaluateCalcSlashListValue(
+  declValue: Node,
+  context: Context
+): MaybePromise<Node> | undefined {
+  if (
+    context.calcFrames === 0
+    || !isNode(declValue, N.List)
+    || declValue.options?.sep !== '/'
+    || declValue.value.length !== 2
+  ) {
+    return undefined;
+  }
+
+  const [left, right] = declValue.value;
+  const finalize = (l: Node, r: Node): Node => {
+    if (
+      !isNode(l, N.Number | N.Dimension)
+      || !isNode(r, N.Number | N.Dimension)
+    ) {
+      return declValue;
+    }
+    try {
+      const out = l.operate(r, '/', context);
+      out.pre = left?.pre;
+      out.post = right?.post;
+      return out;
+    } catch {
+      return declValue;
+    }
+  };
+
+  const maybeLeft = left?.eval(context);
+  if (isThenable(maybeLeft)) {
+    return Promise.resolve(maybeLeft).then((l) => {
+      const maybeRight = right?.eval(context);
+      if (isThenable(maybeRight)) {
+        return Promise.resolve(maybeRight).then(r => finalize(l, r));
+      }
+      return maybeRight ? finalize(l, maybeRight) : declValue;
+    });
+  }
+
+  const maybeRight = right?.eval(context);
+  if (isThenable(maybeRight)) {
+    return maybeLeft
+      ? Promise.resolve(maybeRight).then(r => finalize(maybeLeft, r))
+      : declValue;
+  }
+
+  if (!maybeLeft || !maybeRight) {
+    return declValue;
+  }
+
+  return finalize(maybeLeft, maybeRight);
+}
+
+function evaluateReferenceValueNode(
+  declValue: Node,
+  context: Context
+): MaybePromise<Node> {
+  const calcSlashValue = evaluateCalcSlashListValue(declValue, context);
+  if (calcSlashValue !== undefined) {
+    return calcSlashValue;
+  }
+  const savedCalcFrames = context.calcFrames;
+  if (savedCalcFrames !== 0) {
+    context.calcFrames = 0;
+  }
+  declValue.frozen = true;
+  try {
+    if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
+      return declValue;
+    }
+    return declValue.eval(context);
+  } finally {
+    context.calcFrames = savedCalcFrames;
+  }
+}
+
 function evaluateDeclarationReferenceValue(args: {
   declValue: Node;
   hasImportant: boolean;
@@ -1506,11 +1584,7 @@ function evaluateDeclarationReferenceValue(args: {
   if (hasImportant) {
     context.pushImportantSource();
   }
-  declValue.frozen = true;
-  if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
-    return declValue;
-  }
-  return declValue.eval(context);
+  return evaluateReferenceValueNode(declValue, context);
 }
 
 function normalizeMergedAssignReferenceResult(

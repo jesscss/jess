@@ -6,7 +6,6 @@ import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
-  forkPrintOptions,
   savePrintState,
   restorePrintState,
   saveArrayState,
@@ -653,11 +652,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childReferenceRenderEnabled = childReferenceMode
             ? (enteringReferenceMode ? false : renderEnabled)
             : true;
-          const previewOut = w.capture(() => nn.toTrimmedString(forkPrintOptions(options, {
-            depth: options.depth + 1,
-            referenceMode: childReferenceMode,
-            referenceRenderEnabled: childReferenceRenderEnabled
-          })));
+          const previewSaved = savePrintState(options, [
+            'depth',
+            'referenceMode',
+            'referenceRenderEnabled'
+          ]);
+          options.depth = options.depth + 1;
+          options.referenceMode = childReferenceMode;
+          options.referenceRenderEnabled = childReferenceRenderEnabled;
+          const previewOut = w.capture(() => nn.toTrimmedString(getPrintOptions(options)));
+          restorePrintState(options, previewSaved);
           if (!previewOut && !hasPrintableTrivia(nn, options)) {
             continue;
           }
