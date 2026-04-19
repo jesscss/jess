@@ -1515,6 +1515,58 @@ describe('Mixin', () => {
       }
     });
 
+    it('namespace fast path: mixin-ruleset path unions plain namespace rulesets with callable namespace mixins', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        @namespaceGuard: 1;
+
+        #guarded when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              guarded: namespace;
+            }
+          }
+        }
+
+        #guarded() when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              silent: namespace;
+            }
+          }
+        }
+
+        #guarded(@variable: default) when (@namespaceGuard > 0) {
+          #deeper {
+            .mixin() {
+              guarded: with default;
+            }
+          }
+        }
+
+        #guarded-caller {
+          #guarded > #deeper > .mixin();
+        }
+      `).tree;
+
+      context.root = tree;
+
+      const found = tree.find('mixin', ['#guarded', '#deeper', '.mixin'], undefined, {
+        context
+      });
+
+      expect(found).toHaveLength(3);
+
+      const evald = await tree.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('#guarded-caller {');
+      expect(css).toContain('guarded: namespace;');
+      expect(css).toContain('silent: namespace;');
+      expect(css).toContain('guarded: with default;');
+    });
+
     it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
@@ -3697,6 +3749,202 @@ describe('Mixin', () => {
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('gender: "Outer";');
+      expect(css).not.toContain('.person {\n}');
+    });
+
+    it('does not emit an empty interpolated selector frame when a nested mixin consumes its scope', async () => {
+      const root = rules([
+        vardecl({ name: 'gender_', value: any('"Outer"') }),
+        mixin({
+          name: any('.Person'),
+          params: list([
+            any('name', { role: 'property' }),
+            any('gender_', { role: 'property' })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: interpolatedSelector(interpolated({
+                source: '.' + INTERPOLATION_PLACEHOLDER,
+                replacements: [ref({ key: 'name' }, { type: 'variable' })]
+              })),
+              rules: rules([
+                vardecl({
+                  name: 'gender',
+                  value: ref({ key: 'gender_' }, { type: 'variable' })
+                }),
+                mixin({
+                  name: any('.sayGender'),
+                  rules: rules([
+                    decl({
+                      name: 'gender',
+                      value: ref({ key: 'gender' }, { type: 'variable' })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.Person' }, { type: 'mixin' }),
+              args: list([any('person'), any('"Male"')])
+            }),
+            call({
+              name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ collapseNesting: true });
+
+      expect(css).toContain('gender: "Male";');
+      expect(css).not.toContain('.person {\n}');
+      expect(css).not.toContain('.test .person {\n}');
+    });
+
+    it('does not emit an empty interpolated selector frame on context-bound serialization', async () => {
+      const root = rules([
+        vardecl({ name: 'gender_', value: any('"Outer"') }),
+        mixin({
+          name: any('.Person'),
+          params: list([
+            any('name', { role: 'property' }),
+            any('gender_', { role: 'property' })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: interpolatedSelector(interpolated({
+                source: '.' + INTERPOLATION_PLACEHOLDER,
+                replacements: [ref({ key: 'name' }, { type: 'variable' })]
+              })),
+              rules: rules([
+                vardecl({
+                  name: 'gender',
+                  value: ref({ key: 'gender_' }, { type: 'variable' })
+                }),
+                mixin({
+                  name: any('.sayGender'),
+                  rules: rules([
+                    decl({
+                      name: 'gender',
+                      value: ref({ key: 'gender' }, { type: 'variable' })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('mi-test-d'),
+          rules: rules([
+            call({
+              name: ref({ key: '.Person' }, { type: 'mixin' }),
+              args: list([any('person'), any('"Male"')])
+            }),
+            call({
+              name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+      context.opts.collapseNesting = true;
+
+      const evald = await root.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
+      expect(css).not.toContain('mi-test-d .person {\n}');
+    });
+
+    it('keeps sibling collapsed rulesets closed before a later interpolated mixin-ruleset call', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        @a1: foo;
+        @a2: ~".foo";
+        @a4: ~"#foo";
+
+        .b .bb {
+          &.@{a1}-xxx .yyy-@{a1}@{a4} {
+            & @{a2}.bbb {
+              b: 1;
+            }
+          }
+        }
+
+        mi-test-b {
+          .b.bb.foo-xxx.yyy-foo#foo.foo.bbb();
+        }
+
+        @c1: @a1;
+        @c2: bar;
+        @c3: baz;
+
+        #@{c1}-foo {
+          > .@{c2} {
+            .@{c3} {
+              c: c;
+            }
+          }
+        }
+
+        mi-test-c {
+          &-1 {#foo-foo();}
+          &-2 {#foo-foo > .bar();}
+          &-3 {#foo-foo > .bar.baz();}
+        }
+
+        .Person(@name, @gender_) {
+          .@{name} {
+            @gender: @gender_;
+            .sayGender() {
+              gender: @gender;
+            }
+          }
+        }
+
+        mi-test-d {
+          .Person(person, "Male");
+          .person.sayGender();
+        }
+      `).tree;
+      context.root = tree;
+      context.opts.collapseNesting = true;
+
+      const evald = await tree.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
+          b: 1;
+        }
+        mi-test-b {
+          b: 1;
+        }
+        #foo-foo > .bar .baz {
+          c: c;
+        }
+        mi-test-c-1 > .bar .baz {
+          c: c;
+        }
+        mi-test-c-2 .baz {
+          c: c;
+        }
+        mi-test-c-3 {
+          c: c;
+        }
+        mi-test-d {
+          gender: "Male";
+        }
+      `);
     });
   });
 

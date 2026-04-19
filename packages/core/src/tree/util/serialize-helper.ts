@@ -6,6 +6,7 @@ import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
+  forkPrintOptions,
   savePrintState,
   restorePrintState,
   saveArrayState,
@@ -34,7 +35,8 @@ export function hasPrintableBoundaryTrivia(
   }
   const offset = key === 'pre' ? node.location[0] : node.location[3];
   const tokens = key === 'pre' ? trivia.before.get(offset) : trivia.after.get(offset);
-  return Boolean(getPrintableTriviaTokens(tokens, options));
+  const printable = getPrintableTriviaTokens(tokens, options);
+  return Boolean(printable?.some(token => token.image.trim() !== ''));
 }
 
 function hasPrintableTrivia(
@@ -639,23 +641,23 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         /** Re-widen type after accumulated isNode narrowing above */
         const nn = n as Node;
         if (isNode(nn, N.Rules)) {
+          const hasRenderableChild = nn.value.some(child =>
+            child.visible || child.fullRender || hasPrintableTrivia(child, options)
+          );
+          if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
+            continue;
+          }
           const ownReferenceMode = (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
           const childReferenceMode = inReferenceMode || ownReferenceMode;
           const enteringReferenceMode = !inReferenceMode && ownReferenceMode;
           const childReferenceRenderEnabled = childReferenceMode
             ? (enteringReferenceMode ? false : renderEnabled)
             : true;
-          const previewSaved = savePrintState(options, [
-            'depth',
-            'referenceMode',
-            'referenceRenderEnabled',
-            'emittedTrivia'
-          ]);
-          options.depth = options.depth + 1;
-          options.referenceMode = childReferenceMode;
-          options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const previewOut = w.capture(() => nn.toTrimmedString(options));
-          restorePrintState(options, previewSaved);
+          const previewOut = w.capture(() => nn.toTrimmedString(forkPrintOptions(options, {
+            depth: options.depth + 1,
+            referenceMode: childReferenceMode,
+            referenceRenderEnabled: childReferenceRenderEnabled
+          })));
           if (!previewOut && !hasPrintableTrivia(nn, options)) {
             continue;
           }
@@ -698,7 +700,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           ? ''
           : isNode(nn, N.Declaration)
             ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
-            : w.capture(() => nn.toTrimmedString(options));
+            : isNode(nn, N.Rules)
+              ? w.capture(() => nn.toTrimmedString(options))
+              : w.capture(() => nn.toTrimmedString(options));
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (

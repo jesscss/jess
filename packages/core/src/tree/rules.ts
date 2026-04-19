@@ -18,6 +18,7 @@ import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
   type PrintOptions,
+  forkPrintOptions,
   getPrintOptions,
   savePrintState,
   restorePrintState
@@ -34,7 +35,11 @@ import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
 import { Any } from './any.js';
 import { List } from './list.js';
-import { indent, normalizeIndent, serializeRulesContainerInline } from './util/serialize-helper.js';
+import {
+  indent,
+  normalizeIndent,
+  serializeRulesContainerInline
+} from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
@@ -1173,6 +1178,40 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return [];
   }
 
+  private findCallableDescendantsWithinMixinNamespaces(
+    namespaceMixins: MixinEntry[],
+    keys: string[],
+    options: Registries.FindOptions = {}
+  ): MixinEntry[] | undefined {
+    if (keys.length < 2 || namespaceMixins.length === 0) {
+      return undefined;
+    }
+
+    const remainder = keys.slice(1);
+    const orderedNamespaceMixins = [...namespaceMixins].sort((a, b) => {
+      if (!isNode(a, N.Mixin) || !isNode(b, N.Mixin)) {
+        return 0;
+      }
+      return comparePosition(a, b);
+    });
+
+    const resolved: MixinEntry[] = [];
+    for (const entry of orderedNamespaceMixins) {
+      if (!isNode(entry, N.Mixin) || !mixinHasNoRequiredParams(entry)) {
+        continue;
+      }
+      const nested = entry.value.rules.find('mixin', remainder, undefined, {
+        ...options,
+        searchParents: false
+      });
+      if (nested?.length) {
+        resolved.push(...nested);
+      }
+    }
+
+    return resolved;
+  }
+
   /**
    * This wrapper is used so we don't prematurely create a registry
    * just to search it.
@@ -1213,6 +1252,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return [...new Set([...fast, ...indexed])];
     } else if (type === 'mixin' && isArray(keys) && keys.length > 1) {
       const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
+      let compoundPrefixFast: MixinEntry[] | undefined;
+      let mixinNamespaceFast: MixinEntry[] | undefined;
       if (mixinFilterType !== 'Mixin') {
         const namespaceMixins = this.findMixinsFast(keys[0]!, {
           context: options.context,
@@ -1240,13 +1281,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
         }
         if (namespaceMixins.length > 0) {
-          const compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
-          if (compoundPrefixFast !== undefined && compoundPrefixFast.length > 0) {
-            return compoundPrefixFast;
-          }
+          compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
+          mixinNamespaceFast = this.findCallableDescendantsWithinMixinNamespaces(
+            namespaceMixins,
+            keys,
+            options
+          );
         }
       }
-      const fast = this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+      const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+      if (compoundPrefixFast !== undefined && compoundPrefixFast.length > 0) {
+        if (fast !== undefined && fast.length > 0) {
+          return [...new Set([...compoundPrefixFast, ...fast])];
+        }
+        return compoundPrefixFast;
+      }
       if (fast !== undefined) {
         return fast.length > 0 ? fast : undefined;
       }
@@ -1558,6 +1607,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // For child Rules nodes, pass the same depth (don't increment depth)
       // Rules nodes inside Rules nodes are at the same level
       if (isChildRules) {
+        const hasRenderableChild = n.value.some(child =>
+          child.visible || child.fullRender || Boolean(child.pre || child.post)
+        );
+        if (!hasRenderableChild && !(n.pre || n.post)) {
+          continue;
+        }
         const ownReferenceMode = (
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           (n.options as any)?.referenceMode === true
@@ -1567,19 +1622,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const childReferenceRenderEnabled = childReferenceMode
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
-        const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-        const childEmittedTrivia = options.emittedTrivia;
-        options.depth = depth;
-        options.referenceMode = childReferenceMode;
-        options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const previewOut = w.capture(() => n.toTrimmedString(options));
-        options.emittedTrivia = childEmittedTrivia;
+        const previewOut = w.capture(() => n.toTrimmedString(forkPrintOptions(options, {
+          depth,
+          referenceMode: childReferenceMode,
+          referenceRenderEnabled: childReferenceRenderEnabled
+        })));
         let childRule: string | undefined;
         if (previewOut) {
           closeRenderedFramesToBaseline();
+          const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+          const childEmittedTrivia = options.emittedTrivia;
+          options.depth = depth;
+          options.referenceMode = childReferenceMode;
+          options.referenceRenderEnabled = childReferenceRenderEnabled;
           childRule = w.capture(() => n.toTrimmedString(options));
+          options.emittedTrivia = childEmittedTrivia;
+          restorePrintState(options, childSaved);
         }
-        restorePrintState(options, childSaved);
         if (!childRule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
           continue;
         }

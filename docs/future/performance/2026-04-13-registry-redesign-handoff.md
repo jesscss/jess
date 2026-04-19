@@ -43,6 +43,10 @@ Current outer-proof buckets:
   - `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
   - `tests-unit/mixins-guards/mixins-guards.less`
   - `tests-unit/mixins-interpolated/mixins-interpolated.less`
+    current focused repro is now reduced to the empty `mi-test-d .person {}`
+    leak in a combined core proof. Do **not** patch this as a one-off hidden
+    ruleset visibility tweak without checking the render-vs-canonical
+    serialization contract below first.
   - `tests-unit/property-accessors/property-accessors.less`
     treat the old Less 4.x expectation as fixture drift, not a Jess core bug:
     declarations stay in authored order. Do not "fix" core by hoisting or
@@ -178,6 +182,49 @@ Use this as the guardrail for ambiguous nodes:
 The same principle applies to quoted forms, references, URLs, interpolation,
 and any other node where canonical source syntax is not the same as evaluated
 output.
+
+## Serialization Contract Decision Needed
+
+There is an active architectural blur between canonical serialization and
+evaluated output serialization.
+
+Current evidence in code:
+
+- [node-base.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/node-base.ts)
+  documents `toString()` / `toTrimmedString()` as canonical/source-oriented
+  serialization, and `render(context)` as the evaluated output path.
+- But `render(context)` currently still flows through
+  `resolved.toTrimmedString(prepared)` at
+  [node-base.ts:1267](/Users/matthew/git/oss/jess/packages/core/src/tree/node-base.ts:1267).
+- Output/container paths still call `toTrimmedString()` directly in several
+  render-sensitive seams, especially:
+  - [serialize-helper.ts:656](/Users/matthew/git/oss/jess/packages/core/src/tree/util/serialize-helper.ts:656)
+  - [serialize-helper.ts:702](/Users/matthew/git/oss/jess/packages/core/src/tree/util/serialize-helper.ts:702)
+  - [rules.ts:1625](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts:1625)
+  - [rules.ts:1638](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts:1638)
+
+Working decision to preserve unless explicitly changed:
+
+- `toTrimmedString()` is canonical/authored node-body serialization.
+- `toString()` is canonical/authored full-node serialization including outer
+  trivia.
+- Canonical serializers may serialize non-visible nodes if that is required for
+  source round-tripping or canonical AST inspection.
+- Final evaluated output should not rely on that behavior implicitly.
+- If non-visible nodes are ever allowed into evaluated output, it must happen
+  through an explicit render-aware path, not by accidentally falling through to
+  canonical `toTrimmedString()`.
+
+Practical guidance for the next fix:
+
+- Treat empty-frame leaks like `mi-test-d .person {}` as likely evidence that an
+  output path is still using canonical serialization, not necessarily that the
+  node's canonical serializer is wrong.
+- Before changing visibility checks on a node type, first ask whether the caller
+  should be using `render(...)` or another output-aware child emission path
+  instead of `toTrimmedString()`.
+- Any local fix in this area should leave a clearer boundary behind, not widen
+  the overlap between canonical serializers and evaluated output.
 
 Implementation note: the current `context.printState <-> printState.context`
 cycle is transitional convenience state, not target architecture. Track 1C
