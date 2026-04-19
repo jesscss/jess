@@ -27,9 +27,13 @@ Current outer-proof buckets:
   - `tests-unit/import/import-reference.less`
     no longer throws `ReferenceError: 'fallback' is not defined`; unquoted
     indexed refs (the parser-normalized at-rule-prelude shape) now consult
-    live runtime var bindings
+    live runtime var bindings. The remaining outer diff in this fixture is
+    comment preservation only; the `.b` / `.b .c` grouping split is fixed in
+    focused core coverage by keeping transparent mixin/import `Rules` wrappers
+    from interleaving later declarations after nested containers.
   - `tests-unit/import/import-remote.less`
-    same `fallback` runtime failure removed by the indexed-ref live-binding fix
+    same `fallback` runtime failure removed by the indexed-ref live-binding fix;
+    focused outer proof is green again after rebuilding `core` and `jess`
 - likely semantic regressions worth reproing in focused core tests first
   - `tests-unit/media/media.less`
     fixed in Jess terms: no nested `@media` / `@supports` query merging should
@@ -40,7 +44,16 @@ Current outer-proof buckets:
   - `tests-unit/mixins-guards/mixins-guards.less`
   - `tests-unit/mixins-interpolated/mixins-interpolated.less`
   - `tests-unit/property-accessors/property-accessors.less`
+    treat the old Less 4.x expectation as fixture drift, not a Jess core bug:
+    declarations stay in authored order. Do not "fix" core by hoisting or
+    regrouping late declarations ahead of nested selectors just because
+    property-accessor values resolve later. The linked Less.js alpha fixture
+    should track Jess output, with the old CSS copied into `legacy/`.
   - `tests-unit/rulesets/rulesets.less`
+    treat the old Less 4.x expectation as fixture drift, not a Jess core bug:
+    declarations stay in authored order relative to deeper nested frames. The
+    linked Less.js alpha fixture should track Jess output, with the old CSS
+    copied into `legacy/`.
   - `tests-unit/functions/functions.less`
     now green after focused parser/runtime fixes:
     - fixed: `color(plum)` now parses through shared color-token handling and

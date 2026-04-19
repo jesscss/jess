@@ -2,7 +2,6 @@ import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
-import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
@@ -52,7 +51,7 @@ function captureNodeBoundary(
   options: FinalPrintOptions
 ): string {
   const writer = options.writer!;
-  const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as TriviaMap | undefined;
+  const trivia: TriviaMap | undefined = options.trivia ?? node.treeContext?.opts?.trivia;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
@@ -75,11 +74,12 @@ function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): b
   if (!sel || sel instanceof Nil) {
     return false;
   }
-  if (isBareAmpNode(sel as Selector)) {
+  if (isBareAmpNode(sel)) {
     return true;
   }
   if (isNode(sel, N.ComplexSelector) || isNode(sel, N.CompoundSelector)) {
-    return sel.value.length === 1 && isBareAmpNode(sel.value[0] as Selector);
+    const [first] = sel.value;
+    return sel.value.length === 1 && first !== undefined && isBareAmpNode(first);
   }
   if (isNode(sel, N.SelectorList)) {
     return (sel as SelectorList).value.every((item: Selector) => isBareAmpersandSelectorForSerialize(item));
@@ -123,7 +123,7 @@ function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boole
   return false;
 }
 
-function flattenVisibleRulesForRender(
+export function flattenVisibleRulesForRender(
   rules: Rules,
   options: Pick<FinalPrintOptions, 'context' | 'trivia'>,
   allowTransparentRulesetFlatten: boolean = false
@@ -163,7 +163,7 @@ function flattenVisibleRulesForRender(
           pushContainer(child);
           continue;
         }
-        iterateRules(child, allowTransparentFlatten, forceLeadingLeaves);
+        iterateRules(child, allowTransparentFlatten, true);
         continue;
       }
       if (

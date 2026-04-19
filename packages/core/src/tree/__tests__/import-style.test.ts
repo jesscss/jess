@@ -2786,13 +2786,24 @@ describe('Style import', () => {
 
       const evald = await node.eval(localContext);
       const out = evald.toString({ context: localContext });
-      expect(out).toContain('.b {');
-      expect(out).toContain('color: red;');
-      expect(out).toContain('color: green;');
-      expect(out).toContain('.b .c {');
-      expect(out).toContain('.b:hover {');
-      expect(out).toContain('.b + .b {');
-      expect(out).toContain('.b + .b .sub {');
+      expect(out).toBeString(`
+        .b {
+          color: red;
+          color: green;
+        }
+        .b .c {
+          color: green;
+        }
+        .b:hover {
+          color: green;
+        }
+        .b + .b {
+          color: green;
+        }
+        .b + .b .sub {
+          color: green;
+        }
+      `);
       expect(out).not.toContain('.only-with-visible');
     });
 
