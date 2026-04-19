@@ -89,6 +89,25 @@ describe('reference', () => {
       expect(context.printState.writer).toBeUndefined();
     });
 
+    it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
+      const mixinDef = mixin({
+        name: any('.fast-mixin'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const root = rules([mixinDef]);
+      const evald = await root.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
+
+      expect(resolved.type).toBe('MixinCollection');
+      expect(resolved.value).toHaveLength(1);
+      expect(resolved.value[0]).not.toBe(mixinDef);
+      expect(resolved.value[0]!.type).toBe('Mixin');
+      expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+    });
+
     it('should get a variable from scope', async () => {
       let node = rules([
         vardecl({

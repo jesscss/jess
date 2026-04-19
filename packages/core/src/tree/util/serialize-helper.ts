@@ -6,6 +6,7 @@ import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
   OutputWriter,
+  getPrintOptions,
   savePrintState,
   restorePrintState,
   saveArrayState,
@@ -152,6 +153,10 @@ export function flattenVisibleRulesForRender(
     forceLeadingLeaves: boolean = false
   ) => {
     for (const child of current.value) {
+      const isEvaluatedDefinitionNode = current.evaluated && isNode(child, N.Mixin | N.VarDeclaration);
+      if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
+        continue;
+      }
       if (isNode(child, N.Rules)) {
         if (!child.visible && !child.fullRender && !hasPrintableTrivia(child, options)) {
           continue;
@@ -164,7 +169,7 @@ export function flattenVisibleRulesForRender(
           pushContainer(child);
           continue;
         }
-        iterateRules(child, allowTransparentFlatten, true);
+        iterateRules(child, allowTransparentFlatten, forceLeadingLeaves);
         continue;
       }
       if (
@@ -657,10 +662,22 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             'referenceMode',
             'referenceRenderEnabled'
           ]);
+          const previewInFramesLength = options.inFrames.length;
+          const previewTreeFramesLength = options.treeFrames.length;
+          const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
+          const previewFrameHeadersLength = options.frameHeaders.length;
+          const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
           options.depth = options.depth + 1;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
           const previewOut = w.capture(() => nn.toTrimmedString(getPrintOptions(options)));
+          options.inFrames.length = previewInFramesLength;
+          options.treeFrames.length = previewTreeFramesLength;
+          options.lastRenderedFrames.length = previewLastRenderedFramesLength;
+          options.frameHeaders.length = previewFrameHeadersLength;
+          if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
+            options.composedSelectorStack.length = previewComposedSelectorStackLength;
+          }
           restorePrintState(options, previewSaved);
           if (!previewOut && !hasPrintableTrivia(nn, options)) {
             continue;

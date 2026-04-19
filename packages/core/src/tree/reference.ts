@@ -1339,6 +1339,14 @@ function createDirectCallableReferenceResult(
     if (!isNode(item, N.Mixin | N.Ruleset)) {
       return cast(undefined);
     }
+    if (referenceNode.options?.type === 'mixin-ruleset') {
+      item.frozen = true;
+      if ('sourceNode' in item && isNode(item.sourceNode)) {
+        item.sourceNode.frozen = true;
+      }
+      callableItems.push(preserveRulesLikeValue(item));
+      continue;
+    }
     callableItems.push(item);
   }
   const collection = new MixinCollection(callableItems);
@@ -1351,6 +1359,16 @@ function finalizeDirectNodeReferenceResult(
   context: Context
 ): Node {
   context.popReference();
+  if (
+    referenceNode.options?.type === 'mixin-ruleset'
+    && isNode(result, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+  ) {
+    result.frozen = true;
+    if ('sourceNode' in result && isNode(result.sourceNode)) {
+      result.sourceNode.frozen = true;
+    }
+    return preserveRulesLikeValue(result);
+  }
   return result;
 }
 
@@ -1382,7 +1400,9 @@ function finalizeRuntimeVarBindingResult(
       context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
     }
     try {
-      return evaluateReferenceValueNode(binding.value, context);
+      return evaluateReferenceValueNode(binding.value, context, {
+        preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset'
+      });
     } catch (error) {
       context.rulesContext = savedRulesContext;
       if (bindingSource) {
@@ -1476,10 +1496,7 @@ function finalizeDeclarationReferenceResult(
     referenceNode.options?.preserveRulesLike === true
     && isNode(declaration.value.value, N.Rules | N.Collection)
   ) {
-    const directValue = declaration.value.value;
-    const preservedValue = directValue.clone(false) as Node & { sourceNode?: Node };
-    preservedValue.parent = directValue.parent;
-    preservedValue.sourceNode = directValue;
+    const preservedValue = preserveRulesLikeValue(declaration.value.value);
     return preservedValue;
   }
   return withReferenceSearchScope(context, declaration, () => pipe(
@@ -1494,6 +1511,13 @@ function finalizeDeclarationReferenceResult(
       isMergedAssignDeclaration(declaration)
     )
   ));
+}
+
+function preserveRulesLikeValue<T extends Node>(directValue: T): T {
+  const preservedValue = directValue.clone(false) as T & { sourceNode?: Node };
+  preservedValue.parent = directValue.parent;
+  preservedValue.sourceNode = directValue;
+  return preservedValue;
 }
 
 function evaluateCalcSlashListValue(
@@ -1554,8 +1578,21 @@ function evaluateCalcSlashListValue(
 
 function evaluateReferenceValueNode(
   declValue: Node,
-  context: Context
+  context: Context,
+  options: {
+    preserveRulesLike?: boolean;
+  } = {}
 ): MaybePromise<Node> {
+  if (
+    options.preserveRulesLike === true
+    && isNode(declValue, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+  ) {
+    declValue.frozen = true;
+    if ('sourceNode' in declValue && isNode(declValue.sourceNode)) {
+      declValue.sourceNode.frozen = true;
+    }
+    return preserveRulesLikeValue(declValue);
+  }
   const calcSlashValue = evaluateCalcSlashListValue(declValue, context);
   if (calcSlashValue !== undefined) {
     return calcSlashValue;

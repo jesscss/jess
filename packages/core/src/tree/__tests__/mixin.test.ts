@@ -3049,13 +3049,10 @@ describe('Mixin', () => {
 
       const evald = await node.eval(context);
       const css = evald.toString({ collapseNesting: true });
-
-      expect(css).toContain('.inner-foo()');
-      expect(css).toContain('.inner-bar()');
-      expect(css).toContain('.one {\n  .inner-foo() {\n    value: $name;\n  }\n  value: foo;');
-      expect(css).toContain('.two {\n  .inner-bar() {\n    value: $name;\n  }\n  value: bar;');
-      expect(css).not.toContain('.one {\n  .inner-bar()');
-      expect(css).not.toContain('.two {\n  .inner-foo()');
+      expect(css).toContain('.one {\n  value: foo;\n}');
+      expect(css).toContain('.two {\n  value: bar;\n}');
+      expect(css).not.toContain('.inner-foo()');
+      expect(css).not.toContain('.inner-bar()');
     });
 
     it('keeps ampersand append selectors isolated across repeated mixin calls', async () => {

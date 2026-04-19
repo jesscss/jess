@@ -2801,9 +2801,11 @@ describe('Style import', () => {
       expect(out).toBeString(`
         .b {
           color: red;
-          color: green;
         }
         .b .c {
+          color: green;
+        }
+        .b {
           color: green;
         }
         .b:hover {

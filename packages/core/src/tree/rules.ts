@@ -1585,6 +1585,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.referenceMode = true;
     }
     for (const n of value) {
+      const isEvaluatedDefinitionNode = this.evaluated && isNode(n, N.Mixin | N.VarDeclaration);
+      if (isEvaluatedDefinitionNode && !Boolean(n.pre || n.post)) {
+        continue;
+      }
       if (!n.visible && !n.fullRender) {
         emitLeadingBlockCommentForNode(n);
         continue;
@@ -1622,10 +1626,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
         const previewSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+        const previewInFramesLength = options.inFrames.length;
+        const previewTreeFramesLength = options.treeFrames.length;
+        const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
+        const previewFrameHeadersLength = options.frameHeaders.length;
+        const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const previewOut = w.capture(() => n.toTrimmedString(getPrintOptions(options)));
+        options.inFrames.length = previewInFramesLength;
+        options.treeFrames.length = previewTreeFramesLength;
+        options.lastRenderedFrames.length = previewLastRenderedFramesLength;
+        options.frameHeaders.length = previewFrameHeadersLength;
+        if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
+          options.composedSelectorStack.length = previewComposedSelectorStackLength;
+        }
         restorePrintState(options, previewSaved);
         let childRule: string | undefined;
         if (previewOut) {
