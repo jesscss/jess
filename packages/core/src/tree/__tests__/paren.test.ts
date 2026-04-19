@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, paren, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, list, num, paren, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 
 describe('Paren', () => {
   let context: Context;
@@ -50,6 +50,16 @@ describe('Paren', () => {
     const resolved = await paren(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
 
     expect(`${resolved}`).toBe('(foo)');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('normalizes escaped semicolon lists to commas on eval', async () => {
+    const resolved = await paren(
+      list([num(7), num(8), num(9)], { sep: ';' }),
+      { escaped: true }
+    ).resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('7, 8, 9');
     expect(context.printState.writer).toBeUndefined();
   });
 });

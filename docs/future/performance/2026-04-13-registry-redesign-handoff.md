@@ -42,7 +42,7 @@ Current outer-proof buckets:
   - `tests-unit/property-accessors/property-accessors.less`
   - `tests-unit/rulesets/rulesets.less`
   - `tests-unit/functions/functions.less`
-    narrowed after focused parser/runtime fixes:
+    now green after focused parser/runtime fixes:
     - fixed: `color(plum)` now parses through shared color-token handling and
       Less `color()` normalizes parsed named-color nodes to hex output
     - fixed: `hsv(...)` now serializes with Less-compatible hex output
@@ -53,8 +53,8 @@ Current outer-proof buckets:
       but generic calls are not widened into a general custom-value eval path
     - fixture drift fixed in linked Less.js alpha data: `--e:` now matches
       Jess's no-space custom-property surface
-    - remaining semantic drift: comma-vs-semicolon list preservation for
-      `list-3`
+    - fixed: escaped semicolon lists now normalize to commas when lowered out
+      of `~(...)` runtime wrappers, which restores `list-3`
   - `tests-unit/ie-filters/ie-filters.less`
   - `tests-unit/nesting/nesting.less`
 - extend-path regressions / warning drift

@@ -4,6 +4,7 @@ import { Expression } from './expression.js';
 import { Operation } from './operation.js';
 import { Node, defineType, F_NON_STATIC } from './node.js';
 import { Dimension } from './dimension.js';
+import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 // import type { Context } from '../context.js'
@@ -105,6 +106,9 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           return evaluatedGuardBool;
         }
         if (this._options?.escaped && value instanceof Node) {
+          if (value instanceof List && value.options?.sep === ';') {
+            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+          }
           return value;
         }
         /**
