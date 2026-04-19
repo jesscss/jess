@@ -101,6 +101,45 @@ describe('Functions', () => {
       expect(css).toContain('border-width: 5');
     });
 
+    it('should keep Less harness custom functions working when a less-compat plugin instance is reused across compilers', async () => {
+      const sharedCompatPlugin = lessCompatPlugin({
+        plugins: [lessHarnessFunctionsPlugin]
+      });
+
+      const firstRoot = makeTmpDir();
+      const firstLessPath = path.join(firstRoot, 'first.less');
+      fs.writeFileSync(firstLessPath, '.first { color: red; }', 'utf8');
+
+      const firstCompiler = new Compiler({
+        compile: {
+          plugins: [lessPlugin(), sharedCompatPlugin]
+        }
+      });
+      await firstCompiler.compile(firstLessPath);
+
+      const secondRoot = makeTmpDir();
+      const secondLessPath = path.join(secondRoot, 'functions.less');
+      fs.writeFileSync(secondLessPath, `
+        .test {
+          color: _color("evil red");
+          width: increment(15);
+          border-width: add(2, 3);
+        }
+      `, 'utf8');
+
+      const secondCompiler = new Compiler({
+        compile: {
+          plugins: [lessPlugin(), sharedCompatPlugin]
+        }
+      });
+
+      const { tree, context } = await secondCompiler.compile(secondLessPath);
+      const css = tree.toString({ context });
+      expect(css).toContain('color: #660000');
+      expect(css).toContain('width: 16');
+      expect(css).toContain('border-width: 5');
+    });
+
     it('should handle lighten function', async () => {
       const lessCode = `
         .test {

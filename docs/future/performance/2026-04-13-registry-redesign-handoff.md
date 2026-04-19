@@ -55,6 +55,9 @@ Current outer-proof buckets:
       Jess's no-space custom-property surface
     - fixed: escaped semicolon lists now normalize to commas when lowered out
       of `~(...)` runtime wrappers, which restores `list-3`
+    - fixed: reused `less-compat` plugin instances now get cloned per compiler
+      build, so Less harness helper functions like `_color`, `increment`, and
+      `add` do not disappear after earlier files seed stateful compat visitors
   - `tests-unit/ie-filters/ie-filters.less`
   - `tests-unit/nesting/nesting.less`
 - extend-path regressions / warning drift
