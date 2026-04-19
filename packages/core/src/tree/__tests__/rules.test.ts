@@ -9,6 +9,7 @@ import {
   spaced,
   any,
   call,
+  dimension,
   ref,
   mixin,
   Node,
@@ -161,6 +162,45 @@ describe('Rules', () => {
     expect(first).toBe('color: red;\n');
     expect(second).toBe('color: red;\n');
     expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
+  it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
+    const root = rules([
+      ruleset({
+        selector: any('.a'),
+        rules: rules([
+          decl({ name: 'width', value: dimension([10, 'px']) })
+        ])
+      }),
+      ruleset({
+        selector: any('.b'),
+        rules: rules([
+          decl({ name: 'width', value: dimension([20, 'px']) })
+        ])
+      }),
+      ruleset({
+        selector: any('.c'),
+        rules: rules([
+          decl({ name: 'width', value: dimension([30, 'px']) })
+        ])
+      })
+    ]);
+
+    const evald = await root.eval(context);
+    context.root = evald as Rules;
+    context.rulesContext = evald as Rules;
+
+    expect(evald.toString({ context })).toBeString(`
+      .a {
+        width: 10px;
+      }
+      .b {
+        width: 20px;
+      }
+      .c {
+        width: 30px;
+      }
+    `);
   });
 
   describe('Scope / lookups', () => {

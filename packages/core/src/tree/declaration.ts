@@ -182,7 +182,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Capture value output to normalize spacing after ':'
       let valOut = '';
       try {
-        valOut = w.capture(() => value.toString(options));
+        valOut = options.context
+          ? w.capture(() => value.render(options.context!, options))
+          : w.capture(() => value.toString(options));
       } catch (error: unknown) {
         throw error;
       }

@@ -1265,7 +1265,19 @@ export abstract class Node<
    * state. This is the live-binding render path, not a source serializer.
    */
   render(context: Context, options?: PrintOptions): string {
-    const prepared = prepareContextPrintState(context, options);
+    const canReuseActivePrintState = (
+      options?.context === context
+      && (
+        options.writer !== undefined
+        || options.inFrames !== undefined
+        || options.treeFrames !== undefined
+        || options.lastRenderedFrames !== undefined
+        || options.frameHeaders !== undefined
+      )
+    );
+    const prepared = canReuseActivePrintState
+      ? getPrintOptions(options)
+      : prepareContextPrintState(context, options);
     const resolved = this.resolve(context);
     if (!isThenable(resolved)) {
       return resolved.toTrimmedString(prepared);

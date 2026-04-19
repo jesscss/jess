@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, dimension, list, num, op, paren, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, call, decl, dimension, list, num, op, paren, ref, rules, ruleset, type Rules as RulesClass, vardecl } from '../index.js';
 
 describe('Operation', () => {
   let context: Context;
@@ -159,5 +159,88 @@ describe('Operation', () => {
     expect(resolvedSum.toTrimmedString()).toBe('calc(100% - 30px)');
     expect(resolvedOffset.toTrimmedString()).toBe('calc(100% - 40px)');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('reduces calc arithmetic on the evaluated tree output path', async () => {
+    const root = rules([
+      vardecl({
+        name: any('sum'),
+        value: op([dimension([10, 'px']), '+', dimension([20, 'px'])])
+      }),
+      vardecl({
+        name: any('var'),
+        value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
+      }),
+      ruleset({
+        selector: any('.probe'),
+        rules: rules([
+          decl({
+            name: 'margin',
+            value: call({
+              name: 'calc',
+              args: list([op([dimension([10, 'px']), '*', num(2)])])
+            })
+          }),
+          decl({
+            name: 'min-height',
+            value: call({
+              name: 'calc',
+              args: list([
+                op([
+                  paren(paren(dimension([10, 'vh']))),
+                  '+',
+                  call({
+                    name: 'calc',
+                    args: list([paren(dimension([5, 'vh']))])
+                  })
+                ])
+              ])
+            })
+          }),
+          decl({
+            name: 'root',
+            value: call({
+              name: 'calc',
+              args: list([
+                op([
+                  dimension([100, '%']),
+                  '-',
+                  ref('sum', { type: 'variable' })
+                ])
+              ])
+            })
+          }),
+          decl({
+            name: 'height',
+            value: call({
+              name: 'calc',
+              args: list([
+                op([
+                  dimension([50, '%']),
+                  '+',
+                  paren(op([
+                    ref('var', { type: 'variable' }),
+                    '-',
+                    dimension([20, 'px'])
+                  ]))
+                ])
+              ])
+            })
+          })
+        ])
+      })
+    ]);
+
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const css = evald.toString({ context });
+
+    expect(css).toContain('.probe {');
+    expect(css).toContain('margin: 20px;');
+    expect(css).toContain('min-height: 15vh;');
+    expect(css).toContain('root: calc(100% - 30px);');
+    expect(css).toContain('height: calc(50% + (25vh - 20px));');
   });
 });

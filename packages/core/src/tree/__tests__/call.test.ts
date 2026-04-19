@@ -49,7 +49,7 @@ describe('Call', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('keeps direct arithmetic and nested calc calls intact inside calc()', () => {
+  it('reduces safe direct arithmetic while preserving nested calc calls when rendering calc()', () => {
     const direct = call({
       name: 'calc',
       args: list([
@@ -70,7 +70,7 @@ describe('Call', () => {
       ])
     });
 
-    expect(direct.render(context)).toBe('calc(10px * 2)');
+    expect(direct.render(context)).toBe('calc(20px)');
     expect(nested.render(context)).toBe('calc(10vh + calc(5vh))');
   });
 

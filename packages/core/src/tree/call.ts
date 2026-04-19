@@ -71,7 +71,11 @@ export class Call extends Node<CallValue, CallOptions> {
       || (isNode(name, N.Reference) && name.options?.type === 'function');
   }
 
-  private serializeRenderedArgs(args: List<Node> | undefined, options: PrintOptions): string {
+  private serializeRenderedArgs(
+    args: List<Node> | undefined,
+    context: Context,
+    options: PrintOptions
+  ): string {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     const mark = w.mark();
@@ -85,11 +89,11 @@ export class Call extends Node<CallValue, CallOptions> {
       let argOut: string;
       if (arg instanceof Paren && arg.options?.escaped) {
         const inner = arg.value
-          ? w.capture(() => arg.value!.toTrimmedString(printOptions))
+          ? w.capture(() => arg.value!.render(context, printOptions))
           : '';
         argOut = `(${inner.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, '')})`;
       } else {
-        argOut = w.capture(() => arg.toTrimmedString(printOptions));
+        argOut = w.capture(() => arg.render(context, printOptions));
       }
       w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
       if (i < last) {
@@ -116,7 +120,7 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add('?');
     }
     w.add('(');
-    this.serializeRenderedArgs(callNode.value.args, prepared);
+    this.serializeRenderedArgs(callNode.value.args, context, prepared);
     w.add(')');
     if (callNode.options?.markImportant) {
       w.add(' !important');
@@ -185,7 +189,19 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override render(context: Context, options?: PrintOptions): string {
-    const prepared = prepareContextPrintState(context, options);
+    const canReuseActivePrintState = (
+      options?.context === context
+      && (
+        options.writer !== undefined
+        || options.inFrames !== undefined
+        || options.treeFrames !== undefined
+        || options.lastRenderedFrames !== undefined
+        || options.frameHeaders !== undefined
+      )
+    );
+    const prepared = canReuseActivePrintState
+      ? getPrintOptions(options)
+      : prepareContextPrintState(context, options);
     if (typeof this.value.name === 'string') {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
