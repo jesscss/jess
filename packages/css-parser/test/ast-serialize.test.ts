@@ -122,6 +122,21 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('plain identifier color function args normalize to Color nodes', () => {
+    const { tree } = cssParser.parse('a { color: color(plum); }');
+    const out = serializeTypes(tree);
+
+    expect(out).toContainString(`
+      (Call
+        name: 'color'
+        args:
+          (List
+            [
+              (Color
+                node: 'plum'
+    `);
+  });
+
   test('lists and sequences in values', () => {
     const { tree } = cssParser.parse('a{ m: 1, 2, 3; n: 1 2 3 }');
     const out = serializeTypes(tree);

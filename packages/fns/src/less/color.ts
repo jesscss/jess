@@ -13,15 +13,23 @@ export default defineFunction(
   'color',
   function(c: Color | Quoted) {
     if (c instanceof Color) {
+      const sourceNode = c.value.node;
+      const namedColor = typeof sourceNode === 'string' ? colors[sourceNode.toLowerCase()] : undefined;
+      if (namedColor) {
+        return new Color({
+          format: ColorFormat.HEX,
+          rgb: c.rgb,
+          alpha: c.alpha
+        });
+      }
       return c;
     }
-    // c is Quoted - get the string value
+    // Quoted/Any values both normalize through valueOf()
     const value = c.valueOf();
     // Check if it's a color keyword
     const colorValue = colors[value];
     if (colorValue) {
       return new Color({
-        node: value,
         format: ColorFormat.HEX,
         rgb: colorValue,
         alpha: 1

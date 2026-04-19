@@ -53,6 +53,16 @@ describe('functionCallArgs', () => {
     expect(out).toContainString('(Call');
     expect(out).toContainString('(Sequence');
   });
+
+  it('normalizes plain color keywords in function args to Color nodes', () => {
+    const { errors, tree } = parser.parse('color(plum)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString("type: 'function'");
+    expect(out).toContainString("(Color");
+    expect(out).toContainString("node: 'plum'");
+  });
 });
 
 describe('knownFunctions', () => {

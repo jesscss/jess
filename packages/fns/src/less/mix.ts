@@ -1,5 +1,6 @@
 import {
   Color,
+  ColorFormat,
   Dimension,
   defineFunction
 } from '@jesscss/core';
@@ -30,7 +31,7 @@ const mix = defineFunction(
     ];
 
     const out = new Color(rgba);
-    out.options.format = color1.options.format;
+    out.options.format = rgba[3]! < 1 ? ColorFormat.RGB : color1.options.format;
     return out;
   },
   {

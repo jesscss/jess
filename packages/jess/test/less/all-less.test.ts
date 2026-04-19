@@ -11,6 +11,47 @@ import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { type Rules } from '@jesscss/core';
 
+const readNumericFunctionArg = (value: any): number => {
+  if (typeof value?.value === 'number') {
+    return value.value;
+  }
+  if (typeof value?.value?.number === 'number') {
+    return value.value.number;
+  }
+  const primitive = value?.valueOf?.() ?? value;
+  return Number(primitive);
+};
+
+const readStringFunctionArg = (value: any): string => {
+  if (typeof value?.value === 'string') {
+    return value.value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  if (typeof value?.value?.value === 'string') {
+    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  const primitive = value?.valueOf?.() ?? value;
+  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
+};
+
+const lessHarnessFunctionsPlugin = {
+  install(less: any) {
+    less.functions.functionRegistry.addMultiple({
+      add(a: any, b: any) {
+        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
+      },
+      increment(a: any) {
+        return readNumericFunctionArg(a) + 1;
+      },
+      _color(str: any) {
+        if (readStringFunctionArg(str) === 'evil red') {
+          return '#660000';
+        }
+        return undefined;
+      }
+    });
+  }
+};
+
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
 
@@ -19,7 +60,9 @@ const baseCompiler = new Compiler({
   compile: {
     plugins: [
       lessPlugin(),
-      lessCompatPlugin()
+      lessCompatPlugin({
+        plugins: [lessHarnessFunctionsPlugin]
+      })
     ]
   }
 });

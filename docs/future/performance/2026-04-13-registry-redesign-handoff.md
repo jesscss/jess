@@ -41,6 +41,14 @@ Current outer-proof buckets:
   - `tests-unit/property-accessors/property-accessors.less`
   - `tests-unit/rulesets/rulesets.less`
   - `tests-unit/functions/functions.less`
+    narrowed after focused parser/runtime fixes:
+    - fixed: `color(plum)` now parses through shared color-token handling and
+      Less `color()` normalizes parsed named-color nodes to hex output
+    - fixed: `hsv(...)` now serializes with Less-compatible hex output
+    - fixed: `mix(#ff0000, transparent)` now serializes as `rgba(...)`
+    - remaining: `hsl(380, 150%, 150%)` clamp canonicalization,
+      custom-property `if()` empty-output behavior, and comma-vs-semicolon
+      list preservation for `@list-2`
   - `tests-unit/ie-filters/ie-filters.less`
   - `tests-unit/nesting/nesting.less`
 - extend-path regressions / warning drift

@@ -1,9 +1,68 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+
+const readNumericFunctionArg = (value: any): number => {
+  if (typeof value?.value === 'number') {
+    return value.value;
+  }
+  if (typeof value?.value?.number === 'number') {
+    return value.value.number;
+  }
+  const primitive = value?.valueOf?.() ?? value;
+  return Number(primitive);
+};
+
+const readStringFunctionArg = (value: any): string => {
+  if (typeof value?.value === 'string') {
+    return value.value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  if (typeof value?.value?.value === 'string') {
+    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
+  }
+  const primitive = value?.valueOf?.() ?? value;
+  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
+};
+
+const lessHarnessFunctionsPlugin = {
+  install(less: any) {
+    less.functions.functionRegistry.addMultiple({
+      add(a: any, b: any) {
+        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
+      },
+      increment(a: any) {
+        return readNumericFunctionArg(a) + 1;
+      },
+      _color(str: any) {
+        if (readStringFunctionArg(str) === 'evil red') {
+          return '#660000';
+        }
+        return undefined;
+      }
+    });
+  }
+};
+
+const tempDirs: string[] = [];
+
+const makeTmpDir = () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-functions-'));
+  tempDirs.push(dir);
+  return dir;
+};
 
 describe('Functions', () => {
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
@@ -11,6 +70,37 @@ describe('Functions', () => {
   });
 
   describe('Built-in Color Functions', () => {
+    it('should support Less harness custom functions through less-compat registry setup', async () => {
+      const compilerWithCompatFunctions = new Compiler({
+        compile: {
+          plugins: [
+            lessPlugin(),
+            lessCompatPlugin({
+              plugins: [lessHarnessFunctionsPlugin]
+            })
+          ]
+        }
+      });
+
+      const lessCode = `
+        .test {
+          color: _color("evil red");
+          width: increment(15);
+          border-width: add(2, 3);
+        }
+      `;
+
+      const root = makeTmpDir();
+      const lessPath = path.join(root, 'functions.less');
+      fs.writeFileSync(lessPath, lessCode, 'utf8');
+
+      const { tree, context } = await compilerWithCompatFunctions.compile(lessPath);
+      const css = tree.toString({ context });
+      expect(css).toContain('color: #660000');
+      expect(css).toContain('width: 16');
+      expect(css).toContain('border-width: 5');
+    });
+
     it('should handle lighten function', async () => {
       const lessCode = `
         .test {
@@ -22,6 +112,17 @@ describe('Functions', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
       expect(css).toContain('background:');
+    });
+
+    it('should normalize parsed color keywords in color()', async () => {
+      const lessCode = `
+        .test {
+          color: color(plum);
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('color: #dda0dd');
     });
 
     it('should handle darken function', async () => {
@@ -79,6 +180,28 @@ describe('Functions', () => {
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('color:');
+    });
+
+    it('should serialize hsv() using Less-compatible hex output', async () => {
+      const lessCode = `
+        .test {
+          color: hsv(5, 50%, 30%);
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('color: #4d2926');
+    });
+
+    it('should serialize transparent mix() results as rgba()', async () => {
+      const lessCode = `
+        .test {
+          color: mix(#ff0000, transparent);
+        }
+      `;
+
+      const css = await compiler.renderString(lessCode, { language: 'less' });
+      expect(css).toContain('color: rgba(255, 0, 0, 0.5)');
     });
   });
 

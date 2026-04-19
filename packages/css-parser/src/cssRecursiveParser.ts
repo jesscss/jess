@@ -524,7 +524,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       new Dimension(v, undefined, this.getLocationInfo(token), this.context);
     const getNumber = (v: number) => new Num(v, undefined, this.getLocationInfo(token), this.context);
 
-    if (this.matchToken(token, T.Ident)) {
+    if (this.matchToken(token, T.Ident) || this.matchToken(token, T.PlainIdent)) {
       const colorKey = tokValue.toLowerCase();
       if (colorKey === 'transparent') {
         return new Color(
