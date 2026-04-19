@@ -5,6 +5,7 @@ import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { prepareContextPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
@@ -65,6 +66,73 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
 export class Call extends Node<CallValue, CallOptions> {
   override _requiredSemi = true;
 
+  private isPlainFunctionSurface(name: string | Node): boolean {
+    return typeof name === 'string'
+      || (isNode(name, N.Reference) && name.options?.type === 'function');
+  }
+
+  private serializeRenderedArgs(args: List<Node> | undefined, options: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer!;
+    const mark = w.mark();
+    if (!args) {
+      return '';
+    }
+    const normalizedArgs = args.value.filter(Boolean);
+    const last = normalizedArgs.length - 1;
+    for (let i = 0; i <= last; i++) {
+      const arg = normalizedArgs[i]!;
+      let argOut: string;
+      if (arg instanceof Paren && arg.options?.escaped) {
+        const inner = arg.value
+          ? w.capture(() => arg.value!.toTrimmedString(printOptions))
+          : '';
+        argOut = `(${inner.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, '')})`;
+      } else {
+        argOut = w.capture(() => arg.toTrimmedString(printOptions));
+      }
+      w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
+      if (i < last) {
+        w.add(', ');
+      }
+    }
+    return w.getSince(mark);
+  }
+
+  private renderPlainFunctionCall(
+    callNode: Call,
+    context: Context,
+    prepared: PrintOptions
+  ): string {
+    const w = getPrintOptions(prepared).writer!;
+    const mark = w.mark();
+    const { name, contentNode } = callNode.value;
+    if (typeof name === 'string') {
+      w.add(name, callNode);
+    } else {
+      name.toTrimmedString(prepared);
+    }
+    if (callNode.options?.silentFail) {
+      w.add('?');
+    }
+    w.add('(');
+    this.serializeRenderedArgs(callNode.value.args, prepared);
+    w.add(')');
+    if (callNode.options?.markImportant) {
+      w.add(' !important');
+    }
+    if (contentNode) {
+      w.add(': ');
+      const resolvedContent = contentNode.resolve(context);
+      if (!isThenable(resolvedContent)) {
+        resolvedContent.toTrimmedString(prepared);
+      } else {
+        contentNode.toTrimmedString(prepared);
+      }
+    }
+    return w.getSince(mark);
+  }
+
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
@@ -90,13 +158,18 @@ export class Call extends Node<CallValue, CallOptions> {
     if (args) {
       const normalizedArgs = args.value.filter(Boolean);
       const last = normalizedArgs.length - 1;
+      const sep = args.options?.sep ?? ',';
       for (let i = 0; i <= last; i++) {
         const arg = normalizedArgs[i]!;
         const argOut = w.capture(() => arg.toString(options));
         // Normalize boundary whitespace so calls serialize with stable comma spacing.
         w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
         if (i < last) {
-          w.add(', ');
+          if (sep === '/') {
+            w.add(' / ');
+          } else {
+            w.add(`${sep} `);
+          }
         }
       }
     }
@@ -109,6 +182,21 @@ export class Call extends Node<CallValue, CallOptions> {
       contentNode.toString(options);
     }
     return w.getSince(mark);
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    const prepared = prepareContextPrintState(context, options);
+    if (typeof this.value.name === 'string') {
+      return this.renderPlainFunctionCall(this, context, prepared);
+    }
+    const resolved = this.resolve(context);
+    if (isThenable(resolved)) {
+      return super.render(context, options);
+    }
+    if (!isNode(resolved, N.Call) || !this.isPlainFunctionSurface(resolved.value.name)) {
+      return resolved.toTrimmedString(prepared);
+    }
+    return this.renderPlainFunctionCall(resolved, context, prepared);
   }
 
   /** Recursively makes declarations important */

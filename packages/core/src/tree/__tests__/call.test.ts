@@ -1,7 +1,8 @@
-import { Any, JsFunction, any, call, coll, decl, el, list, num, ref, rules, ruleset, vardecl } from '../index.js';
+import { Any, JsFunction, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
+import { paren } from '../paren.js';
 
 let context: Context;
 describe('Call', () => {
@@ -46,6 +47,44 @@ describe('Call', () => {
     expect(isNode(resolved, N.Call)).toBe(true);
     expect(resolved.toTrimmedString()).toBe('rgb(100, 100, 100)');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps direct arithmetic and nested calc calls intact inside calc()', () => {
+    const direct = call({
+      name: 'calc',
+      args: list([
+        op([dimension([10, 'px']), '*', num(2)])
+      ])
+    });
+    const nested = call({
+      name: 'calc',
+      args: list([
+        op([
+          dimension([10, 'vh']),
+          '+',
+          call({
+            name: 'calc',
+            args: list([dimension([5, 'vh'])])
+          })
+        ])
+      ])
+    });
+
+    expect(direct.render(context)).toBe('calc(10px * 2)');
+    expect(nested.render(context)).toBe('calc(10vh + calc(5vh))');
+  });
+
+  it('keeps canonical function syntax separate from evaluated CSS-call normalization', () => {
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.toTrimmedString()).toBe('func(~(a, b); c)');
+    expect(rule.render(context)).toBe('func((a, b), c)');
   });
 
   /** @todo */
