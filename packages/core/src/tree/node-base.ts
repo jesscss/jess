@@ -14,6 +14,7 @@ import {
   getPrintOptions,
   prepareContextPrintState
 } from './util/print.js';
+import { emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -35,15 +36,7 @@ function emitTrivia(
   if (!tokens) {
     return;
   }
-  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-  if (emittedTrivia.has(tokens)) {
-    return;
-  }
-  emittedTrivia.add(tokens);
-  const writer = options.writer!;
-  for (const token of tokens) {
-    writer.add(token.image);
-  }
+  emitTriviaTokens(tokens, options);
 }
 
 type AllNodeOptions = {

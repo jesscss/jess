@@ -38,24 +38,11 @@ import { indent, normalizeIndent, serializeRulesContainerInline } from './util/s
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
+import { emitTriviaTokens as emitSharedTriviaTokens } from './util/trivia.js';
 const { isArray } = Array;
 
 function emitTriviaTokens(tokens: IToken[] | undefined, options: PrintOptions): void {
-  if (!tokens) {
-    return;
-  }
-  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-  if (emittedTrivia.has(tokens)) {
-    return;
-  }
-  emittedTrivia.add(tokens);
-  const writer = options.writer!;
-  for (const token of tokens) {
-    if (options.context && token.image.startsWith('//')) {
-      continue;
-    }
-    writer.add(token.image);
-  }
+  emitSharedTriviaTokens(tokens, options);
 }
 
 function captureLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -1526,6 +1513,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       markEmitted(n);
     };
+    const emitLeadingBlockCommentForNode = (n: Node): boolean => {
+      const leading = captureLeadingTrivia(n, options);
+      if (!/\/\*/.test(leading)) {
+        return false;
+      }
+      closeRenderedFramesToBaseline();
+      emitBoundaryIfNeeded(n);
+      const commentIndent = depth === 0 ? '' : space;
+      const normalized = normalizeIndent(leading, commentIndent);
+      w.add(normalized, n);
+      if (!/\n$/.test(normalized)) {
+        w.add('\n');
+      }
+      markEmitted(n);
+      return true;
+    };
     const saved = savePrintState(options, ['referenceMode']);
     if (
       (this.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
@@ -1533,9 +1536,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     ) {
       options.referenceMode = true;
     }
-    for (let idx = 0; idx < items.length; idx++) {
-      const n = items[idx]!;
+    for (const n of value) {
+      if (!n.visible && !n.fullRender) {
+        emitLeadingBlockCommentForNode(n);
+        continue;
+      }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
+      if (isContainer && n.type === 'Rules') {
+        emitLeadingBlockCommentForNode(n);
+      }
       if (referenceMode && !referenceRenderEnabled && !isContainer) {
         continue;
       }
@@ -1559,10 +1568,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
         const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+        const childEmittedTrivia = options.emittedTrivia;
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const previewOut = w.capture(() => n.toTrimmedString(options));
+        options.emittedTrivia = childEmittedTrivia;
         let childRule: string | undefined;
         if (previewOut) {
           closeRenderedFramesToBaseline();
