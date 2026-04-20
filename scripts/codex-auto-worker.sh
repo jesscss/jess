@@ -89,15 +89,47 @@ fi
 
 node scripts/task-runtime/validate-submission.mjs "$SUMMARY_PATH"
 
-candidate_commit=$(
+summary_fields=$(
   node --input-type=module - "$SUMMARY_PATH" <<'EOF'
 import { readFileSync } from 'node:fs';
 
 const summary = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-process.stdout.write(summary.candidate_commit ?? '');
+process.stdout.write(
+  JSON.stringify({
+    candidate_commit: summary.candidate_commit,
+    candidate_branch: summary.candidate_branch,
+  }),
+);
+EOF
+)
+
+candidate_commit=$(
+  node --input-type=module - "$summary_fields" <<'EOF'
+const payload = JSON.parse(process.argv[2]);
+process.stdout.write(payload.candidate_commit ?? '');
+EOF
+)
+
+candidate_branch=$(
+  node --input-type=module - "$summary_fields" <<'EOF'
+const payload = JSON.parse(process.argv[2]);
+process.stdout.write(payload.candidate_branch ?? '');
 EOF
 )
 
 if [[ -n "$candidate_commit" ]]; then
+  git rev-parse --verify "${candidate_commit}^{commit}" >/dev/null
+
+  head_commit=$(git rev-parse HEAD)
+  if [[ "$candidate_commit" != "$head_commit" ]]; then
+    echo "Summary candidate_commit does not match HEAD: $candidate_commit != $head_commit" >&2
+    exit 1
+  fi
+
+  if [[ -n "$candidate_branch" && "$candidate_branch" != "$BRANCH" ]]; then
+    echo "Summary candidate_branch does not match worker branch: $candidate_branch != $BRANCH" >&2
+    exit 1
+  fi
+
   git push origin "HEAD:$BRANCH"
 fi
