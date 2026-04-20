@@ -54,9 +54,9 @@ Summary path: $SUMMARY_PATH
 
 Requirements:
 - Solve exactly one coherent slice.
-- Classify the task outcome as one of:
-  1. real Jess bug
-  2. outdated Less.js 4.x expectation / intentional Jess rebaseline
+- Use exactly one of these classification enum values:
+  1. jess-bug
+  2. rebaseline
   3. needs-human
 - If it is a real Jess bug, reproduce it in focused lower-level coverage first when appropriate.
 - If it is fixture drift, update the linked Less.js alpha expectations and keep relevant Less.js branches aligned.
