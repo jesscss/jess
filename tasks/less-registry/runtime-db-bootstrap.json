@@ -1,0 +1,25 @@
+{
+  "id": "runtime-db-bootstrap",
+  "title": "Bootstrap SQLite runtime store for durable task execution",
+  "track": "task-memory-foundation",
+  "bucket": "runtime",
+  "priority": "p0",
+  "status": "open",
+  "source_refs": [
+    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md"
+  ],
+  "goal_refs": [
+    "local durable runtime store"
+  ],
+  "depends_on": [],
+  "blocked_by": [],
+  "definition_of_done": "SQLite runtime store exists with schema, coordinator can read/write it, and old JSONL-only state is no longer authoritative.",
+  "proof_expectations": [
+    "schema bootstrap test",
+    "runtime query smoke",
+    "coordinator state read/write proof"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": null
+}

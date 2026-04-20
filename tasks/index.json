@@ -5,6 +5,16 @@
       "id": "less-registry-redesign",
       "title": "Less parity / registry redesign recovery",
       "directory": "tasks/less-registry"
+    },
+    {
+      "id": "task-memory-foundation",
+      "title": "Durable task and memory system foundation",
+      "directory": "tasks/less-registry"
+    },
+    {
+      "id": "repo-wide-rollout",
+      "title": "Repo-wide task-system rollout",
+      "directory": "tasks/less-registry"
     }
   ]
 }
