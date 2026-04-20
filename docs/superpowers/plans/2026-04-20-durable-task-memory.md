@@ -650,7 +650,7 @@ Create `scripts/task-runtime/worker-submission.schema.json` with:
     },
     "unresolved_concerns": { "type": "string" }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
 ```
 

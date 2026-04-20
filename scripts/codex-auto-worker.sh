@@ -63,7 +63,7 @@ Requirements:
 - Update the handoff/proposal tracking docs as needed.
 - Run narrow verification, then broader affected verification.
 - Commit your change if and only if the slice is clean.
-- Push the worker branch "$BRANCH".
+- Do not push the worker branch yourself; the wrapper will only push after summary validation succeeds.
 - At the end, write machine-readable JSON to "$SUMMARY_PATH" using the worker submission schema:
   - task_id
   - classification
@@ -88,3 +88,16 @@ if [[ ! -f "$SUMMARY_PATH" ]]; then
 fi
 
 node scripts/task-runtime/validate-submission.mjs "$SUMMARY_PATH"
+
+candidate_commit=$(
+  node --input-type=module - "$SUMMARY_PATH" <<'EOF'
+import { readFileSync } from 'node:fs';
+
+const summary = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+process.stdout.write(summary.candidate_commit ?? '');
+EOF
+)
+
+if [[ -n "$candidate_commit" ]]; then
+  git push origin "HEAD:$BRANCH"
+fi
