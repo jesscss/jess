@@ -433,6 +433,69 @@ The coordinator is the single writer for:
 This single-writer model is essential for traceability and cross-agent
 determinism.
 
+## Operator Command Surface
+
+The system should include a clear human-steering interface that works well from
+Codex and Claude inside VS Code.
+
+This interface exists so the operator can quickly inject new requirements,
+change priorities, or restructure work without manually editing task files or
+runtime state by hand.
+
+Representative commands:
+
+- `/tasks status`
+- `/tasks prioritize <task-or-track>`
+- `/tasks add <title>`
+- `/tasks split <task>`
+- `/tasks block <task> <reason>`
+- `/tasks supersede <old> <new>`
+- `/tasks focus <track>`
+
+These commands should mutate the same durable system the agents use, not create
+an alternate side channel of truth.
+
+### Default Behavior
+
+Operator-issued commands should apply immediate authoritative changes by
+default.
+
+That means:
+
+- a priority change updates the canonical task snapshot
+- the matching event is recorded
+- downstream agents see the new ordering immediately
+
+This is the right default for a single-operator system because it minimizes
+latency and avoids forcing the human to wait for a coordinator cycle just to
+steer work.
+
+### Proposed Changes Mode
+
+The system should also support proposed changes.
+
+This is useful when:
+
+- the requested change is broad
+- the operator wants to preview impact first
+- the mutation is non-obvious and should be reviewed before becoming
+  authoritative
+
+In that mode, the system records a proposal artifact or event, but does not
+change canonical task state until the proposal is explicitly applied.
+
+### Command Safety Rules
+
+Operator commands must still respect the same structural integrity as automated
+transitions:
+
+- all authoritative changes emit matching events
+- commands cannot create impossible task states
+- task IDs, dependencies, and status transitions remain validated
+- command usage must not bypass the canonical task registry
+
+This keeps human steering fast without sacrificing traceability or consistency.
+
 ## Validation And Proof Requirements
 
 The system exists to reduce hallucination without requiring constant human
