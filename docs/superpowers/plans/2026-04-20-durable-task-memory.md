@@ -105,6 +105,8 @@ Create `tasks/schema/task.schema.json` with:
     "status",
     "source_refs",
     "goal_refs",
+    "depends_on",
+    "blocked_by",
     "definition_of_done",
     "proof_expectations",
     "accepted_commit",
@@ -166,7 +168,7 @@ Create `tasks/schema/task.schema.json` with:
       "type": ["string", "null"]
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
 ```
 
@@ -190,7 +192,10 @@ Create `tasks/schema/event.schema.json` with:
     "event_id": { "type": "string" },
     "task_id": { "type": "string" },
     "event_type": { "type": "string" },
-    "ts": { "type": "string" },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
     "actor": { "type": "string" },
     "run_id": {
       "type": ["string", "null"]
@@ -200,7 +205,7 @@ Create `tasks/schema/event.schema.json` with:
       "default": {}
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }
 ```
 
@@ -209,11 +214,11 @@ Create `tasks/index.json` with:
 ```json
 {
   "version": 1,
-  "tracks": [
+  "task_directories": [
     {
       "id": "less-registry-redesign",
       "title": "Less parity / registry redesign recovery",
-      "task_dir": "tasks/less-registry"
+      "directory": "tasks/less-registry"
     }
   ]
 }
@@ -383,21 +388,21 @@ Update `tasks/index.json` to include:
 ```json
 {
   "version": 1,
-  "tracks": [
+  "task_directories": [
     {
       "id": "less-registry-redesign",
       "title": "Less parity / registry redesign recovery",
-      "task_dir": "tasks/less-registry"
+      "directory": "tasks/less-registry"
     },
     {
       "id": "task-memory-foundation",
       "title": "Durable task and memory system foundation",
-      "task_dir": "tasks/less-registry"
+      "directory": "tasks/less-registry"
     },
     {
       "id": "repo-wide-rollout",
       "title": "Repo-wide task-system rollout",
-      "task_dir": "tasks/less-registry"
+      "directory": "tasks/less-registry"
     }
   ]
 }
@@ -410,7 +415,7 @@ Run:
 ```bash
 find tasks/less-registry -maxdepth 1 -name '*.json' | wc -l
 jq -e '.id == "runtime-db-bootstrap"' tasks/less-registry/runtime-db-bootstrap.json
-jq -e '.tracks | length >= 3' tasks/index.json
+jq -e '.task_directories | length >= 3' tasks/index.json
 ```
 
 Expected: file count is at least `3`, and all `jq` checks succeed.
@@ -1165,4 +1170,3 @@ git commit -m "docs: retire handoff as operational truth"
   - removed generic “implement later” language; each task names concrete files, commands, and example content
 - Type consistency:
   - status names, task schema fields, and runtime DB concepts are consistent with the spec terminology
-
