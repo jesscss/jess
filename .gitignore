@@ -58,6 +58,8 @@ typings/
 
 # build artifacts
 lib
+!scripts/task-runtime/lib/
+!scripts/task-runtime/lib/**
 dist/
 *.tsbuildinfo
 .rollup.cache
