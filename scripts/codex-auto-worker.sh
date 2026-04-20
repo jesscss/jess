@@ -67,13 +67,13 @@ Requirements:
 - At the end, write machine-readable JSON to "$SUMMARY_PATH" using the worker submission schema:
   - task_id
   - classification
-  - reason
+  - reason (non-empty)
   - files_changed
-  - verification
-  - proof_refs
+  - verification (at least one concrete command/result reference)
+  - proof_refs (at least one concrete proof reference)
   - candidate_commit
   - candidate_branch
-  - unresolved_concerns
+  - unresolved_concerns (use "none" if there are none)
 - Do not end with freeform bullet text.
 - Do not print the final JSON only to stdout; it must be written to "$SUMMARY_PATH".
 EOF
@@ -136,6 +136,11 @@ if [[ -z "$candidate_commit" && -n "$candidate_branch" ]]; then
 fi
 
 if [[ -n "$candidate_commit" ]]; then
+  if [[ -z "$candidate_branch" ]]; then
+    echo "Summary candidate_commit requires a non-empty candidate_branch" >&2
+    exit 1
+  fi
+
   git rev-parse --verify "${candidate_commit}^{commit}" >/dev/null
 
   head_commit=$(git rev-parse HEAD)
