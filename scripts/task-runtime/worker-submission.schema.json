@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "task_id",
+    "classification",
+    "reason",
+    "files_changed",
+    "verification",
+    "proof_refs",
+    "candidate_commit",
+    "candidate_branch",
+    "unresolved_concerns"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "classification": {
+      "type": "string",
+      "enum": [
+        "jess-bug",
+        "rebaseline",
+        "needs-human"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "proof_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "candidate_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "candidate_branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "unresolved_concerns": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

@@ -9,6 +9,7 @@ Usage:
     --task-file <task-file> \
     --worktree <path> \
     --branch <branch> \
+    --summary-path <path> \
     --log-file <path>
 EOF
 }
@@ -17,6 +18,7 @@ TASK_ID=""
 TASK_FILE=""
 WORKTREE=""
 BRANCH=""
+SUMMARY_PATH=""
 LOG_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -25,13 +27,14 @@ while [[ $# -gt 0 ]]; do
     --task-file) TASK_FILE="$2"; shift 2 ;;
     --worktree) WORKTREE="$2"; shift 2 ;;
     --branch) BRANCH="$2"; shift 2 ;;
+    --summary-path) SUMMARY_PATH="$2"; shift 2 ;;
     --log-file) LOG_FILE="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-[[ -n "$TASK_ID" && -n "$TASK_FILE" && -n "$WORKTREE" && -n "$BRANCH" && -n "$LOG_FILE" ]] || {
+[[ -n "$TASK_ID" && -n "$TASK_FILE" && -n "$WORKTREE" && -n "$BRANCH" && -n "$SUMMARY_PATH" && -n "$LOG_FILE" ]] || {
   echo "Missing required arguments" >&2
   usage >&2
   exit 2
@@ -45,6 +48,7 @@ You are working in an isolated Jess automation worktree.
 
 Task id: $TASK_ID
 Task description file: $TASK_FILE
+Summary path: $SUMMARY_PATH
 
 Requirements:
 - Solve exactly one coherent slice.
@@ -58,10 +62,17 @@ Requirements:
 - Run narrow verification, then broader affected verification.
 - Commit your change if and only if the slice is clean.
 - Push the worker branch "$BRANCH".
-- At the end, print a short final summary with:
+- At the end, write machine-readable JSON to "$SUMMARY_PATH" using the worker submission schema:
+  - task_id
   - classification
-  - verification run
-  - commit sha
+  - reason
+  - files_changed
+  - verification
+  - proof_refs
+  - candidate_commit
+  - candidate_branch
+  - unresolved_concerns
+- Do not end with freeform bullet text.
 EOF
 )
 

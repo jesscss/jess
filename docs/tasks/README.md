@@ -71,6 +71,12 @@ It is the authoritative source for:
 It is not committed to git.
 Unversioned runtime databases with preexisting tables are rejected until an explicit migration path exists.
 
+## Worker Submission Contract
+
+Workers must emit machine-readable submission JSON that validates against `scripts/task-runtime/worker-submission.schema.json`.
+
+Freeform summaries are not authoritative.
+
 ## Operator Commands
 
 Operator commands should target the task system itself, not bypass it with ad hoc file edits.
