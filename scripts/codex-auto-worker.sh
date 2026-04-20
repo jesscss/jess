@@ -41,6 +41,8 @@ done
 }
 
 mkdir -p "$(dirname "$LOG_FILE")"
+mkdir -p "$(dirname "$SUMMARY_PATH")"
+rm -f "$SUMMARY_PATH"
 
 PROMPT=$(
   cat <<EOF
@@ -73,8 +75,16 @@ Requirements:
   - candidate_branch
   - unresolved_concerns
 - Do not end with freeform bullet text.
+- Do not print the final JSON only to stdout; it must be written to "$SUMMARY_PATH".
 EOF
 )
 
 cd "$WORKTREE"
 codex exec --full-auto "$PROMPT" < "$TASK_FILE" | tee "$LOG_FILE"
+
+if [[ ! -f "$SUMMARY_PATH" ]]; then
+  echo "Worker did not write summary JSON: $SUMMARY_PATH" >&2
+  exit 1
+fi
+
+node scripts/task-runtime/validate-submission.mjs "$SUMMARY_PATH"
