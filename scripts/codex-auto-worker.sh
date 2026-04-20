@@ -96,10 +96,18 @@ import { readFileSync } from 'node:fs';
 const summary = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 process.stdout.write(
   JSON.stringify({
+    task_id: summary.task_id,
     candidate_commit: summary.candidate_commit,
     candidate_branch: summary.candidate_branch,
   }),
 );
+EOF
+)
+
+summary_task_id=$(
+  node --input-type=module - "$summary_fields" <<'EOF'
+const payload = JSON.parse(process.argv[2]);
+process.stdout.write(payload.task_id ?? '');
 EOF
 )
 
@@ -116,6 +124,16 @@ const payload = JSON.parse(process.argv[2]);
 process.stdout.write(payload.candidate_branch ?? '');
 EOF
 )
+
+if [[ "$summary_task_id" != "$TASK_ID" ]]; then
+  echo "Summary task_id does not match launched task: $summary_task_id != $TASK_ID" >&2
+  exit 1
+fi
+
+if [[ -z "$candidate_commit" && -n "$candidate_branch" ]]; then
+  echo "Summary candidate_branch requires a non-empty candidate_commit" >&2
+  exit 1
+fi
 
 if [[ -n "$candidate_commit" ]]; then
   git rev-parse --verify "${candidate_commit}^{commit}" >/dev/null
