@@ -15,15 +15,19 @@
     "event_id": { "type": "string" },
     "task_id": { "type": "string" },
     "event_type": { "type": "string" },
-    "ts": { "type": "string" },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
     "actor": { "type": "string" },
     "run_id": {
       "type": ["string", "null"]
     },
     "payload": {
       "type": "object",
-      "default": {}
+      "default": {},
+      "description": "Event-specific extension payload."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

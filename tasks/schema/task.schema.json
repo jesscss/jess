@@ -12,6 +12,8 @@
     "status",
     "source_refs",
     "goal_refs",
+    "depends_on",
+    "blocked_by",
     "definition_of_done",
     "proof_expectations",
     "accepted_commit",
@@ -73,5 +75,5 @@
       "type": ["string", "null"]
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

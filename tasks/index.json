@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "tracks": [
+  "task_directories": [
     {
       "id": "less-registry-redesign",
       "title": "Less parity / registry redesign recovery",
-      "task_dir": "tasks/less-registry"
+      "directory": "tasks/less-registry"
     }
   ]
 }
