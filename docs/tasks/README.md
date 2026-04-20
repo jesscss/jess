@@ -58,6 +58,18 @@ Events explain how the snapshot changed.
 - Workers may not directly update the runtime database.
 - The coordinator is the only authoritative writer for task-state transitions.
 
+## Runtime Database
+
+The local runtime database is a SQLite file under `state/task-runtime/`.
+
+It is the authoritative source for:
+- leases
+- runs
+- submissions
+- event-ingestion bookkeeping
+
+It is not committed to git.
+
 ## Operator Commands
 
 Operator commands should target the task system itself, not bypass it with ad hoc file edits.

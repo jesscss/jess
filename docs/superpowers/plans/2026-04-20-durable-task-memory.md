@@ -503,7 +503,7 @@ CREATE TABLE IF NOT EXISTS submissions (
 Create `scripts/task-runtime/lib/db.mjs` with:
 
 ```js
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -511,7 +511,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function openRuntimeDb(dbPath) {
-  const db = new Database(dbPath);
+  const db = new DatabaseSync(dbPath);
   const schema = readFileSync(path.resolve(__dirname, '../runtime-schema.sql'), 'utf8');
   db.exec(schema);
   return db;
