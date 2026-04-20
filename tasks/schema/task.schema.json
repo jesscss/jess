@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jesscss.local/tasks/task.schema.json",
+  "title": "Jess Task Snapshot",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "track",
+    "bucket",
+    "priority",
+    "status",
+    "source_refs",
+    "goal_refs",
+    "definition_of_done",
+    "proof_expectations",
+    "accepted_commit",
+    "accepted_run_id",
+    "last_transition_event_id"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "track": { "type": "string" },
+    "bucket": { "type": "string" },
+    "priority": {
+      "type": "string",
+      "enum": ["p0", "p1", "p2", "p3"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "leased",
+        "in_progress",
+        "awaiting_review",
+        "completed",
+        "needs_human",
+        "rejected",
+        "superseded"
+      ]
+    },
+    "source_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "goal_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "depends_on": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "blocked_by": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "definition_of_done": { "type": "string" },
+    "proof_expectations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "accepted_commit": {
+      "type": ["string", "null"]
+    },
+    "accepted_run_id": {
+      "type": ["string", "null"]
+    },
+    "last_transition_event_id": {
+      "type": ["string", "null"]
+    }
+  },
+  "additionalProperties": true
+}
