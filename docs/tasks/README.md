@@ -69,6 +69,7 @@ It is the authoritative source for:
 - event-ingestion bookkeeping
 
 It is not committed to git.
+Unversioned runtime databases with preexisting tables are rejected until an explicit migration path exists.
 
 ## Operator Commands
 
