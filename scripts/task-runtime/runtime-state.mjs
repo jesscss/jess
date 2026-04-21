@@ -160,6 +160,25 @@ function isLeaseActive(runtime, now = new Date()) {
   return expiresAt > now.getTime();
 }
 
+function hasActiveRun(runtime, now = new Date()) {
+  if (!runtime?.active_run_id) {
+    return false;
+  }
+
+  if (runtime.active_run_finished_at) {
+    return false;
+  }
+
+  if (runtime.lease_expires_at) {
+    const expiresAt = Date.parse(runtime.lease_expires_at);
+    if (!Number.isNaN(expiresAt) && expiresAt <= now.getTime()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function getTaskStatus(db, taskId) {
   const event = getLatestTaskEvent(db, taskId);
   if (!event) {
@@ -167,7 +186,7 @@ function getTaskStatus(db, taskId) {
     if (!runtime) {
       return 'open';
     }
-    if (runtime.active_run_id || isLeaseActive(runtime)) {
+    if (hasActiveRun(runtime) || isLeaseActive(runtime)) {
       return 'leased';
     }
     return 'open';
@@ -179,7 +198,7 @@ function getTaskStatus(db, taskId) {
   }
 
   const runtime = getRuntimeRow(db, taskId);
-  if (runtime && (runtime.active_run_id || isLeaseActive(runtime))) {
+  if (runtime && (hasActiveRun(runtime) || isLeaseActive(runtime))) {
     return 'leased';
   }
 
@@ -358,7 +377,7 @@ function isTaskOpen(db, taskId) {
     return true;
   }
 
-  return runtime.status === 'open' && !runtime.active_run_id && !isLeaseActive(runtime);
+  return runtime.status === 'open' && !hasActiveRun(runtime) && !isLeaseActive(runtime);
 }
 
 function listOpenTasks(db, tasks) {
@@ -395,26 +414,28 @@ function importLegacyJsonlState(db, legacyFiles) {
     [rejectedFile, 'task_rejected'],
   ];
 
-  for (const [filePath, eventType] of files) {
-    if (!filePath) {
-      continue;
-    }
-    if (!hasReadableJsonl(filePath)) {
-      continue;
-    }
+  withTransaction(db, () => {
+    for (const [filePath, eventType] of files) {
+      if (!filePath) {
+        continue;
+      }
+      if (!hasReadableJsonl(filePath)) {
+        continue;
+      }
 
-    for (const record of readJsonlRecords(filePath)) {
-      insertEvent(db, {
-        event_id: `legacy:${record.task_id}:${record.ts}:${record.classification}`,
-        task_id: record.task_id,
-        event_type: eventType,
-        ts: record.ts,
-        actor: record.classification ?? 'legacy',
-        run_id: null,
-        payload: record,
-      });
+      for (const record of readJsonlRecords(filePath)) {
+        insertEvent(db, {
+          event_id: `legacy:${record.task_id}:${record.ts}:${record.classification}`,
+          task_id: record.task_id,
+          event_type: eventType,
+          ts: record.ts,
+          actor: record.classification ?? 'legacy',
+          run_id: null,
+          payload: record,
+        });
+      }
     }
-  }
+  });
 }
 
 export function createRuntimeState(dbPath, options = {}) {
