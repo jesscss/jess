@@ -1,0 +1,29 @@
+{
+  "id": "handoff-retirement-followups",
+  "title": "Record rollout follow-ups after retiring handoff-driven execution state",
+  "track": "operational-doc-retirement",
+  "bucket": "rollout",
+  "priority": "p1",
+  "status": "open",
+  "source_refs": [
+    "docs/future/performance/2026-04-13-registry-redesign-handoff.md",
+    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md"
+  ],
+  "goal_refs": [
+    "retire handoff as operational truth",
+    "track repo-wide rollout follow-ups explicitly"
+  ],
+  "depends_on": [
+    "less-registry-expansion"
+  ],
+  "blocked_by": [],
+  "definition_of_done": "Remaining rollout work that used to live only in handoff prose is represented by canonical task IDs or intentionally retired.",
+  "proof_expectations": [
+    "handoff retirement note present",
+    "follow-up task ids recorded in canonical registry",
+    "status command reflects the follow-up task"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": null
+}

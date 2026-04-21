@@ -4,6 +4,21 @@ Date: `2026-04-13`
 Branch: `dev`
 Checkpoint commit: `ddf46b1c` (`Narrow reference import parity seam`)
 
+## Status
+
+This handoff is no longer the operational source of truth for active execution state.
+
+Canonical execution state now lives in the checked-in task registry under `tasks/` plus the local runtime state used by the coordinator.
+
+Use the task registry for:
+
+- what is open
+- what is blocked
+- what is completed
+- what rollout follow-ups still exist
+
+The handoff remains useful as historical design and recovery context, but remaining actionable work should be tracked by task ID instead of being inferred from prose here.
+
 ## Baseline Recovery Checkpoint
 
 `packages/jess/test/less/all-less.test.ts` is currently red again, even after a

@@ -15,6 +15,11 @@
       "id": "repo-wide-rollout",
       "title": "Repo-wide task-system rollout",
       "directory": "tasks/less-registry"
+    },
+    {
+      "id": "operational-doc-retirement",
+      "title": "Operational document retirement and follow-up tracking",
+      "directory": "tasks/less-registry"
     }
   ]
 }

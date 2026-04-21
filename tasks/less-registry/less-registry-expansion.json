@@ -6,7 +6,8 @@
   "priority": "p2",
   "status": "open",
   "source_refs": [
-    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md"
+    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md",
+    "docs/future/performance/2026-04-13-registry-redesign-handoff.md"
   ],
   "goal_refs": [
     "repo-wide task coverage"
@@ -19,7 +20,8 @@
   "proof_expectations": [
     "canonical task files created",
     "event history linked",
-    "status command shows area"
+    "status command shows area",
+    "handoff retirement follow-up tasks linked"
   ],
   "accepted_commit": null,
   "accepted_run_id": null,
