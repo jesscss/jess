@@ -409,6 +409,20 @@ function isDatabaseEmpty(db) {
   );
 }
 
+function getDatabaseCounts(db) {
+  return db
+    .prepare(
+      `
+        SELECT
+          (SELECT COUNT(*) FROM events) AS events_count,
+          (SELECT COUNT(*) FROM task_runtime) AS task_runtime_count,
+          (SELECT COUNT(*) FROM runs) AS runs_count,
+          (SELECT COUNT(*) FROM submissions) AS submissions_count
+      `,
+    )
+    .get();
+}
+
 function importLegacyJsonlState(db, legacyFiles) {
   if (!legacyFiles) {
     return;
@@ -420,7 +434,18 @@ function importLegacyJsonlState(db, legacyFiles) {
     hasReadableJsonl(needsHumanFile) ||
     hasReadableJsonl(rejectedFile);
 
-  if (!hasLegacyRecords || !isDatabaseEmpty(db)) {
+  if (!hasLegacyRecords) {
+    return;
+  }
+
+  if (!isDatabaseEmpty(db)) {
+    const counts = getDatabaseCounts(db);
+    if (counts.events_count === 0) {
+      throw new Error(
+        'Runtime database is partially populated before legacy JSONL import. ' +
+          'Remove or migrate the runtime DB before replaying legacy state.',
+      );
+    }
     return;
   }
 

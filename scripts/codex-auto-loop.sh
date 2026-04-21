@@ -591,39 +591,72 @@ extract_commit_sha() {
   jq -r '.candidate_commit // empty' "$summary_file" 2>/dev/null || true
 }
 
-summary_has_rebaseline_proof() {
+summary_has_common_proof() {
   local summary_file="$1"
+  local task_json="$2"
+  local log_file="$3"
+  local task_id task_summary proof matched=0
+
+  task_id="$(jq -r '.id' <<<"$task_json")"
+  task_summary="$(jq -r '.summary // ""' <<<"$task_json")"
+
   jq -e '
-    (.classification == "rebaseline") and
     (.reason | type == "string" and length > 0) and
     (.verification | type == "array" and length > 0) and
-    (.proof_refs | type == "array" and length > 0) and
+    (.proof_refs | type == "array" and length > 0)
+  ' "$summary_file" >/dev/null 2>&1 || return 1
+
+  while IFS= read -r proof; do
+    [[ -n "$proof" ]] || return 1
+    file_contains_fixed "$proof" "$log_file" || return 1
+  done < <(jq -r '.verification[]' "$summary_file")
+
+  while IFS= read -r proof; do
+    [[ -n "$proof" ]] || return 1
+    if [[ "$proof" == *"$task_id"* ]] || [[ -n "$task_summary" && "$proof" == *"$task_summary"* ]] || file_contains_fixed "$proof" "$log_file"; then
+      matched=1
+    fi
+  done < <(jq -r '.proof_refs[]' "$summary_file")
+
+  (( matched == 1 ))
+}
+
+summary_has_rebaseline_proof() {
+  local summary_file="$1"
+  local task_json="$2"
+  local log_file="$3"
+  jq -e '
+    (.classification == "rebaseline") and
     (.candidate_commit | type == "string" and length > 0) and
     (.candidate_branch | type == "string" and length > 0)
-  ' "$summary_file" >/dev/null 2>&1
+  ' "$summary_file" >/dev/null 2>&1 || return 1
+
+  summary_has_common_proof "$summary_file" "$task_json" "$log_file"
 }
 
 summary_has_jess_bug_proof() {
   local summary_file="$1"
+  local task_json="$2"
+  local log_file="$3"
   jq -e '
     (.classification == "jess-bug") and
-    (.reason | type == "string" and length > 0) and
-    (.verification | type == "array" and length > 0) and
-    (.proof_refs | type == "array" and length > 0) and
     (.candidate_commit | type == "string" and length > 0) and
     (.candidate_branch | type == "string" and length > 0)
-  ' "$summary_file" >/dev/null 2>&1
+  ' "$summary_file" >/dev/null 2>&1 || return 1
+
+  summary_has_common_proof "$summary_file" "$task_json" "$log_file"
 }
 
 summary_has_needs_human_proof() {
   local summary_file="$1"
+  local task_json="$2"
+  local log_file="$3"
   jq -e '
     (.classification == "needs-human") and
-    (.reason | type == "string" and length > 0) and
-    (.verification | type == "array" and length > 0) and
-    (.proof_refs | type == "array" and length > 0) and
     (.unresolved_concerns | type == "string" and length > 0)
-  ' "$summary_file" >/dev/null 2>&1
+  ' "$summary_file" >/dev/null 2>&1 || return 1
+
+  summary_has_common_proof "$summary_file" "$task_json" "$log_file"
 }
 
 normalize_classification() {
@@ -832,7 +865,7 @@ run_iteration() {
 
   case "$classification" in
     needs-human)
-      if ! summary_has_needs_human_proof "$ITERATION_SUMMARY"; then
+      if ! summary_has_needs_human_proof "$ITERATION_SUMMARY" "$task_json" "$ITERATION_LOG"; then
         log "needs-human without coordinator proof is non-terminal; leaving task pending"
         record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
         cleanup_worker_worktree "$ITERATION_WORKTREE"
@@ -849,13 +882,13 @@ run_iteration() {
       return 1
       ;;
     jess-bug|rebaseline)
-      if [[ "$classification" == "jess-bug" ]] && ! summary_has_jess_bug_proof "$ITERATION_SUMMARY"; then
+      if [[ "$classification" == "jess-bug" ]] && ! summary_has_jess_bug_proof "$ITERATION_SUMMARY" "$task_json" "$ITERATION_LOG"; then
         log "jess-bug without coordinator proof is non-terminal; leaving task pending"
         record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
         cleanup_worker_worktree "$ITERATION_WORKTREE"
         return 1
       fi
-      if [[ "$classification" == "rebaseline" ]] && ! summary_has_rebaseline_proof "$ITERATION_SUMMARY"; then
+      if [[ "$classification" == "rebaseline" ]] && ! summary_has_rebaseline_proof "$ITERATION_SUMMARY" "$task_json" "$ITERATION_LOG"; then
         log "rebaseline without coordinator proof is non-terminal; leaving task pending"
         record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
         cleanup_worker_worktree "$ITERATION_WORKTREE"
