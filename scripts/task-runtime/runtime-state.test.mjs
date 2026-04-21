@@ -33,6 +33,13 @@ state.createRun({
   started_at: '2026-04-20T00:00:30Z',
 });
 
+state.leaseTask('runtime-db-bootstrap-failed', {
+  lease_owner: 'worker-1',
+  lease_expires_at: '2026-04-20T00:10:00Z',
+  active_run_id: 'run-failed',
+  updated_at: '2026-04-20T00:00:30Z',
+});
+
 assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'leased');
 
 state.failRun({
@@ -52,6 +59,15 @@ state.failRun({
 
 assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'open');
 assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap-failed' }]).length, 1);
+
+state.leaseTask('runtime-db-bootstrap-expired', {
+  lease_owner: 'worker-2',
+  lease_expires_at: '2026-04-20T00:00:10Z',
+  updated_at: '2026-04-20T00:00:10Z',
+});
+
+assert.equal(state.getTaskStatus('runtime-db-bootstrap-expired'), 'open');
+assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap-expired' }]).length, 1);
 
 state.createRun({
   run_id: 'run-1',

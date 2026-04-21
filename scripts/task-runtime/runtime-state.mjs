@@ -143,6 +143,23 @@ function getRuntimeRow(db, taskId) {
     .get(taskId);
 }
 
+function isLeaseActive(runtime, now = new Date()) {
+  if (!runtime?.lease_owner) {
+    return false;
+  }
+
+  if (!runtime.lease_expires_at) {
+    return true;
+  }
+
+  const expiresAt = Date.parse(runtime.lease_expires_at);
+  if (Number.isNaN(expiresAt)) {
+    return true;
+  }
+
+  return expiresAt > now.getTime();
+}
+
 function getTaskStatus(db, taskId) {
   const event = getLatestTaskEvent(db, taskId);
   if (!event) {
@@ -150,7 +167,7 @@ function getTaskStatus(db, taskId) {
     if (!runtime) {
       return 'open';
     }
-    if (runtime.active_run_id || runtime.lease_owner) {
+    if (runtime.active_run_id || isLeaseActive(runtime)) {
       return 'leased';
     }
     return 'open';
@@ -162,7 +179,7 @@ function getTaskStatus(db, taskId) {
   }
 
   const runtime = getRuntimeRow(db, taskId);
-  if (runtime && (runtime.active_run_id || runtime.lease_owner)) {
+  if (runtime && (runtime.active_run_id || isLeaseActive(runtime))) {
     return 'leased';
   }
 
@@ -270,6 +287,8 @@ function finishRun(db, runId, status, finishedAt) {
   const runtime = getRuntimeRow(db, run.task_id);
   if (runtime?.active_run_id === runId) {
     upsertTaskRuntime(db, run.task_id, {
+      lease_owner: null,
+      lease_expires_at: null,
       active_run_id: null,
       updated_at: finishedAt,
     });
@@ -339,7 +358,7 @@ function isTaskOpen(db, taskId) {
     return true;
   }
 
-  return runtime.status === 'open' && !runtime.active_run_id && !runtime.lease_owner;
+  return runtime.status === 'open' && !runtime.active_run_id && !isLeaseActive(runtime);
 }
 
 function listOpenTasks(db, tasks) {
