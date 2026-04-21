@@ -591,64 +591,39 @@ extract_commit_sha() {
   jq -r '.candidate_commit // empty' "$summary_file" 2>/dev/null || true
 }
 
-summary_field_value() {
-  local label="$1"
-  local summary_file="$2"
-  awk -F': ' -v key="$label" '$1 == key {print substr($0, length(key) + 3)}' "$summary_file" | head -n 1
-}
-
 summary_has_rebaseline_proof() {
   local summary_file="$1"
-  local fixture_paths fixture_diff related_behavior doc_support focused_proof reason
-  fixture_paths="$(summary_field_value '  - Fixture path(s)' "$summary_file")"
-  fixture_diff="$(summary_field_value '  - Fixture differs on disk' "$summary_file")"
-  related_behavior="$(summary_field_value '  - Related Jess behavior' "$summary_file")"
-  doc_support="$(summary_field_value '  - Governing doc support' "$summary_file")"
-  focused_proof="$(summary_field_value '  - Focused proof' "$summary_file")"
-  reason="$(summary_field_value '  - Reason' "$summary_file")"
-
-  [[ -n "$fixture_paths" && "$fixture_paths" != "none" ]] || return 1
-  [[ "$fixture_diff" == "yes" ]] || return 1
-  [[ -n "$related_behavior" && "$related_behavior" != "none" ]] || return 1
-  [[ -n "$doc_support" && "$doc_support" != "none" ]] || return 1
-  [[ -n "$focused_proof" ]] || return 1
-  [[ -n "$reason" ]] || return 1
-
-  file_contains_regex 'docs/(future/performance|superpowers/specs|superpowers/plans)/' "$summary_file"
+  jq -e '
+    (.classification == "rebaseline") and
+    (.reason | type == "string" and length > 0) and
+    (.verification | type == "array" and length > 0) and
+    (.proof_refs | type == "array" and length > 0) and
+    (.candidate_commit | type == "string" and length > 0) and
+    (.candidate_branch | type == "string" and length > 0)
+  ' "$summary_file" >/dev/null 2>&1
 }
 
 summary_has_jess_bug_proof() {
   local summary_file="$1"
-  local related_behavior doc_support focused_proof reason verification_run commit_sha
-  related_behavior="$(summary_field_value '  - Related Jess behavior' "$summary_file")"
-  doc_support="$(summary_field_value '  - Governing doc support' "$summary_file")"
-  focused_proof="$(summary_field_value '  - Focused proof' "$summary_file")"
-  reason="$(summary_field_value '  - Reason' "$summary_file")"
-  verification_run="$(summary_field_value 'Verification run' "$summary_file")"
-  commit_sha="$(summary_field_value 'Commit sha' "$summary_file")"
-
-  [[ -n "$related_behavior" && "$related_behavior" != "none" ]] || return 1
-  [[ -n "$doc_support" && "$doc_support" != "none" ]] || return 1
-  [[ -n "$focused_proof" && "$focused_proof" != "none" ]] || return 1
-  [[ -n "$reason" ]] || return 1
-  [[ -n "$verification_run" && "$verification_run" != "none" ]] || return 1
-  [[ -n "$commit_sha" && "$commit_sha" != "none" ]] || return 1
+  jq -e '
+    (.classification == "jess-bug") and
+    (.reason | type == "string" and length > 0) and
+    (.verification | type == "array" and length > 0) and
+    (.proof_refs | type == "array" and length > 0) and
+    (.candidate_commit | type == "string" and length > 0) and
+    (.candidate_branch | type == "string" and length > 0)
+  ' "$summary_file" >/dev/null 2>&1
 }
 
 summary_has_needs_human_proof() {
   local summary_file="$1"
-  local related_behavior doc_support focused_proof reason verification_run
-  related_behavior="$(summary_field_value '  - Related Jess behavior' "$summary_file")"
-  doc_support="$(summary_field_value '  - Governing doc support' "$summary_file")"
-  focused_proof="$(summary_field_value '  - Focused proof' "$summary_file")"
-  reason="$(summary_field_value '  - Reason' "$summary_file")"
-  verification_run="$(summary_field_value 'Verification run' "$summary_file")"
-
-  [[ -n "$doc_support" && "$doc_support" != "none" ]] || return 1
-  [[ -n "$focused_proof" && "$focused_proof" != "none" ]] || return 1
-  [[ -n "$reason" ]] || return 1
-  [[ -n "$verification_run" && "$verification_run" != "none" ]] || return 1
-  [[ -n "$related_behavior" ]] || return 1
+  jq -e '
+    (.classification == "needs-human") and
+    (.reason | type == "string" and length > 0) and
+    (.verification | type == "array" and length > 0) and
+    (.proof_refs | type == "array" and length > 0) and
+    (.unresolved_concerns | type == "string" and length > 0)
+  ' "$summary_file" >/dev/null 2>&1
 }
 
 normalize_classification() {
@@ -874,6 +849,18 @@ run_iteration() {
       return 1
       ;;
     jess-bug|rebaseline)
+      if [[ "$classification" == "jess-bug" ]] && ! summary_has_jess_bug_proof "$ITERATION_SUMMARY"; then
+        log "jess-bug without coordinator proof is non-terminal; leaving task pending"
+        record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
+        cleanup_worker_worktree "$ITERATION_WORKTREE"
+        return 1
+      fi
+      if [[ "$classification" == "rebaseline" ]] && ! summary_has_rebaseline_proof "$ITERATION_SUMMARY"; then
+        log "rebaseline without coordinator proof is non-terminal; leaving task pending"
+        record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
+        cleanup_worker_worktree "$ITERATION_WORKTREE"
+        return 1
+      fi
       promote_worker_branch "$ITERATION_BRANCH"
       record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" true true "$run_id"
       cleanup_worker_worktree "$ITERATION_WORKTREE"
