@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -49,6 +49,27 @@ try {
   writeFileSync(join(tasksDir, 'runtime-db-bootstrap.json'), `${JSON.stringify(task, null, 2)}\n`, 'utf8');
 
   const dbPath = join(tempRoot, 'runtime.sqlite');
+  const snapshotOnlyOutput = execFileSync(
+    process.execPath,
+    [
+      resolve('scripts/task-runtime/operator-tasks.mjs'),
+      'status',
+      '--json',
+      '--tasks-index',
+      indexPath,
+      '--runtime-db',
+      dbPath,
+    ],
+    { encoding: 'utf8' },
+  );
+
+  assert.equal(existsSync(dbPath), false);
+
+  const snapshotOnlyTasks = JSON.parse(snapshotOnlyOutput);
+  assert.equal(snapshotOnlyTasks.length, 1);
+  assert.equal(snapshotOnlyTasks[0].id, task.id);
+  assert.equal(snapshotOnlyTasks[0].status, 'open');
+
   const state = createRuntimeState(dbPath);
 
   state.createRun({

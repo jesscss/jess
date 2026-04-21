@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import {
@@ -209,6 +209,10 @@ function summarizeMutation(summary) {
 }
 
 function getEffectiveTaskStatus(task, runtimeState) {
+  if (!runtimeState) {
+    return task.status;
+  }
+
   const runtimeStatus = runtimeState.getTaskStatus(task.id);
   return task.status === 'open' && runtimeStatus === 'leased' ? 'leased' : task.status;
 }
@@ -222,8 +226,10 @@ async function main() {
 
   const command = parseCommandArgs(args);
   const tasks = listTaskSnapshots({ indexPath: options.tasksIndex }).map((entry) => entry.task);
-  const { createRuntimeState } = await import('./runtime-state.mjs');
-  const runtimeState = createRuntimeState(options.runtimeDb);
+  const shouldOpenRuntimeDb = command.command !== 'status' || existsSync(options.runtimeDb);
+  const runtimeState = shouldOpenRuntimeDb
+    ? (await import('./runtime-state.mjs')).createRuntimeState(options.runtimeDb)
+    : null;
 
   try {
     switch (command.command) {
@@ -393,7 +399,7 @@ async function main() {
         throw new Error(`Unhandled command: ${command.command}`);
     }
   } finally {
-    runtimeState.close();
+    runtimeState?.close();
   }
 }
 
