@@ -201,11 +201,20 @@ try {
     case 'create-run':
       state.createRun(payload);
       break;
+    case 'start-run':
+      state.startRun(payload.run, payload.event);
+      break;
     case 'finish-run':
       state.finishRun(payload.run_id, payload.status, payload.finished_at);
       break;
+    case 'fail-run':
+      state.failRun(payload);
+      break;
     case 'record-submission':
       state.recordSubmission(payload);
+      break;
+    case 'record-result':
+      state.recordResult(payload);
       break;
     case 'insert-event':
       state.insertEvent(payload);
@@ -242,14 +251,29 @@ runtime_create_run() {
   runtime_state_exec create-run "$payload_json"
 }
 
+runtime_start_run() {
+  local payload_json="$1"
+  runtime_state_exec start-run "$payload_json"
+}
+
 runtime_finish_run() {
   local payload_json="$1"
   runtime_state_exec finish-run "$payload_json"
 }
 
+runtime_fail_run() {
+  local payload_json="$1"
+  runtime_state_exec fail-run "$payload_json"
+}
+
 runtime_record_submission() {
   local payload_json="$1"
   runtime_state_exec record-submission "$payload_json"
+}
+
+runtime_record_result() {
+  local payload_json="$1"
+  runtime_state_exec record-result "$payload_json"
 }
 
 runtime_insert_event() {
@@ -674,7 +698,7 @@ record_result() {
   submission_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   submission_id="${run_id}:submission"
 
-  runtime_record_submission "$(
+  runtime_record_result "$(
     jq -nc \
       --arg submission_id "$submission_id" \
       --arg run_id "$run_id" \
@@ -683,42 +707,49 @@ record_result() {
       --arg candidate_commit "$commit_sha" \
       --arg created_at "$submission_ts" \
       --argjson summary "$summary_json" \
-      '{
-        submission_id:$submission_id,
-        run_id:$run_id,
-        task_id:$task_id,
-        classification:$classification,
-        candidate_commit:(if $candidate_commit == "" then null else $candidate_commit end),
-        summary:$summary,
-        created_at:$created_at
-      }'
-  )"
-
-  runtime_insert_event "$(
-    jq -nc \
-      --arg event_id "${run_id}:submission-recorded" \
-      --arg task_id "$task_id" \
-      --arg event_type "submission_recorded" \
-      --arg ts "$submission_ts" \
-      --arg actor "coordinator" \
-      --arg run_id "$run_id" \
-      --arg classification "$classification" \
+      --arg terminal_event_type "$terminal_event_type" \
       --arg branch "$branch" \
-      --arg candidate_commit "$commit_sha" \
-      --argjson summary "$summary_json" \
+      --arg run_status "$run_status" \
       '{
-        event_id:$event_id,
-        task_id:$task_id,
-        event_type:$event_type,
-        ts:$ts,
-        actor:$actor,
-        run_id:$run_id,
-        payload:{
+        submission:{
+          submission_id:$submission_id,
+          run_id:$run_id,
+          task_id:$task_id,
           classification:$classification,
-          branch:$branch,
           candidate_commit:(if $candidate_commit == "" then null else $candidate_commit end),
-          summary:$summary
-        }
+          summary:$summary,
+          created_at:$created_at
+        },
+        submissionEvent:{
+          event_id:"\($run_id):submission-recorded",
+          task_id:$task_id,
+          event_type:"submission_recorded",
+          ts:$created_at,
+          actor:"coordinator",
+          run_id:$run_id,
+          payload:{
+            classification:$classification,
+            branch:$branch,
+            candidate_commit:(if $candidate_commit == "" then null else $candidate_commit end),
+            summary:$summary
+          }
+        },
+        terminalEvent:(if $terminal_event_type == "" then null else {
+          event_id:"\($run_id):terminal",
+          task_id:$task_id,
+          event_type:$terminal_event_type,
+          ts:$created_at,
+          actor:"coordinator",
+          run_id:$run_id,
+          payload:{
+            classification:$classification,
+            branch:$branch,
+            candidate_commit:(if $candidate_commit == "" then null else $candidate_commit end),
+            summary:$summary
+          }
+        } end),
+        runStatus:$run_status,
+        finishedAt:$created_at
       }'
   )"
 
@@ -732,45 +763,6 @@ record_result() {
     terminal_event_type=""
     run_status="failed"
   fi
-
-  if [[ -n "$terminal_event_type" ]]; then
-    terminal_event_id="${run_id}:terminal"
-    runtime_insert_event "$(
-      jq -nc \
-        --arg event_id "$terminal_event_id" \
-        --arg task_id "$task_id" \
-        --arg event_type "$terminal_event_type" \
-        --arg ts "$submission_ts" \
-        --arg actor "coordinator" \
-        --arg run_id "$run_id" \
-        --arg classification "$classification" \
-        --arg branch "$branch" \
-        --arg candidate_commit "$commit_sha" \
-        --argjson summary "$summary_json" \
-        '{
-          event_id:$event_id,
-          task_id:$task_id,
-          event_type:$event_type,
-          ts:$ts,
-          actor:$actor,
-          run_id:$run_id,
-          payload:{
-            classification:$classification,
-            branch:$branch,
-            candidate_commit:(if $candidate_commit == "" then null else $candidate_commit end),
-            summary:$summary
-          }
-        }'
-    )"
-  fi
-
-  runtime_finish_run "$(
-    jq -nc \
-      --arg run_id "$run_id" \
-      --arg status "$run_status" \
-      --arg finished_at "$submission_ts" \
-      '{run_id:$run_id, status:$status, finished_at:$finished_at}'
-  )"
 }
 
 log_queue_snapshot() {
@@ -798,7 +790,7 @@ run_iteration() {
   run_id="$ITERATION_SLUG"
 
   create_worker_worktree "$ITERATION_BRANCH" "$ITERATION_WORKTREE"
-  runtime_create_run "$(
+  runtime_start_run "$(
     jq -nc \
       --arg run_id "$run_id" \
       --arg task_id "$task_id" \
@@ -806,19 +798,18 @@ run_iteration() {
       --arg worktree "$ITERATION_WORKTREE" \
       --arg status "running" \
       --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '{run_id:$run_id, task_id:$task_id, branch:$branch, worktree:$worktree, status:$status, started_at:$started_at}'
-  )"
-  runtime_insert_event "$(
-    jq -nc \
-      --arg event_id "${run_id}:run-started" \
-      --arg task_id "$task_id" \
-      --arg event_type "run_started" \
-      --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      --arg actor "coordinator" \
-      --arg run_id "$run_id" \
-      --arg branch "$ITERATION_BRANCH" \
-      --arg worktree "$ITERATION_WORKTREE" \
-      '{event_id:$event_id, task_id:$task_id, event_type:$event_type, ts:$ts, actor:$actor, run_id:$run_id, payload:{branch:$branch, worktree:$worktree}}'
+      '{
+        run:{run_id:$run_id, task_id:$task_id, branch:$branch, worktree:$worktree, status:$status, started_at:$started_at},
+        event:{
+          event_id:"\($run_id):run-started",
+          task_id:$task_id,
+          event_type:"run_started",
+          ts:$started_at,
+          actor:"coordinator",
+          run_id:$run_id,
+          payload:{branch:$branch, worktree:$worktree}
+        }
+      }'
   )"
   if ! bash "$ROOT_DIR/scripts/codex-auto-worker.sh" \
     --task-id "$task_id" \
@@ -829,19 +820,29 @@ run_iteration() {
     --summary-path "$ITERATION_SUMMARY"
   then
     log "worker failed"
-    runtime_insert_event "$(
+    runtime_fail_run "$(
       jq -nc \
-        --arg event_id "${run_id}:run-failed" \
-        --arg task_id "$task_id" \
-        --arg event_type "run_failed" \
-        --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        --arg actor "coordinator" \
         --arg run_id "$run_id" \
+        --arg status "failed" \
+        --arg finished_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg task_id "$task_id" \
         --arg branch "$ITERATION_BRANCH" \
         --arg worktree "$ITERATION_WORKTREE" \
-        '{event_id:$event_id, task_id:$task_id, event_type:$event_type, ts:$ts, actor:$actor, run_id:$run_id, payload:{branch:$branch, worktree:$worktree}}'
+        '{
+          runId:$run_id,
+          status:$status,
+          finishedAt:$finished_at,
+          event:{
+            event_id:"\($run_id):run-failed",
+            task_id:$task_id,
+            event_type:"run_failed",
+            ts:$finished_at,
+            actor:"coordinator",
+            run_id:$run_id,
+            payload:{branch:$branch, worktree:$worktree}
+          }
+        }'
     )"
-    runtime_finish_run "$(jq -nc --arg run_id "$run_id" --arg status "failed" --arg finished_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{run_id:$run_id, status:$status, finished_at:$finished_at}')"
     cleanup_worker_worktree "$ITERATION_WORKTREE"
     return 1
   fi

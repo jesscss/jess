@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { createRuntimeState } from './runtime-state.mjs';
 
 const dbPath = '/tmp/jess-task-runtime-test.sqlite';
@@ -34,7 +35,20 @@ state.createRun({
 
 assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'leased');
 
-state.finishRun('run-failed', 'failed', '2026-04-20T00:00:45Z');
+state.failRun({
+  runId: 'run-failed',
+  status: 'failed',
+  finishedAt: '2026-04-20T00:00:45Z',
+  event: {
+    event_id: 'evt-failed',
+    task_id: 'runtime-db-bootstrap-failed',
+    event_type: 'run_failed',
+    ts: '2026-04-20T00:00:45Z',
+    actor: 'test',
+    run_id: 'run-failed',
+    payload: {},
+  },
+});
 
 assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'open');
 assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap-failed' }]).length, 1);
@@ -76,5 +90,31 @@ state.recordSubmission({
 const runtime = state.getTaskRuntime('runtime-db-bootstrap');
 assert.equal(runtime.status, 'completed');
 assert.equal(runtime.active_run_id, null);
+
+const legacyDbPath = '/tmp/jess-task-runtime-legacy-test.sqlite';
+const rejectedFile = '/tmp/jess-task-runtime-legacy-rejected.jsonl';
+
+rmSync(legacyDbPath, { force: true });
+rmSync(rejectedFile, { force: true });
+
+await writeFile(
+  rejectedFile,
+  `${JSON.stringify({
+    task_id: 'legacy-rejected-task',
+    ts: '2026-04-20T00:03:00Z',
+    classification: 'unknown',
+  })}\n`,
+);
+
+const legacyState = createRuntimeState(legacyDbPath, {
+  legacyJsonl: {
+    rejectedFile,
+  },
+});
+
+assert.equal(legacyState.getTaskStatus('legacy-rejected-task'), 'rejected');
+assert.equal(legacyState.listOpenTasks([{ id: 'legacy-rejected-task' }]).length, 0);
+
+legacyState.close();
 
 state.close();

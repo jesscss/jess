@@ -4,6 +4,7 @@ import { openRuntimeDb } from './lib/db.mjs';
 const TERMINAL_EVENT_TO_STATUS = {
   task_completed: 'completed',
   task_needs_human: 'needs-human',
+  task_rejected: 'rejected',
 };
 
 const TERMINAL_EVENT_TYPES = new Set(Object.keys(TERMINAL_EVENT_TO_STATUS));
@@ -18,6 +19,20 @@ function parsePayload(value) {
 
 function serializePayload(payload) {
   return JSON.stringify(payload ?? {});
+}
+
+function withTransaction(db, fn) {
+  db.exec('BEGIN');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {}
+    throw error;
+  }
 }
 
 function readJsonlRecords(filePath) {
@@ -358,7 +373,7 @@ function importLegacyJsonlState(db, legacyFiles) {
   const files = [
     [completedFile, 'task_completed'],
     [needsHumanFile, 'task_needs_human'],
-    [rejectedFile, 'submission_recorded'],
+    [rejectedFile, 'task_rejected'],
   ];
 
   for (const [filePath, eventType] of files) {
@@ -403,11 +418,33 @@ export function createRuntimeState(dbPath, options = {}) {
     createRun(run) {
       createRun(db, run);
     },
+    startRun(run, event) {
+      withTransaction(db, () => {
+        createRun(db, run);
+        insertEvent(db, event);
+      });
+    },
     finishRun(runId, status, finishedAt) {
       finishRun(db, runId, status, finishedAt);
     },
+    failRun({ runId, status, finishedAt, event }) {
+      withTransaction(db, () => {
+        insertEvent(db, event);
+        finishRun(db, runId, status, finishedAt);
+      });
+    },
     recordSubmission(submission) {
       recordSubmission(db, submission);
+    },
+    recordResult({ submission, submissionEvent, terminalEvent, runStatus, finishedAt }) {
+      withTransaction(db, () => {
+        recordSubmission(db, submission);
+        insertEvent(db, submissionEvent);
+        if (terminalEvent) {
+          insertEvent(db, terminalEvent);
+        }
+        finishRun(db, submission.run_id, runStatus, finishedAt);
+      });
     },
     leaseTask(taskId, lease) {
       leaseTask(db, taskId, lease);
