@@ -169,14 +169,18 @@ function hasActiveRun(runtime, now = new Date()) {
     return false;
   }
 
+  if (!runtime.active_run_status || runtime.active_run_status === 'running') {
+    return true;
+  }
+
   if (runtime.lease_expires_at) {
     const expiresAt = Date.parse(runtime.lease_expires_at);
-    if (!Number.isNaN(expiresAt) && expiresAt <= now.getTime()) {
-      return false;
+    if (!Number.isNaN(expiresAt)) {
+      return expiresAt > now.getTime();
     }
   }
 
-  return true;
+  return false;
 }
 
 function getTaskStatus(db, taskId) {

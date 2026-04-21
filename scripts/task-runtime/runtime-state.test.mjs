@@ -69,6 +69,10 @@ state.createRun({
   started_at: '2000-04-20T00:00:00Z',
 });
 
+assert.equal(state.getTaskStatus('runtime-db-bootstrap-expired'), 'leased');
+
+state.finishRun('stale-run', 'failed', '2000-04-20T00:00:05Z');
+
 state.leaseTask('runtime-db-bootstrap-expired', {
   lease_owner: 'worker-2',
   lease_expires_at: '2000-04-20T00:00:10Z',

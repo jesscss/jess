@@ -854,6 +854,12 @@ run_iteration() {
 
   case "$classification" in
     needs-human)
+      if ! summary_has_needs_human_proof "$ITERATION_SUMMARY"; then
+        log "needs-human without coordinator proof is non-terminal; leaving task pending"
+        record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
+        cleanup_worker_worktree "$ITERATION_WORKTREE"
+        return 1
+      fi
       record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" true false "$run_id"
       cleanup_worker_worktree "$ITERATION_WORKTREE"
       return 0
