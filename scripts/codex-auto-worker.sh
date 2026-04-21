@@ -22,6 +22,8 @@ WORKTREE=""
 BRANCH=""
 SUMMARY_PATH=""
 LOG_FILE=""
+WORKTREE_SUMMARY_DIR=""
+WORKTREE_SUMMARY_PATH=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,6 +48,10 @@ done
 mkdir -p "$(dirname "$LOG_FILE")"
 mkdir -p "$(dirname "$SUMMARY_PATH")"
 rm -f "$SUMMARY_PATH"
+WORKTREE_SUMMARY_DIR="$WORKTREE/.codex-auto"
+WORKTREE_SUMMARY_PATH="$WORKTREE_SUMMARY_DIR/summary.json"
+mkdir -p "$WORKTREE_SUMMARY_DIR"
+rm -f "$WORKTREE_SUMMARY_PATH"
 
 PROMPT=$(
   cat <<EOF
@@ -54,7 +60,7 @@ You are working in an isolated Jess automation worktree.
 Task id: $TASK_ID
 Task description file: $TASK_FILE
 Handoff bundle directory: $HANDOFF_BUNDLE
-Summary path: $SUMMARY_PATH
+Summary path: $WORKTREE_SUMMARY_PATH
 
 Requirements:
 - Solve exactly one coherent slice.
@@ -73,7 +79,7 @@ Requirements:
 - Run narrow verification, then broader affected verification.
 - Commit your change if and only if the slice is clean.
 - Do not push the worker branch yourself; the wrapper will only push after summary validation succeeds.
-- At the end, write machine-readable JSON to "$SUMMARY_PATH" using the worker submission schema:
+- At the end, write machine-readable JSON to "$WORKTREE_SUMMARY_PATH" using the worker submission schema:
   - task_id
   - classification
   - reason (non-empty)
@@ -84,12 +90,16 @@ Requirements:
   - candidate_branch
   - unresolved_concerns (use "none" if there are none)
 - Do not end with freeform bullet text.
-- Do not print the final JSON only to stdout; it must be written to "$SUMMARY_PATH".
+- Do not print the final JSON only to stdout; it must be written to "$WORKTREE_SUMMARY_PATH".
 EOF
 )
 
 cd "$WORKTREE"
-codex exec --full-auto "$PROMPT" < "$TASK_FILE" | tee "$LOG_FILE"
+codex exec --full-auto "$PROMPT" < "$TASK_FILE" 2>&1 | tee "$LOG_FILE"
+
+if [[ -f "$WORKTREE_SUMMARY_PATH" ]]; then
+  cp "$WORKTREE_SUMMARY_PATH" "$SUMMARY_PATH"
+fi
 
 if [[ ! -f "$SUMMARY_PATH" ]]; then
   echo "Worker did not write summary JSON: $SUMMARY_PATH" >&2
