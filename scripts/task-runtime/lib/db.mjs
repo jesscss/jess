@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_VERSION = 1;
+const RUNTIME_TABLES = new Set(['events', 'runs', 'submissions', 'task_runtime']);
 
 function getUserVersion(db) {
   return db.prepare('PRAGMA user_version').get().user_version;
@@ -19,6 +20,10 @@ function listUserTables(db) {
     .map((row) => row.name);
 }
 
+function hasOnlyKnownRuntimeTables(tables) {
+  return tables.every((name) => RUNTIME_TABLES.has(name));
+}
+
 export function openRuntimeDb(dbPath) {
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -30,7 +35,7 @@ export function openRuntimeDb(dbPath) {
   if (currentVersion === 0) {
     const existingTables = listUserTables(db);
 
-    if (existingTables.length > 0) {
+    if (existingTables.length > 0 && !hasOnlyKnownRuntimeTables(existingTables)) {
       db.close();
       throw new Error(
         `Unversioned task runtime database already contains tables: ${existingTables.join(', ')}. ` +
