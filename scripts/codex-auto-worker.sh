@@ -162,11 +162,11 @@ if [[ -n "$candidate_commit" ]]; then
     exit 1
   fi
 
-  git rev-parse --verify "${candidate_commit}^{commit}" >/dev/null
+  resolved_candidate_commit="$(git rev-parse --verify "${candidate_commit}^{commit}")"
 
   head_commit=$(git rev-parse HEAD)
-  if [[ "$candidate_commit" != "$head_commit" ]]; then
-    echo "Summary candidate_commit does not match HEAD: $candidate_commit != $head_commit" >&2
+  if [[ "$resolved_candidate_commit" != "$head_commit" ]]; then
+    echo "Summary candidate_commit does not match HEAD: $resolved_candidate_commit != $head_commit" >&2
     exit 1
   fi
 
