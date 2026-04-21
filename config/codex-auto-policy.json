@@ -1,6 +1,7 @@
 {
   "stable_branch": "dev",
-  "automation_branch": "codex/auto-less-recovery",
+  "automation_branch": "codex/durable-task-memory",
+  "automation_base_ref": "HEAD",
   "worktree_root": "~/git/worktrees",
   "state_root": "state/codex-auto",
   "runtime_db": "state/task-runtime/runtime.sqlite",

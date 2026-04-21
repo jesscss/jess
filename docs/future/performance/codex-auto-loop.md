@@ -8,6 +8,12 @@ Source of truth:
 - `state/task-runtime/runtime.sqlite` holds runtime execution state
 - `state/codex-auto/` holds local coordinator artifacts such as logs, run directories, and manual overrides
 
+Execution base:
+
+- worker and integration worktrees are created from `automation_base_ref` when configured
+- promotion pushes to `automation_branch`
+- this lets a feature branch exercise the migrated loop against its own code before sharing the branch remotely
+
 The coordinator is the only authority that:
 
 - selects the next task
