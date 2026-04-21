@@ -62,6 +62,53 @@ file_contains_fixed() {
   fi
 }
 
+verification_entry_matches_log() {
+  local entry="$1"
+  local file="$2"
+
+  python3 - "$entry" "$file" <<'PY'
+import pathlib
+import sys
+
+entry = sys.argv[1]
+log = pathlib.Path(sys.argv[2]).read_text()
+
+variants = []
+
+def add_variant(value):
+    if value and value not in variants:
+        variants.append(value)
+
+def normalize(value):
+    previous = None
+    while value != previous:
+        previous = value
+        value = (
+            value
+            .replace('\\"', '"')
+            .replace("\\'", "'")
+            .replace('\\\\', '\\')
+        )
+    return value
+
+add_variant(entry)
+
+if " (" in entry:
+    add_variant(entry.split(" (", 1)[0])
+
+normalized_log = normalize(log)
+
+for candidate in list(variants):
+    add_variant(normalize(candidate))
+
+for candidate in variants:
+    if candidate in log or candidate in normalized_log:
+        sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
 file_contains_regex() {
   local pattern="$1"
   local file="$2"
@@ -709,7 +756,7 @@ summary_has_common_proof() {
 
   while IFS= read -r proof; do
     [[ -n "$proof" ]] || return 1
-    file_contains_fixed "$proof" "$log_file" || return 1
+    verification_entry_matches_log "$proof" "$log_file" || return 1
   done < <(jq -r '.verification[]' "$summary_file")
 
   while IFS= read -r proof; do
