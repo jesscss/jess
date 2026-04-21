@@ -65,6 +65,10 @@ export function getDefaultTaskIndexPath() {
   return DEFAULT_TASK_INDEX_PATH;
 }
 
+export function loadTaskIndex(indexPath = DEFAULT_TASK_INDEX_PATH) {
+  return readJson(resolve(indexPath));
+}
+
 export function validateTaskSnapshot(task) {
   if (validateTaskSchema(task)) {
     return;
@@ -84,6 +88,23 @@ export function findTaskFileById(taskId, options = {}) {
   }
 
   throw new Error(`Could not find canonical task snapshot for id "${taskId}"`);
+}
+
+export function createTaskSnapshot(task, options = {}) {
+  const indexPath = resolve(options.indexPath ?? DEFAULT_TASK_INDEX_PATH);
+  const index = loadTaskIndex(indexPath);
+  const repoRoot = dirname(dirname(indexPath));
+  const trackDirectory =
+    index.task_directories.find((entry) => entry.id === task.track)?.directory ??
+    index.task_directories[0]?.directory;
+
+  if (!trackDirectory) {
+    throw new Error(`Could not resolve a canonical task directory for track "${task.track}"`);
+  }
+
+  const taskPath = resolve(repoRoot, trackDirectory, `${task.id}.json`);
+  writeTaskSnapshot(taskPath, task);
+  return { taskPath, task };
 }
 
 export function writeTaskSnapshot(taskPath, task) {

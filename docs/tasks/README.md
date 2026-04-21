@@ -87,6 +87,18 @@ Freeform summaries are not authoritative.
 
 The coordinator generates a handoff bundle per run so fresh workers can recover context without conversational history.
 
-## Operator Commands
+Use `node scripts/task-runtime/operator-tasks.mjs --help` for the current steering surface.
+
+The command surface supports:
+
+- `status`
+- `prioritize`
+- `add`
+- `block`
+- `focus`
+
+Authoritative changes are immediate by default and record matching runtime events.
+
+Use `--propose` to record a proposal event without changing canonical task state.
 
 Operator commands should target the task system itself, not bypass it with ad hoc file edits.
