@@ -389,12 +389,24 @@ function listOpenTasks(db, tasks) {
 }
 
 function isDatabaseEmpty(db) {
-  const row = db
-    .prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table'")
+  const counts = db
+    .prepare(
+      `
+        SELECT
+          (SELECT COUNT(*) FROM events) AS events_count,
+          (SELECT COUNT(*) FROM task_runtime) AS task_runtime_count,
+          (SELECT COUNT(*) FROM runs) AS runs_count,
+          (SELECT COUNT(*) FROM submissions) AS submissions_count
+      `,
+    )
     .get();
-  return row.count > 0
-    ? db.prepare('SELECT COUNT(*) AS count FROM events').get().count === 0
-    : true;
+
+  return (
+    counts.events_count === 0 &&
+    counts.task_runtime_count === 0 &&
+    counts.runs_count === 0 &&
+    counts.submissions_count === 0
+  );
 }
 
 function importLegacyJsonlState(db, legacyFiles) {

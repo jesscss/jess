@@ -704,6 +704,9 @@ record_result() {
   elif [[ "$classification" == "needs-human" && "$accepted_by_coordinator" == true ]]; then
     terminal_event_type="task_needs_human"
     run_status="needs-human"
+  elif [[ "$classification" == "needs-human" ]]; then
+    terminal_event_type="task_rejected"
+    run_status="rejected"
   else
     terminal_event_type=""
     run_status="failed"
