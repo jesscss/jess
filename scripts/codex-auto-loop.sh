@@ -698,6 +698,17 @@ record_result() {
   submission_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   submission_id="${run_id}:submission"
 
+  if [[ "$classification" == "jess-bug" || "$classification" == "rebaseline" ]]; then
+    terminal_event_type="task_completed"
+    run_status="completed"
+  elif [[ "$classification" == "needs-human" && "$accepted_by_coordinator" == true ]]; then
+    terminal_event_type="task_needs_human"
+    run_status="needs-human"
+  else
+    terminal_event_type=""
+    run_status="failed"
+  fi
+
   runtime_record_result "$(
     jq -nc \
       --arg submission_id "$submission_id" \
@@ -752,17 +763,6 @@ record_result() {
         finishedAt:$created_at
       }'
   )"
-
-  if [[ "$classification" == "jess-bug" || "$classification" == "rebaseline" ]]; then
-    terminal_event_type="task_completed"
-    run_status="completed"
-  elif [[ "$classification" == "needs-human" && "$accepted_by_coordinator" == true ]]; then
-    terminal_event_type="task_needs_human"
-    run_status="needs-human"
-  else
-    terminal_event_type=""
-    run_status="failed"
-  fi
 }
 
 log_queue_snapshot() {
