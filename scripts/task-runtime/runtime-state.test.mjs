@@ -24,6 +24,22 @@ assert.equal(events[0].event_id, 'evt-1');
 assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap' }]).length, 1);
 
 state.createRun({
+  run_id: 'run-failed',
+  task_id: 'runtime-db-bootstrap-failed',
+  branch: 'codex/test-failed',
+  worktree: '/tmp/worktree-failed',
+  status: 'running',
+  started_at: '2026-04-20T00:00:30Z',
+});
+
+assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'leased');
+
+state.finishRun('run-failed', 'failed', '2026-04-20T00:00:45Z');
+
+assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'open');
+assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap-failed' }]).length, 1);
+
+state.createRun({
   run_id: 'run-1',
   task_id: 'runtime-db-bootstrap',
   branch: 'codex/test',

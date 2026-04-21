@@ -237,6 +237,28 @@ function finishRun(db, runId, status, finishedAt) {
       WHERE run_id = ?
     `,
   ).run(status, finishedAt, runId);
+
+  const run = db
+    .prepare(
+      `
+        SELECT task_id
+        FROM runs
+        WHERE run_id = ?
+      `,
+    )
+    .get(runId);
+
+  if (!run) {
+    return;
+  }
+
+  const runtime = getRuntimeRow(db, run.task_id);
+  if (runtime?.active_run_id === runId) {
+    upsertTaskRuntime(db, run.task_id, {
+      active_run_id: null,
+      updated_at: finishedAt,
+    });
+  }
 }
 
 function recordSubmission(db, submission) {

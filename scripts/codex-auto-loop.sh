@@ -502,30 +502,16 @@ write_task_file() {
       --arg runtime_db "$RUNTIME_DB" \
       --arg all_less_log "$LAST_ALL_LESS_FILE" \
       --arg manual_override_file "$MANUAL_OVERRIDE_FILE" \
-      --arg completed_file "$COMPLETED_FILE" \
-      --arg needs_human_file "$NEEDS_HUMAN_FILE" \
       '{
         runtime_db: $runtime_db,
         all_less_log: $all_less_log,
-        manual_override_file: $manual_override_file,
-        completed_file: $completed_file,
-        needs_human_file: $needs_human_file
+        manual_override_file: $manual_override_file
       }'
     printf '\n```\n'
     if [[ -f "$MANUAL_OVERRIDE_FILE" ]]; then
       printf '\nManual overrides:\n```json\n'
       jq . "$MANUAL_OVERRIDE_FILE"
       printf '\n```\n'
-    fi
-    if [[ -s "$COMPLETED_FILE" ]]; then
-      printf '\nRecently completed tasks:\n```json\n'
-      tail -n 10 "$COMPLETED_FILE"
-      printf '```\n'
-    fi
-    if [[ -s "$NEEDS_HUMAN_FILE" ]]; then
-      printf '\nNeeds-human queue:\n```json\n'
-      tail -n 10 "$NEEDS_HUMAN_FILE"
-      printf '```\n'
     fi
     if [[ -f "$LAST_ALL_LESS_FILE" ]]; then
       printf '\nLast all-less snapshot excerpt:\n```\n'
@@ -552,7 +538,7 @@ prepare_iteration_paths() {
   ITERATION_WORKTREE="$WORKTREE_ROOT/$ITERATION_SLUG"
   ITERATION_RUN_DIR="$RUNS_DIR/$ITERATION_SLUG"
   ITERATION_LOG="$LOGS_DIR/$ITERATION_SLUG.log"
-  ITERATION_SUMMARY="$ITERATION_RUN_DIR/summary.txt"
+  ITERATION_SUMMARY="$ITERATION_RUN_DIR/summary.json"
   mkdir -p "$ITERATION_RUN_DIR"
 }
 
@@ -835,13 +821,12 @@ run_iteration() {
       '{event_id:$event_id, task_id:$task_id, event_type:$event_type, ts:$ts, actor:$actor, run_id:$run_id, payload:{branch:$branch, worktree:$worktree}}'
   )"
   if ! bash "$ROOT_DIR/scripts/codex-auto-worker.sh" \
-    --policy-file "$POLICY_FILE" \
     --task-id "$task_id" \
     --task-file "$task_file" \
     --worktree "$ITERATION_WORKTREE" \
     --branch "$ITERATION_BRANCH" \
     --log-file "$ITERATION_LOG" \
-    --summary-file "$ITERATION_SUMMARY"
+    --summary-path "$ITERATION_SUMMARY"
   then
     log "worker failed"
     runtime_insert_event "$(
