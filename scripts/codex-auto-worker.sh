@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -106,7 +108,7 @@ if [[ ! -f "$SUMMARY_PATH" ]]; then
   exit 1
 fi
 
-node scripts/task-runtime/validate-submission.mjs "$SUMMARY_PATH"
+node "$ROOT_DIR/scripts/task-runtime/validate-submission.mjs" "$SUMMARY_PATH"
 
 summary_fields=$(
   node --input-type=module - "$SUMMARY_PATH" <<'EOF'
