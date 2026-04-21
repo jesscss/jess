@@ -3,11 +3,11 @@ import { rmSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { openRuntimeDb } from './lib/db.mjs';
 
-const dbPath = '/tmp/jess-task-runtime-unversioned.sqlite';
-rmSync(dbPath, { force: true });
+const compatibleDbPath = '/tmp/jess-task-runtime-unversioned.sqlite';
+rmSync(compatibleDbPath, { force: true });
 
-const seedDb = new DatabaseSync(dbPath);
-seedDb.exec(`
+const compatibleSeedDb = new DatabaseSync(compatibleDbPath);
+compatibleSeedDb.exec(`
   CREATE TABLE events (
     event_id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
@@ -47,9 +47,9 @@ seedDb.exec(`
     created_at TEXT NOT NULL
   );
 `);
-seedDb.close();
+compatibleSeedDb.close();
 
-const db = openRuntimeDb(dbPath);
+const db = openRuntimeDb(compatibleDbPath);
 const { user_version: userVersion } = db.prepare('PRAGMA user_version').get();
 assert.equal(userVersion, 1);
 
@@ -60,3 +60,27 @@ const tables = db
 assert.deepEqual(tables, ['events', 'runs', 'submissions', 'task_runtime']);
 
 db.close();
+
+const incompatibleDbPath = '/tmp/jess-task-runtime-incompatible.sqlite';
+rmSync(incompatibleDbPath, { force: true });
+
+const incompatibleSeedDb = new DatabaseSync(incompatibleDbPath);
+incompatibleSeedDb.exec(`
+  CREATE TABLE events (
+    event_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    ts TEXT NOT NULL
+  );
+`);
+incompatibleSeedDb.close();
+
+assert.throws(
+  () => openRuntimeDb(incompatibleDbPath),
+  /Unversioned task runtime database has incompatible runtime tables: events \(missing: actor, run_id, payload_json\)\./,
+);
+
+const incompatibleDb = new DatabaseSync(incompatibleDbPath);
+const { user_version: incompatibleUserVersion } = incompatibleDb.prepare('PRAGMA user_version').get();
+assert.equal(incompatibleUserVersion, 0);
+incompatibleDb.close();
