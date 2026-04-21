@@ -183,10 +183,8 @@ function hasActiveRun(runtime, now = new Date()) {
   return false;
 }
 
-function getTaskStatus(db, taskId) {
-  const event = getLatestTaskEvent(db, taskId);
+function resolveTaskStatus(event, runtime) {
   if (!event) {
-    const runtime = getRuntimeRow(db, taskId);
     if (!runtime) {
       return 'open';
     }
@@ -201,12 +199,17 @@ function getTaskStatus(db, taskId) {
     return terminalStatus;
   }
 
-  const runtime = getRuntimeRow(db, taskId);
   if (runtime && (hasActiveRun(runtime) || isLeaseActive(runtime))) {
     return 'leased';
   }
 
   return 'open';
+}
+
+function getTaskStatus(db, taskId) {
+  const event = getLatestTaskEvent(db, taskId);
+  const runtime = getRuntimeRow(db, taskId);
+  return resolveTaskStatus(event, runtime);
 }
 
 function listTaskEvents(db, taskId) {
@@ -368,7 +371,7 @@ function getTaskRuntime(db, taskId) {
   const latestEvent = getLatestTaskEvent(db, taskId);
   return {
     ...runtime,
-    status: latestEvent ? TERMINAL_EVENT_TO_STATUS[latestEvent.event_type] ?? 'open' : 'open',
+    status: resolveTaskStatus(latestEvent, runtime),
     latest_event: latestEvent
       ? { ...latestEvent, payload: parsePayload(latestEvent.payload_json) }
       : null,

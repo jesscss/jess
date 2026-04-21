@@ -661,6 +661,12 @@ create_worker_worktree() {
   if [[ -d "$ROOT_DIR/node_modules" && ! -e "$worktree/node_modules" ]]; then
     ln -s "$ROOT_DIR/node_modules" "$worktree/node_modules"
   fi
+  local exclude_file
+  exclude_file="$(git -C "$worktree" rev-parse --git-path info/exclude)"
+  mkdir -p "$(dirname "$exclude_file")"
+  if ! grep -qxF 'node_modules' "$exclude_file" 2>/dev/null; then
+    printf '\nnode_modules\n' >> "$exclude_file"
+  fi
 }
 
 cleanup_worker_worktree() {

@@ -54,6 +54,7 @@ state.leaseTask('runtime-db-bootstrap-failed', {
 });
 
 assert.equal(state.getTaskStatus('runtime-db-bootstrap-failed'), 'leased');
+assert.equal(state.getTaskRuntime('runtime-db-bootstrap-failed').status, 'leased');
 
 state.failRun({
   runId: 'run-failed',
