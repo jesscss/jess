@@ -601,9 +601,18 @@ prepare_iteration_paths() {
   ITERATION_BRANCH="${WORKER_BRANCH_PREFIX}/$ITERATION_SLUG"
   ITERATION_WORKTREE="$WORKTREE_ROOT/$ITERATION_SLUG"
   ITERATION_RUN_DIR="$RUNS_DIR/$ITERATION_SLUG"
+  ITERATION_HANDOFF_DIR="$ITERATION_RUN_DIR/handoff"
   ITERATION_LOG="$LOGS_DIR/$ITERATION_SLUG.log"
   ITERATION_SUMMARY="$ITERATION_RUN_DIR/summary.json"
-  mkdir -p "$ITERATION_RUN_DIR"
+  mkdir -p "$ITERATION_RUN_DIR" "$ITERATION_HANDOFF_DIR"
+}
+
+build_handoff_bundle() {
+  local task_id="$1"
+  node "$ROOT_DIR/scripts/task-runtime/build-handoff-bundle.mjs" \
+    --task-id "$task_id" \
+    --out "$ITERATION_HANDOFF_DIR" \
+    --runtime-db "$RUNTIME_DB"
 }
 
 create_worker_worktree() {
@@ -825,6 +834,7 @@ run_iteration() {
   task_file="$(write_task_file "$task_json")"
   prepare_iteration_paths "$task_id"
   run_id="$ITERATION_SLUG"
+  build_handoff_bundle "$task_id"
 
   create_worker_worktree "$ITERATION_BRANCH" "$ITERATION_WORKTREE"
   runtime_start_run "$(
@@ -851,6 +861,7 @@ run_iteration() {
   if ! bash "$ROOT_DIR/scripts/codex-auto-worker.sh" \
     --task-id "$task_id" \
     --task-file "$task_file" \
+    --handoff-bundle "$ITERATION_HANDOFF_DIR" \
     --worktree "$ITERATION_WORKTREE" \
     --branch "$ITERATION_BRANCH" \
     --log-file "$ITERATION_LOG" \

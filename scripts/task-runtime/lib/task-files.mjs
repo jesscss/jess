@@ -35,6 +35,28 @@ function taskDirectories(indexPath) {
   return uniqueTaskDirectories(index.task_directories).map((directory) => resolve(repoRoot, directory));
 }
 
+export function listTaskSnapshots(options = {}) {
+  const indexPath = resolve(options.indexPath ?? DEFAULT_TASK_INDEX_PATH);
+  const tasks = [];
+
+  for (const directory of taskDirectories(indexPath)) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) {
+        continue;
+      }
+
+      const taskPath = join(directory, entry.name);
+      tasks.push({
+        taskPath,
+        task: readJson(taskPath),
+        indexPath,
+      });
+    }
+  }
+
+  return tasks;
+}
+
 export function getRepoRoot() {
   return REPO_ROOT;
 }
@@ -55,19 +77,9 @@ export function validateTaskSnapshot(task) {
 }
 
 export function findTaskFileById(taskId, options = {}) {
-  const indexPath = resolve(options.indexPath ?? DEFAULT_TASK_INDEX_PATH);
-
-  for (const directory of taskDirectories(indexPath)) {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) {
-        continue;
-      }
-
-      const taskPath = join(directory, entry.name);
-      const task = readJson(taskPath);
-      if (task.id === taskId) {
-        return { taskPath, task, indexPath };
-      }
+  for (const snapshot of listTaskSnapshots(options)) {
+    if (snapshot.task.id === taskId) {
+      return snapshot;
     }
   }
 

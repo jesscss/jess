@@ -7,6 +7,7 @@ Usage:
   codex-auto-worker.sh \
     --task-id <task-id> \
     --task-file <task-file> \
+    --handoff-bundle <dir> \
     --worktree <path> \
     --branch <branch> \
     --summary-path <path> \
@@ -16,6 +17,7 @@ EOF
 
 TASK_ID=""
 TASK_FILE=""
+HANDOFF_BUNDLE=""
 WORKTREE=""
 BRANCH=""
 SUMMARY_PATH=""
@@ -25,6 +27,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --task-id) TASK_ID="$2"; shift 2 ;;
     --task-file) TASK_FILE="$2"; shift 2 ;;
+    --handoff-bundle) HANDOFF_BUNDLE="$2"; shift 2 ;;
     --worktree) WORKTREE="$2"; shift 2 ;;
     --branch) BRANCH="$2"; shift 2 ;;
     --summary-path) SUMMARY_PATH="$2"; shift 2 ;;
@@ -34,7 +37,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$TASK_ID" && -n "$TASK_FILE" && -n "$WORKTREE" && -n "$BRANCH" && -n "$SUMMARY_PATH" && -n "$LOG_FILE" ]] || {
+[[ -n "$TASK_ID" && -n "$TASK_FILE" && -n "$HANDOFF_BUNDLE" && -n "$WORKTREE" && -n "$BRANCH" && -n "$SUMMARY_PATH" && -n "$LOG_FILE" ]] || {
   echo "Missing required arguments" >&2
   usage >&2
   exit 2
@@ -50,10 +53,16 @@ You are working in an isolated Jess automation worktree.
 
 Task id: $TASK_ID
 Task description file: $TASK_FILE
+Handoff bundle directory: $HANDOFF_BUNDLE
 Summary path: $SUMMARY_PATH
 
 Requirements:
 - Solve exactly one coherent slice.
+- Read the generated handoff bundle before making decisions:
+  - $HANDOFF_BUNDLE/task_snapshot.json
+  - $HANDOFF_BUNDLE/task_context.json
+  - $HANDOFF_BUNDLE/recent_events.json
+  - $HANDOFF_BUNDLE/verification_policy.json
 - Use exactly one of these classification enum values:
   1. jess-bug
   2. rebaseline

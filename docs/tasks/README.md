@@ -83,6 +83,10 @@ Workers must emit machine-readable submission JSON that validates against `scrip
 
 Freeform summaries are not authoritative.
 
+## Cold-Start Worker Handoffs
+
+The coordinator generates a handoff bundle per run so fresh workers can recover context without conversational history.
+
 ## Operator Commands
 
 Operator commands should target the task system itself, not bypass it with ad hoc file edits.
