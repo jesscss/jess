@@ -161,3 +161,10 @@ assert.equal(legacyState.listOpenTasks([{ id: 'legacy-rejected-task' }]).length,
 legacyState.close();
 
 state.close();
+
+const nestedDbPath = '/tmp/jess-task-runtime-nested/runtime/runtime.sqlite';
+rmSync('/tmp/jess-task-runtime-nested', { recursive: true, force: true });
+
+const nestedState = createRuntimeState(nestedDbPath);
+assert.equal(nestedState.getTaskStatus('fresh-runtime-task'), 'open');
+nestedState.close();

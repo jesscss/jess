@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
@@ -20,6 +20,7 @@ function listUserTables(db) {
 }
 
 export function openRuntimeDb(dbPath) {
+  mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
 
   db.exec('PRAGMA foreign_keys = ON');

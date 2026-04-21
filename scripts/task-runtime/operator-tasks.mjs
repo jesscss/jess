@@ -208,6 +208,11 @@ function summarizeMutation(summary) {
   console.log(JSON.stringify(summary, null, 2));
 }
 
+function getEffectiveTaskStatus(task, runtimeState) {
+  const runtimeStatus = runtimeState.getTaskStatus(task.id);
+  return task.status === 'open' && runtimeStatus === 'leased' ? 'leased' : task.status;
+}
+
 async function main() {
   const { args, options } = parseGlobalOptions(process.argv.slice(2));
   if (options.help || args.length === 0) {
@@ -223,9 +228,10 @@ async function main() {
   try {
     switch (command.command) {
       case 'status': {
-        const visibleTasks = command.track
-          ? tasks.filter((task) => task.track === command.track)
-          : tasks;
+        const visibleTasks = (command.track ? tasks.filter((task) => task.track === command.track) : tasks).map((task) => ({
+          ...task,
+          status: getEffectiveTaskStatus(task, runtimeState),
+        }));
         printStatus(visibleTasks, command.asJson);
         break;
       }
