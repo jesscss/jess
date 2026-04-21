@@ -24,6 +24,19 @@ assert.equal(events[0].event_id, 'evt-1');
 
 assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap' }]).length, 1);
 
+state.insertEvent({
+  event_id: 'evt-needs-human',
+  task_id: 'runtime-db-bootstrap-needs-human',
+  event_type: 'task_needs_human',
+  ts: '2026-04-20T00:00:15Z',
+  actor: 'test',
+  run_id: null,
+  payload: {},
+});
+
+assert.equal(state.getTaskStatus('runtime-db-bootstrap-needs-human'), 'needs_human');
+assert.equal(state.listOpenTasks([{ id: 'runtime-db-bootstrap-needs-human' }]).length, 0);
+
 state.createRun({
   run_id: 'run-failed',
   task_id: 'runtime-db-bootstrap-failed',

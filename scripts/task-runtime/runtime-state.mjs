@@ -3,7 +3,7 @@ import { openRuntimeDb } from './lib/db.mjs';
 
 const TERMINAL_EVENT_TO_STATUS = {
   task_completed: 'completed',
-  task_needs_human: 'needs-human',
+  task_needs_human: 'needs_human',
   task_rejected: 'rejected',
 };
 
