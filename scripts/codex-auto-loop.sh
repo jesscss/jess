@@ -281,6 +281,46 @@ runtime_insert_event() {
   runtime_state_exec insert-event "$payload_json"
 }
 
+apply_task_transition() {
+  local task_id="$1"
+  local status="$2"
+  local event_type="$3"
+  local run_id="${4:-}"
+  local commit_sha="${5:-}"
+  local summary_file="${6:-}"
+  local payload_json event_id
+
+  event_id="${run_id:-$(slugify "$task_id")}:task-transition:${status}:$(date +%s)"
+  payload_json="$(jq -nc \
+    --arg summary_file "$summary_file" \
+    --argjson summary "$(if [[ -n "$summary_file" && -f "$summary_file" ]]; then jq -c '.' "$summary_file"; else printf 'null'; fi)" \
+    '{summary_file:(if $summary_file == "" then null else $summary_file end), summary:$summary}')"
+
+  cmd=(
+    node "$ROOT_DIR/scripts/task-runtime/apply-transition.mjs"
+    --task-id "$task_id"
+    --status "$status"
+    --event-id "$event_id"
+    --event-type "$event_type"
+    --actor coordinator
+    --payload-json "$payload_json"
+  )
+
+  if [[ -n "$run_id" ]]; then
+    cmd+=(--run-id "$run_id")
+  fi
+
+  if [[ "$status" == "completed" && -n "$run_id" ]]; then
+    cmd+=(--accepted-run-id "$run_id")
+  fi
+
+  if [[ -n "$commit_sha" ]]; then
+    cmd+=(--accepted-commit "$commit_sha")
+  fi
+
+  "${cmd[@]}"
+}
+
 init_state() {
   mkdir -p "$LEASES_DIR" "$LOGS_DIR" "$RESULTS_DIR" "$RUNS_DIR" "$TASKS_DIR" "$WORKTREE_ROOT"
   runtime_init
@@ -706,7 +746,7 @@ record_result() {
   submission_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   submission_id="${run_id}:submission"
 
-  if [[ "$classification" == "jess-bug" || "$classification" == "rebaseline" ]]; then
+  if [[ ("$classification" == "jess-bug" || "$classification" == "rebaseline") && "$accepted_by_coordinator" == true && "$promotion_succeeded" == true ]]; then
     terminal_event_type="task_completed"
     run_status="completed"
   elif [[ "$classification" == "needs-human" && "$accepted_by_coordinator" == true ]]; then
@@ -729,7 +769,6 @@ record_result() {
       --arg candidate_commit "$commit_sha" \
       --arg created_at "$submission_ts" \
       --argjson summary "$summary_json" \
-      --arg terminal_event_type "$terminal_event_type" \
       --arg branch "$branch" \
       --arg run_status "$run_status" \
       '{
@@ -756,20 +795,7 @@ record_result() {
             summary:$summary
           }
         },
-        terminalEvent:(if $terminal_event_type == "" then null else {
-          event_id:"\($run_id):terminal",
-          task_id:$task_id,
-          event_type:$terminal_event_type,
-          ts:$created_at,
-          actor:"coordinator",
-          run_id:$run_id,
-          payload:{
-            classification:$classification,
-            branch:$branch,
-            candidate_commit:(if $candidate_commit == "" then null else $candidate_commit end),
-            summary:$summary
-          }
-        } end),
+        terminalEvent:null,
         runStatus:$run_status,
         finishedAt:$created_at
       }'
@@ -866,12 +892,14 @@ run_iteration() {
   case "$classification" in
     needs-human)
       if ! summary_has_needs_human_proof "$ITERATION_SUMMARY" "$task_json" "$ITERATION_LOG"; then
-        log "needs-human without coordinator proof is non-terminal; leaving task pending"
+        log "needs-human without coordinator proof is rejected by the coordinator"
         record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" false false "$run_id"
+        apply_task_transition "$task_id" "rejected" "task_rejected" "$run_id" "" "$ITERATION_SUMMARY"
         cleanup_worker_worktree "$ITERATION_WORKTREE"
         return 1
       fi
       record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" true false "$run_id"
+      apply_task_transition "$task_id" "needs_human" "task_needs_human" "$run_id" "" "$ITERATION_SUMMARY"
       cleanup_worker_worktree "$ITERATION_WORKTREE"
       return 0
       ;;
@@ -896,6 +924,7 @@ run_iteration() {
       fi
       promote_worker_branch "$ITERATION_BRANCH"
       record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" true true "$run_id"
+      apply_task_transition "$task_id" "completed" "task_completed" "$run_id" "$commit_sha" "$ITERATION_SUMMARY"
       cleanup_worker_worktree "$ITERATION_WORKTREE"
       return 0
       ;;

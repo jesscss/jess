@@ -58,6 +58,12 @@ Events explain how the snapshot changed.
 - Workers may not directly update the runtime database.
 - The coordinator is the only authoritative writer for task-state transitions.
 
+## Authoritative State Changes
+
+Canonical task snapshots are only updated through coordinator-owned transition application.
+
+Workers may not edit task snapshots directly.
+
 ## Runtime Database
 
 The local runtime database is a SQLite file under `state/task-runtime/`.
