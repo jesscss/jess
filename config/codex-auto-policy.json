@@ -4,6 +4,7 @@
   "worktree_root": "~/git/worktrees",
   "state_root": "state/codex-auto",
   "runtime_db": "state/task-runtime/runtime.sqlite",
+  "task_index_file": "tasks/index.json",
   "worker_branch_prefix": "codex-auto-worker",
   "max_failures": 3,
   "worker_model": "gpt-5.4",
@@ -19,12 +20,11 @@
     "all_less_smoke": "pnpm exec vitest --run packages/jess/test/less/all-less.test.ts --reporter=dot"
   },
   "governing_docs": [
+    "docs/tasks/README.md",
+    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md",
+    "docs/superpowers/plans/2026-04-20-durable-task-memory.md",
     "docs/superpowers/specs/2026-04-19-codex-auto-loop-design.md",
     "docs/superpowers/plans/2026-04-19-codex-auto-loop.md",
-    "docs/future/performance/2026-04-13-registry-redesign-handoff.md",
-    "docs/future/performance/2026-04-13-registry-redesign-proposal.md"
-  ],
-  "task_sources": [
     "docs/future/performance/2026-04-13-registry-redesign-handoff.md",
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md"
   ],

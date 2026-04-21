@@ -126,15 +126,12 @@ WORKER_BRANCH_PREFIX="$(jq -r '.worker_branch_prefix' "$POLICY_FILE")"
 WORKTREE_ROOT="$(expand_path "$(jq -r '.worktree_root' "$POLICY_FILE")")"
 STATE_ROOT="$ROOT_DIR/$(jq -r '.state_root' "$POLICY_FILE")"
 RUNTIME_DB="$ROOT_DIR/$(jq -r '.runtime_db' "$POLICY_FILE")"
+TASK_INDEX_FILE="$ROOT_DIR/$(jq -r '.task_index_file' "$POLICY_FILE")"
 MAX_FAILURES="$(jq -r '.max_failures' "$POLICY_FILE")"
 MANUAL_OVERRIDE_FILE="$ROOT_DIR/$(jq -r '.manual_override_file' "$POLICY_FILE")"
 ALL_LESS_CMD="$(jq -r '.commands.all_less' "$POLICY_FILE")"
 CORE_BUILD_CMD="$(jq -r '.commands.core_build' "$POLICY_FILE")"
 JESS_BUILD_CMD="$(jq -r '.commands.jess_build' "$POLICY_FILE")"
-TASK_SOURCES=()
-while IFS= read -r line; do
-  TASK_SOURCES+=("$line")
-done < <(jq -r '.task_sources[]' "$POLICY_FILE")
 
 GOVERNING_DOCS=()
 while IFS= read -r line; do
@@ -148,37 +145,25 @@ RUNS_DIR="$STATE_ROOT/runs"
 TASKS_DIR="$STATE_ROOT/tasks"
 LAST_ALL_LESS_FILE="$RESULTS_DIR/all-less.latest.log"
 DISCOVERED_TASKS_FILE="$RESULTS_DIR/discovered-tasks.json"
-COMPLETED_FILE="$STATE_ROOT/completed.jsonl"
-NEEDS_HUMAN_FILE="$STATE_ROOT/needs-human.jsonl"
-REJECTED_FILE="$STATE_ROOT/rejected.jsonl"
-
 CURRENT_STATE_VERSION=2
 
 runtime_state_exec() {
   local action="$1"
-  local payload_json="${2:-{}}"
+  local payload_json="${2-}"
+  if [[ -z "$payload_json" ]]; then
+    payload_json='{}'
+  fi
   ACTION="$action" \
     PAYLOAD_JSON="$payload_json" \
     RUNTIME_DB="$RUNTIME_DB" \
-    COMPLETED_FILE="$COMPLETED_FILE" \
-    NEEDS_HUMAN_FILE="$NEEDS_HUMAN_FILE" \
-    REJECTED_FILE="$REJECTED_FILE" \
-    DISCOVERED_TASKS_FILE="$DISCOVERED_TASKS_FILE" \
+    TASK_INDEX_FILE="$TASK_INDEX_FILE" \
     node --input-type=module - <<EOF
-import { readFileSync } from 'node:fs';
 import { createRuntimeState } from '${ROOT_DIR}/scripts/task-runtime/runtime-state.mjs';
+import { listTaskSnapshots } from '${ROOT_DIR}/scripts/task-runtime/lib/task-files.mjs';
 
 const action = process.env.ACTION;
 const payload = process.env.PAYLOAD_JSON ? JSON.parse(process.env.PAYLOAD_JSON) : {};
-const state = createRuntimeState(process.env.RUNTIME_DB, action === 'init'
-  ? {
-      legacyJsonl: {
-        completedFile: process.env.COMPLETED_FILE,
-        needsHumanFile: process.env.NEEDS_HUMAN_FILE,
-        rejectedFile: process.env.REJECTED_FILE,
-      },
-    }
-  : {});
+const state = createRuntimeState(process.env.RUNTIME_DB);
 
 try {
   switch (action) {
@@ -188,10 +173,15 @@ try {
       process.stdout.write(state.getTaskStatus(payload.task_id));
       break;
     case 'count-status': {
-      const tasks = JSON.parse(readFileSync(process.env.DISCOVERED_TASKS_FILE, 'utf8'));
+      const tasks = listTaskSnapshots({ indexPath: process.env.TASK_INDEX_FILE }).map((entry) => entry.task);
       let count = 0;
       for (const task of tasks) {
-        if (state.getTaskStatus(task.id) === payload.status) {
+        const runtimeStatus = state.getTaskStatus(task.id);
+        const effectiveStatus =
+          task.status === 'open' && runtimeStatus === 'leased'
+            ? 'leased'
+            : task.status;
+        if (effectiveStatus === payload.status) {
           count++;
         }
       }
@@ -223,7 +213,7 @@ try {
       state.leaseTask(payload.task_id, payload);
       break;
     default:
-      throw new Error(`Unknown runtime-state action: ${action}`);
+      throw new Error('Unknown runtime-state action: ' + action);
   }
 } finally {
   state.close();
@@ -355,60 +345,94 @@ run_all_less_snapshot() {
   return 1
 }
 
-discover_doc_tasks() {
-  local source line text id
-  for source in "${TASK_SOURCES[@]}"; do
-    [[ -f "$ROOT_DIR/$source" ]] || continue
-    while IFS=: read -r line text; do
-      text="$(printf '%s' "$text" | sed -E 's/^[[:space:]-]+//')"
-      [[ -n "$text" ]] || continue
-      id="doc:$(slugify "${source}-${line}-${text}")"
-      jq -nc \
-        --arg id "$id" \
-        --arg kind "doc" \
-        --arg source "$source" \
-        --arg line "$line" \
-        --arg summary "$text" \
-        '{id:$id, kind:$kind, source:$source, line:($line|tonumber), summary:$summary}'
-    done < <(numbered_matches 'tests-unit/[^`[:space:]]+\.less|^[[:space:]]*[1-4]\.[[:space:]]+\*\*Track|serializer backtracking / buffered render|clone / copy / materialization pressure|remaining generic registry/query overhead' "$ROOT_DIR/$source")
-  done
+task_registry_exec() {
+  local action="$1"
+  local payload_json="${2-}"
+  if [[ -z "$payload_json" ]]; then
+    payload_json='{}'
+  fi
+  ACTION="$action" \
+    PAYLOAD_JSON="$payload_json" \
+    TASK_INDEX_FILE="$TASK_INDEX_FILE" \
+    node --input-type=module - <<EOF
+import { findTaskFileById, listTaskSnapshots } from '${ROOT_DIR}/scripts/task-runtime/lib/task-files.mjs';
+
+const action = process.env.ACTION;
+const payload = process.env.PAYLOAD_JSON ? JSON.parse(process.env.PAYLOAD_JSON) : {};
+
+switch (action) {
+  case 'list': {
+    const tasks = listTaskSnapshots({ indexPath: process.env.TASK_INDEX_FILE }).map(({ task, taskPath }) => ({
+      id: task.id,
+      kind: task.bucket,
+      source: 'task-registry',
+      summary: task.title,
+      track: task.track,
+      bucket: task.bucket,
+      priority: task.priority,
+      status: task.status,
+      task_path: taskPath,
+      definition_of_done: task.definition_of_done,
+      proof_expectations: task.proof_expectations,
+      source_refs: task.source_refs,
+      goal_refs: task.goal_refs,
+      depends_on: task.depends_on,
+      blocked_by: task.blocked_by,
+      accepted_commit: task.accepted_commit,
+      accepted_run_id: task.accepted_run_id,
+      last_transition_event_id: task.last_transition_event_id,
+    }));
+    process.stdout.write(JSON.stringify(tasks));
+    break;
+  }
+  case 'get': {
+    const { task, taskPath } = findTaskFileById(payload.task_id, { indexPath: process.env.TASK_INDEX_FILE });
+    process.stdout.write(JSON.stringify({
+      id: task.id,
+      kind: task.bucket,
+      source: 'task-registry',
+      summary: task.title,
+      track: task.track,
+      bucket: task.bucket,
+      priority: task.priority,
+      status: task.status,
+      task_path: taskPath,
+      definition_of_done: task.definition_of_done,
+      proof_expectations: task.proof_expectations,
+      source_refs: task.source_refs,
+      goal_refs: task.goal_refs,
+      depends_on: task.depends_on,
+      blocked_by: task.blocked_by,
+      accepted_commit: task.accepted_commit,
+      accepted_run_id: task.accepted_run_id,
+      last_transition_event_id: task.last_transition_event_id,
+    }));
+    break;
+  }
+  default:
+    throw new Error('Unknown task registry action: ' + action);
 }
-
-discover_all_less_tasks() {
-  [[ -f "$LAST_ALL_LESS_FILE" ]] || return 0
-  python3 - "$LAST_ALL_LESS_FILE" <<'PY' | sort -u | while read -r fixture; do
-import re
-import sys
-from pathlib import Path
-
-text = Path(sys.argv[1]).read_text(errors="ignore")
-text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
-text = re.sub(r'\x1b\][^\x07]*(?:\x07|\x1b\\\\)', '', text)
-
-for match in re.findall(r'tests-unit/[^"\s]+\.less', text):
-    print(match.split("\x1b", 1)[0])
-PY
-    [[ -n "$fixture" ]] || continue
-    jq -nc \
-      --arg id "less:$fixture" \
-      --arg kind "less-fixture" \
-      --arg source "all-less" \
-      --arg summary "$fixture" \
-      '{id:$id, kind:$kind, source:$source, summary:$summary}'
-  done
+EOF
 }
 
 discover_tasks() {
-  {
-    discover_doc_tasks
-    discover_all_less_tasks
-  } | jq -s 'unique_by(.id)' > "$DISCOVERED_TASKS_FILE"
+  local tmp_file
+  tmp_file="$(mktemp "$RESULTS_DIR/discovered-tasks.XXXXXX")"
+  task_registry_exec list | jq '.' > "$tmp_file"
+  mv "$tmp_file" "$DISCOVERED_TASKS_FILE"
 }
 
-has_terminal_record() {
-  local _source="$1"
-  local id="$2"
-  [[ "$(runtime_task_status "$id")" != "open" ]]
+effective_task_status() {
+  local task_json="$1"
+  local snapshot_status runtime_status
+  snapshot_status="$(jq -r '.status' <<<"$task_json")"
+  runtime_status="$(runtime_task_status "$(jq -r '.id' <<<"$task_json")")"
+
+  if [[ "$snapshot_status" == "open" && "$runtime_status" == "leased" ]]; then
+    printf 'leased\n'
+  else
+    printf '%s\n' "$snapshot_status"
+  fi
 }
 
 count_terminal_records() {
@@ -429,20 +453,15 @@ was_attempted_this_run() {
 
 is_auto_selectable_task() {
   local task_json="$1"
-  local kind summary
+  local kind
   kind="$(jq -r '.kind // ""' <<<"$task_json")"
-  summary="$(jq -r '.summary // ""' <<<"$task_json")"
 
   case "$kind" in
-    less-fixture)
+    less-fixture|runtime|operator-added)
       return 0
-      ;;
-    doc)
-      [[ "$summary" == *'tests-unit/'*'.less'* ]]
-      return
       ;;
     *)
-      return 0
+      return 1
       ;;
   esac
 }
@@ -451,12 +470,11 @@ pending_task_stats() {
   local item id total=0 auto_selectable=0 deferred_broad=0 attempted=0
   while read -r item; do
     id="$(jq -r '.id' <<<"$item")"
-    if has_terminal_record "$COMPLETED_FILE" "$id"; then
+    case "$(effective_task_status "$item")" in
+      completed|needs_human|rejected|superseded)
       continue
-    fi
-    if has_terminal_record "$NEEDS_HUMAN_FILE" "$id"; then
-      continue
-    fi
+        ;;
+    esac
     if jq -e --arg id "$id" '.skip[]? == $id' "$MANUAL_OVERRIDE_FILE" >/dev/null 2>&1; then
       continue
     fi
@@ -484,31 +502,30 @@ pending_task_stats() {
 select_next_task() {
   local pin queue_item id
   if [[ -n "$FORCED_TASK_ID" ]]; then
-    jq -nc --arg id "$FORCED_TASK_ID" '{id:$id, kind:"forced", source:"cli", summary:$id}'
+    task_registry_exec get "$(jq -nc --arg task_id "$FORCED_TASK_ID" '{task_id:$task_id}')"
     return 0
   fi
 
   pin="$(jq -r '.pin // empty' "$MANUAL_OVERRIDE_FILE")"
   if [[ -n "$pin" ]]; then
-    jq -nc --arg id "$pin" '{id:$id, kind:"manual", source:"override", summary:$id}'
+    task_registry_exec get "$(jq -nc --arg task_id "$pin" '{task_id:$task_id}')"
     return 0
   fi
 
   queue_item="$(jq -r '.queue[0] // empty' "$MANUAL_OVERRIDE_FILE")"
   if [[ -n "$queue_item" ]]; then
-    jq -nc --arg id "$queue_item" '{id:$id, kind:"manual", source:"override-queue", summary:$id}'
+    task_registry_exec get "$(jq -nc --arg task_id "$queue_item" '{task_id:$task_id}')"
     return 0
   fi
 
   local found=""
   while IFS=$'\t' read -r priority item; do
     id="$(jq -r '.id' <<<"$item")"
-    if has_terminal_record "$COMPLETED_FILE" "$id"; then
+    case "$(effective_task_status "$item")" in
+      completed|needs_human|rejected|superseded)
       continue
-    fi
-    if has_terminal_record "$NEEDS_HUMAN_FILE" "$id"; then
-      continue
-    fi
+        ;;
+    esac
     if jq -e --arg id "$id" '.skip[]? == $id' "$MANUAL_OVERRIDE_FILE" >/dev/null 2>&1; then
       continue
     fi
@@ -533,16 +550,26 @@ select_next_task() {
 
 task_priority() {
   local task_json="$1"
+  local priority base_priority
+  priority="$(jq -r '.priority // "p3"' <<<"$task_json")"
+
+  case "$priority" in
+    p0) printf '0\n'; return ;;
+    p1) base_priority=10 ;;
+    p2) base_priority=20 ;;
+    *) base_priority=30 ;;
+  esac
+
   if is_auto_selectable_task "$task_json"; then
     if [[ "$(jq -r '.kind // ""' <<<"$task_json")" == "less-fixture" ]]; then
-      printf '10\n'
-    elif [[ "$(jq -r '.kind // ""' <<<"$task_json")" == "doc" ]]; then
-      printf '20\n'
+      printf '%s\n' "$base_priority"
+    elif [[ "$(jq -r '.kind // ""' <<<"$task_json")" == "runtime" ]]; then
+      printf '%s\n' "$((base_priority + 5))"
     else
-      printf '50\n'
+      printf '%s\n' "$((base_priority + 10))"
     fi
   else
-    printf '90\n'
+     printf '90\n'
   fi
 }
 
@@ -815,7 +842,7 @@ log_queue_snapshot() {
   local discovered_count completed_count needs_human_count rejected_count stats total_pending auto_selectable deferred_broad attempted
   discovered_count="$(jq 'length' "$DISCOVERED_TASKS_FILE" 2>/dev/null || printf '0\n')"
   completed_count="$(count_terminal_records completed)"
-  needs_human_count="$(count_terminal_records 'needs-human')"
+  needs_human_count="$(count_terminal_records 'needs_human')"
   rejected_count="$(count_terminal_records rejected)"
   stats="$(pending_task_stats)"
   total_pending="$(jq -r '.total' <<<"$stats")"
@@ -953,7 +980,7 @@ print_status() {
   stats="$(pending_task_stats)"
   discovered_count="$(jq 'length' "$DISCOVERED_TASKS_FILE" 2>/dev/null || printf '0\n')"
   completed_count="$(count_terminal_records completed)"
-  needs_human_count="$(count_terminal_records 'needs-human')"
+  needs_human_count="$(count_terminal_records 'needs_human')"
   rejected_count="$(count_terminal_records rejected)"
   total_pending="$(jq -r '.total' <<<"$stats")"
   auto_selectable="$(jq -r '.auto_selectable' <<<"$stats")"
