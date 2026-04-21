@@ -658,6 +658,9 @@ create_worker_worktree() {
   local worktree="$2"
   log "creating worker worktree: $worktree"
   git -C "$ROOT_DIR" worktree add "$worktree" -b "$branch" "$AUTOMATION_BASE_REF" >/dev/null
+  if [[ -d "$ROOT_DIR/node_modules" && ! -e "$worktree/node_modules" ]]; then
+    ln -s "$ROOT_DIR/node_modules" "$worktree/node_modules"
+  fi
 }
 
 cleanup_worker_worktree() {
