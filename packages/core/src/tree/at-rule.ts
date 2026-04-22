@@ -280,7 +280,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const nameOut = w.capture(() => name.toString(options));
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
-      const preludeOut = w.capture(() => prelude.toString(options));
+      const preludeTrivia = options.trivia ?? prelude.treeContext?.opts?.trivia;
+      const preludePrintOptions = options.context && preludeTrivia
+        ? {
+            ...options,
+            context: undefined,
+            trivia: preludeTrivia,
+            emittedTrivia: options.emittedTrivia
+          }
+        : options;
+      const preludeOut = w.capture(() => prelude.toString(preludePrintOptions));
       if (!preludeOut.trim()) {
         out += nameOut;
         if (rules) {

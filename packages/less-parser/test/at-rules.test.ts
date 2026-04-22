@@ -1,8 +1,13 @@
-import { serializeTypes } from '@jesscss/core';
+import { Context, serializeTypes } from '@jesscss/core';
+import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
+import { createRequire } from 'node:module';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
 const parse = parser.parse;
+const require = createRequire(import.meta.url);
+const testData = path.dirname(require.resolve('@less/test-data'));
 
 describe('importAtRule', () => {
   it('should parse @import with url', () => {
@@ -144,6 +149,54 @@ describe('mfValue', () => {
   it('should parse media feature value', () => {
     const { errors } = parse('@media (width: 500px) { }', 'stylesheet');
     expect(errors.length).toBe(0);
+  });
+});
+
+describe('at-rule prelude comments', () => {
+  it('preserves authored comments in evaluated @media and @import preludes', async () => {
+    const source = `@media screen /* comment */, print /* another */, handheld {
+  body {
+    font-size: 12pt;
+  }
+}
+
+@import "test.css" screen /* comment */, print;
+`;
+
+    const { errors, tree } = parse(source, 'stylesheet');
+
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toContain('screen /* comment */, print /* another */, handheld');
+    expect(tree.toString()).toContain('@import "test.css" screen /* comment */, print;');
+
+    const context = new Context();
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ context })).toBeString(`
+      @import "test.css" screen /* comment */, print;
+      @media screen /* comment */, print /* another */, handheld {
+        body {
+          font-size: 12pt;
+        }
+      }
+    `);
+  });
+
+  it('keeps the Less fixture comments after evaluation', async () => {
+    const fixture = path.join(testData, 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less');
+    const expected = readFileSync(
+      path.join(testData, 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.css'),
+      'utf8'
+    );
+    const source = readFileSync(fixture, 'utf8');
+    const { errors, tree } = parse(source, 'stylesheet');
+
+    expect(errors.length).toBe(0);
+
+    const context = new Context();
+    const evald = await tree.eval(context);
+
+    expect(evald.toString({ context })).toBe(expected);
   });
 });
 
