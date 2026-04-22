@@ -4,7 +4,7 @@
   "track": "task-memory-foundation",
   "bucket": "runtime",
   "priority": "p0",
-  "status": "open",
+  "status": "completed",
   "source_refs": [
     "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md"
   ],
@@ -19,7 +19,7 @@
     "runtime query smoke",
     "coordinator state read/write proof"
   ],
-  "accepted_commit": null,
-  "accepted_run_id": null,
-  "last_transition_event_id": null
+  "accepted_commit": "1b7ed6c410569bcec24a6a9ab8c1ac64d0a78222",
+  "accepted_run_id": "runtime-db-bootstrap-20260422-110211",
+  "last_transition_event_id": "runtime-db-bootstrap-20260422-110211:task-transition:completed:1776881410"
 }
