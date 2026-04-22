@@ -828,8 +828,14 @@ run_promotion_checks() {
   git -C "$ROOT_DIR" worktree add --detach "$integration_worktree" "$AUTOMATION_BASE_REF" >/dev/null
   prepare_worktree_environment "$integration_worktree"
   git -C "$integration_worktree" merge --ff-only "$branch" >/dev/null
-  eval "cd \"$integration_worktree\" && $CORE_BUILD_CMD" >/dev/null
-  eval "cd \"$integration_worktree\" && $JESS_BUILD_CMD" >/dev/null
+  (
+    cd "$integration_worktree"
+    eval "$CORE_BUILD_CMD"
+  ) >/dev/null
+  (
+    cd "$integration_worktree"
+    eval "$JESS_BUILD_CMD"
+  ) >/dev/null
   git -C "$integration_worktree" push --no-verify origin "HEAD:refs/heads/$AUTOMATION_BRANCH" >/dev/null
   git -C "$ROOT_DIR" worktree remove --force "$integration_worktree" >/dev/null 2>&1 || true
 }
