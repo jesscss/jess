@@ -1,4 +1,4 @@
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 
@@ -109,6 +109,26 @@ describe('Declaration', () => {
 
     expect(node.toTrimmedString()).toBe('--custom:if(not(true), 5)');
     expect(node.render(context)).toBe('--custom:if(not(true), 5)');
+  });
+
+  it('preserves Less-style function calls in custom property values during render(context)', () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'rgba',
+      fn: () => any('rgb(0, 30, 0)')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: ref('rgba', { type: 'function', fallbackValue: true }),
+        args: new List([num(0), num(30), num(0), num(238)])
+      }, { silentFail: true })
+    });
+
+    expect(node.render(context)).toBe(node.toTrimmedString());
   });
 
   it('serializes important declarations with one space before !important', async () => {

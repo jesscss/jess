@@ -216,11 +216,9 @@ const hsl = defineFunction(
       cloned.value.node = undefined;
 
       if (args[1] !== undefined) {
-        // args[1] is already converted by percentOf(1), toNumber() conversion plugins
-        if (typeof args[1] !== 'number') {
-          throw new Error('Invalid arguments for hsl function');
-        }
-        const alpha = args[1];
+        // callWithContext can still surface unitless numeric nodes here, so
+        // coerce the overload the same way the numeric branches do.
+        const alpha = coerceNumericArg(args[1]);
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
         cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
       }

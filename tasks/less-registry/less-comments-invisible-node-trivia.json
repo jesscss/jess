@@ -1,0 +1,29 @@
+{
+  "id": "less-comments-invisible-node-trivia",
+  "title": "Preserve comments before invisible eval-only nodes in comments.less",
+  "track": "less-registry-redesign",
+  "bucket": "less-fixture",
+  "priority": "p1",
+  "status": "open",
+  "source_refs": [
+    "tests-unit/comments/comments.less",
+    "state/codex-auto/results/all-less.latest.log",
+    "state/codex-auto/runs/less-comments-20260422-124515/summary.json",
+    "docs/future/performance/2026-04-13-registry-redesign-handoff.md"
+  ],
+  "goal_refs": [
+    "less parity recovery",
+    "preserve render-time comment trivia around invisible eval-only nodes"
+  ],
+  "depends_on": [],
+  "blocked_by": [],
+  "definition_of_done": "A focused lower-level proof and the targeted comments.less outer proof both pass for the invisible-node trivia seam, with accepted evidence linked.",
+  "proof_expectations": [
+    "focused core or serializer proof for invisible eval-only node trivia emission",
+    "targeted less fixture proof for tests-unit/comments/comments.less",
+    "promotion verification"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": "operator:add:less-comments-invisible-node-trivia:1776890316286"
+}

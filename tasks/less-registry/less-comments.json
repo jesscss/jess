@@ -4,25 +4,30 @@
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "open",
+  "status": "superseded",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
+    "docs/future/performance/2026-04-13-registry-redesign-handoff.md",
     "packages/jess/test/less/all-less.test.ts",
     "tests-unit/comments/comments.less",
-    "state/codex-auto/results/all-less.latest.log"
+    "state/codex-auto/results/all-less.latest.log",
+    "state/codex-auto/runs/less-comments-20260422-124515/summary.json"
   ],
   "goal_refs": [
-    "less parity recovery"
+    "less parity recovery",
+    "split oversized comment-parity work into concrete fixable slices"
   ],
-  "depends_on": [],
+  "depends_on": [
+    "less-comments-invisible-node-trivia",
+    "less-comments-selector-comment-trivia",
+    "less-comments-declaration-comment-spacing"
+  ],
   "blocked_by": [],
-  "definition_of_done": "Focused proof and targeted outer proof both pass, and accepted evidence is linked.",
+  "definition_of_done": "This parent task stays superseded once the concrete comment subtasks are tracked canonically.",
   "proof_expectations": [
-    "targeted core or parser repro when applicable",
-    "targeted less fixture proof",
-    "promotion verification"
+    "subtasks recorded with concrete proof expectations"
   ],
   "accepted_commit": null,
   "accepted_run_id": null,
-  "last_transition_event_id": null
+  "last_transition_event_id": "operator:task-superseded:less-comments:1776890401000"
 }
