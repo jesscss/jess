@@ -9,20 +9,18 @@
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
     "packages/jess/test/less/all-less.test.ts",
     "tests-unit/comments/comments2.less",
-    "state/codex-auto/results/all-less.latest.log",
-    "state/codex-auto/runs/less-comments-comments2-20260422-125639/summary.json"
+    "state/codex-auto/results/all-less.latest.log"
   ],
   "goal_refs": [
-    "less parity recovery",
-    "split evaluated-source trivia work away from the broad fixture bucket"
+    "less parity recovery"
   ],
-  "depends_on": [
-    "less-comments2-eval-source-trivia"
-  ],
+  "depends_on": [],
   "blocked_by": [],
-  "definition_of_done": "This parent task stays superseded once the concrete comments2 subtask is tracked canonically.",
+  "definition_of_done": "Focused proof and targeted outer proof both pass, and accepted evidence is linked.",
   "proof_expectations": [
-    "subtask recorded with concrete proof expectations"
+    "targeted core or parser repro when applicable",
+    "targeted less fixture proof",
+    "promotion verification"
   ],
   "accepted_commit": null,
   "accepted_run_id": null,

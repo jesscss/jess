@@ -7,25 +7,20 @@
   "status": "superseded",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
-    "docs/future/performance/2026-04-13-registry-redesign-handoff.md",
     "packages/jess/test/less/all-less.test.ts",
     "tests-unit/comments/comments.less",
-    "state/codex-auto/results/all-less.latest.log",
-    "state/codex-auto/runs/less-comments-20260422-124515/summary.json"
+    "state/codex-auto/results/all-less.latest.log"
   ],
   "goal_refs": [
-    "less parity recovery",
-    "split oversized comment-parity work into concrete fixable slices"
+    "less parity recovery"
   ],
-  "depends_on": [
-    "less-comments-invisible-node-trivia",
-    "less-comments-selector-comment-trivia",
-    "less-comments-declaration-comment-spacing"
-  ],
+  "depends_on": [],
   "blocked_by": [],
-  "definition_of_done": "This parent task stays superseded once the concrete comment subtasks are tracked canonically.",
+  "definition_of_done": "Focused proof and targeted outer proof both pass, and accepted evidence is linked.",
   "proof_expectations": [
-    "subtasks recorded with concrete proof expectations"
+    "targeted core or parser repro when applicable",
+    "targeted less fixture proof",
+    "promotion verification"
   ],
   "accepted_commit": null,
   "accepted_run_id": null,
