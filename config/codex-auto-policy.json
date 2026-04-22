@@ -15,10 +15,10 @@
     "--progress-cursor"
   ],
   "commands": {
-    "all_less": "pnpm exec vitest --run packages/jess/test/less/all-less.test.ts --reporter=dot",
+    "all_less": "pnpm test:less:test-data",
     "core_build": "pnpm --filter @jesscss/core build",
     "jess_build": "pnpm --filter jess build",
-    "all_less_smoke": "pnpm exec vitest --run packages/jess/test/less/all-less.test.ts --reporter=dot"
+    "all_less_smoke": "pnpm test:less:test-data"
   },
   "governing_docs": [
     "docs/tasks/README.md",

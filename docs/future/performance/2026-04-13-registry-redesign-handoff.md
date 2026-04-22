@@ -46,6 +46,10 @@ Current outer-proof buckets:
     comment preservation only; the `.b` / `.b .c` grouping split is fixed in
     focused core coverage by keeping transparent mixin/import `Rules` wrappers
     from interleaving later declarations after nested containers.
+  - `tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less`
+    fixed in focused parser/core coverage by preserving authored parser trivia
+    when context-backed at-rule header rendering serializes evaluated preludes,
+    so `@media` / `@import` keyword comments now survive eval output again
   - `tests-unit/import/import-remote.less`
     same `fallback` runtime failure removed by the indexed-ref live-binding fix;
     focused outer proof is green again after rebuilding `core` and `jess`
