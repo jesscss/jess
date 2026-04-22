@@ -745,7 +745,19 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
         if (isNode(nn, N.Declaration)) {
-          const normalizedPre = pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+          const hasLeadingDeclarationBlockComment = /\/\*/u.test(pre.trimStart());
+          if (hasLeadingDeclarationBlockComment) {
+            const normalizedStandalonePre = normalizeIndent(pre, idt).replace(/[ \t]+$/u, '');
+            if (normalizedStandalonePre) {
+              w.add(normalizedStandalonePre);
+              if (!normalizedStandalonePre.endsWith('\n')) {
+                w.add('\n');
+              }
+            }
+          }
+          const normalizedPre = hasLeadingDeclarationBlockComment
+            ? (pre.match(/\n([ \t]*)$/u)?.[1] ?? '')
+            : pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
           const declIn = normalizedPre + out;
           const hasEmptyValue = /:\s*$/.test(out);
           // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).

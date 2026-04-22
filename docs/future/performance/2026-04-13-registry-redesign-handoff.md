@@ -113,6 +113,9 @@ Current outer-proof buckets:
   - related `extend-*` fixtures in the same run
 - formatting / serialization parity drift
   - comments / whitespace / css-3 / css-grid
+    - declaration/custom-property comment spacing in `tests-unit/comments/comments.less`
+      now fixed in core serialization; remaining comments fixture work is in the
+      selector/header and invisible-node trivia slices
   - selected color-function output forms
   - selected URL / shorthand / `!important` formatting
   - declaration ordering / grouping drift in fixtures like
