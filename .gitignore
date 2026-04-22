@@ -58,6 +58,8 @@ typings/
 
 # build artifacts
 lib
+!scripts/task-runtime/lib/
+!scripts/task-runtime/lib/**
 dist/
 *.tsbuildinfo
 .rollup.cache
@@ -70,3 +72,7 @@ packages/scss-parser/.cache/
 # CPU profiling output
 profiling/
 *.cpuprofile
+
+# Durable task runtime state
+state/codex-auto/
+state/task-runtime/
