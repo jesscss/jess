@@ -76,7 +76,10 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
-  if (isNode(node, N.Reference) || node.type === 'Interpolated') {
+  if (isNode(node, N.Reference)) {
+    return node.options?.type !== 'function';
+  }
+  if (node.type === 'Interpolated') {
     return true;
   }
   for (const child of node.children(true)) {
@@ -85,6 +88,40 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
     }
   }
   return false;
+};
+
+const isLessFunctionFallbackCall = (node: Node): boolean => (
+  isNode(node, N.Call)
+  && isNode(node.value.name, N.Reference)
+  && node.value.name.options?.type === 'function'
+  && node.value.name.options?.fallbackValue === true
+);
+
+const unwrapAtomicCustomValue = (node: Node): Node => {
+  if ((isNode(node, N.Sequence) || isNode(node, N.List)) && node.value.length === 1) {
+    return unwrapAtomicCustomValue(node.value[0]!);
+  }
+  return node;
+};
+
+const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
+  const atomicValue = unwrapAtomicCustomValue(node);
+  if (!isLessFunctionFallbackCall(atomicValue)) {
+    return undefined;
+  }
+
+  const { name, args } = atomicValue.value;
+  const printableKey = name.value.rawKey ?? name.value.key;
+  const nameText = typeof printableKey === 'string' || typeof printableKey === 'number'
+    ? String(printableKey)
+    : Array.isArray(printableKey)
+      ? printableKey.map(part => String(part)).join('')
+      : getPrintOptions(options).writer!.capture(() => printableKey.toString(options)).trim();
+  const argTexts = (args?.value ?? [])
+    .filter(Boolean)
+    .map(arg => getPrintOptions(options).writer!.capture(() => arg.toString(options)).trim());
+
+  return `${nameText}(${argTexts.join(', ')})`;
 };
 
 /**
@@ -174,8 +211,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let customOut = renderStructuredCustomValue
         ? w.capture(() => value.render(options.context!, options))
         : w.capture(() => value.toString(options));
+      customOut = stringifyCustomFallbackFunctionCall(value, options) ?? customOut;
       customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
       customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
+      const atomicValue = unwrapAtomicCustomValue(value);
+      if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
+        customOut = ` ${customOut}`;
+      }
       w.add(customOut, value);
       restorePrintState(options, saved);
     } else {

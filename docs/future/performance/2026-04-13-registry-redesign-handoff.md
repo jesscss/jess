@@ -94,6 +94,15 @@ Current outer-proof buckets:
     - fixed: reused `less-compat` plugin instances now get cloned per compiler
       build, so Less harness helper functions like `_color`, `increment`, and
       `add` do not disappear after earlier files seed stateful compat visitors
+  - `tests-unit/color-functions/rgba.less`
+    now green after focused function/core fixes:
+    - fixed: `hsla(color, 0.5)` color-overload alpha coercion now accepts the
+      unitless numeric node shape the Less runtime passes through this alias
+      path, instead of silently falling back to literal `hsla(...)` output
+    - fixed: custom-property serialization no longer treats Less fallback
+      function-name references as a signal to eagerly evaluate the whole value
+    - fixed: custom-property output restores stable authored spacing for the
+      atomic hex-alpha and fallback-call cases in this fixture
   - `tests-unit/ie-filters/ie-filters.less`
   - `tests-unit/nesting/nesting.less`
 - extend-path regressions / warning drift
