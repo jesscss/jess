@@ -1,5 +1,5 @@
 import { Parser } from '../src/index.js';
-import { isNode, N } from '@jesscss/core';
+import { Context, isNode, N } from '@jesscss/core';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -37,6 +37,24 @@ describe('declaration', () => {
     expect(errors.length).toBe(0);
     expect(tree?.value.value.type).toBe('Sequence');
     expect(tree?.value.value.value?.[0]?.type).toBe('Call');
+  });
+
+  it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
+    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(tree).toBeDefined();
+
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain(`/* lost comment */\n  content: "content";`);
+  });
+
+  it('preserves block comments attached to invisible evaluated variables during stylesheet serialization', async () => {
+    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(tree).toBeDefined();
+
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain(`/* keep me */\n.x {\n  color: blue;\n}`);
   });
 
   it('should parse legacy IE filter declarations as structured interpolated values', () => {

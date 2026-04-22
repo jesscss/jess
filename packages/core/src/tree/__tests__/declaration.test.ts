@@ -95,6 +95,24 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom:prefix-red');
   });
 
+  it('keeps a single space before block-comment custom property values after evaluation', async () => {
+    const root = rules([
+      vardecl({
+        name: any('commentText'),
+        value: any('/* // Not commented out // */')
+      }),
+      decl({
+        name: any('--comment'),
+        value: ref({ key: 'commentText' }, { type: 'variable' })
+      })
+    ]);
+
+    const evald = await root.eval(context);
+    expect(`${evald}`).toBeString(`
+      --comment: /* // Not commented out // */;
+    `);
+  });
+
   it('preserves generic calls in custom property values during render(context)', () => {
     const node = decl({
       name: any('--custom'),

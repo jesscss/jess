@@ -214,6 +214,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       customOut = stringifyCustomFallbackFunctionCall(value, options) ?? customOut;
       customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
       customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
+      if (!/^[ \t\r\f]/.test(customOut) && customOut.trimStart().startsWith('/*')) {
+        customOut = ` ${customOut}`;
+      }
       const atomicValue = unwrapAtomicCustomValue(value);
       if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
         customOut = ` ${customOut}`;
@@ -444,7 +447,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           const maybeNewValue = value.eval(context);
           if (isThenable(maybeNewValue)) {
-            return (maybeNewValue as Promise<Node>).then((newValue) => {
+            return maybeNewValue.then((newValue: Node | Nil) => {
               context.inCustom = false;
               if (newValue instanceof Nil) {
                 return newValue.inherit(node);
@@ -464,7 +467,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           if (maybeNewValue instanceof Nil) {
             return maybeNewValue.inherit(node);
           }
-          setVal(maybeNewValue as Node);
+          if (!(maybeNewValue instanceof Node)) {
+            return node;
+          }
+          setVal(maybeNewValue);
           normalizeMergedLeadingPlaceholder();
           if (context.hasImportantSource && !node.value.important) {
             setImportant(any('!important', { role: 'flag' }));

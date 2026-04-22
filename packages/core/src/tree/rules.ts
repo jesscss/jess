@@ -37,7 +37,8 @@ import { List } from './list.js';
 import {
   indent,
   normalizeIndent,
-  serializeRulesContainerInline
+  serializeRulesContainerInline,
+  hasPrintableBoundaryTrivia
 } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
@@ -1569,7 +1570,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       closeRenderedFramesToBaseline();
       emitBoundaryIfNeeded(n);
       const commentIndent = depth === 0 ? '' : space;
-      const normalized = normalizeIndent(leading, commentIndent);
+      const normalized = normalizeIndent(leading, commentIndent, true).replace(/[ \t]+$/u, '');
       w.add(normalized, n);
       if (!/\n$/.test(normalized)) {
         w.add('\n');
@@ -1586,7 +1587,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     for (const n of value) {
       const isEvaluatedDefinitionNode = this.evaluated && isNode(n, N.Mixin | N.VarDeclaration);
-      if (isEvaluatedDefinitionNode && !Boolean(n.pre || n.post)) {
+      if (
+        isEvaluatedDefinitionNode
+        && !Boolean(n.pre || n.post)
+        && !hasPrintableBoundaryTrivia(n, 'pre', options)
+        && !hasPrintableBoundaryTrivia(n, 'post', options)
+      ) {
         continue;
       }
       if (!n.visible && !n.fullRender) {

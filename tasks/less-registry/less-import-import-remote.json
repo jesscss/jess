@@ -1,14 +1,14 @@
 {
-  "id": "less-comments",
-  "title": "Fix Less parity for comments / comments",
+  "id": "less-import-import-remote",
+  "title": "Fix Less parity for import / import remote",
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "superseded",
+  "status": "open",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
     "packages/jess/test/less/all-less.test.ts",
-    "tests-unit/comments/comments.less",
+    "tests-unit/import/import-remote.less",
     "state/codex-auto/results/all-less.latest.log"
   ],
   "goal_refs": [
@@ -24,5 +24,5 @@
   ],
   "accepted_commit": null,
   "accepted_run_id": null,
-  "last_transition_event_id": "operator:task-superseded:less-comments:1776890401000"
+  "last_transition_event_id": null
 }
