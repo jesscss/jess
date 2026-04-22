@@ -1,16 +1,18 @@
 {
-  "id": "less-at-rules-comments",
-  "title": "Preserve authored comments in at-rule preludes",
+  "id": "less-scope",
+  "title": "Fix Less parity for scope / scope",
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "completed",
+  "status": "open",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
-    "packages/jess/test/less/all-less.test.ts"
+    "packages/jess/test/less/all-less.test.ts",
+    "tests-unit/scope/scope.less",
+    "state/codex-auto/results/all-less.latest.log"
   ],
   "goal_refs": [
-    "docs/superpowers/specs/2026-04-20-durable-task-memory-design.md"
+    "less parity recovery"
   ],
   "depends_on": [],
   "blocked_by": [],
@@ -20,7 +22,7 @@
     "targeted less fixture proof",
     "promotion verification"
   ],
-  "accepted_commit": "fc27b0ed13c7c887b9435989d34bf0e088961b12",
-  "accepted_run_id": "less-at-rules-comments-20260422-113144",
-  "last_transition_event_id": "less-at-rules-comments-20260422-113144:task-transition:completed:1776883649"
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": null
 }

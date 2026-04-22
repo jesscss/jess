@@ -280,6 +280,22 @@ runtime_init() {
   runtime_state_exec init
 }
 
+sync_local_automation_branch() {
+  local current_branch
+  current_branch="$(git -C "$ROOT_DIR" branch --show-current)"
+
+  if [[ "$current_branch" != "$AUTOMATION_BRANCH" ]]; then
+    return 0
+  fi
+
+  if [[ -n "$(git -C "$ROOT_DIR" status --short)" ]]; then
+    return 0
+  fi
+
+  git -C "$ROOT_DIR" fetch origin "$AUTOMATION_BRANCH" >/dev/null 2>&1 || true
+  git -C "$ROOT_DIR" merge --ff-only "origin/$AUTOMATION_BRANCH" >/dev/null 2>&1 || true
+}
+
 runtime_task_status() {
   local task_id="$1"
   runtime_state_exec task-status "$(jq -nc --arg task_id "$task_id" '{task_id:$task_id}')"
@@ -401,6 +417,25 @@ run_all_less_snapshot() {
   fi
   log "all-less still red"
   return 1
+}
+
+refresh_task_registry() {
+  node "$ROOT_DIR/scripts/task-runtime/refresh-task-registry.mjs" \
+    --index "$TASK_INDEX_FILE" \
+    --all-less-log "$LAST_ALL_LESS_FILE" \
+    --write >/dev/null
+}
+
+persist_task_registry_changes() {
+  local commit_message="$1"
+
+  if [[ -z "$(git -C "$ROOT_DIR" status --short -- tasks docs/tasks/README.md docs/future/performance/2026-04-13-registry-redesign-handoff.md)" ]]; then
+    return 0
+  fi
+
+  git -C "$ROOT_DIR" add tasks docs/tasks/README.md docs/future/performance/2026-04-13-registry-redesign-handoff.md
+  git -C "$ROOT_DIR" commit -m "$commit_message" >/dev/null
+  git -C "$ROOT_DIR" push --no-verify origin "$AUTOMATION_BRANCH" >/dev/null
 }
 
 task_registry_exec() {
@@ -1040,8 +1075,10 @@ run_iteration() {
         return 1
       fi
       promote_worker_branch "$ITERATION_BRANCH"
+      sync_local_automation_branch
       record_result "$task_id" "$classification" "$ITERATION_BRANCH" "$ITERATION_SUMMARY" "$commit_sha" true true "$run_id"
       apply_task_transition "$task_id" "completed" "task_completed" "$run_id" "$commit_sha" "$ITERATION_SUMMARY"
+      persist_task_registry_changes "tasks: update ${task_id} state"
       cleanup_worker_worktree "$ITERATION_WORKTREE"
       return 0
       ;;
@@ -1087,6 +1124,7 @@ main() {
   local iteration=0 failures=0 task_json stats total_pending deferred_broad
   init_state
   sync_remote
+  sync_local_automation_branch
 
   if (( STATUS_ONLY == 1 )); then
     print_status
@@ -1100,6 +1138,9 @@ main() {
     log "iteration=${iteration}"
 
     run_all_less_snapshot || true
+    sync_local_automation_branch
+    refresh_task_registry
+    persist_task_registry_changes "tasks: refresh generated registry"
     discover_tasks
     log_queue_snapshot
 
