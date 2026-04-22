@@ -4,7 +4,7 @@
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "open",
+  "status": "completed",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
     "packages/jess/test/less/all-less.test.ts",
@@ -22,7 +22,7 @@
     "targeted less fixture proof",
     "promotion verification"
   ],
-  "accepted_commit": null,
-  "accepted_run_id": null,
-  "last_transition_event_id": null
+  "accepted_commit": "d7925f720d894eb9a9c40535afdc78ab75331b95",
+  "accepted_run_id": "less-color-functions-rgba-20260422-122618",
+  "last_transition_event_id": "operator:task-completed:less-color-functions-rgba:1776890400000"
 }

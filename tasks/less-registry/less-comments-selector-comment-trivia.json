@@ -1,0 +1,29 @@
+{
+  "id": "less-comments-selector-comment-trivia",
+  "title": "Preserve selector and at-rule header comments in comments.less",
+  "track": "less-registry-redesign",
+  "bucket": "less-fixture",
+  "priority": "p1",
+  "status": "open",
+  "source_refs": [
+    "tests-unit/comments/comments.less",
+    "state/codex-auto/results/all-less.latest.log",
+    "state/codex-auto/runs/less-comments-20260422-124515/summary.json",
+    "docs/future/performance/2026-04-13-registry-redesign-handoff.md"
+  ],
+  "goal_refs": [
+    "less parity recovery",
+    "preserve selector and header comment trivia in composed structures"
+  ],
+  "depends_on": [],
+  "blocked_by": [],
+  "definition_of_done": "A focused parser/core proof and the targeted comments.less outer proof both pass for selector and at-rule-header comment preservation, with accepted evidence linked.",
+  "proof_expectations": [
+    "focused proof for selector or at-rule-header comment retention through evaluation",
+    "targeted less fixture proof for tests-unit/comments/comments.less",
+    "promotion verification"
+  ],
+  "accepted_commit": null,
+  "accepted_run_id": null,
+  "last_transition_event_id": "operator:add:less-comments-selector-comment-trivia:1776890300873"
+}

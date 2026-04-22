@@ -4,25 +4,27 @@
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "open",
+  "status": "superseded",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
     "packages/jess/test/less/all-less.test.ts",
     "tests-unit/comments/comments2.less",
-    "state/codex-auto/results/all-less.latest.log"
+    "state/codex-auto/results/all-less.latest.log",
+    "state/codex-auto/runs/less-comments-comments2-20260422-125639/summary.json"
   ],
   "goal_refs": [
-    "less parity recovery"
+    "less parity recovery",
+    "split evaluated-source trivia work away from the broad fixture bucket"
   ],
-  "depends_on": [],
+  "depends_on": [
+    "less-comments2-eval-source-trivia"
+  ],
   "blocked_by": [],
-  "definition_of_done": "Focused proof and targeted outer proof both pass, and accepted evidence is linked.",
+  "definition_of_done": "This parent task stays superseded once the concrete comments2 subtask is tracked canonically.",
   "proof_expectations": [
-    "targeted core or parser repro when applicable",
-    "targeted less fixture proof",
-    "promotion verification"
+    "subtask recorded with concrete proof expectations"
   ],
   "accepted_commit": null,
   "accepted_run_id": null,
-  "last_transition_event_id": null
+  "last_transition_event_id": "operator:task-superseded:less-comments-comments2:1776890402000"
 }
