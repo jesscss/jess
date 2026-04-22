@@ -107,6 +107,45 @@ try {
   assert.equal(tasks.length, 1);
   assert.equal(tasks[0].id, task.id);
   assert.equal(tasks[0].status, 'leased');
+
+  const rejectedFile = join(tempRoot, 'rejected.jsonl');
+  writeFileSync(
+    rejectedFile,
+    `${JSON.stringify({
+      task_id: task.id,
+      ts: '2026-04-20T23:58:00Z',
+      classification: 'legacy',
+    })}\n`,
+    'utf8',
+  );
+
+  rmSync(dbPath, { force: true });
+  const legacyState = createRuntimeState(dbPath, {
+    legacyJsonl: {
+      rejectedFile,
+    },
+  });
+  assert.equal(legacyState.getTaskStatus(task.id), 'rejected');
+  legacyState.close();
+
+  const rejectedOutput = execFileSync(
+    process.execPath,
+    [
+      resolve('scripts/task-runtime/operator-tasks.mjs'),
+      'status',
+      '--json',
+      '--tasks-index',
+      indexPath,
+      '--runtime-db',
+      dbPath,
+    ],
+    { encoding: 'utf8' },
+  );
+
+  const rejectedTasks = JSON.parse(rejectedOutput);
+  assert.equal(rejectedTasks.length, 1);
+  assert.equal(rejectedTasks[0].id, task.id);
+  assert.equal(rejectedTasks[0].status, 'rejected');
 } finally {
   rmSync(tempRoot, { recursive: true, force: true });
 }

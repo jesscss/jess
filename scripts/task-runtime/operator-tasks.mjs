@@ -214,7 +214,7 @@ function getEffectiveTaskStatus(task, runtimeState) {
   }
 
   const runtimeStatus = runtimeState.getTaskStatus(task.id);
-  return task.status === 'open' && runtimeStatus === 'leased' ? 'leased' : task.status;
+  return task.status === 'open' && runtimeStatus !== 'open' ? runtimeStatus : task.status;
 }
 
 async function main() {
