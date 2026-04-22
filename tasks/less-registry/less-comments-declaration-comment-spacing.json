@@ -4,7 +4,7 @@
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "open",
+  "status": "completed",
   "source_refs": [
     "tests-unit/comments/comments.less",
     "state/codex-auto/results/all-less.latest.log",
@@ -23,7 +23,7 @@
     "targeted less fixture proof for tests-unit/comments/comments.less",
     "promotion verification"
   ],
-  "accepted_commit": null,
-  "accepted_run_id": null,
-  "last_transition_event_id": "operator:add:less-comments-declaration-comment-spacing:1776890324467"
+  "accepted_commit": "c2bc3d8bbe56ece8462c12c7ec58e15d9cb1d721",
+  "accepted_run_id": "less-comments-declaration-comment-spacing-20260422-135008",
+  "last_transition_event_id": "less-comments-declaration-comment-spacing-20260422-135008:task-transition:completed:1776891781"
 }
