@@ -104,7 +104,7 @@ EOF
       --sandbox danger-full-access \
       --ask-for-approval never \
       exec \
-      "$(cat "$prompt_file")"
+      - < "$prompt_file"
   )
 
   after_status="$(
