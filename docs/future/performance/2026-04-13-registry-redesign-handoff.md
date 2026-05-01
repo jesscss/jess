@@ -8,7 +8,9 @@ Checkpoint commit: `ddf46b1c` (`Narrow reference import parity seam`)
 
 This handoff is no longer the operational source of truth for active execution state.
 
-Canonical execution state now lives in the checked-in task registry under `tasks/` plus the local runtime state used by the coordinator.
+Canonical execution state now lives in the checked-in task registry under `tasks/`.
+The lightweight loop in `scripts/task-loop.mjs` uses local carry-forward context
+under `state/agent-loop/`, but that local state is not authoritative.
 
 Use the task registry for:
 

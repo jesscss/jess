@@ -1,104 +1,72 @@
-# Task System
+# Task Loop
 
-This directory documents the durable task and execution-memory system for the Jess monorepo.
+Jess task automation is intentionally plain.
 
-## Source Of Truth
+The source of truth is the checked-in JSON snapshots under `tasks/`. Each task
+has a `status`, `priority`, dependencies, source references, a definition of
+done, and proof expectations.
 
-- Stable specs/docs define architectural intent.
-- `tasks/` holds canonical current task snapshots.
-- The local runtime database stores leases, runs, submissions, and event-ingestion state.
+## Daily Commands
 
-## How To Read A Task
+```bash
+pnpm task:rebuild
+pnpm task:status
+pnpm task:next
+pnpm task:loop
+pnpm task:loop -- --hours 4
+pnpm task:loop -- --minutes 30
+```
 
-Read the assigned task file as the current canonical snapshot, not as a history log.
+`task:rebuild` refreshes generated task snapshots from known inputs such as the
+latest Less failure log when it exists.
 
-- `status` tells you the current coordinator-approved state.
-- `last_transition_event_id` points at the event that produced the current state.
-- `accepted_commit` and `accepted_run_id` identify the last accepted implementation result, if one exists.
-- `depends_on` and `blocked_by` are explicit task links and should be treated as required structural data, even when empty.
+`task:next` picks the highest-priority open task whose dependencies are
+completed and whose `blocked_by` list is empty.
 
-## Read Order For Agents
+`task:loop` repeats:
 
-1. `AGENTS.md`
-2. Relevant stable spec/design docs
-3. `docs/tasks/README.md`
-4. The assigned task file under `tasks/`
-5. Generated task handoff bundle from the coordinator
+1. Rebuild task snapshots.
+2. Pick the next ready task.
+3. Generate a focused prompt from the task, `AGENTS.md`, recent loop results,
+   and `state/agent-loop/context.md`.
+4. Run one Codex worker on that task.
+5. Continue only if the worker moved the task to `completed` or `needs_human`.
+6. Stop when no ready tasks remain.
 
-## Coordinator Approval
+The loop is single-worker and in-place. It does not create worktrees, worker
+branches, or merge queues. The active worker edits the current checkout and
+commits its own completed slice before marking the task `completed`.
 
-Coordinator approval is the only authority that moves a task into an accepted or completed state.
+When `--hours` or `--minutes` is provided, the loop checks the wall-clock budget
+before starting each new task. It does not interrupt an active worker. Once the
+current worker finishes, the loop powers down gracefully instead of starting
+another task after the budget has expired.
 
-- Worker output can propose a transition, but it does not change canonical task state by itself.
-- When the coordinator accepts work, it records the authoritative transition event and the accepted run or commit references.
-- If a task has not been coordinator-approved, treat it as still in flight even if a worker claims success.
+## Carry-Forward Memory
 
-## Statuses And Events
+The loop uses local files under `state/agent-loop/`:
 
-Statuses are snapshots of coordinator state, not worker intent.
+- `context.md` is the short curated memory every worker receives.
+- `recent-results.jsonl` records completed and needs-human outcomes.
+- `current-prompt.md` is the prompt for the current worker.
 
-- `open`: task is available but not yet leased.
-- `leased`: a worker has the task, but no implementation state has been accepted.
-- `in_progress`: active work is underway.
-- `awaiting_review`: work is ready for coordinator review.
-- `completed`: coordinator accepted the task outcome.
-- `needs_human`: the task requires human intervention or direction.
-- `rejected`: the proposed work or transition was declined.
-- `superseded`: the task was replaced by a newer authoritative task.
+These files keep workers from rebuilding context from scratch without making
+old conversation history authoritative.
 
-Events explain how the snapshot changed.
+## Worker Contract
 
-- The latest accepted transition event should be the source for the current snapshot state.
-- Use the event stream to reconstruct what happened; use the task snapshot to decide what is current.
-- If snapshot fields and event history disagree, trust the coordinator-controlled snapshot and investigate the mismatch.
+A worker finishes a task with:
 
-## Write Rules
+```bash
+node scripts/task-loop.mjs finish <task-id> --commit "$(git rev-parse HEAD)" --note "verification summary"
+```
 
-- Workers may not directly update canonical task files.
-- Workers may not directly update the runtime database.
-- The coordinator is the only authoritative writer for task-state transitions.
+If the task needs human input, the worker marks it explicitly:
 
-## Authoritative State Changes
+```bash
+node scripts/task-loop.mjs needs-human <task-id> --reason "specific blocker"
+```
 
-Canonical task snapshots are only updated through coordinator-owned transition application.
-
-Workers may not edit task snapshots directly.
-
-## Runtime Database
-
-The local runtime database is a SQLite file under `state/task-runtime/`.
-
-It is the authoritative source for:
-- leases
-- runs
-- submissions
-- event-ingestion bookkeeping
-
-It is not committed to git.
-Unversioned runtime databases with preexisting tables are rejected until an explicit migration path exists.
-
-## Worker Submission Contract
-
-Workers must emit machine-readable submission JSON that validates against `scripts/task-runtime/worker-submission.schema.json`.
-
-Freeform summaries are not authoritative.
-
-## Cold-Start Worker Handoffs
-
-The coordinator generates a handoff bundle per run so fresh workers can recover context without conversational history.
-
-Use `node scripts/task-runtime/operator-tasks.mjs --help` for the current steering surface.
-
-The command surface supports:
-
-- `status`
-- `prioritize`
-- `add`
-- `block`
-- `focus`
-
-Authoritative changes are immediate by default and record matching runtime events.
-
-Use `--propose` to record a proposal event without changing canonical task state.
-
-Operator commands should target the task system itself, not bypass it with ad hoc file edits.
+Completed, needs-human, rejected, and superseded tasks are not selected by the
+loop. There is no lease database, coordinator approval layer, or hidden runtime
+state in the normal workflow.

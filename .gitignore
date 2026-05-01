@@ -73,6 +73,7 @@ packages/scss-parser/.cache/
 profiling/
 *.cpuprofile
 
-# Durable task runtime state
+# Local task loop state
 state/codex-auto/
+state/agent-loop/
 state/task-runtime/
