@@ -12,6 +12,23 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
 
+const blockCommentPattern = /\/\*[\s\S]*?\*\//g;
+
+function captureBlockCommentSeparator(
+  chunk: string | undefined
+): string {
+  if (!chunk) {
+    return '';
+  }
+  const comments = chunk.match(blockCommentPattern);
+  if (!comments?.length) {
+    return '';
+  }
+  const prefix = /^\s/.test(chunk) ? ' ' : '';
+  const suffix = /\s$/.test(chunk) ? ' ' : '';
+  return `${prefix}${comments.join('')}${suffix}`;
+}
+
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
   private withSelectors(value: Selector[]): this {
@@ -79,8 +96,25 @@ export class SelectorList extends Selector<Selector[]> {
     w.add(out.trim(), item);
 
     for (let i = 1; i < length; i++) {
+      const prev = item;
       item = value[i]!;
-      w.add(`,\n${space}`);
+      let beforeComma = '';
+      let beforeItem = '';
+      const source = options.context?.file?.source ?? this.treeContext?.file?.source;
+      if (
+        source
+        && typeof prev.location?.[3] === 'number'
+        && typeof item.location?.[0] === 'number'
+        && item.location[0] >= prev.location[3] + 1
+      ) {
+        const separator = source.slice(prev.location[3] + 1, item.location[0]);
+        const commaIndex = separator.lastIndexOf(',');
+        if (commaIndex >= 0) {
+          beforeComma = captureBlockCommentSeparator(separator.slice(0, commaIndex));
+          beforeItem = captureBlockCommentSeparator(separator.slice(commaIndex + 1));
+        }
+      }
+      w.add(`${beforeComma},\n${space}${beforeItem}`);
       out = (w.capture(() => item.toString(options))).trim();
       w.add(out);
     }

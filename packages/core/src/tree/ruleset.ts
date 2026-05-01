@@ -30,6 +30,13 @@ import { serializeRulesContainer, normalizeIndent, indent } from './util/seriali
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 
+const normalizeTriviaComparable = (value: string): string => {
+  return value
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n\r]*/g, '')
+    .replace(/\s+/g, '');
+};
+
 export type RulesetValue = {
   selector: Selector | Nil;
   /**
@@ -937,6 +944,23 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
     Ruleset.ensureSelectorVisible(renderSelector);
     let selOut = w.capture(() => renderSelector.toString(options));
+    const source = this.treeContext?.file?.source;
+    if (
+      !withoutComments
+      && options.context
+      && source
+      && !isNode(renderSelector, N.SelectorList)
+      && typeof selector.location?.[0] === 'number'
+      && typeof selector.location?.[3] === 'number'
+    ) {
+      const authoredSelOut = source.slice(selector.location[0], selector.location[3] + 1);
+      if (
+        authoredSelOut.includes('/*')
+        && normalizeTriviaComparable(authoredSelOut) === normalizeTriviaComparable(selOut)
+      ) {
+        selOut = authoredSelOut;
+      }
+    }
     restorePrintState(options, saved);
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
