@@ -42,6 +42,7 @@ time_budget_expired() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --) shift ;;
     --max) MAX_ITERATIONS="$2"; shift 2 ;;
     --hours) RUN_SECONDS="$(duration_to_seconds "$2" 3600)"; shift 2 ;;
     --minutes) RUN_SECONDS="$(duration_to_seconds "$2" 60)"; shift 2 ;;

@@ -142,6 +142,12 @@ try {
     encoding: 'utf8',
   });
   assert.match(expiredLoop, /Time budget reached; no new task will be started\./);
+
+  const expiredLoopWithSeparator = execFileSync('bash', [loopScriptPath, '--', '--hours', '0'], {
+    cwd: resolve('.'),
+    encoding: 'utf8',
+  });
+  assert.match(expiredLoopWithSeparator, /Time budget reached; no new task will be started\./);
 } finally {
   rmSync(tempRoot, { recursive: true, force: true });
 }
