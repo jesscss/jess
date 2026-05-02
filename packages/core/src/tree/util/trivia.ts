@@ -3,7 +3,7 @@ import type { PrintOptions } from './print.js';
 import type { TriviaMap } from '../../types/index.js';
 
 type TriviaEmitOptions = Pick<PrintOptions, 'context' | 'emittedTrivia' | 'writer'>;
-type TriviaBoundary = 'pre' | 'post';
+type TriviaLookup = 'before' | 'after';
 
 export function getPrintableTriviaTokens(
   tokens: IToken[] | undefined,
@@ -27,18 +27,13 @@ export function emitTriviaTokens(
   if (!printable) {
     return;
   }
-  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-  if (emittedTrivia.has(tokens)) {
-    return;
-  }
-  emittedTrivia.add(tokens);
   const writer = options.writer!;
   for (const token of printable) {
     writer.add(token.image);
   }
 }
 
-function isBeforeAlias(trivia: TriviaMap, tokens: IToken[]): boolean {
+function hasBeforeLookup(trivia: TriviaMap, tokens: IToken[]): boolean {
   for (const beforeTokens of trivia.before.values()) {
     if (beforeTokens === tokens) {
       return true;
@@ -47,23 +42,28 @@ function isBeforeAlias(trivia: TriviaMap, tokens: IToken[]): boolean {
   return false;
 }
 
-export function emitTriviaBoundary(
+export function consumeTrivia(
   trivia: TriviaMap,
-  boundary: TriviaBoundary,
   offset: number | undefined,
+  lookup: TriviaLookup,
   options: TriviaEmitOptions
-): void {
+): IToken[] | undefined {
   if (offset === undefined) {
-    return;
+    return undefined;
   }
-  const tokens = boundary === 'pre'
+  const tokens = lookup === 'before'
     ? trivia.before.get(offset)
     : trivia.after.get(offset);
   if (!tokens) {
-    return;
+    return undefined;
   }
-  if (boundary === 'post' && isBeforeAlias(trivia, tokens)) {
-    return;
+  if (lookup === 'after' && hasBeforeLookup(trivia, tokens)) {
+    return undefined;
   }
-  emitTriviaTokens(tokens, options);
+  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+  if (emittedTrivia.has(tokens)) {
+    return undefined;
+  }
+  emittedTrivia.add(tokens);
+  return tokens;
 }

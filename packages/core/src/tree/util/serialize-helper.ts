@@ -21,7 +21,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { emitTriviaBoundary, getPrintableTriviaTokens } from './trivia.js';
+import { consumeTrivia, emitTriviaTokens, getPrintableTriviaTokens } from './trivia.js';
 
 export function hasPrintableBoundaryTrivia(
   node: Node,
@@ -66,7 +66,8 @@ function captureNodeBoundary(
     return '';
   }
   const offset = key === 'pre' ? node.location[0] : node.location[3];
-  return writer.capture(() => emitTriviaBoundary(trivia, key, offset, options));
+  const lookup = key === 'pre' ? 'before' : 'after';
+  return writer.capture(() => emitTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options));
 }
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {

@@ -13,7 +13,7 @@ import {
   getPrintOptions,
   prepareContextPrintState
 } from './util/print.js';
-import { emitTriviaBoundary } from './util/trivia.js';
+import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
@@ -25,11 +25,11 @@ const { isArray } = Array;
 
 function emitTrivia(
   trivia: TriviaMap,
-  boundary: 'pre' | 'post',
+  lookup: 'before' | 'after',
   offset: number | undefined,
   options: PrintOptions
 ): void {
-  emitTriviaBoundary(trivia, boundary, offset, options);
+  emitTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options);
 }
 
 type AllNodeOptions = {
@@ -1220,7 +1220,7 @@ export abstract class Node<
     const pre = this.pre !== undefined
       ? w.capture(() => this.processPrePost('pre', '', options))
       : (intentPre === undefined && trivia
-          ? w.capture(() => emitTrivia(trivia, 'pre', this.location[0], options))
+          ? w.capture(() => emitTrivia(trivia, 'before', this.location[0], options))
           : '');
     const preIntent = this.pre === 0
       ? 'explicit_none'
@@ -1231,7 +1231,7 @@ export abstract class Node<
     const post = this.post !== undefined
       ? w.capture(() => this.processPrePost('post', '', options))
       : (intentPost === undefined && trivia
-          ? w.capture(() => emitTrivia(trivia, 'post', this.location[3], options))
+          ? w.capture(() => emitTrivia(trivia, 'after', this.location[3], options))
           : '');
     const postIntent = this.post === 0
       ? 'explicit_none'

@@ -44,7 +44,7 @@ import {
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
-import { emitTriviaBoundary } from './util/trivia.js';
+import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 const { isArray } = Array;
 
 function captureLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -57,7 +57,7 @@ function captureLeadingTrivia(node: Node, options: PrintOptions): string {
   const offset = node.location[0];
   return options.writer!.capture(() => {
     if (trivia) {
-      emitTriviaBoundary(trivia, 'pre', offset, options);
+      emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
     }
   });
 }
