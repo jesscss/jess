@@ -1,6 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { IToken } from 'chevrotain';
 import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
+
+const token = (image: string): IToken => ({
+  image,
+  tokenType: { name: 'WS' } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 describe('url', () => {
   let context: Context;
@@ -27,6 +39,24 @@ describe('url', () => {
     const rendered = url(quoted(ref({ key: 'asset' }, { type: 'variable' }))).render(context);
 
     expect(rendered).toBe('url("image.png")');
+  });
+
+  it('does not render pure source whitespace inside url syntax', () => {
+    const trivia = {
+      before: new Map([[4, [token(' ')]]]),
+      after: new Map<number, IToken[]>()
+    };
+    const treeContext = new TreeContext({ trivia });
+    const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
+    const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
+
+    expect(node.render(context)).toBe('url("image.png")');
+  });
+
+  it('normalizes multiline url value indentation when rendering evaluated output', () => {
+    const node = url(any('data:image/png;base64,\n    aaa\n    bbb'));
+
+    expect(node.render(context)).toBe('url(data:image/png;base64,\n  aaa\n  bbb)');
   });
 
   it('resolves url values without touching render state', async () => {

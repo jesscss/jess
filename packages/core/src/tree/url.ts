@@ -14,7 +14,14 @@ export class Url extends Node<Quoted | Any> {
     const w = options.writer!;
     const mark = w.mark();
     w.add('url(');
-    this.value.toString(options);
+    if (options.context) {
+      const valueOut = w.capture(() => this.value.toString(options))
+        .replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '')
+        .replace(/\n[ \t\r\f]+/g, '\n  ');
+      w.add(valueOut, this.value);
+    } else {
+      this.value.toString(options);
+    }
     w.add(')');
     return w.getSince(mark);
   }
