@@ -306,7 +306,7 @@ describe('Declaration', () => {
     `);
   });
 
-  it('preserves multiline declaration values while enforcing a minimum continuation indent', async () => {
+  it('preserves authored multiline declaration values with a minimum continuation indent', async () => {
     const node = rules([
       decl({ name: any('background'), value: any('the,\n              great,\n              wall') }),
       decl({ name: any('color'), value: any('\nwhite') }),

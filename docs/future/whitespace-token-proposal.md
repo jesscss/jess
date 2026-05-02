@@ -167,6 +167,27 @@ emittedTrivia: WeakSet<IToken[]>;
 
 The first `emitTrivia` call that encounters a token array marks it consumed. Subsequent lookups for the same array skip it.
 
+### Declaration value newlines
+
+Jess should preserve authored multiline declaration values. If source trivia places
+a declaration value across lines, the serializer keeps that line structure and
+normalizes only the minimum continuation indentation needed for readable CSS.
+
+This is intentionally simpler than historical Less fixture behavior. In the Less
+test-data corpus, most multiline declaration values are preserved when the
+continuation line is indented, while some unindented continuations are collapsed
+in expected CSS. Jess should not encode that inconsistency as a semantic rule.
+
+The stable contract is:
+
+- Authored declaration value line breaks remain line breaks.
+- Continuation lines receive at least the serializer's normal continuation indent.
+- Generated or evaluated values without source-backed multiline trivia serialize
+  through the normal node printer.
+- A fixture that expects `background-position: 45 -23` from source
+  `background-position: 45\n-23` is a Less compatibility artifact, not the Jess
+  serializer contract.
+
 ### PrintOptions changes
 
 ```ts

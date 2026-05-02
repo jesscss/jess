@@ -152,6 +152,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
     }
 
+    // Authored multiline declaration values keep their line breaks. We normalize
+    // only the minimum continuation indent rather than emulating historical
+    // Less fixture cases that collapsed some unindented continuations.
     const continuationIndent = '  ';
     const lines = trimmedEnd.split('\n');
     let out = '';
