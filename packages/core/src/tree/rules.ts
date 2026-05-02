@@ -3425,10 +3425,20 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
     }
-    function cloneRulesetCallableRules(sourceRules: Rules, deep: boolean): Rules {
-      const clonedRules = sourceRules.clone(deep);
+    function cloneMixinOutputNode<T extends Node>(node: T): T {
+      const cloned = node.clone(true, cloneMixinOutputNode);
+      cloned.sourceNode = node.sourceNode ?? node;
+      return cloned;
+    }
+    function cloneMixinOutputRules(sourceRules: Rules, deep: boolean): Rules {
+      const clonedRules = deep
+        ? cloneMixinOutputNode(sourceRules)
+        : sourceRules.clone(false);
       clonedRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
       return clonedRules;
+    }
+    function cloneRulesetCallableRules(sourceRules: Rules, deep: boolean): Rules {
+      return cloneMixinOutputRules(sourceRules, deep);
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
@@ -3916,7 +3926,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let rules = candidate.value.rules;
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
+      rules = cloneMixinOutputRules(rules, !rules.hasFlag(F_STATIC));
       if (isNode(candidate, N.Mixin)) {
         rules.parent = candidate.value.rules.parent;
       }

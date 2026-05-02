@@ -2,8 +2,20 @@ import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node,
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
+import type { IToken } from 'chevrotain';
 
 let context: Context;
+
+const token = (image: string, name = 'WS'): IToken => ({
+  image,
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length,
+  tokenType: { name } as IToken['tokenType']
+});
 
 // Helper to check for errors without serializing the resolved value
 async function expectRejects<T>(
@@ -101,6 +113,52 @@ describe('Mixin', () => {
 
       expect(css).toBeString(`
         .test {
+          color: red;
+        }
+      `);
+    });
+
+    it('emits source trivia for each mixin output placement', async () => {
+      const mixinBody = rules([]);
+      mixinBody._location = [20, 1, 21, 20, 1, 21];
+      const mixinDef = mixin({
+        name: any('.commented'),
+        rules: mixinBody
+      });
+      const mixinContent = mixin({
+        name: any('.commented'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const firstRuleset = ruleset({
+        selector: el('.first'),
+        rules: rules([
+          call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
+        ])
+      });
+      const secondRuleset = ruleset({
+        selector: el('.second'),
+        rules: rules([
+          call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
+        ])
+      });
+      const root = rules([mixinDef, mixinContent, firstRuleset, secondRuleset]);
+      context.root = root;
+      context.opts.trivia = {
+        before: new Map([[20, [token('/**/', 'Comment')]]]),
+        after: new Map<number, IToken[]>()
+      };
+
+      const evald = await root.eval(context);
+
+      expect(evald.toString({ context })).toBeString(`
+        .first {
+          /**/
+          color: red;
+        }
+        .second {
+          /**/
           color: red;
         }
       `);

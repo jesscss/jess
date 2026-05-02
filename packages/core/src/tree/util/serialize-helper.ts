@@ -61,6 +61,33 @@ function captureNodeBoundary(
   }
   const offset = key === 'pre' ? node.location[0] : node.location[3];
   const lookup = key === 'pre' ? 'before' : 'after';
+  const tokens = lookup === 'before'
+    ? trivia.before.get(offset)
+    : trivia.after.get(offset);
+  if (
+    tokens
+    && node.sourceNode
+    && node.sourceNode !== node
+  ) {
+    if (lookup === 'after') {
+      for (const beforeTokens of trivia.before.values()) {
+        if (beforeTokens === tokens) {
+          return '';
+        }
+      }
+    }
+    const emittedByNode = options.emittedTriviaByNode ?? (options.emittedTriviaByNode = new WeakMap());
+    let emittedNodes = emittedByNode.get(tokens);
+    if (!emittedNodes) {
+      emittedNodes = new WeakSet<object>();
+      emittedByNode.set(tokens, emittedNodes);
+    }
+    if (emittedNodes.has(node)) {
+      return '';
+    }
+    emittedNodes.add(node);
+    return writer.capture(() => emitTriviaTokens(tokens, options));
+  }
   return writer.capture(() => emitTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options));
 }
 

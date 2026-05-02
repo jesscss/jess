@@ -126,6 +126,32 @@ describe('Comment', () => {
 `);
   });
 
+  it('uses context-owned trivia for cloned nodes with source offsets', () => {
+    const empty = rules([]);
+    empty._location = [100, 1, 1, 100, 1, 1];
+    const visible = decl({ name: any('color'), value: any('red') });
+    visible._location = [120, 2, 3, 130, 2, 13];
+    const container = ruleset({
+      selector: sel([el('.a')]),
+      rules: rules([empty, visible])
+    });
+    const trivia = {
+      before: new Map([
+        [empty.location[0], [
+          token('/**/', 'Comment')
+        ]]
+      ]),
+      after: new Map<number, IToken[]>()
+    };
+    context.opts.trivia = trivia;
+
+    expect(rules([container]).toString({ context })).toBe(`.a {
+  /**/
+  color: red;
+}
+`);
+  });
+
   it('preserves printable block trivia after visible rulesets', () => {
     const visible = ruleset({
       selector: sel([el('.a')]),
