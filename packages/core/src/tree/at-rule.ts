@@ -10,6 +10,7 @@ import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
+import { emitCommentTriviaAfterNode } from './util/trivia.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -277,10 +278,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
 
-    const nameOut = w.capture(() => name.toString(options));
+    const emptyHeaderTrivia = () => ({ before: new Map(), after: new Map() });
+    const captureWithoutHeaderTrivia = (fn: () => string): string => {
+      const savedTrivia = options.trivia;
+      if (withoutComments) {
+        options.trivia = emptyHeaderTrivia();
+      }
+      try {
+        return fn();
+      } finally {
+        options.trivia = savedTrivia;
+      }
+    };
+
+    const nameOut = captureWithoutHeaderTrivia(() => w.capture(() => name.toString(options)));
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
-      const preludeTrivia = options.trivia ?? prelude.treeContext?.opts?.trivia;
+      const preludeTrivia = withoutComments
+        ? emptyHeaderTrivia()
+        : options.trivia ?? prelude.treeContext?.opts?.trivia;
       const preludePrintOptions = options.context && preludeTrivia
         ? {
             ...options,
@@ -289,7 +305,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = w.capture(() => prelude.toString(preludePrintOptions));
+      const preludeOut = captureWithoutHeaderTrivia(() => w.capture(() => prelude.toString(preludePrintOptions)));
       if (!preludeOut.trim()) {
         out += nameOut;
         if (rules) {
@@ -311,8 +327,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         out += ' ';
       }
       out += finalPreludeOut;
+      const preludePost = withoutComments
+        ? ''
+        : w.capture(() => emitCommentTriviaAfterNode(prelude, options));
+      out += preludePost;
       if (rules) {
-        const preludeEndsWithSpace = /\s$/.test(preludeOut);
+        const preludeEndsWithSpace = /\s$/.test(preludeOut + preludePost);
         if (!preludeEndsWithSpace) {
           out += ' ';
         }
@@ -556,21 +576,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.atrule({\n', this.location)
-  //   const pre = context.pre
   //   context.indent++
-  //   out.add(`${pre}  name: ${JSON.stringify(this.name)}`)
+  //   out.add(`  name: ${JSON.stringify(this.name)}`)
   //   const value = this.value
   //   if (value) {
-  //     out.add(`,\n${pre}  value: `)
+  //     out.add(`,\n  value: `)
   //     value.toModule(context, out)
   //   }
   //   const rules = this.rules
   //   if (rules) {
-  //     out.add(`,\n${pre}  rules: `)
+  //     out.add(`,\n  rules: `)
   //     rules.toModule(context, out)
   //   }
   //   context.indent--
-  //   out.add(`\n${pre}},${JSON.stringify(this.location)})`)
+  //   out.add(`\n},${JSON.stringify(this.location)})`)
   // }
 }
 

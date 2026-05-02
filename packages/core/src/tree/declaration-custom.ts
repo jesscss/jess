@@ -42,14 +42,13 @@ export class CustomDeclaration extends Declaration {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const pre = context.pre
   //   const loc = this.location
   //   out.add('$J.custom({\n', loc)
-  //   out.add(`  ${pre}name: `)
+  //   out.add(`  name: `)
   //   this.name.toModule(context, out)
-  //   out.add(`\n  ${pre}value: `)
+  //   out.add(`\n  value: `)
   //   this.value.toModule(context, out)
-  //   out.add(`\n${pre}})`)
+  //   out.add(`\n})`)
   // }
 }
 

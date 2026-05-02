@@ -1,8 +1,21 @@
-import { Any, JsFunction, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, vardecl } from '../index.js';
+import type { IToken } from 'chevrotain';
+import { Any, Call, JsFunction, List, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { paren } from '../paren.js';
+import type { TriviaMap } from '../../types/index.js';
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 let context: Context;
 describe('Call', () => {
@@ -17,6 +30,22 @@ describe('Call', () => {
     });
     expect(`${rule}`).toBe('rgb(100, 100, 100)');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('serializes comment trivia owned by function argument separators', () => {
+    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
+    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const rule = new Call({
+      name: 'linear-gradient',
+      args: new List([first, second])
+    });
+    const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
+    const trivia = {
+      before: new Map([[38, tokens]]),
+      after: new Map([[first.location[3], tokens]])
+    } satisfies TriviaMap;
+
+    expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
   });
 
   it('should serialize an optional function lookup', () => {

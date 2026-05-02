@@ -1,16 +1,7 @@
 import { any, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
+import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
-
-class LookupOnlyTriviaMap extends Map<number, never[]> {
-  constructor(private readonly lookupOffset: number) {
-    super();
-  }
-
-  override has(offset: number): boolean {
-    return offset === this.lookupOffset || super.has(offset);
-  }
-}
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -89,23 +80,44 @@ describe('Sequence', () => {
     const first = num(10);
     const second = num(20);
     const third = num(30);
-    second.pre = 0;
+    second.options.preIntent = 'explicit_none';
     const rule = seq([first, second, third]);
     expect(rule.toTrimmedString()).toBe('1020 30');
     expect(`${rule}`).toBe('1020 30');
   });
 
-  it('does not use trivia map lookup presence to suppress sequence spacing', () => {
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2]);
-    const second = num(20, undefined, [2, 1, 3, 3, 1, 4]);
-    const rule = seq([first, second]);
+  it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {
     const trivia = {
-      before: new LookupOnlyTriviaMap(2),
-      after: new LookupOnlyTriviaMap(1)
+      before: new Map(),
+      after: new Map()
     } satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
+    const rule = seq([first, second]);
 
     expect(rule.toTrimmedString({
       trivia
-    })).toBe('10 20');
+    })).toBe('1020');
   });
+
+  it('emits consumed trivia map whitespace between source-backed sequence nodes', () => {
+    const whitespace = [{
+      image: '  ',
+      tokenType: { name: 'WS' }
+    }] as IToken[];
+    const trivia = {
+      before: new Map([[3, whitespace]]),
+      after: new Map([[1, whitespace]])
+    } satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const rule = seq([first, second]);
+
+    expect(rule.toTrimmedString({
+      trivia
+    })).toBe('10  20');
+  });
+
 });

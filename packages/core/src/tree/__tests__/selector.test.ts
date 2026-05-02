@@ -1,11 +1,24 @@
 // import { Selector } from '../selector-sequence'
+import type { IToken } from 'chevrotain';
 import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
+import type { TriviaMap } from '../../types/index.js';
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node.js'
 
 let context: Context;
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 /** @todo - move to https://github.com/SamVerschueren/tsd */
 // test('Test types', () => {
@@ -46,6 +59,43 @@ describe('Selector', () => {
       ]);
 
       expect(rule.render(context)).toBe('.foo > #bar');
+    });
+
+    it('serializes comment trivia between selector list members after separators', () => {
+      const first = el('#a');
+      first._location = [0, 1, 1, 1, 1, 2];
+      const second = el('.b');
+      second._location = [17, 3, 1, 18, 3, 2];
+      const third = el('.c');
+      third._location = [25, 3, 9, 26, 3, 10];
+      const firstRun = [token('\n'), token('/*x*/', 'BlockComment'), token('/*y*/', 'BlockComment'), token('\n')];
+      const secondRun = [token('/*z*/', 'BlockComment')];
+      const trivia = {
+        before: new Map([
+          [second.location[0], firstRun],
+          [third.location[0], secondRun]
+        ]),
+        after: new Map([
+          [first.location[3], firstRun],
+          [second.location[3], secondRun]
+        ])
+      } satisfies TriviaMap;
+
+      expect(sellist([first, second, third]).toString({ trivia })).toBe('#a,\n/*x*//*y*/\n.b,\n/*z*/.c');
+    });
+
+    it('serializes comment trivia between selector list members before separators', () => {
+      const first = el('#comments');
+      first._location = [0, 1, 1, 8, 1, 9];
+      const second = el('.comments');
+      second._location = [35, 1, 36, 43, 1, 44];
+      const tokens = [token(' '), token('/* boo */', 'BlockComment'), token('/* boo again*/', 'BlockComment')];
+      const trivia = {
+        before: new Map([[33, tokens]]),
+        after: new Map([[first.location[3], tokens]])
+      } satisfies TriviaMap;
+
+      expect(sellist([first, second]).toString({ trivia })).toBe('#comments /* boo *//* boo again*/,\n.comments');
     });
 
     it('resolves selector sequences without touching render state', async () => {
@@ -94,8 +144,8 @@ describe('Selector', () => {
         el('#bar')
       ]);
       let co2 = co('>');
-      co2.pre = 1;
-      co2.post = 1;
+      co2.options.preIntent = 'explicit_space';
+      co2.options.postIntent = 'explicit_space';
       const sel2 = sel([
         el('.foo'),
         co2,

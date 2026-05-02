@@ -936,7 +936,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       renderSelector = renderSelector.copy(true) as typeof renderSelector;
     }
     Ruleset.ensureSelectorVisible(renderSelector);
-    let selOut = w.capture(() => renderSelector.toString(options));
+    const savedTrivia = options.trivia;
+    if (withoutComments) {
+      options.trivia = { before: new Map(), after: new Map() };
+    }
+    let selOut: string;
+    try {
+      selOut = w.capture(() => renderSelector.toString(options));
+    } finally {
+      options.trivia = savedTrivia;
+    }
     restorePrintState(options, saved);
     return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
   }
@@ -1211,10 +1220,9 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.rule({\n', this.location)
   //   context.indent++
-  //   const pre = context.pre
-  //   out.add(`${pre}sels: `)
+  //   out.add(`sels: `)
   //   this.sels.toModule(context, out)
-  //   out.add(`,\n${pre}value: `)
+  //   out.add(`,\nvalue: `)
   //   this.value.toModule(context, out)
   //   context.indent--
   //   out.add(`},${JSON.stringify(this.location)})`)

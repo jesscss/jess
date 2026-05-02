@@ -78,8 +78,7 @@ export class Operation extends Node<OperationValue> {
         if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
           try {
             let out = l.operate(r, op, context);
-            out.pre = left.pre;
-            out.post = right.post;
+            out.inherit(n);
             return out;
           } catch (error) {
             // If it's a unit error (TypeError), return calc(operation)
@@ -92,9 +91,7 @@ export class Operation extends Node<OperationValue> {
               l.evaluated = true;
               r.evaluated = true;
               const calcCall = new Call({ name: 'calc', args: list([operationNode]) });
-              calcCall.pre = left.pre;
-              calcCall.post = right.post;
-              return calcCall;
+              return calcCall.inherit(n);
             }
             // Re-throw non-unit errors
             throw error;
@@ -107,9 +104,7 @@ export class Operation extends Node<OperationValue> {
         } catch (error) {
           throw error;
         }
-        out.pre = left.pre;
-        out.post = right.post;
-        return out;
+        return out.inherit(n);
       }
       if (l === left && r === right) {
         return n;

@@ -1,8 +1,22 @@
+import type { IToken } from 'chevrotain';
 import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import type { TriviaMap } from '../../types/index.js';
 
 let context: Context;
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
+
 describe('Declaration', () => {
   beforeEach(() => {
     context = new Context();
@@ -162,6 +176,35 @@ describe('Declaration', () => {
     expect(`${evald}`).toBeString(`
       color: red !important;
     `);
+  });
+
+  it('serializes comment trivia between declaration values and semicolons', () => {
+    const value = any('yes');
+    value._location = [7, 1, 8, 9, 1, 10];
+    const node = decl({ name: any('b'), value });
+    node._location = [4, 1, 5, 25, 1, 26];
+    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
+    const trivia = {
+      before: new Map([[23, tokens]]),
+      after: new Map([[value.location[3], tokens]])
+    } satisfies TriviaMap;
+
+    expect(rules([node]).toString({ trivia })).toBeString(`
+      b: yes /* comment */;
+    `);
+  });
+
+  it('serializes comment trivia between declaration names and separators', () => {
+    const name = any('color', { role: 'property' });
+    name._location = [4, 1, 5, 8, 1, 9];
+    const node = decl({ name, value: any('grey') });
+    const tokens = [token('/* survive */', 'BlockComment'), token(' '), token('/* me too */', 'BlockComment')];
+    const trivia = {
+      before: new Map([[35, tokens]]),
+      after: new Map([[name.location[3], tokens]])
+    } satisfies TriviaMap;
+
+    expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
   });
 
   it('does not keep an empty leading item when += normalization has no prior declaration', async () => {

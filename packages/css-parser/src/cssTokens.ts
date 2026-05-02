@@ -345,7 +345,7 @@ export const rawCssTokens = () => ({
       },
       {
         name: 'SelectorPseudoClass',
-        pattern: /:(?:is|not|where|has)\(/i,
+        pattern: /:(?:is|not|where|has|host-context|host)\(/i,
         categories: ['BlockMarker', 'FunctionalPseudoClass', 'NestedRuleStart']
       },
 

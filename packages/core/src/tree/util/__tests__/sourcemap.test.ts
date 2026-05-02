@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest';
+import type { IToken } from 'chevrotain';
 import { OutputWriter, getPrintOptions } from '../print.js';
 import { buildSourceMap } from '../sourcemap.js';
 import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
+
+const token = (image: string): IToken => ({
+  image,
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length,
+  tokenType: { name: 'WS' } as IToken['tokenType']
+});
 
 describe('source map segments', () => {
   it('collects segments for simple declaration', () => {
@@ -52,13 +64,16 @@ describe('source map segments', () => {
   it('writer line/column advance for newlines between rules', () => {
     const w = new OutputWriter();
     const a = decl({ name: any('a'), value: any('1') });
-    a.post = ['\n\n\n'];
     const b = decl({ name: any('b'), value: any('2') });
     // Attach fake locations so segments are recorded (orig lines are 1-based here)
     a._location = [0, 1, 1, 0, 1, 5];   // original line 1 (0-based 0)
     b._location = [0, 4, 1, 0, 4, 5];   // original line 2 (0-based 1)
     const root = rules([a, b]);
-    const css = root.toString(getPrintOptions({ writer: w }));
+    const trivia = {
+      before: new Map<number, IToken[]>(),
+      after: new Map([[a.location[3], [token('\n\n\n')]]])
+    };
+    const css = root.toString(getPrintOptions({ writer: w, trivia }));
     expect(css).toBe('a: 1;\n' + 'b: 2;\n');
     // After first declaration 'a: 1;', writer should have advanced one line on the newline
     // Find index of newline and validate writer's internal line/column

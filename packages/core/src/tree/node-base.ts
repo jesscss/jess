@@ -6,7 +6,6 @@ import type { TriviaMap } from '../types/index.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
-import type { Comment } from './comment.js';
 import {
   type BoundaryIntentOptions,
   type PrintOptions,
@@ -40,11 +39,14 @@ type AllNodeOptions = {
   // hoistToParent?: boolean
 
   /**
-   * For statements with optional semis,
-   * we flag this for accurate re-serialization.
+   * Serializer boundary hints for generated/API-created nodes that do not have
+   * a usable source offset for TriviaMap lookup.
    *
-   * @todo - Not sure if we actually need this, but it's here
-   * if we wanted a concrete syntax tree.
+   * These are not trivia. Parsed whitespace and comments stay in the owning
+   * file context's TriviaMap and are emitted by looking up continuous trivia
+   * before/after a source offset, consuming that run once for the print pass.
+   * preIntent/postIntent only describe what spacing the serializer should infer
+   * when no TriviaMap trivia was emitted for that boundary.
    */
   semi?: boolean;
   preIntent?: BoundaryIntentOptions['preIntent'];
@@ -216,20 +218,6 @@ export abstract class Node<
    * shadows the prototype value set by defineType.
    */
   declare nodeType: number;
-
-  /**
-   * Whitespace or comments before or after a Node.
-   *
-   * If this is `1`, it represents a single space character (' ').
-   * If it's 0, it means there were no pre/post tokens when parsed.
-   * If undefined, it means this was created using the API, and default
-   * formatting can be used.
-   * In a NodeList, any whitespace tokens outside of comments are individually represented,
-   * because they are preserved while the comment may not be.
-   */
-  /** Nil type is resolved at runtime via prototype patching */
-  pre: Array<Comment | Node | string> | 1 | 0 | undefined;
-  post: Array<Comment | Node | string> | 1 | 0 | undefined;
 
   /** Will be copied during inherit */
   state = F_DEFAULT;
@@ -677,41 +665,19 @@ export abstract class Node<
     }
   }
 
-  static* nodeAndPrePost(node: Node) {
-    if (isArray(node.pre)) {
-      for (let n of node.pre) {
-        if (n instanceof Node) {
-          yield n;
-        }
-      }
-    }
-    yield node;
-    if (isArray(node.post)) {
-      for (let n of node.post) {
-        if (n instanceof Node) {
-          yield n;
-        }
-      }
-    }
-  }
-
   /**
    * Return an iterator for all nodes / children nodes, including this one
    */
-  * nodes(reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
-    if (includePrePost) {
-      yield* Node.nodeAndPrePost(this);
-    } else {
-      yield this;
-    }
-    yield* this.children(true, reverse, includePrePost);
+  * nodes(reverse?: boolean): Generator<Node, void, unknown> {
+    yield this;
+    yield* this.children(true, reverse);
   }
 
   /**
    * An iterator for all node children
    * @todo - Replace `walkNodes` with this?
    */
-  * children(deep?: boolean, reverse?: boolean, includePrePost?: boolean): Generator<Node, void, unknown> {
+  * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
     const nodes: Node[] = [];
     this._visitValues((v) => {
       if (v instanceof Node) {
@@ -719,13 +685,9 @@ export abstract class Node<
       }
     }, reverse);
     for (const nodeVal of nodes) {
-      if (includePrePost) {
-        yield* Node.nodeAndPrePost(nodeVal);
-      } else {
-        yield nodeVal;
-      }
+      yield nodeVal;
       if (deep) {
-        yield* nodeVal.children(deep, reverse, includePrePost);
+        yield* nodeVal.children(deep, reverse);
       }
     }
   }
@@ -874,22 +836,6 @@ export abstract class Node<
     }
   }
 
-  /** Remove comments from pre/post */
-  stripPrePost(n: Node, preOrPost: 'pre' | 'post') {
-    const prePost = n[preOrPost];
-    if (isArray(prePost)) {
-      const clonedPrePost = [...prePost];
-      n[preOrPost] = clonedPrePost;
-      for (let [key, node] of clonedPrePost.entries()) {
-        if (node instanceof Node && node.type === 'Comment') {
-          /** Replace comment with a nil node that inherits location */
-          const nilNode = this.nil?.() || this._createMinimalNil();
-          clonedPrePost[key] = nilNode.inherit(node);
-        }
-      }
-    }
-  }
-
   /** Minimal nil fallback for edge cases where prototype method isn't attached yet */
   private _createMinimalNil(): Node {
     // @ts-expect-error - normally an abstract class
@@ -925,9 +871,6 @@ export abstract class Node<
     if (this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       newNode.addFlag(F_IMPLICIT_AMPERSAND);
     }
-    // Strip comments from pre/post, preserving whitespace
-    newNode.stripPrePost(newNode, 'pre');
-    newNode.stripPrePost(newNode, 'post');
     return newNode;
   }
 
@@ -1110,9 +1053,6 @@ export abstract class Node<
     if (node.hasFlag(F_EXTEND_TARGET)) {
       this.addFlag(F_EXTEND_TARGET);
     }
-    // Note that we need to create new arrays if we mutate pre/post later
-    this.pre ||= node.pre;
-    this.post ||= node.post;
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
@@ -1155,49 +1095,11 @@ export abstract class Node<
     return result;
   }
 
-  processPrePost(key: 'pre' | 'post', defaultVal: string = '', options: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    let value = this[key];
-    if (value === undefined) {
-      if (defaultVal) {
-        w.add(defaultVal);
-        if (defaultVal === ' ') {
-          w.signalBoundaryIntent(key, 'explicit_space');
-        }
-      }
-      return w.getSince(mark);
-    } else if (value === 0) {
-      w.signalBoundaryIntent(key, 'explicit_none');
-      return '';
-    } else if (value === 1) {
-      w.add(' ');
-      w.signalBoundaryIntent(key, 'explicit_space');
-      return w.getSince(mark);
-    } else if (isArray(value)) {
-      // Handle Node[] array - call toString() on each node (they will emit into writer)
-      for (let node of value) {
-        if (node instanceof Node) {
-          node.toString(options);
-        } else {
-          const s = String(node);
-          w.add(s);
-        }
-      }
-      return w.getSince(mark);
-    } else {
-      const s = String(value);
-      w.add(s);
-      return w.getSince(mark);
-    }
-  }
-
   /**
    * Re-serializes the node in its authored form.
    *
    * This is the canonical source serializer, not the evaluated render path.
-   * It includes outer pre/post whitespace and comments so the shared AST can
+   * It includes outer trivia so the shared AST can
    * still round-trip back to Jess/Less-like source.
    *
    * In almost all Node cases, this should not be overridden, and
@@ -1217,27 +1119,15 @@ export abstract class Node<
     }
     const intentPre = this._options?.preIntent;
     const intentPost = this._options?.postIntent;
-    const pre = this.pre !== undefined
-      ? w.capture(() => this.processPrePost('pre', '', options))
-      : (intentPre === undefined && trivia
-          ? w.capture(() => emitTrivia(trivia, 'before', this.location[0], options))
-          : '');
-    const preIntent = this.pre === 0
-      ? 'explicit_none'
-      : (this.pre === 1 || pre === ' ')
-          ? 'explicit_space'
-          : (!pre ? intentPre : undefined);
+    const pre = intentPre === undefined && trivia
+      ? w.capture(() => emitTrivia(trivia, 'before', this.location[0], options))
+      : '';
+    const preIntent = !pre ? intentPre : undefined;
     const bodyStr = w.capture(() => this.toTrimmedString(options));
-    const post = this.post !== undefined
-      ? w.capture(() => this.processPrePost('post', '', options))
-      : (intentPost === undefined && trivia
-          ? w.capture(() => emitTrivia(trivia, 'after', this.location[3], options))
-          : '');
-    const postIntent = this.post === 0
-      ? 'explicit_none'
-      : (this.post === 1 || post === ' ')
-          ? 'explicit_space'
-          : (!post ? intentPost : undefined);
+    const post = intentPost === undefined && trivia
+      ? w.capture(() => emitTrivia(trivia, 'after', this.location[3], options))
+      : '';
+    const postIntent = !post ? intentPost : undefined;
 
     let result = pre + bodyStr + post;
     if (preIntent) {
@@ -1278,13 +1168,13 @@ export abstract class Node<
   }
 
   /**
-   * The authored body form of the node without outer pre/post comments and
+   * The authored body form of the node without outer comments and
    * whitespace.
    *
    * @note - Internally, this still calls `toString()` on each value,
    * so that the internal spacing of the node serialization is
    * correct. This method just serializes a node without the outer
-   * pre/post nodes, and does not require a render context.
+   * whitespace, and does not require a render context.
    */
   toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);

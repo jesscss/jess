@@ -270,10 +270,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (appendValue !== undefined && !isNode(selector, N.Nil)) {
         selector = selector.clone(true) as Selector;
       }
-      /** Remove any surrounding whitespace */
-      selector.pre = undefined;
-      selector.post = undefined;
-
       if (appendValue && !isNode(selector, N.Nil)) {
         const isTemplateMerge = appendValue.includes('&');
         if (isTemplateMerge) {

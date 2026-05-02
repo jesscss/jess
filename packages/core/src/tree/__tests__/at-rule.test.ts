@@ -4,15 +4,28 @@ import {
   num, dimension, amp,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
+import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { AtRule } from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
+import type { TriviaMap } from '../../types/index.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
 let context: Context;
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 describe('AtRule', () => {
   beforeEach(() => {
@@ -119,6 +132,39 @@ describe('AtRule', () => {
       }
     `);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('serializes comment trivia between at-rule preludes and blocks', () => {
+    const name = any('@-webkit-keyframes', { role: 'atkeyword' });
+    name._location = [0, 1, 1, 17, 1, 18];
+    const prelude = any('hover', { role: 'keyword' });
+    prelude._location = [32, 1, 33, 36, 1, 37];
+    const leading = [token(' '), token('/* Safari */', 'BlockComment'), token(' ')];
+    const trailing = [token(' '), token('/* and Chrome */', 'BlockComment'), token(' ')];
+    const trivia = {
+      before: new Map([
+        [prelude.location[0], leading],
+        [55, trailing]
+      ]),
+      after: new Map([
+        [name.location[3], leading],
+        [prelude.location[3], trailing]
+      ])
+    } satisfies TriviaMap;
+    const node = atrule({
+      name,
+      prelude,
+      rules: rules([
+        ruleset({
+          selector: sel([el('0%')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ])
+    });
+
+    expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });
 
   describe('nested @media rules', () => {

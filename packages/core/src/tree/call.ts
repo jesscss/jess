@@ -160,22 +160,8 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const normalizedArgs = args.value.filter(Boolean);
-      const last = normalizedArgs.length - 1;
-      const sep = args.options?.sep ?? ',';
-      for (let i = 0; i <= last; i++) {
-        const arg = normalizedArgs[i]!;
-        const argOut = w.capture(() => arg.toString(options));
-        // Normalize boundary whitespace so calls serialize with stable comma spacing.
-        w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
-        if (i < last) {
-          if (sep === '/') {
-            w.add(' / ');
-          } else {
-            w.add(`${sep} `);
-          }
-        }
-      }
+      const argsOut = w.capture(() => args.toTrimmedString(options));
+      w.add(argsOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), args);
     }
     w.add(')');
     if (this._options?.markImportant) {
@@ -244,8 +230,7 @@ export class Call extends Node<CallValue, CallOptions> {
         || this.value.name.options?.type === 'mixin-ruleset')
     );
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
-      node.pre = this.pre;
-      node.post = this.post;
+      node.inherit(this);
       if (
         isNode(node, N.Rules)
         && node.value.length > 0

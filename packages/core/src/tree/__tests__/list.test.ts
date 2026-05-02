@@ -1,5 +1,19 @@
+import type { IToken } from 'chevrotain';
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { Any } from '../any.js';
 import { Context } from '../../context.js';
+import type { TriviaMap } from '../../types/index.js';
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {
@@ -35,6 +49,28 @@ describe('List', () => {
 
     expect(rule.toTrimmedString()).toBe('1, 2, 3');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('emits trivia before parser-owned list separators', () => {
+    const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
+    const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const trivia = {
+      before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
+      after: new Map<number, IToken[]>()
+    } satisfies TriviaMap;
+
+    expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
+  });
+
+  it('leaves plain separator whitespace to list syntax', () => {
+    const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
+    const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);
+    const trivia = {
+      before: new Map([[5, [token(' ')]]]),
+      after: new Map<number, IToken[]>()
+    } satisfies TriviaMap;
+
+    expect(list([first, second], { sep: '/' }).toString({ trivia })).toBe('10px / 2');
   });
 
   it('renders resolved list values through render(context)', async () => {

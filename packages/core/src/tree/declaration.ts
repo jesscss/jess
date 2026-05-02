@@ -16,6 +16,7 @@ import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { emitCommentTriviaAfterNode } from './util/trivia.js';
 
 export const enum AssignmentType {
   Default = ':',
@@ -196,7 +197,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const normalizedName = w.capture(() => name.toTrimmedString(options)).replace(/\s+$/, '');
-    w.add(`${normalizedName}${a}`, name);
+    w.add(normalizedName, name);
+    emitCommentTriviaAfterNode(name, options);
+    w.add(a);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
@@ -242,6 +245,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           w.add(` ${imp}`, important);
         }
       }
+    }
+    if (this.requiredSemi) {
+      emitCommentTriviaAfterNode(important ?? value, options);
     }
     return w.getSince(mark);
   }
@@ -497,20 +503,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const pre = context.pre
   //   const loc = this.location
   //   out.add('$J.decl({\n', loc)
   //   context.indent++
-  //   out.add(`  ${pre}name: `)
+  //   out.add(`  name: `)
   //   this.name.toModule(context, out)
-  //   out.add(`,\n  ${pre}value: `)
+  //   out.add(`,\n  value: `)
   //   this.value.toModule(context, out)
   //   if (this.important) {
-  //     out.add(`,\n  ${pre}important: `)
+  //     out.add(`,\n  important: `)
   //     this.important.toModule(context, out)
   //   }
   //   context.indent--
-  //   out.add(`\n${pre}})`)
+  //   out.add(`\n})`)
   // }
 }
 

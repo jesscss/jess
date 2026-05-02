@@ -289,19 +289,26 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     return this.hasWSBeforeByPos[idx] === 1;
   }
 
-  protected claimWhitespaceCombinator(offset: number | undefined): void {
+  protected claimWhitespaceCombinator(offset: number | undefined): IToken | undefined {
     if (offset === undefined) {
-      return;
+      return undefined;
     }
     const skipped = this.preSkippedTokenMap.get(offset);
     if (!skipped) {
-      return;
+      return undefined;
     }
     for (let i = skipped.length - 1; i >= 0; i--) {
       const token = skipped[i]!;
       if (token.tokenType.name !== 'WS' || token.image.length === 0) {
         continue;
       }
+      const claimed = {
+        ...token,
+        image: token.image.slice(-1),
+        startOffset: token.endOffset,
+        startColumn: token.endColumn,
+        startLine: token.endLine
+      };
       const image = token.image.slice(0, -1);
       if (image.length === 0) {
         skipped.splice(i, 1);
@@ -311,8 +318,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
           image
         };
       }
-      return;
+      return claimed;
     }
+    return undefined;
   }
 
   /**

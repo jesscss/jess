@@ -1,195 +1,57 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { OutputWriter, getPrintOptions } from '../print.js';
-import { any, comment } from '../../../index.js';
+import { describe, expect, it } from 'vitest';
+import type { IToken } from 'chevrotain';
+import { Any } from '../../../index.js';
 
-describe('processPrePost with capture', () => {
-  let w: OutputWriter;
-  let options: ReturnType<typeof getPrintOptions>;
+const token = (image: string, name = 'WS'): IToken => ({
+  image,
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length,
+  tokenType: { name } as IToken['tokenType']
+});
 
-  beforeEach(() => {
-    w = new OutputWriter();
-    options = getPrintOptions({ writer: w });
+describe('TriviaMap serialization', () => {
+  it('serializes trivia looked up before a node offset', () => {
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const trivia = {
+      before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
+      after: new Map<number, IToken[]>()
+    };
+
+    expect(node.toString({ trivia })).toBe('\n  /* keep */test');
   });
 
-  it('processPrePost returns correct value for array with newline string', () => {
-    const node = any('test');
-    node.pre = ['\n  '];
+  it('serializes trivia looked up after a node offset', () => {
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const trivia = {
+      before: new Map<number, IToken[]>(),
+      after: new Map([[13, [token('\n  ')]]])
+    };
 
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe('\n  ');
+    expect(node.toString({ trivia })).toBe('test\n  ');
   });
 
-  it('capture properly captures output from processPrePost with array containing newline string', () => {
-    const node = any('test');
-    node.pre = ['\n  '];
+  it('does not use boundary intent as trivia storage', () => {
+    const node = new Any('test', { preIntent: 'explicit_space' });
 
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n  ');
-    expect(w.toString()).toBe('');
+    expect(node.toString()).toBe('test');
   });
 
-  it('capture properly captures output from processPrePost with array containing multiple strings', () => {
-    const node = any('test');
-    node.pre = ['\n  ', '  more'];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n    more');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with array containing single space string', () => {
-    const node = any('test');
-    node.pre = [' '];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe(' ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with array containing empty string', () => {
-    const node = any('test');
-    node.pre = [''];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with array containing only newline', () => {
-    const node = any('test');
-    node.pre = ['\n'];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with array containing tab and spaces', () => {
-    const node = any('test');
-    node.pre = ['\n\t  '];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n\t  ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output when processPrePost is called multiple times', () => {
-    const node = any('test');
-    node.pre = ['\n  '];
-
-    const captured1 = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    const captured2 = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured1).toBe('\n  ');
-    expect(captured2).toBe('\n  ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output when there is existing content in writer', () => {
-    w.add('existing');
-    const node = any('test');
-    node.pre = ['\n  '];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n  ');
-    expect(w.toString()).toBe('existing');
-  });
-
-  it('processPrePost with numeric value 1 returns single space', () => {
-    const node = any('test');
-    node.pre = 1;
-
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe(' ');
-  });
-
-  it('capture properly captures output from processPrePost with numeric value 1', () => {
-    const node = any('test');
-    node.pre = 1;
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe(' ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('processPrePost with numeric value 0 returns empty string', () => {
-    const node = any('test');
-    node.pre = 0;
-
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with numeric value 0', () => {
-    const node = any('test');
-    node.pre = 0;
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('');
-    expect(w.toString()).toBe('');
-  });
-
-  it('processPrePost with string value returns that string', () => {
-    const node = any('test');
-    node.pre = '  ';
-
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe('  ');
-  });
-
-  it('capture properly captures output from processPrePost with string value', () => {
-    const node = any('test');
-    node.pre = '  ';
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('  ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('copy strips comments from the copy without mutating source pre/post arrays', () => {
-    const node = any('test');
-    node.post = [' ', comment('/* keep me */')];
-
+  it('consumes shared trivia once across copied nodes in one print state', () => {
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
     const copied = node.copy(true);
+    const tokens = [token(' '), token('/* keep me */', 'BlockComment')];
+    const trivia = {
+      before: new Map<number, IToken[]>(),
+      after: new Map([[13, tokens]])
+    };
+    const options = { trivia };
 
-    expect(String(node)).toBe('test /* keep me */');
-    expect(String(copied)).toBe('test ');
-    expect(node.post?.[1]?.type).toBe('Comment');
-    expect(copied.post?.[1]?.type).toBe('Nil');
+    expect(node.toString(options)).toBe('test /* keep me */');
+    expect(copied.toString(options)).toBe('test');
+    expect(tokens.map(item => item.image)).toEqual([' ', '/* keep me */']);
   });
 });

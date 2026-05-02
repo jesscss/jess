@@ -1272,9 +1272,7 @@ function applyReferenceResultMetadata(
   if (options?.frozen) {
     node.frozen = true;
   }
-  node.pre = referenceNode.pre;
-  node.post = referenceNode.post;
-  return node;
+  return node.inherit(referenceNode);
 }
 
 function cloneReferenceResultNode(
@@ -1543,9 +1541,7 @@ function evaluateCalcSlashListValue(
     }
     try {
       const out = l.operate(r, '/', context);
-      out.pre = left?.pre;
-      out.post = right?.post;
-      return out;
+      return out.inherit(declValue);
     } catch {
       return declValue;
     }

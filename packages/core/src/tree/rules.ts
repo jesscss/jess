@@ -1590,7 +1590,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const isEvaluatedDefinitionNode = this.evaluated && isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
-        && !Boolean(n.pre || n.post)
         && !hasPrintableBoundaryTrivia(n, 'pre', options)
         && !hasPrintableBoundaryTrivia(n, 'post', options)
       ) {
@@ -1618,9 +1617,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Rules nodes inside Rules nodes are at the same level
       if (isChildRules) {
         const hasRenderableChild = n.value.some(child =>
-          child.visible || child.fullRender || Boolean(child.pre || child.post)
+          child.visible
+          || child.fullRender
+          || hasPrintableBoundaryTrivia(child, 'pre', options)
+          || hasPrintableBoundaryTrivia(child, 'post', options)
         );
-        if (!hasRenderableChild && !(n.pre || n.post)) {
+        if (
+          !hasRenderableChild
+          && !hasPrintableBoundaryTrivia(n, 'pre', options)
+          && !hasPrintableBoundaryTrivia(n, 'post', options)
+        ) {
           continue;
         }
         const ownReferenceMode = (

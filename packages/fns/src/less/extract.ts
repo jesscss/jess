@@ -19,7 +19,7 @@ const extract = defineFunction(
     if (out instanceof Sequence) {
       const normalizedOut = out.copy(true) as Sequence;
       normalizedOut.value.forEach((node: Node, index: number) => {
-        node.pre = index === 0 ? 0 : 1;
+        node.options.preIntent = index === 0 ? 'explicit_none' : 'explicit_space';
       });
       return normalizedOut;
     }

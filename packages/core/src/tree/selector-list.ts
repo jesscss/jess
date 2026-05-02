@@ -11,6 +11,7 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
+import { emitCommentTriviaBeforeDelimiter } from './util/trivia.js';
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
@@ -79,7 +80,9 @@ export class SelectorList extends Selector<Selector[]> {
     w.add(out.trim(), item);
 
     for (let i = 1; i < length; i++) {
+      const prevItem = item;
       item = value[i]!;
+      emitCommentTriviaBeforeDelimiter(prevItem, item, options);
       w.add(`,\n${space}`);
       out = (w.capture(() => item.toString(options))).trim();
       w.add(out);

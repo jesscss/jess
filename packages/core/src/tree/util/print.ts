@@ -89,6 +89,16 @@ export interface OutputWriter {
 export type BoundaryIntent = 'implicit' | 'explicit_none' | 'explicit_space';
 
 export type BoundaryIntentOptions = {
+  /**
+   * Boundary hints for generated/API-created nodes that have no usable source
+   * offset for TriviaMap lookup.
+   *
+   * Parsed whitespace/comments are file-context trivia and are emitted by
+   * lookup direction at an offset, then consumed once by the print state.
+   * These hints only tell a parent serializer whether a generated boundary
+   * wants implicit spacing, no spacing, or one explicit space when no trivia
+   * run was emitted.
+   */
   preIntent?: BoundaryIntent;
   postIntent?: BoundaryIntent;
 };

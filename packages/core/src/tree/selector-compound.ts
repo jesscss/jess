@@ -28,9 +28,6 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   private renderCompoundSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const value = this.value;
-    for (let i = 0; i < value.length - 1; i++) {
-      value[i]!.post = undefined;
-    }
     const w = options.writer!;
     const mark = w.mark();
     const saved = savePrintState(options, ['ampersandFirst']);

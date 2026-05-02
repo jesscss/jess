@@ -28,9 +28,6 @@ export function hasPrintableBoundaryTrivia(
   key: 'pre' | 'post',
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
-  if (node[key] !== undefined) {
-    return Boolean(String(node[key]).trim());
-  }
   const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
   if (!trivia) {
     return false;
@@ -58,9 +55,6 @@ function captureNodeBoundary(
   const trivia: TriviaMap | undefined = options.trivia ?? node.treeContext?.opts?.trivia;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
-  }
-  if (node[key] !== undefined) {
-    return writer.capture(() => node.processPrePost(key, undefined, options));
   }
   if (!trivia) {
     return '';
@@ -474,9 +468,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       const declWriter = new OutputWriter();
       const declSaved = savePrintState(options, ['writer', 'depth']);
+      const declEmittedTrivia = saveSetState(options.emittedTrivia);
       options.writer = declWriter;
       options.depth = options.depth + 1;
       const declOut = node.toTrimmedString(options);
+      restoreSetState(options.emittedTrivia, declEmittedTrivia);
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
@@ -543,15 +539,25 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if (!currentFrame || priorHeader === undefined) {
             break;
           }
+          const priorFrame = lastRenderedFrames[i];
+          if (!priorFrame) {
+            break;
+          }
           options.depth = i;
+          const headerProbeEmittedTrivia = saveSetState(options.emittedTrivia);
           const currentHeader = (
             carriedRuleset && i === leafFrames.length - 1 && currentFrame === carriedRuleset.frame
           )
             ? getCarriedRulesetHeader(carriedRuleset, options, i)
-            : currentFrame.getHeaderString(options);
-          const priorFrame = lastRenderedFrames[i];
+            : currentFrame.getHeaderString(options, true);
+          const priorComparableHeader = (
+            carriedRuleset && i === leafFrames.length - 1 && priorFrame === carriedRuleset.frame
+          )
+            ? getCarriedRulesetHeader(carriedRuleset, options, i)
+            : priorFrame.getHeaderString(options, true);
+          restoreSetState(options.emittedTrivia, headerProbeEmittedTrivia);
           const sameHeader = (
-            currentHeader === priorHeader
+            currentHeader === priorComparableHeader
             && (
               !isNode(currentFrame, N.AtRule)
               || currentFrame === priorFrame

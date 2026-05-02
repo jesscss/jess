@@ -67,6 +67,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
+      const prev = value[i - 1]!;
       const node = value[i]!;
       const currentMark = w.mark();
       const writtenSoFar = w.getSince(mark);
@@ -81,8 +82,28 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         prevTrailingIntent === 'explicit_none'
         || currentCaptured.leadingIntent === 'explicit_none'
       );
+      const sourceTrivia = (
+        !options.context
+        && options.trivia
+        && prev.treeContext?.opts?.trivia === options.trivia
+        && node.treeContext?.opts?.trivia === options.trivia
+      );
+      const hasTrivia = Boolean(
+        sourceTrivia
+        && (
+          options.trivia.after.get(prev.location[3])
+          || options.trivia.before.get(node.location[0])
+        )
+      );
+      const noSep = Boolean(sourceTrivia && prev.location[3] !== undefined && prev.location[3] + 1 === node.location[0]);
 
-      if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
+      if (
+        !prevEndsWithSpace
+        && !currentStartsWithSpace
+        && !hasExplicitNoSpaceBoundary
+        && !hasTrivia
+        && !noSep
+      ) {
         w.add(' ');
       }
       w.add(currentNodeOut);

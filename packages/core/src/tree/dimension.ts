@@ -310,11 +310,10 @@ export class Dimension extends Node<DimensionValue> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const pre = context.pre
   //   out.add('$J.num({\n' +
-  //     `  ${pre}value: ${this.value},\n` +
-  //     `  ${pre}unit: "${this.unit ?? ''}"\n` +
-  //     `${pre}})`
+  //     `  value: ${this.value},\n` +
+  //     `  unit: "${this.unit ?? ''}"\n` +
+  //     `})`
   //   , this.location)
   // }
 }

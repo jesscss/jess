@@ -231,7 +231,7 @@ export abstract class TreeVisitor extends Visitor {
 
     // Default: auto-visit children (node doesn't have accept() or doesn't override it)
     if (this.visitChildren === 'before') {
-      for (const node of n.children(true, reverse, true)) {
+      for (const node of n.children(true, reverse)) {
         this._visit(node, ctx);
       }
       const returnVal = super._visit(n, ctx);
@@ -252,7 +252,7 @@ export abstract class TreeVisitor extends Visitor {
       /** Don't visit new created nodes */
       this.visitedNodes.add(returnVal);
     } else {
-      for (const node of n.children(true, reverse, true)) {
+      for (const node of n.children(true, reverse)) {
         this._visit(node, ctx);
       }
     }

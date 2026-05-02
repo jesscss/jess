@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, el, pseudo, ref, rules, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, compound, el, pseudo, ref, rules, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 
 describe('PseudoSelector', () => {
   let context: Context;
@@ -11,6 +11,13 @@ describe('PseudoSelector', () => {
 
   it('renders pseudo selector syntax through toTrimmedString()', () => {
     expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
+  });
+
+  it('renders compound selector arguments without sequence spacing', () => {
+    expect(pseudo({
+      name: ':host',
+      arg: compound([el('.sel'), el('.a')])
+    }).toTrimmedString()).toBe(':host(.sel.a)');
   });
 
   it('renders resolved pseudo selector values through render(context)', async () => {

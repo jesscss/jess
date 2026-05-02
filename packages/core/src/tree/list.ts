@@ -4,6 +4,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
+import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
 
 export type ListOptions = {
   /**
@@ -41,7 +42,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     let out = w.capture(() => item.toString(options));
     w.add(out.replace(LIST_ITEM_TRIM, ''), item);
     for (let i = 1; i < length; i++) {
+      const prev = item;
       item = value[i]!;
+      emitCommentTriviaBetweenNodes(prev, item, options);
       if (sep === '/') {
         w.add(' / ');
       } else {
@@ -107,7 +110,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add('', this.location)
   //   const length = this.value.length - 1
-  //   const pre = context.pre
   //   const cast = context.cast
   //   this.value.forEach((node, i) => {
   //     const val = cast(node)
@@ -115,7 +117,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   //     if (i < length) {
   //       if (context.inSelector) {
-  //         out.add(`,\n${pre}`)
+  //         out.add(`,\n`)
   //       } else {
   //         out.add(', ')
   //       }
@@ -127,7 +129,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.list([\n', this.location)
   //   context.indent++
-  //   let pre = context.pre
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {
   //     out.add(pre)
@@ -141,8 +142,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   //     }
   //   })
   //   context.indent--
-  //   pre = context.pre
-  //   out.add(`\n${pre}])`)
+  //   out.add(`\n])`)
   //   return out
   // }
 }
