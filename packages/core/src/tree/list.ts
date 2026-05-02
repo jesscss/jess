@@ -40,26 +40,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     let item = value[0]!;
     let out = w.capture(() => item.toString(options));
     w.add(out.replace(LIST_ITEM_TRIM, ''), item);
-    const source = options.context?.file?.source ?? this.treeContext?.file?.source;
-    let previous = item;
     for (let i = 1; i < length; i++) {
       item = value[i]!;
-      let separator = sep === '/' ? ' / ' : `${sep} `;
-      if (
-        source
-        && typeof previous.location?.[3] === 'number'
-        && typeof item.location?.[0] === 'number'
-        && item.location[0] >= previous.location[3] + 1
-      ) {
-        const authoredSeparator = source.slice(previous.location[3] + 1, item.location[0]);
-        if (authoredSeparator.includes(sep)) {
-          separator = authoredSeparator;
-        }
+      if (sep === '/') {
+        w.add(' / ');
+      } else {
+        w.add(`${sep} `);
       }
-      w.add(separator);
       out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
       w.add(out);
-      previous = item;
     }
     return w.getSince(mark);
   }
