@@ -3,7 +3,7 @@
  *
  * Extends Chevrotain's EmbeddedActionsParser with Jess-specific infrastructure:
  * - Filtered input (skipped tokens removed) with pre/post trivia maps
- * - AST building helpers (getLocationInfo, wrap, getPrePost, startRule, endRule)
+ * - AST building helpers (getLocationInfo, wrap, startRule, endRule)
  * - Token category matching via categoryMatchesMap for gate predicates
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
@@ -16,15 +16,12 @@ import type { IParseResult, LocationInfo, OptionalLocation } from '@jesscss/core
 import {
   TreeContext,
   Node,
-  Comment,
-  F_VISIBLE,
   Color,
   ColorFormat,
   Dimension,
   Num,
   Rules,
-  Any,
-  type Nil
+  Any
 } from '@jesscss/core';
 
 import colors from 'color-name';
@@ -37,8 +34,6 @@ export type TokenMap = Record<CssTokenType, TokenType>;
 
 // ── Import production rule implementations ──────────────────────────
 import * as productions from './productions/index.js';
-
-const { isArray } = Array;
 
 function isSkippedToken(t: IToken): boolean {
   return (t.tokenType as { LABEL?: string }).LABEL === SKIPPED_LABEL;
@@ -89,8 +84,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   preSkippedTokenMap: Map<number, IToken[]> = new Map();
   /** Maps previous token endOffset → following skipped tokens */
   postSkippedTokenMap: Map<number, IToken[]> = new Map();
-  usedSkippedTokens: Set<IToken[]> = new Set();
-  protected usedSkippedTokensLog: IToken[][] = [];
   originalInput: IToken[] = [];
 
   protected hasWSBeforeByPos: Uint8Array = new Uint8Array(0);
@@ -196,8 +189,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       preSkippedTokenMap.set(Infinity, pendingSkipped);
     }
 
-    this.usedSkippedTokens = new Set();
-    this.usedSkippedTokensLog = [];
     this.originalInput = value;
     this.locationStack = [];
     this.skippedBeforeByPos = skippedBeforeByPos;
@@ -219,17 +210,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       before: this.preSkippedTokenMap,
       after: this.postSkippedTokenMap
     };
-  }
-
-  protected addUsedSkippedTokens(tokens: IToken[] | undefined): void {
-    if (!tokens) {
-      return;
-    }
-    if (this.usedSkippedTokens.has(tokens)) {
-      return;
-    }
-    this.usedSkippedTokens.add(tokens);
-    this.usedSkippedTokensLog.push(tokens);
   }
 
   // ── Domain helpers ─────────────────────────────────────────────────
@@ -460,39 +440,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       location[5] = tok.endColumn ?? tok.startColumn ?? NaN;
     }
     return location;
-  }
-
-  protected getPrePost(offset: number, post?: boolean, ctx?: RuleContext): Node['pre'] {
-    const skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset);
-    if (!skipped) {
-      return 0;
-    }
-    if (this.usedSkippedTokens.has(skipped)) {
-      return 0;
-    }
-    this.addUsedSkippedTokens(skipped);
-
-    const pre: Node['pre'] = skipped.map((token: IToken) => {
-      const name = token.tokenType.name;
-      if (name === 'WS') {
-        return token.image;
-      }
-      const comment = new Comment(
-        token.image,
-        { lineComment: name.includes('Line') },
-        this.getLocationInfo(token),
-        this.context
-      );
-      if (ctx?.inCustomPropertyValue && comment.options.lineComment) {
-        comment.addFlag(F_VISIBLE);
-      }
-      return comment;
-    });
-
-    if (isArray(pre) && pre.length === 1 && pre[0] === ' ') {
-      return 1;
-    }
-    return pre;
   }
 
   protected getRulesWithComments(

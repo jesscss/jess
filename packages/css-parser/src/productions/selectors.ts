@@ -554,25 +554,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
           if (co) {
             combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
           } else {
-            /** Whitespace combinators are special */
-            let startOffset = this.LA(1).startOffset;
-            /**
-             * Technically, a whitespace combinator may not actually _include_
-             * a literal space (it can be a newline, for example), but we'll just use a
-             * space for now.
-             */
             combinator = new Combinator(' ', undefined, undefined, this.context);
-            let pre = $.getPrePost(startOffset);
-            if (pre === 1) {
-              pre = 0;
-            } else if (pre) {
-              let last = pre[pre.length - 1];
-              if (typeof last === 'string' && last.endsWith(' ')) {
-                /** remove the last character if a space */
-                pre[pre.length - 1] = last.slice(0, -1);
-              }
-            }
-            combinator.pre = pre;
           }
         }
         let compound: CompoundSelector = $.SUBRULE2($.compoundSelector, { ARGS: [ctx] });

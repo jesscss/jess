@@ -1,5 +1,5 @@
 import { CssParser } from '../src/index.js';
-import { serializeTypes } from '@jesscss/core';
+import { N, isNode, serializeTypes } from '@jesscss/core';
 
 const cssParser = new CssParser();
 
@@ -48,6 +48,27 @@ describe('serializeTypes coverage', () => {
           ]
         )
     `);
+  });
+
+  test('descendant combinator leaves skipped tokens in trivia map', () => {
+    const { tree, trivia } = cssParser.parse('a /* gap */ b { c: d; }');
+    const ruleset = tree.value[0];
+    if (!isNode(ruleset, N.Ruleset)) {
+      throw new Error('Expected first parsed rule to be a ruleset');
+    }
+    const selector = ruleset.value.selector;
+    if (!isNode(selector, N.ComplexSelector)) {
+      throw new Error('Expected parsed selector to be complex');
+    }
+    const combinator = selector.value[1];
+
+    expect(isNode(combinator, N.Combinator)).toBe(true);
+    expect(combinator.pre).toBeUndefined();
+    expect(trivia.before.get(selector.value[2].location[0])?.map(token => token.image)).toEqual([
+      ' ',
+      '/* gap */',
+      ' '
+    ]);
   });
 
   test('attribute selector with modifier flag', () => {

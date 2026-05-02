@@ -95,7 +95,6 @@ type ParserSavepoint = {
   errorsLength: number;
   locationStack: LocationInfo[];
   ruleStack: string[];
-  usedSkippedMark: number;
 };
 
 /**
@@ -126,27 +125,6 @@ export class RecursiveDescentParser {
   preSkippedTokenMap: Map<number, IToken[]> = new Map();
   /** Maps previous token endOffset → following skipped tokens */
   postSkippedTokenMap: Map<number, IToken[]> = new Map();
-  /**
-   * Tracks which skipped token arrays have been consumed by wrap().
-   *
-   * Public shape stays the same for downstream compatibility, but speculative
-   * rollback no longer clones the whole Set. Instead, additions are recorded in
-   * `usedSkippedTokensLog`, and speculative code restores by deleting only the
-   * entries added since a saved mark.
-   */
-  usedSkippedTokens: Set<IToken[]> = new Set();
-
-  /**
-   * Append-only log of arrays added to `usedSkippedTokens`.
-   *
-   * This enables cheap rollback during speculative parsing:
-   * - save a mark = current log length
-   * - if speculation fails, delete only additions after that mark
-   *
-   * Duplicates are allowed in the log. Rollback checks `Set.delete()` and ignores
-   * entries that were already removed by an inner rollback.
-   */
-  protected usedSkippedTokensLog: IToken[][] = [];
   /** Full original token stream including skipped tokens */
   originalInput: IToken[] = [];
 
@@ -311,8 +289,6 @@ export class RecursiveDescentParser {
       preSkippedTokenMap.set(Infinity, pendingSkipped);
     }
 
-    this.usedSkippedTokens = new Set();
-    this.usedSkippedTokensLog = [];
     this.originalInput = value;
     this.tokens = inputTokens;
     this.skippedBeforeByPos = skippedBeforeByPos;
@@ -331,48 +307,6 @@ export class RecursiveDescentParser {
 
   get input(): IToken[] {
     return this.tokens;
-  }
-
-  /**
-   * Mark the current speculative "transaction" point for skipped-token usage.
-   *
-   * Any skipped-token arrays consumed after this mark can be rolled back with
-   * `rollbackUsedSkippedTokens(mark)`.
-   */
-  protected markUsedSkippedTokens(): number {
-    return this.usedSkippedTokensLog.length;
-  }
-
-  /**
-   * Record that a skipped-token array has been consumed.
-   *
-   * This must be used instead of calling `this.usedSkippedTokens.add(tokens)`
-   * directly anywhere in the parser runtime, otherwise speculative rollback
-   * will miss the mutation.
-   */
-  protected addUsedSkippedTokens(tokens: IToken[] | undefined): void {
-    if (!tokens) {
-      return;
-    }
-    if (this.usedSkippedTokens.has(tokens)) {
-      return;
-    }
-    this.usedSkippedTokens.add(tokens);
-    this.usedSkippedTokensLog.push(tokens);
-  }
-
-  /**
-   * Roll back skipped-token consumption to a previous mark.
-   *
-   * Deletes only arrays added after the mark, rather than cloning/restoring the
-   * entire Set. This is significantly cheaper in speculative hot paths.
-   */
-  protected rollbackUsedSkippedTokens(mark: number): void {
-    for (let i = this.usedSkippedTokensLog.length - 1; i >= mark; i--) {
-      const tokens = this.usedSkippedTokensLog[i]!;
-      this.usedSkippedTokens.delete(tokens);
-    }
-    this.usedSkippedTokensLog.length = mark;
   }
 
   // ── Lookahead ────────────────────────────────────────────────────
@@ -839,17 +773,14 @@ export class RecursiveDescentParser {
    * Take a full parser savepoint.
    *
    * This is still a full snapshot of the mutable stacks, because speculative
-   * parser code may push and pop within the same ALT/loop body. But we now
-   * centralize that work and pair it with transactional rollback for skipped
-   * trivia consumption instead of cloning the entire usedSkippedTokens Set.
+   * parser code may push and pop within the same ALT/loop body.
    */
   protected saveState(): ParserSavepoint {
     return {
       pos: this.pos,
       errorsLength: this.errors.length,
       locationStack: this.locationStack.slice(),
-      ruleStack: this.ruleStack.slice(),
-      usedSkippedMark: this.markUsedSkippedTokens()
+      ruleStack: this.ruleStack.slice()
     };
   }
 
@@ -861,7 +792,6 @@ export class RecursiveDescentParser {
     this.errors.length = saved.errorsLength;
     this.restoreStack(this.locationStack, saved.locationStack);
     this.restoreStack(this.ruleStack, saved.ruleStack);
-    this.rollbackUsedSkippedTokens(saved.usedSkippedMark);
   }
 
   // ── Stack restore helper ─────────────────────────────────────────
