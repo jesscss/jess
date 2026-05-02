@@ -78,20 +78,28 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const currentCaptured = w.captureWithMeta(() => node.toString(options));
       const currentNodeOut = currentCaptured.text;
       const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+      const source = options.context?.file?.source ?? this.treeContext?.file?.source;
       const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
       const hasSourceGap = trivia
         ? (
             trivia.after.has(prevNode.location[3]!)
               ? Boolean(trivia.after.get(prevNode.location[3]!))
               : trivia.before.has(node.location[0]!)
-                  ? Boolean(trivia.before.get(node.location[0]!))
-                  : undefined
+                ? Boolean(trivia.before.get(node.location[0]!))
+                : undefined
           )
         : undefined;
+      const isSourceAdjacent = (
+        source
+        && typeof prevNode.location?.[3] === 'number'
+        && typeof node.location?.[0] === 'number'
+        && node.location[0] === prevNode.location[3] + 1
+      );
       const hasExplicitNoSpaceBoundary = (
         prevTrailingIntent === 'explicit_none'
         || currentCaptured.leadingIntent === 'explicit_none'
         || hasSourceGap === false
+        || isSourceAdjacent
       );
 
       if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
