@@ -239,6 +239,37 @@ export function normalizeIndent(multiLineString: string, indent: string, maintai
   });
 }
 
+export function normalizeBlockTrivia(trivia: string, idt: string): string {
+  const comments = trivia.match(/\/\*[\s\S]*?\*\//gu);
+  if (!comments?.length) {
+    return normalizeIndent(trivia, idt);
+  }
+  const out = comments.join('\n');
+  return idt ? normalizeIndent(out, idt, true) : out;
+}
+
+export function normalizeLeadingBlockTrivia(text: string, idt: string): string {
+  let pos = 0;
+  const comments: string[] = [];
+  while (pos < text.length) {
+    const whitespace = /^[ \t\r\n\f]*/u.exec(text.slice(pos))?.[0] ?? '';
+    pos += whitespace.length;
+    const comment = /^\/\*[\s\S]*?\*\//u.exec(text.slice(pos))?.[0];
+    if (!comment) {
+      pos -= whitespace.length;
+      break;
+    }
+    comments.push(comment);
+    pos += comment.length;
+  }
+  if (!comments.length) {
+    return normalizeIndent(text, idt);
+  }
+  const rest = text.slice(pos).replace(/^[ \t\r\n\f]+/u, '');
+  const trivia = normalizeBlockTrivia(comments.join('\n'), idt);
+  return rest ? `${trivia}\n${normalizeIndent(rest, idt)}` : trivia;
+}
+
 export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
@@ -641,7 +672,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             ensureRenderedFrames(leafFrames);
             const idt = indent(lastRenderedFrames.length);
-            w.add(normalizeIndent(pre, idt));
+            const normalized = /\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt);
+            w.add(normalized);
+            if (/\/\*/u.test(pre) && normalized && !normalized.endsWith('\n')) {
+              w.add('\n');
+            }
           }
           const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           if (!childOut && !hasPrintableTrivia(n, options)) {
@@ -746,18 +781,28 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         }
         if (isHiddenStructuralNode) {
           if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt).replace(/[ \t]+$/u, ''));
+            const normalized = /\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt);
+            const trimmed = normalized.replace(/[ \t]+$/u, '');
+            w.add(trimmed);
+            if (/\/\*/u.test(pre) && trimmed && !trimmed.endsWith('\n')) {
+              w.add('\n');
+            }
           }
           const post = captureNodeBoundary(nn, 'post', options);
           if (!/^\s*$/.test(post)) {
-            w.add(normalizeIndent(post, idt).replace(/[ \t]+$/u, ''));
+            const normalized = /\/\*/u.test(post) ? normalizeBlockTrivia(post, idt) : normalizeIndent(post, idt);
+            const trimmed = normalized.replace(/[ \t]+$/u, '');
+            w.add(trimmed);
+            if (/\/\*/u.test(post) && trimmed && !trimmed.endsWith('\n')) {
+              w.add('\n');
+            }
           }
           continue;
         }
         if (isNode(nn, N.Declaration)) {
           const hasLeadingDeclarationBlockComment = /\/\*/u.test(pre.trimStart());
           if (hasLeadingDeclarationBlockComment) {
-            const normalizedStandalonePre = normalizeIndent(pre, idt).replace(/[ \t]+$/u, '');
+            const normalizedStandalonePre = normalizeBlockTrivia(pre, idt).replace(/[ \t]+$/u, '');
             if (normalizedStandalonePre) {
               w.add(normalizedStandalonePre);
               if (!normalizedStandalonePre.endsWith('\n')) {
@@ -783,7 +828,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
         } else if (isNode(nn, N.Rules)) {
           if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt));
+            w.add(/\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt));
           }
           /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
@@ -793,12 +838,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           w.add(out, nn);
         } else if (isLeafAtRule) {
           if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt));
+            w.add(/\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt));
           }
           w.add(out, nn);
         } else {
           if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt));
+            w.add(/\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt));
           }
           w.add(idt);
           w.add(out, nn);
@@ -815,7 +860,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         let post = captureNodeBoundary(nn, 'post', options);
 
         if (!/^\s*$/.test(post)) {
-          w.add(normalizeIndent(post, idt));
+          w.add(/\/\*/u.test(post) ? normalizeBlockTrivia(post, idt) : normalizeIndent(post, idt));
         }
       // }
       // else {

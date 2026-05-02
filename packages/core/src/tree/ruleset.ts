@@ -26,7 +26,7 @@ import {
 } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
-import { serializeRulesContainer, normalizeIndent, indent } from './util/serialize-helper.js';
+import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 
@@ -947,7 +947,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       options.trivia = savedTrivia;
     }
     restorePrintState(options, saved);
-    return normalizeIndent(selOut.replace(/\s+$/, '') + ' {', idt) + '\n';
+    const header = selOut.replace(/\s+$/, '') + ' {';
+    return (/^\s*\/\*/u.test(header)
+      ? normalizeLeadingBlockTrivia(header, idt)
+      : normalizeIndent(header, idt)) + '\n';
   }
 
   override preEval(context: Context): MaybePromise<this> {

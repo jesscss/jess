@@ -37,6 +37,7 @@ import { Any } from './any.js';
 import { List } from './list.js';
 import {
   indent,
+  normalizeBlockTrivia,
   normalizeIndent,
   serializeRulesContainerInline,
   hasPrintableBoundaryTrivia
@@ -58,6 +59,20 @@ function captureLeadingTrivia(node: Node, options: PrintOptions): string {
   return options.writer!.capture(() => {
     if (trivia) {
       emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
+    }
+  });
+}
+
+function captureEofTrivia(node: Node, options: PrintOptions): string {
+  const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
+    | TreeContext['opts']['trivia']
+    | undefined;
+  if (trivia && options.trivia !== trivia) {
+    options.trivia = trivia;
+  }
+  return options.writer!.capture(() => {
+    if (trivia) {
+      emitTriviaTokens(consumeTrivia(trivia, Infinity, 'before', options), options);
     }
   });
 }
@@ -1401,6 +1416,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (bodyEmitted.length === 0 && bodyStr) {
       w.add(bodyStr);
     }
+    if (depth === 0) {
+      const eofTrivia = captureEofTrivia(this, options);
+      if (eofTrivia.trim()) {
+        const current = w.getSince(mark);
+        if (current && !current.endsWith('\n')) {
+          w.add('\n');
+        }
+        w.add(/\/\*/u.test(eofTrivia) ? normalizeBlockTrivia(eofTrivia, '') : normalizeIndent(eofTrivia, ''));
+      }
+    }
     let result: string;
     // At root level, ensure output ends with a single newline (standard for CSS files)
     // Don't propagate all the last child's post content (which may have extra whitespace)
@@ -1571,7 +1596,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       closeRenderedFramesToBaseline();
       emitBoundaryIfNeeded(n);
       const commentIndent = depth === 0 ? '' : space;
-      const normalized = normalizeIndent(leading, commentIndent, true).replace(/[ \t]+$/u, '');
+      const normalized = (
+        depth === 0
+          ? normalizeBlockTrivia(leading, '')
+          : normalizeIndent(leading, commentIndent, true)
+      ).replace(/[ \t]+$/u, '');
       w.add(normalized, n);
       if (!/\n$/.test(normalized)) {
         w.add('\n');
