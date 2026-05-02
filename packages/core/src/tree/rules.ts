@@ -3425,20 +3425,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
       return createDerivedRulesSurface(sourceRules);
     }
-    function cloneMixinOutputNode<T extends Node>(node: T): T {
-      const cloned = node.clone(true, cloneMixinOutputNode);
-      cloned.sourceNode = node.sourceNode ?? node;
-      return cloned;
-    }
-    function cloneMixinOutputRules(sourceRules: Rules, deep: boolean): Rules {
-      const clonedRules = deep
-        ? cloneMixinOutputNode(sourceRules)
-        : sourceRules.clone(false);
-      clonedRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
-      return clonedRules;
+    function markMixinOutputSource(output: Rules, sourceRules: Rules): void {
+      output.sourceNode = sourceRules.sourceNode ?? sourceRules;
     }
     function cloneRulesetCallableRules(sourceRules: Rules, deep: boolean): Rules {
-      return cloneMixinOutputRules(sourceRules, deep);
+      return sourceRules.clone(deep);
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
@@ -3831,6 +3822,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
+        markMixinOutputSource(newRules, getRootSourceRules(candidate.value.rules));
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(newRules as unknown as Node);
         outputRules.push(newRules);
@@ -3883,6 +3875,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         rules.options.referenceMode = false;
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(rules as unknown as Node);
+        markMixinOutputSource(rules, sourceRules);
         outputRules.push(rules);
         continue;
       }
@@ -3912,6 +3905,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         unlocked.options.referenceMode = false;
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         clearReferenceModeForMixinOutput(unlocked as unknown as Node);
+        markMixinOutputSource(unlocked, sourceRules);
         unlocked.index = candidate.index;
         // Evaluate immediately while the call-site parent chain is intact.
         // Variables in the enclosing scope (e.g. @hover-background declared before the
@@ -3926,7 +3920,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let rules = candidate.value.rules;
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = cloneMixinOutputRules(rules, !rules.hasFlag(F_STATIC));
+      rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
       if (isNode(candidate, N.Mixin)) {
         rules.parent = candidate.value.rules.parent;
       }
