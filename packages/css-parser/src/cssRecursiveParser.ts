@@ -289,6 +289,32 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     return this.hasWSBeforeByPos[idx] === 1;
   }
 
+  protected claimWhitespaceCombinator(offset: number | undefined): void {
+    if (offset === undefined) {
+      return;
+    }
+    const skipped = this.preSkippedTokenMap.get(offset);
+    if (!skipped) {
+      return;
+    }
+    for (let i = skipped.length - 1; i >= 0; i--) {
+      const token = skipped[i]!;
+      if (token.tokenType.name !== 'WS' || token.image.length === 0) {
+        continue;
+      }
+      const image = token.image.slice(0, -1);
+      if (image.length === 0) {
+        skipped.splice(i, 1);
+      } else {
+        skipped[i] = {
+          ...token,
+          image
+        };
+      }
+      return;
+    }
+  }
+
   /**
    * Decide whether an inner declaration-list entry should be treated as a
    * nested qualified rule instead of a declaration.

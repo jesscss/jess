@@ -554,6 +554,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
           if (co) {
             combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
           } else {
+            $.claimWhitespaceCombinator($.LA(1).startOffset);
             combinator = new Combinator(' ', undefined, undefined, this.context);
           }
         }

@@ -50,7 +50,7 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
-  test('descendant combinator leaves skipped tokens in trivia map', () => {
+  test('descendant combinator pops one whitespace character from trivia map', () => {
     const { tree, trivia } = cssParser.parse('a /* gap */ b { c: d; }');
     const ruleset = tree.value[0];
     if (!isNode(ruleset, N.Ruleset)) {
@@ -66,8 +66,7 @@ describe('serializeTypes coverage', () => {
     expect(combinator.pre).toBeUndefined();
     expect(trivia.before.get(selector.value[2].location[0])?.map(token => token.image)).toEqual([
       ' ',
-      '/* gap */',
-      ' '
+      '/* gap */'
     ]);
   });
 
