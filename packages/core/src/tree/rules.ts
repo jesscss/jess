@@ -1672,6 +1672,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       if (isRulesetOrAtRule) {
+        const leading = captureLeadingTrivia(n, options);
+        let normalizedLeading = '';
+        let ruleAlreadyCarriesLeading = false;
+        if (!/^\s*$/.test(leading)) {
+          const leadingIndent = depth === 0 ? '' : space;
+          normalizedLeading = (
+            depth === 0
+              ? normalizeIndent(leading, leadingIndent)
+              : normalizeIndent(leading, leadingIndent, true)
+          ).replace(/[ \t]+$/u, '');
+          const selectorSource = (
+            isNode(n, N.Ruleset) && n.value.selector
+              ? String(n.value.selector)
+              : ''
+          ).trimStart();
+          ruleAlreadyCarriesLeading = selectorSource.startsWith(normalizedLeading.trimStart());
+          if (!ruleAlreadyCarriesLeading) {
+            closeRenderedFramesToBaseline();
+            emitBoundaryIfNeeded(n);
+            w.add(normalizedLeading, n);
+            if (!/\n$/.test(normalizedLeading)) {
+              w.add('\n');
+            }
+          }
+        }
         emitBoundaryIfNeeded(n);
         const mark = w.mark();
         const containerSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);

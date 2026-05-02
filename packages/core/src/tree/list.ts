@@ -40,7 +40,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     let item = value[0]!;
     let out = w.capture(() => item.toString(options));
     w.add(out.replace(LIST_ITEM_TRIM, ''), item);
-    const source = options.context?.file?.source ?? this.treeContext?.file?.source;
+    const source = options.context ? undefined : this.treeContext?.file?.source;
     let previous = item;
     for (let i = 1; i < length; i++) {
       item = value[i]!;
