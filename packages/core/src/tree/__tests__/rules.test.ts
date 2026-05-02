@@ -203,6 +203,34 @@ describe('Rules', () => {
     `);
   });
 
+  it('keeps separate sibling rulesets with the same selector in separate blocks', async () => {
+    const root = rules([
+      ruleset({
+        selector: any('.same'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      }),
+      ruleset({
+        selector: any('.same'),
+        rules: rules([
+          decl({ name: 'background', value: any('blue') })
+        ])
+      })
+    ]);
+
+    const evald = await root.eval(context);
+
+    expect(evald.toString({ context })).toBeString(`
+      .same {
+        color: red;
+      }
+      .same {
+        background: blue;
+      }
+    `);
+  });
+
   describe('Scope / lookups', () => {
     describe('set / get vars & props', () => {
       it('can do a normal get / set of properties', async () => {

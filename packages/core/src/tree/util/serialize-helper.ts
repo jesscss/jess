@@ -148,6 +148,17 @@ function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boole
   return false;
 }
 
+function canMergeSameHeaderRuleset(currentFrame: Ruleset, priorFrame: Ruleset): boolean {
+  const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  return (
+    isNode(currentOwn, N.Ampersand)
+    || isNode(priorOwn, N.Ampersand)
+    || currentOwn?.type === 'InterpolatedSelector'
+    || priorOwn?.type === 'InterpolatedSelector'
+  );
+}
+
 export function flattenVisibleRulesForRender(
   rules: Rules,
   options: Pick<FinalPrintOptions, 'context' | 'trivia'>,
@@ -614,11 +625,19 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             ? getCarriedRulesetHeader(carriedRuleset, options, i)
             : priorFrame.getHeaderString(options, true);
           restoreSetState(options.emittedTrivia, headerProbeEmittedTrivia);
+          const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
+            && isNode(priorFrame, N.Ruleset)
+            && (
+              currentFrame === priorFrame
+              || isAncestorFrame(priorFrame, currentFrame)
+              || isAncestorFrame(currentFrame, priorFrame)
+              || canMergeSameHeaderRuleset(currentFrame, priorFrame)
+            );
           const sameHeader = (
             currentHeader === priorComparableHeader
             && (
-              !isNode(currentFrame, N.AtRule)
-              || currentFrame === priorFrame
+              currentFrame === priorFrame
+              || sameRenderedRulesetFrame
             )
           );
           if (!sameHeader) {
