@@ -1075,6 +1075,68 @@ describe('AtRule', () => {
         }
       `);
     });
+
+    it('does not duplicate callable ruleset output inside nested media calls', async () => {
+      context.opts.collapseNesting = true;
+      const navJustified = ruleset({
+        selector: sel([el('.nav-justified')]),
+        rules: rules([
+          atrule({
+            name: any('@media', { role: 'atkeyword' }),
+            prelude: seq([paren(decl({
+              name: 'min-width',
+              value: dimension([480, 'px'])
+            }))]),
+            rules: rules([
+              ruleset({
+                selector: sel([el('> li')]),
+                rules: rules([
+                  decl({ name: 'display', value: spaced([any('table-cell')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      });
+
+      const menu = ruleset({
+        selector: sel([el('.menu')]),
+        rules: rules([
+          atrule({
+            name: any('@media', { role: 'atkeyword' }),
+            prelude: seq([paren(decl({
+              name: 'min-width',
+              value: dimension([768, 'px'])
+            }))]),
+            rules: rules([
+              call({
+                name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ])
+      });
+
+      const rootRules = rules([navJustified, menu]);
+      context.root = rootRules;
+      const evald = await rootRules.eval(context);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        @media (min-width: 480px) {
+          .nav-justified > li {
+            display: table-cell;
+          }
+        }
+        @media (min-width: 768px) {
+          @media (min-width: 480px) {
+            .menu > li {
+              display: table-cell;
+            }
+          }
+        }
+      `);
+    });
   });
 
   describe('serialization test for media.less AST', () => {

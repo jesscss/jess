@@ -3667,6 +3667,29 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       return false;
     };
+    const getRootSourceRules = (rules: Rules): Rules => {
+      let current = rules;
+      const seen = new Set<Rules>();
+      while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
+        const next = current.sourceNode as Rules;
+        if (next === current || seen.has(next)) {
+          break;
+        }
+        seen.add(current);
+        current = next;
+      }
+      return current;
+    };
+    const getCallableCandidateIdentity = (candidate: MixinEntry): object => {
+      if (isNode(candidate, N.Ruleset)) {
+        return getRootSourceRules(candidate.value.rules);
+      }
+      if (!isNode(candidate) && candidate.kind === 'callable-rules') {
+        return getRootSourceRules(candidate.value.rules);
+      }
+      return candidate;
+    };
+    const seenCandidateIdentities = new WeakSet<object>();
     evalCandidates = mixinCandidates
       .filter((candidate) => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3674,7 +3697,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const blockedByFailedGuardAncestor = isNode(candidate)
           ? hasFailedGuardAncestor(candidate)
           : false;
-        return !inStack && !blockedByFailedGuardAncestor;
+        if (inStack || blockedByFailedGuardAncestor) {
+          return false;
+        }
+        const identity = getCallableCandidateIdentity(candidate);
+        if (seenCandidateIdentities.has(identity)) {
+          return false;
+        }
+        seenCandidateIdentities.add(identity);
+        return true;
       })
       .map<MixinEntry>(
         (candidate) => {
@@ -3751,19 +3782,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
           }
         }
       }
-    };
-    const getRootSourceRules = (rules: Rules): Rules => {
-      let current = rules;
-      const seen = new Set<Rules>();
-      while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-        const next = current.sourceNode as Rules;
-        if (next === current || seen.has(next)) {
-          break;
-        }
-        seen.add(current);
-        current = next;
-      }
-      return current;
     };
     const DEF_FALSE_EITHER = -1;
     const DEF_NONE = 0;
