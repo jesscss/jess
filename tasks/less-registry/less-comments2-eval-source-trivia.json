@@ -4,7 +4,7 @@
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "open",
+  "status": "completed",
   "source_refs": [
     "tests-unit/comments/comments2.less",
     "state/codex-auto/results/all-less.latest.log",
@@ -26,7 +26,7 @@
     "targeted less fixture proof for tests-unit/comments/comments2.less",
     "promotion verification"
   ],
-  "accepted_commit": null,
+  "accepted_commit": "1f37420a6afcf6766e1415b35af5bfcb63738d95",
   "accepted_run_id": null,
-  "last_transition_event_id": "operator:add:less-comments2-eval-source-trivia:1776890319331"
+  "last_transition_event_id": "simple-loop:finish:less-comments2-eval-source-trivia:1777680807222"
 }
