@@ -4,7 +4,7 @@
   "track": "less-registry-redesign",
   "bucket": "less-fixture",
   "priority": "p1",
-  "status": "completed",
+  "status": "open",
   "source_refs": [
     "docs/future/performance/2026-04-13-registry-redesign-proposal.md",
     "packages/jess/test/less/all-less.test.ts",
@@ -22,7 +22,7 @@
     "targeted less fixture proof",
     "promotion verification"
   ],
-  "accepted_commit": "96984a0ea751ae4a0a295296b90a8fddb4b835c4",
+  "accepted_commit": null,
   "accepted_run_id": null,
-  "last_transition_event_id": "simple-loop:finish:less-css-grid:1777683342842"
+  "last_transition_event_id": null
 }
