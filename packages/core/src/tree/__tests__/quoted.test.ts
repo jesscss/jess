@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../index.js';
-import { Context } from '../../context.js';
+import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color } from '../index.js';
+import { Context, TreeContext } from '../../context.js';
+import type { TriviaMap } from '../../types/index.js';
+import type { IToken } from 'chevrotain';
 
 describe('quoted', () => {
   let context: Context;
@@ -43,6 +45,25 @@ describe('quoted', () => {
     const rendered = quoted(ref({ key: 'message' }, { type: 'variable' })).render(context);
 
     expect(rendered).toBe('"hello"');
+  });
+
+  it('does not emit source trivia from resolved quoted value children', () => {
+    const whitespace: IToken[] = [{
+      image: ' ',
+      tokenType: { name: 'WS' } as IToken['tokenType']
+    }];
+    const trivia = {
+      before: new Map([[10, whitespace]]),
+      after: new Map()
+    } satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const value = color({
+      node: 'red',
+      rgb: [255, 0, 0],
+      alpha: 1
+    }, undefined, [10, 1, 11, 12, 1, 13], treeContext);
+
+    expect(quoted(value).toTrimmedString({ trivia })).toBe('"red"');
   });
 
   it('resolves quoted values without touching render state', async () => {

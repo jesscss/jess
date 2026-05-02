@@ -36,7 +36,12 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       w.add(escapeChar, this);
     }
     w.add(quote);
-    super.toTrimmedString(options);
+    const value = this.value;
+    if (value instanceof Node) {
+      w.add(w.capture(() => value.toTrimmedString(options)), value);
+    } else {
+      w.add(value, this);
+    }
     w.add(quote);
     return w.getSince(mark);
   }
