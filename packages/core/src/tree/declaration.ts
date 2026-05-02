@@ -15,67 +15,7 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { getPrintableTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
-
-const normalizeTriviaComparable = (value: string): string => {
-  return value
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n\r]*/g, '')
-    .replace(/\s+/g, '');
-};
-
-const formatPreservedMultilineValue = (value: string): string => {
-  if (!value.includes('\n')) {
-    return value;
-  }
-
-  const lines = value
-    .replace(/[ \t]+$/g, '')
-    .split('\n');
-
-  if (lines[0]?.trim() !== '') {
-    const [firstLine, ...rawContinuationLines] = lines;
-    const continuationLines = rawContinuationLines.slice();
-    while (continuationLines.length > 0 && continuationLines[0]!.trim() === '') {
-      continuationLines.shift();
-    }
-    const nonEmptyContinuation = continuationLines.filter(line => line.trim() !== '');
-    const continuationBaseIndent = nonEmptyContinuation.length > 0
-      ? Math.min(...nonEmptyContinuation.map(line => line.match(/^[ \t]*/)?.[0].length ?? 0))
-      : 0;
-    let out = ` ${firstLine!.trimStart()}`;
-    for (const line of continuationLines) {
-      if (line.trim() === '') {
-        out += '\n';
-        continue;
-      }
-      const currentIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
-      const relativeIndent = Math.max(0, currentIndent - continuationBaseIndent);
-      out += `\n${' '.repeat(4 + relativeIndent)}${line.trimStart()}`;
-    }
-    return out;
-  }
-
-  const contentLines = lines.filter(line => line.trim() !== '');
-  if (contentLines.length === 0) {
-    return value;
-  }
-
-  const baseIndent = Math.min(
-    ...contentLines.map(line => line.match(/^[ \t]*/)?.[0].length ?? 0)
-  );
-  let out = '';
-  for (const line of lines) {
-    if (line.trim() === '') {
-      continue;
-    }
-    const currentIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
-    const relativeIndent = Math.max(0, currentIndent - baseIndent);
-    out += `\n${' '.repeat(4 + relativeIndent)}${line.trimStart()}`;
-  }
-  return out;
-};
 
 export const enum AssignmentType {
   Default = ':',
@@ -214,11 +154,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const continuationIndent = '  ';
     const lines = trimmedEnd.split('\n');
     let out = '';
-    const [firstLine = '', ...rawRestLines] = lines;
-    const restLines = rawRestLines.slice();
-    while (restLines.length > 0 && !restLines[0]!.trim()) {
-      restLines.shift();
-    }
+    const [firstLine = '', ...restLines] = lines;
     const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
 
     if (firstContent) {
@@ -258,40 +194,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
-    const trivia = options.context
-      ? (options.trivia ?? this.treeContext?.opts?.trivia)
-      : undefined;
-    const sourcePrintOptions = options.context && trivia
-      ? {
-          ...options,
-          context: undefined,
-          trivia,
-          emittedTrivia: options.emittedTrivia
-        }
-      : undefined;
     // Normalize property name by trimming trailing whitespace
     const normalizedName = w.capture(() => name.toTrimmedString(options)).replace(/\s+$/, '');
-    let valueSourceSeparator = a;
-    if (
-      sourcePrintOptions
-      && effAssign === ':'
-      && this.treeContext?.file?.source
-      && typeof name.location?.[3] === 'number'
-      && typeof value.location?.[0] === 'number'
-      && value.location[0] >= name.location[3] + 1
-    ) {
-      const authoredSeparator = this.treeContext.file.source.slice(name.location[3] + 1, value.location[0]);
-      if (authoredSeparator.includes(':')) {
-        valueSourceSeparator = authoredSeparator;
-      }
-    }
-    const emitNameAndSeparator = (renderedValue: string) => {
-      let separator = valueSourceSeparator;
-      if (separator !== a && /\n/.test(separator) && renderedValue.startsWith('\n')) {
-        separator = a;
-      }
-      w.add(`${normalizedName}${separator}`, name);
-    };
+    w.add(`${normalizedName}${a}`, name);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
@@ -316,13 +221,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
         customOut = ` ${customOut}`;
       }
-      emitNameAndSeparator(customOut);
       w.add(customOut, value);
       restorePrintState(options, saved);
     } else {
       // Capture value output to normalize spacing after ':'
       let valOut = '';
-      let preservedMultilineValue: string | undefined;
       try {
         valOut = options.context
           ? w.capture(() => value.render(options.context!, options))
@@ -330,35 +233,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } catch (error: unknown) {
         throw error;
       }
-      const hasDeclarationPostTrivia = Boolean(
-        sourcePrintOptions
-        && trivia
-        && getPrintableTriviaTokens(trivia.after.get(this.location[3]), sourcePrintOptions)?.length
-      );
-      if (sourcePrintOptions && !hasDeclarationPostTrivia) {
-        const authoredValueOut = w.capture(() => value.toString(sourcePrintOptions));
-        if (
-          (authoredValueOut.includes('/*') || authoredValueOut.includes('\n'))
-          && normalizeTriviaComparable(authoredValueOut) === normalizeTriviaComparable(valOut)
-        ) {
-          if (authoredValueOut.includes('\n')) {
-            preservedMultilineValue = formatPreservedMultilineValue(authoredValueOut);
-          } else {
-            valOut = authoredValueOut;
-          }
-        }
-        if (preservedMultilineValue) {
-          valOut = preservedMultilineValue;
-        }
-      }
-      let formattedValue = preservedMultilineValue
-        ? preservedMultilineValue
-        : this.formatNonCustomValue(valOut, options);
-      if (valueSourceSeparator !== a && /^[ \t]/.test(formattedValue)) {
-        formattedValue = formattedValue.replace(/^[ \t]+/u, '');
-      }
-      emitNameAndSeparator(formattedValue);
-      w.add(formattedValue, value);
+      w.add(this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important) {
           let imp = w.capture(() => important.toString(options));

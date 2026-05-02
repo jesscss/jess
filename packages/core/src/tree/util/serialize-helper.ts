@@ -548,13 +548,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             ? getCarriedRulesetHeader(carriedRuleset, options, i)
             : currentFrame.getHeaderString(options);
           const priorFrame = lastRenderedFrames[i];
-          // Header text alone is not enough to prove frame identity.
-          // Distinct rulesets can serialize the same selector text and still
-          // need separate blocks (e.g. adjacent top-level `.wrapper` rulesets
-          // in the Less css-grid fixture).
           const sameHeader = (
             currentHeader === priorHeader
-            && currentFrame === priorFrame
+            && (
+              !isNode(currentFrame, N.AtRule)
+              || currentFrame === priorFrame
+            )
           );
           if (!sameHeader) {
             break;
