@@ -11,6 +11,8 @@ import {
   restorePrintState,
   saveArrayState,
   restoreArrayState,
+  saveSetState,
+  restoreSetState,
   getCachedComposedSelector,
   setCachedComposedSelector
 } from './print.js';
@@ -19,7 +21,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { emitTriviaTokens, getPrintableTriviaTokens } from './trivia.js';
+import { emitTriviaBoundary, getPrintableTriviaTokens } from './trivia.js';
 
 export function hasPrintableBoundaryTrivia(
   node: Node,
@@ -64,8 +66,7 @@ function captureNodeBoundary(
     return '';
   }
   const offset = key === 'pre' ? node.location[0] : node.location[3];
-  const tokens = key === 'pre' ? trivia.before.get(offset) : trivia.after.get(offset);
-  return writer.capture(() => emitTriviaTokens(tokens, options));
+  return writer.capture(() => emitTriviaBoundary(trivia, key, offset, options));
 }
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
@@ -667,10 +668,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
           const previewFrameHeadersLength = options.frameHeaders.length;
           const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
+          const previewEmittedTrivia = saveSetState(options.emittedTrivia);
           options.depth = options.depth + 1;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
           const previewOut = w.capture(() => nn.toTrimmedString(getPrintOptions(options)));
+          restoreSetState(options.emittedTrivia, previewEmittedTrivia);
           options.inFrames.length = previewInFramesLength;
           options.treeFrames.length = previewTreeFramesLength;
           options.lastRenderedFrames.length = previewLastRenderedFramesLength;

@@ -20,9 +20,10 @@ import {
   type PrintOptions,
   getPrintOptions,
   savePrintState,
-  restorePrintState
+  restorePrintState,
+  saveSetState,
+  restoreSetState
 } from './util/print.js';
-import type { IToken } from 'chevrotain';
 
 import { atIndex } from './util/collections.js';
 import type { Condition } from './condition.js';
@@ -43,12 +44,8 @@ import {
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
-import { emitTriviaTokens as emitSharedTriviaTokens } from './util/trivia.js';
+import { emitTriviaBoundary } from './util/trivia.js';
 const { isArray } = Array;
-
-function emitTriviaTokens(tokens: IToken[] | undefined, options: PrintOptions): void {
-  emitSharedTriviaTokens(tokens, options);
-}
 
 function captureLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
@@ -58,7 +55,11 @@ function captureLeadingTrivia(node: Node, options: PrintOptions): string {
     options.trivia = trivia;
   }
   const offset = node.location[0];
-  return options.writer!.capture(() => emitTriviaTokens(trivia?.before.get(offset), options));
+  return options.writer!.capture(() => {
+    if (trivia) {
+      emitTriviaBoundary(trivia, 'pre', offset, options);
+    }
+  });
 }
 
 export const enum Priority {
@@ -1637,10 +1638,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
         const previewFrameHeadersLength = options.frameHeaders.length;
         const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
+        const previewEmittedTrivia = saveSetState(options.emittedTrivia);
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const previewOut = w.capture(() => n.toTrimmedString(getPrintOptions(options)));
+        restoreSetState(options.emittedTrivia, previewEmittedTrivia);
         options.inFrames.length = previewInFramesLength;
         options.treeFrames.length = previewTreeFramesLength;
         options.lastRenderedFrames.length = previewLastRenderedFramesLength;

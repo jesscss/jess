@@ -225,6 +225,23 @@ export function restoreArrayState<T>(
   array.splice(0, array.length, ...(saved ?? []));
 }
 
+export function saveSetState<T>(set: Set<T> | undefined): Set<T> | undefined {
+  return set ? new Set(set) : undefined;
+}
+
+export function restoreSetState<T>(
+  set: Set<T> | undefined,
+  saved: ReadonlySet<T> | undefined
+): void {
+  if (!set || !saved) {
+    return;
+  }
+  set.clear();
+  for (const value of saved) {
+    set.add(value);
+  }
+}
+
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset
