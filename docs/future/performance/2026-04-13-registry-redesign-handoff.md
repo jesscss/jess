@@ -6,20 +6,13 @@ Checkpoint commit: `ddf46b1c` (`Narrow reference import parity seam`)
 
 ## Status
 
-This handoff is no longer the operational source of truth for active execution state.
+This handoff is historical design and recovery context, not an operational
+queue. The attempted checked-in task registry and Codex loop/runtime scaffolding
+were retired after proving too brittle for reliable unattended work.
 
-Canonical execution state now lives in the checked-in task registry under `tasks/`.
-The lightweight loop in `scripts/task-loop.mjs` uses local carry-forward context
-under `state/agent-loop/`, but that local state is not authoritative.
-
-Use the task registry for:
-
-- what is open
-- what is blocked
-- what is completed
-- what rollout follow-ups still exist
-
-The handoff remains useful as historical design and recovery context, but remaining actionable work should be tracked by task ID instead of being inferred from prose here.
+Use current repo evidence and focused tests for active execution state. Do not
+infer a queue from this handoff, and do not recreate the retired auto-loop
+machinery as part of registry or TriviaMap work.
 
 ## Baseline Recovery Checkpoint
 
