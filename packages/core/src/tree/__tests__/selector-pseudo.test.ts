@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Context } from '../../context.js';
-import { any, compound, el, pseudo, ref, rules, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { Context, TreeContext } from '../../context.js';
+import type { TriviaMap } from '../../types/index.js';
+import type { IToken } from 'chevrotain';
+import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 
 describe('PseudoSelector', () => {
   let context: Context;
@@ -18,6 +20,27 @@ describe('PseudoSelector', () => {
       name: ':host',
       arg: compound([el('.sel'), el('.a')])
     }).toTrimmedString()).toBe(':host(.sel.a)');
+  });
+
+  it('does not emit source trivia inside generated selector arguments', () => {
+    const newline: IToken[] = [{
+      image: '\n  ',
+      tokenType: { name: 'WS' } as IToken['tokenType']
+    }];
+    const trivia = {
+      before: new Map([[10, newline]]),
+      after: new Map()
+    } satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const inner = sel([
+      el('.a', undefined, [10, 1, 11, 12, 1, 13], treeContext),
+      co(' '),
+      el('.b')
+    ]);
+    const node = pseudo({ name: ':is', arg: inner });
+    node.generated = true;
+
+    expect(node.toTrimmedString({ trivia })).toBe(':is(.a .b)');
   });
 
   it('renders resolved pseudo selector values through render(context)', async () => {
