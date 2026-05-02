@@ -2,8 +2,8 @@
  * CssRecursiveParser — Chevrotain EmbeddedActionsParser-based CSS parser
  *
  * Extends Chevrotain's EmbeddedActionsParser with Jess-specific infrastructure:
- * - Filtered input (skipped tokens removed) with pre/post trivia maps
- * - AST building helpers (getLocationInfo, wrap, startRule, endRule)
+ * - Filtered input (skipped tokens removed) with offset-keyed trivia maps
+ * - AST building helpers (getLocationInfo, startRule, endRule)
  * - Token category matching via categoryMatchesMap for gate predicates
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
@@ -80,10 +80,10 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   legacyMode: boolean;
   ruleIndex = 0;
 
-  /** Maps token startOffset → preceding skipped tokens (WS/comments) */
-  preSkippedTokenMap: Map<number, IToken[]> = new Map();
-  /** Maps previous token endOffset → following skipped tokens */
-  postSkippedTokenMap: Map<number, IToken[]> = new Map();
+  /** Maps token startOffset -> continuous trivia before that token. */
+  triviaBefore: Map<number, IToken[]> = new Map();
+  /** Maps previous token endOffset -> continuous trivia after that token. */
+  triviaAfter: Map<number, IToken[]> = new Map();
   originalInput: IToken[] = [];
 
   protected hasWSBeforeByPos: Uint8Array = new Uint8Array(0);
@@ -131,8 +131,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   set input(value: IToken[]) {
     this.ruleIndex = 0;
-    const preSkippedTokenMap = (this.preSkippedTokenMap = new Map<number, IToken[]>());
-    const postSkippedTokenMap = (this.postSkippedTokenMap = new Map<number, IToken[]>());
+    const triviaBefore = (this.triviaBefore = new Map<number, IToken[]>());
+    const triviaAfter = (this.triviaAfter = new Map<number, IToken[]>());
     const inputTokens: IToken[] = [];
     const skippedBeforeByPos: Array<IToken[] | undefined> = [];
     const skippedAfterByPos: Array<IToken[] | undefined> = [];
@@ -164,11 +164,11 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
         skippedBeforeByPos[filteredIndex] = pendingSkipped;
         hasWSBeforeByPos[filteredIndex] = pendingHasWS ? 1 : 0;
         hasSepBeforeByPos[filteredIndex] = 1;
-        preSkippedTokenMap.set(token.startOffset, pendingSkipped);
+        triviaBefore.set(token.startOffset, pendingSkipped);
         if (prevFilteredIndex >= 0) {
           skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
           const prevToken = inputTokens[prevFilteredIndex]!;
-          postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+          triviaAfter.set(prevToken.endOffset!, pendingSkipped);
         }
         pendingSkipped = undefined;
         pendingHasWS = false;
@@ -184,9 +184,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       if (prevFilteredIndex >= 0) {
         skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
         const prevToken = inputTokens[prevFilteredIndex]!;
-        postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+        triviaAfter.set(prevToken.endOffset!, pendingSkipped);
       }
-      preSkippedTokenMap.set(Infinity, pendingSkipped);
+      triviaBefore.set(Infinity, pendingSkipped);
     }
 
     this.originalInput = value;
@@ -207,8 +207,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   get trivia(): IParseResult['trivia'] {
     return {
-      before: this.preSkippedTokenMap,
-      after: this.postSkippedTokenMap
+      before: this.triviaBefore,
+      after: this.triviaAfter
     };
   }
 
@@ -293,7 +293,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     if (offset === undefined) {
       return undefined;
     }
-    const skipped = this.preSkippedTokenMap.get(offset);
+    const skipped = this.triviaBefore.get(offset);
     if (!skipped) {
       return undefined;
     }
@@ -489,10 +489,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       existingRules.length ? this.getLocationFromNodes(existingRules) : nextTokenLocation,
       this.context
     );
-  }
-
-  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', ctx?: RuleContext): T {
-    return node;
   }
 
   protected processValueToken(token: IToken, _ctx?: RuleContext): Node {

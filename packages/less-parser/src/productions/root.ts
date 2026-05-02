@@ -296,7 +296,7 @@ function isVariableLike($: P, T: TokenMap): boolean {
   let isParen = token.tokenType === T.LParen;
   let postToken = $.LA(3);
 
-  if (!$.preSkippedTokenMap) {
+  if (!$.triviaBefore) {
     return false;
   }
 
@@ -321,8 +321,8 @@ function isVariableLike($: P, T: TokenMap): boolean {
     return false;
   }
 
-  let isVariable = !$.preSkippedTokenMap.has(token.startOffset)
-    || (isColon && $.preSkippedTokenMap.has(postToken.startOffset));
+  let isVariable = !$.triviaBefore.has(token.startOffset)
+    || (isColon && $.triviaBefore.has(postToken.startOffset));
   return isVariable;
 }
 
