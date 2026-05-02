@@ -29,6 +29,18 @@ function captureBlockCommentSeparator(
   return `${prefix}${comments.join('')}${suffix}`;
 }
 
+function hasTrailingLineBreakAfterComments(chunk: string | undefined): boolean {
+  if (!chunk) {
+    return false;
+  }
+  const comments = chunk.match(blockCommentPattern);
+  if (!comments?.length) {
+    return false;
+  }
+  const trailing = chunk.slice(chunk.lastIndexOf(comments[comments.length - 1]!) + comments[comments.length - 1]!.length);
+  return /\n/u.test(trailing);
+}
+
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
   private withSelectors(value: Selector[]): this {
@@ -112,6 +124,9 @@ export class SelectorList extends Selector<Selector[]> {
         if (commaIndex >= 0) {
           beforeComma = captureBlockCommentSeparator(separator.slice(0, commaIndex));
           beforeItem = captureBlockCommentSeparator(separator.slice(commaIndex + 1));
+          if (beforeItem && hasTrailingLineBreakAfterComments(separator.slice(commaIndex + 1))) {
+            beforeItem = `${beforeItem.trim()}\n${space}`;
+          }
         }
       }
       w.add(`${beforeComma},\n${space}${beforeItem}`);
