@@ -124,6 +124,8 @@ try {
   assert.match(prompt, /Task id: second/);
   assert.match(prompt, /Agent Loop Context/);
   assert.match(prompt, /To finish this task/);
+  assert.match(prompt, /Do not strip comments or whitespace to prove semantic equivalence/);
+  assert.match(prompt, /If a fix appears to require these patterns, mark the task needs_human/);
 
   const recentResults = readFileSync(join(stateDir, 'recent-results.jsonl'), 'utf8')
     .trim()

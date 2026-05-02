@@ -555,6 +555,10 @@ ${JSON.stringify(recent, null, 2)}
 - Work only this task.
 - Read \`AGENTS.md\`, the task file, and the referenced docs or source files before editing.
 - Use focused tests first, then the smallest broader verification that proves the change.
+- Do not strip comments or whitespace to prove semantic equivalence. Use node semantics such as \`valueOf()\` for semantic comparison.
+- Do not add render-time source-slice workarounds such as \`normalizeTriviaComparable\`, new generic-renderer \`source.slice(...)\` comparisons, or source-location spacing guesses after eval.
+- For trivia bugs, fix trivia ownership/emission at the structural source and add focused AST/trivia tests. Fixture substring tests alone are not enough.
+- If a fix appears to require these patterns, mark the task needs_human with the specific blocker instead of completing it.
 - Commit code changes when the task is complete.
 - To finish this task, run:
 
