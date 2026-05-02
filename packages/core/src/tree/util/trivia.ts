@@ -6,6 +6,20 @@ import type { Node } from '../node.js';
 type TriviaEmitOptions = Pick<PrintOptions, 'context' | 'emittedTrivia' | 'writer'>;
 type TriviaLookup = 'before' | 'after';
 
+function isTriviaMap(value: unknown): value is TriviaMap {
+  return typeof value === 'object'
+    && value !== null
+    && 'before' in value
+    && 'after' in value
+    && value.before instanceof Map
+    && value.after instanceof Map;
+}
+
+function treeTrivia(node: Node): TriviaMap | undefined {
+  const trivia: unknown = node.treeContext?.opts?.trivia;
+  return isTriviaMap(trivia) ? trivia : undefined;
+}
+
 /**
  * Trivia is file-context owned whitespace/comments between source offsets.
  * A serializer may look up the continuous run before or after a given offset,
@@ -47,9 +61,9 @@ export function emitCommentTriviaBetweenNodes(
 ): void {
   const trivia = (
     options.trivia
-    ?? prev.treeContext?.opts?.trivia
-    ?? next.treeContext?.opts?.trivia
-  ) as TriviaMap | undefined;
+    ?? treeTrivia(prev)
+    ?? treeTrivia(next)
+  );
   const prevEnd = prev.location[3];
   const nextStart = next.location[0];
   if (!trivia || prevEnd === undefined || nextStart === undefined) {
@@ -72,9 +86,9 @@ export function emitCommentTriviaBeforeDelimiter(
 ): void {
   const trivia = (
     options.trivia
-    ?? prev.treeContext?.opts?.trivia
-    ?? next.treeContext?.opts?.trivia
-  ) as TriviaMap | undefined;
+    ?? treeTrivia(prev)
+    ?? treeTrivia(next)
+  );
   const prevEnd = prev.location[3];
   const nextStart = next.location[0];
   if (!trivia || prevEnd === undefined || nextStart === undefined) {
@@ -108,8 +122,8 @@ export function emitCommentTriviaAfterNode(
 ): void {
   const trivia = (
     options.trivia
-    ?? node.treeContext?.opts?.trivia
-  ) as TriviaMap | undefined;
+    ?? treeTrivia(node)
+  );
   const offset = node.location[3];
   if (!trivia || offset === undefined) {
     return;
@@ -159,4 +173,28 @@ export function consumeTrivia(
   }
   emittedTrivia.add(tokens);
   return tokens;
+}
+
+export function consumeTriviaBetween(
+  trivia: TriviaMap | undefined,
+  prev: Node,
+  next: Node,
+  options: TriviaEmitOptions
+): IToken[] | undefined {
+  const prevEnd = prev.location[3];
+  const nextStart = next.location[0];
+  if (!trivia || prevEnd === undefined || nextStart === undefined || prevEnd > nextStart) {
+    return undefined;
+  }
+  const tokens = trivia.before.get(nextStart);
+  if (!tokens?.length) {
+    return undefined;
+  }
+  const isBetween = tokens.every((token) => {
+    return token.startOffset !== undefined
+      && token.endOffset !== undefined
+      && token.startOffset > prevEnd
+      && token.endOffset < nextStart;
+  });
+  return isBetween ? consumeTrivia(trivia, nextStart, 'before', options) : undefined;
 }

@@ -1,5 +1,17 @@
+import type { IToken } from 'chevrotain';
 import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
+
+const token = (image: string): IToken => ({
+  image,
+  tokenType: { name: 'WS' } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 let context: Context;
 
@@ -44,6 +56,24 @@ describe('Complex selector', () => {
       ]).render(context);
 
       expect(rendered).toBe('a[data=foo] > .foo');
+    });
+
+    test('does not consume reordered source trivia between generated selector parts', () => {
+      const trivia = {
+        before: new Map([[0, [token('\n')]]]),
+        after: new Map([[26, [token('\n')]]])
+      };
+      const treeContext = new TreeContext({ trivia });
+      const parent = el('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);
+      const nested = el('.inside', undefined, [20, 2, 3, 26, 2, 10], treeContext);
+
+      const rendered = sel([
+        nested,
+        co(' '),
+        parent
+      ]).render(context);
+
+      expect(rendered).toBe('.inside .top');
     });
 
     test('resolves complex selector values without touching render state', async () => {

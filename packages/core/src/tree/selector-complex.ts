@@ -12,7 +12,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { consumeTriviaBetween, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
 
@@ -72,9 +72,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             w.add(out.trim(), component);
           }
         } else {
+          const prev = value[i - 1];
           const next = value[i + 1];
-          const tokens = options.trivia && next
-            ? consumeTrivia(options.trivia, next.location[0], 'before', options)
+          const tokens = options.trivia && prev && next
+            ? consumeTriviaBetween(options.trivia, prev, next, options)
             : undefined;
           const coStart = component.location[0];
           const spaceBeforeTrivia = coStart !== undefined
@@ -89,7 +90,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           }
         }
       } else {
-        let out = w.capture(() => component.toString(options));
+        let out = w.capture(() => {
+          if (options.context) {
+            return component.toTrimmedString(options);
+          }
+          return component.toString(options);
+        });
         w.add(out.trim(), component);
       }
     }
