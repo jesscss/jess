@@ -502,18 +502,27 @@ further.
 - [x] Verify Less compatibility suite still green after switch
 - [x] Revisit once Track 2 lands and simplify the adapter layer around the new direct-field API
 
-### Track 4 — Whitespace / Trivia Token Proposal
+### Track 4 — TriviaMap Cleanup
 
-Replace `pre`/`post` string fields on nodes with an offset-keyed `TriviaMap`. Static declaration names become plain strings (not `Any` nodes), which simplifies static-vs-dynamic detection in `ScopeFrame` and removes a Proxy allocation per declaration.
+The old whitespace-token proposal is now the current `TriviaMap` status note;
+see [docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md).
+Do not use this historical handoff as an active migration checklist.
 
-- [x] Parser-side bridge: `IParseResult` now carries `trivia`, parser entrypoints attach it to `treeContext`, parser `$.wrap(...)` calls are removed, and `getRulesWithComments()` no longer injects comment nodes into `Rules`
-- [x] Verify parser packages against built outputs after the parser-side migration
-- [ ] Pause here before the next core pass: SCSS/Jess still have serializer/AST-shape failures that belong to the later core rewrite, not the parser cleanup
-- [ ] Finalize `TriviaMap` design (keyed by source offset); see `docs/future/whitespace-token-proposal.md`
-- [ ] Remove `pre`/`post` from `Node` base class
-- [ ] Migrate trivia storage to `TriviaMap` in serialization path
-- [ ] Static `name` fields on `VarDeclaration`, `Declaration`, `Mixin` become plain `string` (not `Any`)
-- [ ] Update `ScopeFrame` / `varsByName` / `mixinsByName` to key directly on `string` without `.valueOf()` call
+Current contract:
+
+- parser results carry one file-context `TriviaMap`
+- `before` / `after` are lookup directions, not trivia ownership
+- skipped-token runs may be indexed from both neighboring offsets but are
+  consumed once by the active print state
+- direct rule-body block comments are `Comment` children
+- inline/value/selector comments and whitespace stay in `TriviaMap`
+- evaluated/copied nodes that move placement must not keep copied source-offset
+  trivia
+
+Remaining work belongs to focused serializer and AST-shape slices, backed by
+tests. Static declaration names may become plain `string` after the remaining
+declaration-name shape is audited, but that is node-shape work, not evidence
+that trivia should move back onto nodes.
 
 ### Track 5 — Pre-Eval Elimination (Buffered Render)
 
