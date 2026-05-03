@@ -26,13 +26,16 @@ describe('Operation', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = op([
+    const operationNode = op([
       num(10),
       '+',
       ref({ key: 'rhs' }, { type: 'variable' })
-    ]).render(context);
+    ]);
+    const rendered = operationNode.render(context);
 
     expect(rendered).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
   });
 
   it('resolves operation values without touching render state', async () => {
@@ -46,13 +49,16 @@ describe('Operation', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await op([
+    const operationNode = op([
       num(10),
       '+',
       ref({ key: 'rhs' }, { type: 'variable' })
-    ]).resolve(context);
+    ]);
+    const resolved = await operationNode.resolve(context);
 
     expect(`${resolved}`).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

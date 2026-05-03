@@ -126,6 +126,10 @@ export class Operation extends Node<OperationValue> {
     }
     return handleLeft(maybeLeft as Node);
   }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
 }
 
 export const op = defineType(Operation, 'Operation', 'op');

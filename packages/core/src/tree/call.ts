@@ -12,7 +12,6 @@ import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
-import type { AtRule } from './at-rule.js';
 
 export type CallValue = {
   /**
@@ -46,7 +45,7 @@ export type CallOptions = {
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.
  */
-export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...args: T) => R) & {
+export type ExtendedFn<T extends unknown[] = unknown[], R = unknown> = ((this: Context, ...args: T) => R) & {
   /**
    * Allow for optional calling, which means an optional
    * reference to a function will output a stringified
@@ -57,6 +56,10 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
    */
   allowOptional?: boolean;
   evalArgs?: boolean;
+  _internal?: (this: Context, ...args: T) => R;
+  options?: {
+    params?: unknown;
+  };
 };
 
 /**
@@ -120,7 +123,17 @@ export class Call extends Node<CallValue, CallOptions> {
       w.add('?');
     }
     w.add('(');
-    this.serializeRenderedArgs(callNode.value.args, context, prepared);
+    const isCalc = name === 'calc';
+    if (isCalc) {
+      context.calcFrames++;
+    }
+    try {
+      this.serializeRenderedArgs(callNode.value.args, context, prepared);
+    } finally {
+      if (isCalc) {
+        context.calcFrames--;
+      }
+    }
     w.add(')');
     if (callNode.options?.markImportant) {
       w.add(' !important');
@@ -203,15 +216,19 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
-    let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
+    let important = new Any<'flag'>('!important', { role: 'flag' });
     for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
         rule.value.important = important;
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
-      } else if (isNode(rule, N.AtRule | N.Ruleset)) {
-        if ((rule as AtRule).value.rules) {
-          this.makeImportant((rule as AtRule).value.rules!);
+      } else if (isNode(rule, N.AtRule)) {
+        if (rule.value.rules) {
+          this.makeImportant(rule.value.rules);
+        }
+      } else if (isNode(rule, N.Ruleset)) {
+        if (rule.value.rules) {
+          this.makeImportant(rule.value.rules);
         }
       }
     }
@@ -295,13 +312,13 @@ export class Call extends Node<CallValue, CallOptions> {
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);
-      const result = await (n as any).evalCall(context, argNodes);
+      const result = await n.evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
     } else if (isNode(n, N.Rules | N.Collection)) {
       if (preservesRulesLikeVariableTarget) {
-        const sourceParent = (n as Node & { sourceNode?: Node }).sourceNode?.parent;
+        const sourceParent = n.sourceNode?.parent;
         if (sourceParent) {
           n.parent = sourceParent;
         }
@@ -315,7 +332,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       n = new MixinCollection([
         callableRulesEntry(
-          { rules: n as Rules },
+          { rules: n },
           n.parent,
           n.index
         )
@@ -385,7 +402,7 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           args = copiedArgs;
         }
-        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+        const shouldPassListArgs = Boolean(fn._internal || fn.options?.params);
         const result = await (
           args
             ? (
