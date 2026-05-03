@@ -95,6 +95,8 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

@@ -559,6 +559,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     ) as MaybePromise<AtRule>;
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.clone(false).eval(context);
+  }
+
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add(`${this.name}`, this.location)

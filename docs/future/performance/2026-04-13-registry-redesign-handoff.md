@@ -422,6 +422,9 @@ families:
   - Definition-like values (`Collection` and `Func`) now resolve as their
     canonical source nodes without falling through generic eval stamping; direct
     variable parameter resolution coverage also asserts the no-stamp invariant.
+  - `AtRule.resolve(context)` now evaluates through a derived at-rule wrapper,
+    so direct at-rule resolution can normalize/evaluate its prelude and body
+    without retaining eval flags on the canonical source at-rule.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:
@@ -429,6 +432,12 @@ families:
     structural render nodes should move live state onto the active session
     context, with `PrintOptions` shrinking to a transitional bridge.
   - This is the final Track 1 bridge into Track 5's segmented-buffer design.
+  Current first slice:
+  - Focused no-stamp coverage now proves direct `Declaration.resolve(...)` and
+    `Ruleset.resolve(...)` leave their source node eval flags alone.
+  - Root `Rules.resolve(...)` still falls through the old generic eval/preEval
+    path and marks the source rules container. Treat that as the next 13h
+    structural state-ownership target, not as a local value-node gap.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +

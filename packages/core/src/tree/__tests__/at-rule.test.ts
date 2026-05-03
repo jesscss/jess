@@ -132,6 +132,8 @@ describe('AtRule', () => {
         color: red;
       }
     `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

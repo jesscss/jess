@@ -58,12 +58,16 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const resolved = await decl({
+    const node = decl({
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
-    }).resolve(context);
+    });
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
