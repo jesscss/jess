@@ -1589,6 +1589,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       markEmitted(n);
     };
     const emitLeadingBlockCommentForNode = (n: Node): boolean => {
+      if (!hasPrintableTriviaAt(n, 'before', options)) {
+        return false;
+      }
       const leading = captureLeadingTrivia(n, options);
       if (!/\/\*/.test(leading)) {
         return false;
@@ -1710,6 +1713,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       if (isRulesetOrAtRule) {
+        emitLeadingBlockCommentForNode(n);
         emitBoundaryIfNeeded(n);
         const mark = w.mark();
         const containerSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);

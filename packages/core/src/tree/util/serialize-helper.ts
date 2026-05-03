@@ -115,7 +115,16 @@ function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boole
   return false;
 }
 
-function canMergeSameHeaderRuleset(currentFrame: Ruleset, priorFrame: Ruleset): boolean {
+function hasFrameTrivia(node: Node, options: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
+  return hasPrintableTriviaAt(node, 'before', options)
+    || hasPrintableTriviaAt(node, 'after', options);
+}
+
+function canMergeSameHeaderRuleset(
+  currentFrame: Ruleset,
+  priorFrame: Ruleset,
+  options: Pick<FinalPrintOptions, 'context' | 'trivia'>
+): boolean {
   const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
   const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
   return (
@@ -123,6 +132,7 @@ function canMergeSameHeaderRuleset(currentFrame: Ruleset, priorFrame: Ruleset): 
     || isNode(priorOwn, N.Ampersand)
     || currentOwn?.type === 'InterpolatedSelector'
     || priorOwn?.type === 'InterpolatedSelector'
+    || (!hasFrameTrivia(currentFrame, options) && !hasFrameTrivia(priorFrame, options))
   );
 }
 
@@ -582,7 +592,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               currentFrame === priorFrame
               || isAncestorFrame(priorFrame, currentFrame)
               || isAncestorFrame(currentFrame, priorFrame)
-              || canMergeSameHeaderRuleset(currentFrame, priorFrame)
+              || canMergeSameHeaderRuleset(currentFrame, priorFrame, options)
             );
           const sameHeader = (
             currentHeader === priorComparableHeader

@@ -1,8 +1,21 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   compound, type SimpleSelector, type Selector, amp, co
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
+import type { IToken } from 'chevrotain';
+import { createTriviaMap } from '../util/trivia.js';
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length,
+  tokenType: { name: tokenTypeName } as IToken['tokenType']
+});
 
 describe('CSS Nesting Collapse', () => {
   let context: Context;
@@ -100,6 +113,40 @@ describe('CSS Nesting Collapse', () => {
     );
   });
 
+  it('does not coalesce adjacent identical headers across printable trivia', async () => {
+    const boundaryTrivia = [token('\n'), token('/* keep */', 'BlockComment'), token('\n')];
+    const first = ruleset({
+      selector: sel([el('.same')]),
+      rules: rules([
+        decl({ name: 'case', value: spaced([el('2')]) })
+      ])
+    }, undefined, [0, 1, 1, 20, 1, 21]);
+    const second = ruleset({
+      selector: sel([el('.same')]),
+      rules: rules([
+        decl({ name: 'case', value: spaced([el('3')]) })
+      ])
+    }, undefined, [34, 2, 1, 54, 2, 21]);
+    const trivia = createTriviaMap({
+      before: new Map([[second.location[0], boundaryTrivia]]),
+      after: new Map([[first.location[3], boundaryTrivia]])
+    });
+    const node = rules([first, second]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ collapseNesting: true, trivia });
+
+    expect(css).toBeString(`
+      .same {
+        case: 2;
+      }
+      /* keep */
+      .same {
+        case: 3;
+      }`
+    );
+  });
+
   it('should collapse multiple nested levels', async () => {
     const node = rules([
       ruleset({
@@ -156,9 +203,6 @@ describe('CSS Nesting Collapse', () => {
 
     const evald = await node.eval(context);
 
-    if (evald.value[0] && evald.value[0].type === 'Ruleset') {
-      const firstRuleset = evald.value[0] as any;
-    }
     const css = evald.toString({ collapseNesting: true });
 
     expect(css).toBeString(`
