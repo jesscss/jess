@@ -2,7 +2,7 @@ import { type Context } from '../context.js';
 import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { logger } from '../logger.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
 
@@ -48,7 +48,7 @@ export class Log extends Node<LogValue, NodeOptions> {
     const messageResult = this.value.message.eval(context);
 
     // Handle async evaluation if needed
-    if (messageResult && typeof (messageResult as any).then === 'function') {
+    if (isThenable(messageResult)) {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
         return new Nil();
@@ -58,6 +58,10 @@ export class Log extends Node<LogValue, NodeOptions> {
     // Synchronous evaluation
     this._logMessage(messageResult as Node);
     return new Nil();
+  }
+
+  override resolve(context: Context): MaybePromise<Nil> {
+    return this.evalNode(context);
   }
 
   private _logMessage(message: Node): void {

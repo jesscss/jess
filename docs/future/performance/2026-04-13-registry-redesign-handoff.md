@@ -416,6 +416,9 @@ families:
   - `Reference.resolve(context)` now delegates directly to reference lookup
     evaluation, matching the existing invariant that a reference resolves to
     another node and should not be retained as an evaluated source node.
+  - `Log.resolve(context)` now runs the diagnostic eval body directly, so
+    compile-time log directives can emit diagnostics and return `Nil` without
+    retaining eval flags on the invisible source node.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

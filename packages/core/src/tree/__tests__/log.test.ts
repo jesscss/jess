@@ -103,6 +103,8 @@ describe('Log node', () => {
 
     expect(logSpy).toHaveBeenCalledWith('test message');
     expect(resolved).toBeInstanceOf(Nil);
+    expect(logNode.evaluated).toBe(false);
+    expect(logNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });
