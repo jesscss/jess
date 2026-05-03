@@ -99,5 +99,9 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
     return cont(value);
   }
+
+  override resolve(context: Context): MaybePromise<Quoted | Any | Interpolated> {
+    return this.evalNode(context);
+  }
 }
 export const quoted = defineType(Quoted, 'Quoted');

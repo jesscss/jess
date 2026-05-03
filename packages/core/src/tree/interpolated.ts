@@ -222,6 +222,10 @@ export class Interpolated<
     return result;
   }
 
+  override resolve(context: Context): MaybePromise<Any> {
+    return this.evalNode(context);
+  }
+
   /**
    * Just evaluate replacements and return. We don't stringify yet,
    * because depending on the context, it will turn into different

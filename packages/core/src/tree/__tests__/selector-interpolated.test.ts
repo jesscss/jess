@@ -38,12 +38,15 @@ describe('InterpolatedSelector', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = interpolatedSelector(interpolated({
+    const selectorNode = interpolatedSelector(interpolated({
       source: `.${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'index' })]
-    })).render(context);
+    }));
+    const rendered = selectorNode.render(context);
 
     expect(rendered).toBe('.foo');
+    expect(selectorNode.evaluated).toBe(false);
+    expect(selectorNode.preEvaluated).toBe(false);
   });
 
   it('resolves interpolated selectors without touching render state', async () => {
@@ -57,12 +60,15 @@ describe('InterpolatedSelector', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await interpolatedSelector(interpolated({
+    const selectorNode = interpolatedSelector(interpolated({
       source: `.${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'index' })]
-    })).resolve(context);
+    }));
+    const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
+    expect(selectorNode.evaluated).toBe(false);
+    expect(selectorNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

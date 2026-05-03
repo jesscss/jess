@@ -397,6 +397,10 @@ families:
   - `Call.resolve(context)` now delegates to the existing call evaluation body
     directly, so resolving a CSS/function/mixin call no longer marks the call
     source node `preEvaluated` / `evaluated` just to obtain the output value.
+  - Interpolation wrappers (`Interpolated`, `Quoted`, and
+    `InterpolatedSelector`) now do the same: direct `render(context)` /
+    `resolve(context)` uses existing value-resolution logic without stamping
+    the wrapper source node.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

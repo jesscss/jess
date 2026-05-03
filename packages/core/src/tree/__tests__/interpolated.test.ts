@@ -38,12 +38,15 @@ describe('Interpolated', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = interpolated({
+    const interpolatedNode = interpolated({
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'variable' })]
-    }).render(context);
+    });
+    const rendered = interpolatedNode.render(context);
 
     expect(rendered).toBe('hello-world');
+    expect(interpolatedNode.evaluated).toBe(false);
+    expect(interpolatedNode.preEvaluated).toBe(false);
   });
 
   it('resolves interpolated values without touching render state', async () => {
@@ -57,12 +60,15 @@ describe('Interpolated', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await interpolated({
+    const interpolatedNode = interpolated({
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'variable' })]
-    }).resolve(context);
+    });
+    const resolved = await interpolatedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('hello-world');
+    expect(interpolatedNode.evaluated).toBe(false);
+    expect(interpolatedNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

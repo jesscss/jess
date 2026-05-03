@@ -43,9 +43,12 @@ describe('quoted', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = quoted(ref({ key: 'message' }, { type: 'variable' })).render(context);
+    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    const rendered = quotedNode.render(context);
 
     expect(rendered).toBe('"hello"');
+    expect(quotedNode.evaluated).toBe(false);
+    expect(quotedNode.preEvaluated).toBe(false);
   });
 
   it('does not emit source trivia from resolved quoted value children', () => {
@@ -78,9 +81,12 @@ describe('quoted', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await quoted(ref({ key: 'message' }, { type: 'variable' })).resolve(context);
+    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    const resolved = await quotedNode.resolve(context);
 
     expect(`${resolved}`).toBe('"hello"');
+    expect(quotedNode.evaluated).toBe(false);
+    expect(quotedNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });
