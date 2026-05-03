@@ -86,11 +86,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   triviaMap: TriviaMap = createTriviaMap();
   originalInput: IToken[] = [];
 
-  protected hasWSBeforeByPos: Uint8Array = new Uint8Array(0);
-  protected hasSepBeforeByPos: Uint8Array = new Uint8Array(0);
-  protected skippedBeforeByPos: Array<IToken[] | undefined> = [];
-  protected skippedAfterByPos: Array<IToken[] | undefined> = [];
-
   locationStack: LocationInfo[] = [];
 
   protected _context!: TreeContext;
@@ -134,13 +129,8 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     const beforeIndex = new Map<number, IToken[]>();
     const afterIndex = new Map<number, IToken[]>();
     const inputTokens: IToken[] = [];
-    const skippedBeforeByPos: Array<IToken[] | undefined> = [];
-    const skippedAfterByPos: Array<IToken[] | undefined> = [];
-    const hasWSBeforeByPos: number[] = [];
-    const hasSepBeforeByPos: number[] = [];
 
     let pendingSkipped: IToken[] | undefined;
-    let pendingHasWS = false;
     let prevFilteredIndex = -1;
 
     for (let i = 0; i < value.length; i++) {
@@ -151,9 +141,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
         } else {
           pendingSkipped = [token];
         }
-        if (token.tokenType.name === 'WS') {
-          pendingHasWS = true;
-        }
         continue;
       }
 
@@ -161,28 +148,18 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       inputTokens.push(token);
 
       if (pendingSkipped) {
-        skippedBeforeByPos[filteredIndex] = pendingSkipped;
-        hasWSBeforeByPos[filteredIndex] = pendingHasWS ? 1 : 0;
-        hasSepBeforeByPos[filteredIndex] = 1;
         beforeIndex.set(token.startOffset, pendingSkipped);
         if (prevFilteredIndex >= 0) {
-          skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
           const prevToken = inputTokens[prevFilteredIndex]!;
           afterIndex.set(prevToken.endOffset!, pendingSkipped);
         }
         pendingSkipped = undefined;
-        pendingHasWS = false;
-      } else {
-        skippedBeforeByPos[filteredIndex] = undefined;
-        hasWSBeforeByPos[filteredIndex] = 0;
-        hasSepBeforeByPos[filteredIndex] = 0;
       }
       prevFilteredIndex = filteredIndex;
     }
 
     if (pendingSkipped) {
       if (prevFilteredIndex >= 0) {
-        skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
         const prevToken = inputTokens[prevFilteredIndex]!;
         afterIndex.set(prevToken.endOffset!, pendingSkipped);
       }
@@ -192,10 +169,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this.triviaMap = createTriviaMap({ before: beforeIndex, after: afterIndex });
     this.originalInput = value;
     this.locationStack = [];
-    this.skippedBeforeByPos = skippedBeforeByPos;
-    this.skippedAfterByPos = skippedAfterByPos;
-    this.hasWSBeforeByPos = Uint8Array.from(hasWSBeforeByPos);
-    this.hasSepBeforeByPos = Uint8Array.from(hasSepBeforeByPos);
 
     this.tokVector = inputTokens;
     this.tokVectorLength = inputTokens.length;
@@ -268,11 +241,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   noSep(offset = 0): boolean {
-    const idx = this.currIdx + 1 + offset;
-    if (idx >= this.tokVectorLength) {
-      return true;
-    }
-    return this.hasSepBeforeByPos[idx] === 0;
+    return this.triviaBefore(offset) === undefined;
   }
 
   isToken(node: unknown): node is IToken {
@@ -280,14 +249,18 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   hasWS(offset = 0): boolean {
-    const idx = this.currIdx + 1 + offset;
-    if (idx >= this.tokVectorLength) {
-      return false;
-    }
-    return this.hasWSBeforeByPos[idx] === 1;
+    return Boolean(this.triviaBefore(offset)?.some(token => token.tokenType.name === 'WS'));
   }
 
-  protected claimWhitespaceCombinator(offset: number | undefined): IToken | undefined {
+  private triviaBefore(offset: number): IToken[] | undefined {
+    const token = this.tokVector[this.currIdx + 1 + offset];
+    if (!token) {
+      return undefined;
+    }
+    return this.triviaMap.lookup(token.startOffset, 'before');
+  }
+
+  protected claimSpaceCombinator(offset: number | undefined): IToken | undefined {
     if (offset === undefined) {
       return undefined;
     }

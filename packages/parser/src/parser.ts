@@ -90,6 +90,54 @@ export const SKIPPED_LABEL = 'Skipped';
 /** Token name for whitespace */
 export const WS_NAME = 'WS';
 
+export type TriviaLookup = 'before' | 'after';
+
+export type ParserTriviaMap = {
+  runs: Set<IToken[]>;
+  lookup(offset: number | undefined, direction: TriviaLookup): IToken[] | undefined;
+  entries(direction: TriviaLookup): IterableIterator<[number, IToken[]]>;
+  has(offset: number | undefined, direction: TriviaLookup): boolean;
+};
+
+function createParserTriviaMap(indexes?: {
+  before?: Map<number, IToken[]>;
+  after?: Map<number, IToken[]>;
+}): ParserTriviaMap {
+  const before = indexes?.before ?? new Map<number, IToken[]>();
+  const after = indexes?.after ?? new Map<number, IToken[]>();
+  const runs = new Set<IToken[]>();
+  for (const tokens of before.values()) {
+    runs.add(tokens);
+  }
+  for (const tokens of after.values()) {
+    runs.add(tokens);
+  }
+  return {
+    runs,
+    lookup(offset, direction) {
+      if (offset === undefined) {
+        return undefined;
+      }
+      return direction === 'before'
+        ? before.get(offset)
+        : after.get(offset);
+    },
+    entries(direction) {
+      return direction === 'before'
+        ? before.entries()
+        : after.entries();
+    },
+    has(offset, direction) {
+      if (offset === undefined) {
+        return false;
+      }
+      return direction === 'before'
+        ? before.has(offset)
+        : after.has(offset);
+    }
+  };
+}
+
 type ParserSavepoint = {
   pos: number;
   errorsLength: number;
@@ -121,30 +169,10 @@ export class RecursiveDescentParser {
   /** Sentinel EOF token appended to the stream */
   protected eofToken!: IToken;
 
-  /** Maps token startOffset → preceding skipped tokens (WS/comments) */
-  preSkippedTokenMap: Map<number, IToken[]> = new Map();
-  /** Maps previous token endOffset → following skipped tokens */
-  postSkippedTokenMap: Map<number, IToken[]> = new Map();
+  /** File-context trivia indexed for lookup before or after source offsets. */
+  triviaMap: ParserTriviaMap = createParserTriviaMap();
   /** Full original token stream including skipped tokens */
   originalInput: IToken[] = [];
-
-  /**
-   * Fast-path metadata indexed by filtered token position.
-   *
-   * These arrays preserve the same downstream behavior as the legacy
-   * pre/post skipped-token maps, but they let hot parser paths answer
-   * whitespace/separator questions in O(1) without a Map lookup or
-   * per-call array scan.
-   *
-   * - hasWSBeforeByPos[i] => there is a WS token before `tokens[i]`
-   * - hasSepBeforeByPos[i] => there is any skipped token before `tokens[i]`
-   * - skippedBeforeByPos[i] => the skipped-token run before `tokens[i]`
-   * - skippedAfterByPos[i] => the skipped-token run after `tokens[i]`
-   */
-  protected hasWSBeforeByPos: Uint8Array = new Uint8Array(0);
-  protected hasSepBeforeByPos: Uint8Array = new Uint8Array(0);
-  protected skippedBeforeByPos: Array<IToken[] | undefined> = [];
-  protected skippedAfterByPos: Array<IToken[] | undefined> = [];
 
   // ── Parse state ──────────────────────────────────────────────────
 
@@ -212,28 +240,19 @@ export class RecursiveDescentParser {
    *
    * We still expose the same filtered parser view as before:
    * - `this.tokens` contains only non-skipped tokens
-   * - `preSkippedTokenMap` / `postSkippedTokenMap` preserve trivia runs
-   *
-   * Internally, however, we also build parallel metadata arrays indexed
-   * by filtered-token position. This avoids the old O(n²) "scan forward
-   * to find the next non-skipped token" behavior and makes whitespace
-   * checks (`hasWS()` / `noSep()`) O(1) array reads.
+   * - `triviaMap` preserves each continuous skipped-token run once
+   * - the same run can be looked up before the next token or after the
+   *   previous token, depending on the parser/serializer decision point
    */
   set input(value: IToken[]) {
-    const preSkippedTokenMap = this.preSkippedTokenMap = new Map<number, IToken[]>();
-    const postSkippedTokenMap = this.postSkippedTokenMap = new Map<number, IToken[]>();
+    const before = new Map<number, IToken[]>();
+    const after = new Map<number, IToken[]>();
     const inputTokens: IToken[] = [];
 
-    const skippedBeforeByPos: Array<IToken[] | undefined> = [];
-    const skippedAfterByPos: Array<IToken[] | undefined> = [];
-    const hasWSBeforeByPos: number[] = [];
-    const hasSepBeforeByPos: number[] = [];
-
     // Accumulate the current trivia run until we hit the next
-    // non-skipped token, then attach that same array instance to the
-    // pre/post maps and the fast-path metadata arrays.
+    // non-skipped token, then index that same array instance from both
+    // neighboring source offsets.
     let pendingSkipped: IToken[] | undefined;
-    let pendingHasWS = false;
     let prevFilteredIndex = -1;
 
     for (let i = 0; i < value.length; i++) {
@@ -244,9 +263,6 @@ export class RecursiveDescentParser {
         } else {
           pendingSkipped = [token];
         }
-        if (token.tokenType.name === WS_NAME) {
-          pendingHasWS = true;
-        }
         continue;
       }
 
@@ -254,47 +270,31 @@ export class RecursiveDescentParser {
       inputTokens.push(token);
 
       if (pendingSkipped) {
-        skippedBeforeByPos[filteredIndex] = pendingSkipped;
-        hasWSBeforeByPos[filteredIndex] = pendingHasWS ? 1 : 0;
-        hasSepBeforeByPos[filteredIndex] = 1;
-
-        preSkippedTokenMap.set(token.startOffset, pendingSkipped);
+        before.set(token.startOffset, pendingSkipped);
 
         if (prevFilteredIndex >= 0) {
-          skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
           const prevToken = inputTokens[prevFilteredIndex]!;
-          postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+          after.set(prevToken.endOffset!, pendingSkipped);
         }
 
         pendingSkipped = undefined;
-        pendingHasWS = false;
-      } else {
-        skippedBeforeByPos[filteredIndex] = undefined;
-        hasWSBeforeByPos[filteredIndex] = 0;
-        hasSepBeforeByPos[filteredIndex] = 0;
       }
 
       prevFilteredIndex = filteredIndex;
     }
 
-    // Preserve the legacy trailing-trivia behavior:
-    // - postSkippedTokenMap[lastToken.endOffset] => trailing skipped tokens
-    // - preSkippedTokenMap[Infinity] => skipped tokens after the final real token
+    // Preserve trailing trivia for EOF-style lookups.
     if (pendingSkipped) {
       if (prevFilteredIndex >= 0) {
-        skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
         const prevToken = inputTokens[prevFilteredIndex]!;
-        postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+        after.set(prevToken.endOffset!, pendingSkipped);
       }
-      preSkippedTokenMap.set(Infinity, pendingSkipped);
+      before.set(Infinity, pendingSkipped);
     }
 
+    this.triviaMap = createParserTriviaMap({ before, after });
     this.originalInput = value;
     this.tokens = inputTokens;
-    this.skippedBeforeByPos = skippedBeforeByPos;
-    this.skippedAfterByPos = skippedAfterByPos;
-    this.hasWSBeforeByPos = Uint8Array.from(hasWSBeforeByPos);
-    this.hasSepBeforeByPos = Uint8Array.from(hasSepBeforeByPos);
     this.pos = 0;
     this.errors = [];
     this.warnings = [];
@@ -931,28 +931,26 @@ export class RecursiveDescentParser {
    * Check if there is whitespace before the next token.
    * Used in GATE predicates for whitespace-sensitive productions.
    *
-   * Fast path: this is an indexed lookup by filtered-token position, not
-   * a Map lookup plus skipped-token scan.
    */
   hasWS(): boolean {
-    if (this.pos >= this.tokens.length) {
-      return false;
-    }
-    return this.hasWSBeforeByPos[this.pos] === 1;
+    return Boolean(this.triviaBefore()?.some(token => token.tokenType.name === WS_NAME));
   }
 
   /**
    * Check that there is NO whitespace or comments before the next token.
    * Used in GATE predicates (e.g., no space between function name and `(`).
    *
-   * Fast path: this is an indexed lookup by filtered-token position.
    */
   noSep(offset: number = 0): boolean {
-    const idx = this.pos + offset;
-    if (idx >= this.tokens.length) {
-      return true;
+    return this.triviaBefore(offset) === undefined;
+  }
+
+  private triviaBefore(offset: number = 0): IToken[] | undefined {
+    const token = this.tokens[this.pos + offset];
+    if (!token) {
+      return undefined;
     }
-    return this.hasSepBeforeByPos[idx] === 0;
+    return this.triviaMap.lookup(token.startOffset, 'before');
   }
 
   // ── Type guard ───────────────────────────────────────────────────

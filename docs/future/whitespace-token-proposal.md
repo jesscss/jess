@@ -1,8 +1,27 @@
 # Proposal: Eliminate `pre`/`post` — Side-Channel Trivia Map
 
+## Current Status
+
+This proposal is partially implemented and partially superseded by the current
+TriviaMap model:
+
+- trivia is file-context data, not node-owned data
+- the parser builds one set of continuous skipped-token runs
+- a run can be looked up relative to an offset with `lookup(offset, 'before' | 'after')`
+- the same run may be indexed from both neighboring offsets, but it is consumed once
+- standalone rule-body block comments are direct `Comment` children again; inline/value
+  comments remain trivia
+
+Older text below may still describe `preSkippedTokenMap` / `postSkippedTokenMap`
+as separate parser concepts. Treat that as historical wording; active parser
+code should use the single TriviaMap lookup shape.
+
 ## Constraint
 
-Whitespace and comments must **not** become children in the AST. They stay outside the node tree. The AST remains clean typed structures — no interleaved formatting nodes polluting child arrays.
+Whitespace and inline/value comments must **not** become children in the AST.
+They stay outside the node tree as trivia. Standalone block comments directly
+inside rule bodies are semantic rule entries and should be represented as
+`Comment` nodes, while indexed rule lookup skips them.
 
 ## Problem
 
@@ -23,7 +42,11 @@ This creates three categories of cost:
 
 ### Core idea
 
-The parser already builds offset-keyed maps of skipped tokens (`preSkippedTokenMap`, `postSkippedTokenMap`). Today, `$.wrap()` consumes these maps eagerly during parsing and stamps the results onto nodes as `pre`/`post`. Instead: **pass the maps through as-is** and let the serializer consume them lazily, keyed by each node's `location` offsets.
+The parser builds a single TriviaMap of continuous skipped-token runs. Each run
+can be indexed from both neighboring offsets, so callers can ask for the run
+`before` a token start or `after` a previous token end without creating two
+owners for the same trivia. Serializers consume the run lazily, keyed by node
+or token locations.
 
 ### What the parser returns today
 
@@ -54,14 +77,16 @@ The `TriviaMap` is the whitespace/comment data, keyed by offset, that the serial
 
 ```ts
 interface TriviaMap {
-  /** Skipped tokens that appear before the token starting at `offset` */
-  before: Map<number, IToken[]>;
-  /** Skipped tokens that appear after the token ending at `offset` */
-  after: Map<number, IToken[]>;
+  runs: Set<IToken[]>;
+  lookup(offset: number | undefined, direction: 'before' | 'after'): IToken[] | undefined;
+  entries(direction: 'before' | 'after'): IterableIterator<[number, IToken[]]>;
+  has(offset: number | undefined, direction: 'before' | 'after'): boolean;
 }
 ```
 
-These are literally the `preSkippedTokenMap` and `postSkippedTokenMap` that `set input` already builds. They just stop being consumed during parsing and instead flow through to serialization.
+`before` and `after` are lookup directions, not trivia types. The same token
+array can be returned from both directions when it sits between two source
+tokens.
 
 ### Serialization changes
 
@@ -158,7 +183,7 @@ For **substitution nodes** (Reference → evaluated value): the evaluated value 
 
 One subtlety: the current system has clear ownership — each node's `pre` is "mine to emit." With a shared map keyed by offset, we need to ensure each trivia entry is emitted exactly once.
 
-**Rule**: A node emits trivia at its own `location[0]` (start) and `location[3]` (end). The trivia between two sibling nodes is emitted as the `after` of the first sibling's end offset OR the `before` of the second sibling's start offset — but not both. Since `preSkippedTokenMap` and `postSkippedTokenMap` point to the **same underlying array** for adjacent tokens (the parser sets both maps to the same `pendingSkipped` reference), we can use a consumed-set during serialization (much simpler than during parsing, since there's no backtracking):
+**Rule**: A node emits trivia at its own `location[0]` (start) and `location[3]` (end). The trivia between two sibling nodes is emitted by whichever side consumes the shared run first: lookup `after` the first sibling's end offset OR lookup `before` the second sibling's start offset, but not both. Because both lookups return the same token-array run, the print state can use a consumed-set during serialization:
 
 ```ts
 // In PrintOptions or OutputWriter:
@@ -236,9 +261,8 @@ The `trivia` field is set once at the top-level `render()` / `toString()` call a
 
 | Item | What changes |
 |------|-------------|
-| `preSkippedTokenMap` | Stays in parser, returned as `trivia.before` |
-| `postSkippedTokenMap` | Stays in parser, returned as `trivia.after` |
-| `set input` token filtering | Stays — Chevrotain still needs clean token stream. Maps still built the same way. Only difference: they're returned, not consumed |
+| `TriviaMap.lookup(offset, direction)` | Single lookup API for continuous trivia runs |
+| `set input` token filtering | Stays — parsers still need a clean token stream. It now builds one TriviaMap instead of parser-owned pre/post maps |
 
 ## What Changes in Each Package
 
@@ -260,7 +284,7 @@ The `trivia` field is set once at the top-level `render()` / `toString()` call a
 1. **Delete `wrap()` method**
 2. **Delete `getPrePost()` method**
 3. **Delete `usedSkippedTokens` / `usedSkippedTokensLog`**
-4. **Keep `set input` mostly as-is** — still builds `preSkippedTokenMap` / `postSkippedTokenMap`
+4. **Keep `set input` token filtering** — build one TriviaMap with before/after lookup indexes
 5. **Return trivia maps** in parse result
 6. **Remove all 258 `$.wrap()` calls** across productions — these just go away, nothing replaces them
 7. **Simplify `getRulesWithComments`** — comments from the trivia map are handled during serialization, not extracted from pre/post arrays

@@ -520,7 +520,7 @@ export function complexSelector(this: P, T: TokenMap) {
             const coImg = co.image as Combinators;
             combinator = new Combinator(coImg, undefined, $.getLocationInfo(co), $.context);
           } else {
-            const ws = $.claimWhitespaceCombinator($.LA(1).startOffset);
+            const ws = $.claimSpaceCombinator($.LA(1).startOffset);
             combinator = new Combinator(' ', undefined, ws ? $.getLocationInfo(ws) : undefined, $.context);
           }
         }

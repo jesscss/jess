@@ -148,6 +148,21 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(ComplexSelector');
     });
 
+    it('preserves comments around descendant combinator whitespace', () => {
+      const cases = [
+        ['.parent /* before-space */.child { color: red; }', '.parent /* before-space */.child'],
+        ['.parent/* after-comment */ .child { color: red; }', '.parent/* after-comment */ .child']
+      ] as const;
+
+      for (const [source, expected] of cases) {
+        const { errors, tree, trivia } = parser.parse(source);
+        expect(errors.length).toBe(0);
+        const ruleset = tree.value[0];
+        expect(ruleset.value.selector.toString({ trivia })).toBe(expected);
+        expect(serializeTypes(ruleset.value.selector)).toContainString('(ComplexSelector');
+      }
+    });
+
     it('should parse complex selector with child combinator', () => {
       const { errors, tree } = parser.parse('.parent > .child { color: red; }');
       expect(errors.length).toBe(0);
