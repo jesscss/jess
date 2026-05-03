@@ -85,12 +85,15 @@ describe('List', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = list([
+    const listNode = list([
       spaced([num(1), any('2'), any('3')]),
       ref({ key: 'item' }, { type: 'variable' })
-    ]).render(context);
+    ]);
+    const rendered = listNode.render(context);
 
     expect(rendered).toBe('1 2 3, four');
+    expect(listNode.evaluated).toBe(false);
+    expect(listNode.preEvaluated).toBe(false);
   });
 
   it('resolves list values without touching render state', async () => {
@@ -104,12 +107,15 @@ describe('List', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await list([
+    const listNode = list([
       spaced([num(1), any('2'), any('3')]),
       ref({ key: 'item' }, { type: 'variable' })
-    ]).resolve(context);
+    ]);
+    const resolved = await listNode.resolve(context);
 
     expect(`${resolved}`).toBe('1 2 3, four');
+    expect(listNode.evaluated).toBe(false);
+    expect(listNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

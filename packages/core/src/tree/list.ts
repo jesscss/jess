@@ -5,6 +5,7 @@ import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 function captureListItem<T extends Node>(item: T, options: ReturnType<typeof getPrintOptions>): string {
   const saved = options.suppressBoundaryTrivia;
@@ -111,6 +112,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       newList.value.push(b);
     }
     return newList;
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 
   /** @todo? Lists should collapse nested lists? */

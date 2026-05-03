@@ -411,6 +411,8 @@ families:
   - Selector value wrappers (`AttributeSelector`, `PseudoSelector`, and
     `SelectorCapture`) now resolve through selector-specific eval logic without
     generic eval stamping, while source serializers remain canonical.
+  - `List.resolve(context)` now bypasses generic eval stamping while preserving
+    the existing child-eval traversal and list separator/trivia serialization.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:
