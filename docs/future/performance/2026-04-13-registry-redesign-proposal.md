@@ -1455,23 +1455,31 @@ reason. The lookup strategy varies by call site, not by frame structure.
 
 [docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md)
 
+The whitespace-token proposal is now a current `TriviaMap` status note. Treat
+that file as the source of truth for trivia ownership. In particular:
+
+- trivia is file-context data, not node-owned data
+- `before` / `after` are lookup directions, not trivia kinds
+- direct rule-body block comments are `Comment` nodes
+- inline/value comments remain trivia
+- evaluated/copied values that move placement should use `detachTrivia(deep)`,
+  not copied formatting offsets
+
 ### Why declaration names are currently `Any` nodes
 
 `VarDeclaration.value.name` (and `Declaration.value.name`) is typed as
-`Any | Interpolated`, not a plain string. The reason is that `Any` carries
-`pre` / `post` properties — so a comment or whitespace between the name and
-the colon (`@color /* comment */: value`) can be stored on the name node
-itself rather than being discarded at parse time.
+`Any | Interpolated`, not a plain string. Historically, this was partly because
+formatting/comment trivia could be carried on nodes. With `TriviaMap`, that
+reason is gone: whitespace and inline/value comments are looked up from source
+offsets during serialization.
 
-This is the same root problem the whitespace-token-proposal solves: nodes
-carry formatting because there is nowhere else to put it.
+There may still be parser/runtime reasons to keep name nodes until that surface
+is audited, but trivia ownership should no longer be one of them.
 
-### What changes when pre/post is eliminated
+### What changes after trivia is file-context-owned
 
-Once `pre` / `post` are removed from nodes (replaced by the offset-keyed
-`FormattingMap`), the comment between `@color` and `:` lives in the
-`FormattingMap` at the appropriate source offset. The name node no longer needs
-to carry it.
+The comment between `@color` and `:` lives in the `TriviaMap` at the appropriate
+source boundary. The name node no longer needs to carry it.
 
 With that constraint lifted, declaration names that are plain identifiers can
 become plain strings in the AST rather than `Any` nodes. `Interpolated` names
@@ -1510,9 +1518,9 @@ that reinforce each other:
   removes a class of edge cases around interpolated names with static content.
 
 The render model here (`render(ctx)` writing to `ctx.outputBuffer`) is fully
-compatible with the whitespace proposal's `FormattingMap` — `emitFmt()` is
-just called at the start and end of each `render(ctx)` call exactly where the
-current `processPrePost()` sandwich is.
+compatible with `TriviaMap`: render code can consume trivia at explicit source
+boundaries through the shared print/render context, while generated or
+placement-moved values fall back to container formatting.
 
 ---
 
@@ -1758,8 +1766,9 @@ because they touch serialization:
 - **Track 3:** Less-compat adapter layer — explicit adapter classes replacing
   the transparent `Proxy` shim. Mostly done now; revisit once after Track 2
   lands so the direct-field API can simplify the adapters further.
-- **Track 4:** Whitespace/trivia token proposal — `FormattingMap` replaces
-  `pre`/`post` fields; static declaration names become plain `string`.
+- **Track 4:** TriviaMap cleanup — trivia is file-context data consumed by
+  source-boundary lookup; static declaration names may become plain `string`
+  after the remaining declaration-name shape is audited.
 - **Track 5:** Buffered render pass — typed `Segment[]` buffer with post-step
   for extend finalization, reference visibility, and `@media` bubbling.
   This consumes the Track 1C `render/resolve` work; it should not be used as a
