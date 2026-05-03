@@ -401,6 +401,9 @@ families:
     `InterpolatedSelector`) now do the same: direct `render(context)` /
     `resolve(context)` uses existing value-resolution logic without stamping
     the wrapper source node.
+  - `Sequence.resolve(context)` now bypasses generic eval stamping while still
+    using the existing sequence eval logic, including trivia-backed render
+    spacing behavior.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

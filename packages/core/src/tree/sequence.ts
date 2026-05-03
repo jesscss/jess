@@ -168,6 +168,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     );
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector): void {
   //   const cast = context.cast

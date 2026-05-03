@@ -42,13 +42,16 @@ describe('Sequence', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = seq([
+    const sequenceNode = seq([
       num(10),
       ref({ key: 'mid' }, { type: 'variable' }),
       num(30)
-    ]).render(context);
+    ]);
+    const rendered = sequenceNode.render(context);
 
     expect(rendered).toBe('10 20 30');
+    expect(sequenceNode.evaluated).toBe(false);
+    expect(sequenceNode.preEvaluated).toBe(false);
   });
 
   it('resolves sequence values without touching render state', async () => {
@@ -62,13 +65,16 @@ describe('Sequence', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await seq([
+    const sequenceNode = seq([
       num(10),
       ref({ key: 'mid' }, { type: 'variable' }),
       num(30)
-    ]).resolve(context);
+    ]);
+    const resolved = await sequenceNode.resolve(context);
 
     expect(`${resolved}`).toBe('10 20 30');
+    expect(sequenceNode.evaluated).toBe(false);
+    expect(sequenceNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
