@@ -357,6 +357,27 @@ describe('serializeTypes coverage', () => {
     ]);
   });
 
+  test('collapse nesting emits nested selector comments from trivia', () => {
+    const sources = [
+      'a {/*x*/ b { c: d; } }',
+      'a { /*x*/ b { c: d; } }'
+    ];
+
+    for (const source of sources) {
+      const { errors, tree, trivia } = cssParser.parse(source);
+      expect(errors.length).toBe(0);
+      const css = tree.toString({ collapseNesting: true, trivia });
+      expect(css).toBeString(`
+        a {
+          /*x*/
+        }
+        a b {
+          c: d;
+        }`
+      );
+    }
+  });
+
   test('declaration value comments stay in trivia before declaration terminators', () => {
     const { tree, trivia } = cssParser.parse('a { b: yes /* comment */; }');
     const ruleset = tree.value[0];

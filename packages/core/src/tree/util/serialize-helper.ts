@@ -104,18 +104,6 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
   return tokens.some(isBlockCommentTriviaToken);
 }
 
-function getLeadingSelectorComment(node: Node): string | undefined {
-  if (!isNode(node, N.Ruleset)) {
-    return undefined;
-  }
-  const selector = node.value.selector;
-  if (!selector || selector instanceof Nil) {
-    return undefined;
-  }
-  const match = String(selector).match(/^(\/\*[\s\S]*?\*\/\s*)/u);
-  return match?.[1];
-}
-
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
   let current: Node | undefined = node.parent;
   while (current) {
@@ -563,32 +551,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
       let lastRenderedFrames = options.lastRenderedFrames;
       const carriedRuleset = getHoistedRulesetCarrier(node, options);
-      if (!closeFramesOnExit && isNode(node, N.Ruleset)) {
-        const firstSelectorComment = rulesToRender
-          .map(entry => getLeadingSelectorComment(entry.node))
-          .find(Boolean);
-        if (firstSelectorComment) {
-          while (lastRenderedFrames.length > 0) {
-            const topFrame = lastRenderedFrames[lastRenderedFrames.length - 1]!;
-            if (isAncestorFrame(topFrame, node)) {
-              break;
-            }
-            const depthToClose = lastRenderedFrames.length - 1;
-            w.add(indent(depthToClose) + '}\n');
-            frameHeaders.pop();
-            lastRenderedFrames.pop();
-          }
-          w.add(node.getHeaderString(options, false));
-          const normalized = firstSelectorComment
-            .replace(/\s+$/u, '')
-            .replace(/^\s*/, indent(options.depth + 1));
-          w.add(normalized);
-          if (!/\n$/.test(normalized)) {
-            w.add('\n');
-          }
-          w.add(indent(options.depth) + '}\n');
-        }
-      }
       const ensureRenderedFrames = (leafFrames: Array<AtRule | Ruleset>) => {
         let matches = -1;
         for (let i = 0; i < lastRenderedFrames.length; i++) {
