@@ -185,6 +185,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       }
     );
   }
+
+  override resolve(context: Context): MaybePromise<PseudoSelector> {
+    return this.evalNode(context);
+  }
 }
 
 // Some experiments with type narrowing

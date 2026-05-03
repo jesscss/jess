@@ -408,6 +408,9 @@ families:
     existing child-eval path without stamping the wrapper source node; inherited
     `QueryCondition` coverage verifies the `Sequence` path for media/supports
     style conditions.
+  - Selector value wrappers (`AttributeSelector`, `PseudoSelector`, and
+    `SelectorCapture`) now resolve through selector-specific eval logic without
+    generic eval stamping, while source serializers remain canonical.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

@@ -50,13 +50,16 @@ describe('Attribute Selector', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const rendered = attr({
+    const attrNode = attr({
       name: 'data',
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
-    }).render(context);
+    });
+    const rendered = attrNode.render(context);
 
     expect(rendered).toBe('[data=foo]');
+    expect(attrNode.evaluated).toBe(false);
+    expect(attrNode.preEvaluated).toBe(false);
   });
 
   test('resolves attribute selector values without touching render state', async () => {
@@ -70,13 +73,16 @@ describe('Attribute Selector', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const resolved = await attr({
+    const attrNode = attr({
       name: 'data',
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
-    }).resolve(context);
+    });
+    const resolved = await attrNode.resolve(context);
 
     expect(`${resolved}`).toBe('[data=foo]');
+    expect(attrNode.evaluated).toBe(false);
+    expect(attrNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

@@ -52,6 +52,10 @@ export class SelectorCapture extends Node<Selector> {
     }
     return requireSelector(out);
   }
+
+  override resolve(context: Context): MaybePromise<Selector> {
+    return this.evalNode(context);
+  }
 }
 
 type Params = ConstructorParameters<typeof SelectorCapture>;

@@ -91,6 +91,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     );
   }
 
+  override resolve(context: Context): MaybePromise<this> {
+    return this.evalNode(context);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     return this.renderAttributeSyntax(options);
   }

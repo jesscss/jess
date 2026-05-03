@@ -24,9 +24,12 @@ describe('SelectorCapture', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).render(context);
+    const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    const rendered = captureNode.render(context);
 
     expect(rendered).toBe('.foo');
+    expect(captureNode.evaluated).toBe(false);
+    expect(captureNode.preEvaluated).toBe(false);
   });
 
   it('resolves selector capture values without touching render state', async () => {
@@ -40,9 +43,12 @@ describe('SelectorCapture', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).resolve(context);
+    const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    const resolved = await captureNode.resolve(context);
 
     expect(`${resolved}`).toBe('.foo');
+    expect(captureNode.evaluated).toBe(false);
+    expect(captureNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

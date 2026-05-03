@@ -55,12 +55,15 @@ describe('PseudoSelector', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = pseudo({
+    const pseudoNode = pseudo({
       name: ':is',
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
-    }).render(context);
+    });
+    const rendered = pseudoNode.render(context);
 
     expect(rendered).toBe(':is(.foo, .bar)');
+    expect(pseudoNode.evaluated).toBe(false);
+    expect(pseudoNode.preEvaluated).toBe(false);
   });
 
   it('resolves pseudo selector values without touching render state', async () => {
@@ -74,12 +77,15 @@ describe('PseudoSelector', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await pseudo({
+    const pseudoNode = pseudo({
       name: ':is',
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
-    }).resolve(context);
+    });
+    const resolved = await pseudoNode.resolve(context);
 
     expect(`${resolved}`).toBe(':is(.foo, .bar)');
+    expect(pseudoNode.evaluated).toBe(false);
+    expect(pseudoNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });
