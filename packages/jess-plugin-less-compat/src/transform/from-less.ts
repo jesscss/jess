@@ -87,8 +87,6 @@ export function fromLessNode(
         name: new Any(prop, { role: 'property' as const }),
         value: new Any(valueStr)
       });
-      out.options.preIntent = 'explicit_none';
-      out.options.postIntent = 'explicit_none';
       cache.set(lessNode, out);
       return out;
     }
@@ -108,8 +106,6 @@ export function fromLessNode(
             name: new Any(prop, { role: 'property' as const }),
             value: new Any(valueStr)
           });
-          decl.options.preIntent = 'explicit_none';
-          decl.options.postIntent = 'explicit_none';
           nodes.push(decl);
         }
       }
