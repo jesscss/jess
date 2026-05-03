@@ -9,9 +9,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { Block } from './block.js';
 import { Range } from './range.js';
-import { List } from './list.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -26,6 +24,17 @@ function makeDirectiveRulesPublic(rules: Rules) {
     ...rules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
   };
+}
+
+function renderControlSourceSyntax(node: Node, context: Context, options?: PrintOptions): string {
+  const printOptions = getPrintOptions({ ...options, context });
+  const savedContext = printOptions.context;
+  printOptions.context = undefined;
+  try {
+    return node.toTrimmedString(printOptions);
+  } finally {
+    printOptions.context = savedContext;
+  }
 }
 
 export type ForPattern =
@@ -178,6 +187,10 @@ export class If extends Node<IfValue> {
     }
 
     return w.getSince(mark);
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return renderControlSourceSyntax(this, context, options);
   }
 }
 
@@ -346,6 +359,10 @@ export class For extends Node<StructuredLoopValue> {
     this.value.rules.toBraced(options);
     return w.getSince(mark);
   }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return renderControlSourceSyntax(this, context, options);
+  }
 }
 
 export type WhileValue = {
@@ -374,6 +391,10 @@ export class While extends Node<WhileValue> {
     w.add(') ');
     this.value.rules.toBraced(options);
     return w.getSince(mark);
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return renderControlSourceSyntax(this, context, options);
   }
 }
 

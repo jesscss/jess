@@ -327,8 +327,6 @@ families:
     dynamic/default guards, recursion prevention, and caller-fallback
     discipline now ride `ScopeFrame` plus explicit wrapper state rather than
     fork-era provenance transport.
-  - Remaining note: any still-surviving multi-output mixin carriers belong in
-    Slice 13e structural-shell cleanup, not here.
 
 - [x] Slice 13d — Finish **import** canonical-tree + binding-frame convergence
   Current status:
@@ -336,90 +334,28 @@ families:
     replacement/additive configured wrappers, reference-import callable parity,
     detached closure visibility, and import-boundary ownership now work from
     explicit frame/boundary state instead of copied provenance walks.
-  - Remaining note: postlude/media carrier normalization belongs in
-    Slice 13e structural-shell cleanup, not here.
 
-- [ ] Slice 13e — Remove remaining structural shells that only fake placement-local state
+- [x] Slice 13e — Validate remaining structural-shell cleanup
   Current status:
-  - Scope intentionally narrowed: this is no longer "finish everything under
-    13c". It is just the leftover shell/carrier cleanup that survives after
-    mixin/import/loop binding convergence is already green.
-  - Expected surfaces: additive non-variable import child wrappers, imported
-    postlude/media carriers, and any mixin multi-output wrappers that still
-    exist only to carry output shape.
-  - `$for`: frame/binding convergence is done. Only incidental structural-shell
-    cleanup may remain.
-
-  Guardrails:
-  - Mixins, imports, and `$for` are one architectural class: canonical tree +
-    runtime binding frame.
-  - They should differ only by installed bindings and parent-frame chaining.
-  - `clonedEval(...)`, `preserveOriginalNodes`, and `maybeClone(...)` are
-    legacy debt and should be deleted, not normalized.
-  - Iteration should use focused core structural/unit tests; higher-level
-    engine behavior is verified with `.less` fixtures. `.jess` fixture probing
-    is not part of this track.
-
-  Recent net effect:
-  - Synthetic `Rules.create(...)` carrier shells have been heavily reduced.
-  - Live call-site/source provenance is no longer being stamped onto most
-    temporary wrapper surfaces.
-  - Ruleset-as-mixin, detached-unlock output, and ordinary mixin body output
-    no longer stamp call-site `sourceParent`.
-  - Ordinary mixin-body unresolved-var fallback now rides an explicit
-    `ScopeFrame` fallback surface instead of node provenance.
-  - Interpolated mixin-name `preEval()` wrappers stay self-owned; they no
-    longer clear or inherit canonical `sourceNode` provenance.
-  - Interpolated at-rule `preEval()` wrappers stay self-owned; they no longer
-    clear or inherit canonical `sourceNode` provenance either.
-  - Import postlude wrapper shells no longer need to explicitly scrub
-    `sourceNode`; they just inherit whatever real imported surface they are
-    derived from.
-  - Generic node derivation no longer carries either `sourceParent` or
-    `sourceNode` forward through `inherit()`; any remaining provenance now has
-    to be kept explicitly by the few semantic surfaces that still need it.
-  - Non-classic import boundaries now live on `Rules.options.importBoundary`
-    instead of source-node provenance walks.
-  - Ruleset selector-cache invalidation now uses an explicit cache-owner link
-    on derived rulesets instead of overloading `sourceNode`.
-  - `sourceRulesParent` now rides explicit `ScopeFrame.fallbackFrame` only; it
-    no longer climbs `sourceParent` ancestry looking for a fallback scope.
-  - `Rules` and `Reference` scope walks now stay on real parent chains and
-    explicit fallback frames; they no longer consult dead `sourceParent`
-    ancestry while climbing lexical scope.
-  - The dead `sourceParent` field itself is gone from nodes; only explicit
-    semantic provenance surfaces remain.
-  - Reference-import ancestry scans no longer walk `sourceParent`; they now
-    stay on explicit `sourceNode`/`parent` provenance only.
-  - Direct callable reference results no longer stamp `sourceParent` onto the
-    returned `MixinCollection` wrapper either.
-  - Cloned/fallback/direct-value reference results no longer stamp
-    `sourceParent` onto the returned node; only the reference token trivia is
-    copied across now.
-  - Plain CSS import queue entries no longer stamp `sourceNode` onto the
-    emitted `@import` at-rule; dedupe now relies on node identity plus
-    location/signature rather than back-pointing at the `StyleImport` node.
-  - Direct call results now only keep call-site `sourceParent` for the
-    ordinary mixin-body fallback case; declaration-only call output now uses
-    an explicit wrapper-local marker for post-eval ordering instead.
-  - JS function call args no longer stamp `sourceParent` during the
-    copy/freeze path at all.
-  - Final import result wrappers no longer overwrite `sourceNode`; imported
-    provenance is bound once before evaluation and inherited from there.
-  - Dynamic-name resolution no longer backfills `sourceNode` onto resolved
-    nodes when interpolation materializes a canonical node.
-  - Ruleset copies no longer rebind selector `sourceNode` onto copied
-    selectors.
-  - Import wrappers now stay rooted in imported surfaces much more often.
-  - Reference self-extend activation now marks touched reference rulesets
-    visible even for partial/self (`all`) extends, so original self-extend
-    targets render again in reference mode.
-  - Plain-import first-use cloning now stays off the no-op `with` path, so
-    empty configuration reuses the canonical imported `Rules` surface again.
-  - Stylesheet functions and detached callable bodies share the same lighter
-    callable-body path.
-  - `@jesscss/fns` `each()` now just returns a `For` over the canonical
-    callback rules surface; loop frames stay owned by `$for`.
+  - Done: the remaining mixin/import/loop derived `Rules` surfaces were audited
+    against code and focused tests. Track 1B is closed unless new evidence shows
+    a surface exists only to fake placement-local state.
+  - Surviving surfaces are semantic: additive import config results preserve an
+    imported boundary plus added children; import postludes are real
+    `@media`/`@supports`/`@layer` output containers; multi-candidate mixin
+    output needs one invocation result surface; `$for` output uses canonical
+    body-derived surfaces without synthetic declaration transport.
+  - Guardrail: do not recreate fork-era locality through `clonedEval(...)`,
+    `preserveOriginalNodes`, `maybeClone(...)`, or implicit provenance stamping.
+  - Net cleanup: import boundaries, fallback scope, reference ancestry,
+    selector-cache ownership, import dedupe, direct call output, JS function
+    args, dynamic-name materialization, and ruleset selector copies no longer
+    depend on broad `sourceParent`/`sourceNode` stamping. Remaining provenance
+    is explicit and local to the semantic surface that needs it.
+  - Plain no-op `with` imports now reuse the canonical imported `Rules`
+    surface, stylesheet functions and detached callables share the lighter
+    callable-body path, and `@jesscss/fns` `each()` lowers to `For` over the
+    canonical callback rules surface.
 
 ### Track 1C — Eval / Render API Convergence
 
@@ -1061,8 +997,8 @@ Track 1 is no longer about outer renderKey plumbing. That runtime is gone.
 
 What remains:
 
-1. Treat Track 1B as mostly a shell-cleanup lane now, not a generic
-   "finish 13c" bucket.
+1. Treat Track 1B as closed unless new code evidence shows a derived surface
+   exists only to fake placement-local state.
 2. Track eval/serialization merge work as explicit Track 1C slices
    (`13f`/`13g`/`13h`) instead of implicitly burying it under Track 5.
 3. Keep the handoff compressed: remove stale references to `_renderKey`,

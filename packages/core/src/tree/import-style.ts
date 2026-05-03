@@ -147,7 +147,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         : context.root;
   }
 
-  private deriveClonedRulesSurface(
+  /**
+   * Derive an import-owned Rules surface from the active anchor.
+   *
+   * This is not a clone-isolation mechanism. Imports use these surfaces to hold
+   * semantic placement state: configured bindings, visibility/reference options,
+   * inline source text, or real postlude containers like `@media`.
+   */
+  private deriveRulesSurface(
     anchorRules: Rules,
     childNodes?: Node[],
     options?: {
@@ -175,7 +182,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
-    return this.deriveClonedRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
+    return this.deriveRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
   }
 
   private getPostludeNodes(postlude?: Node): Node[] {
@@ -191,7 +198,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       prelude,
       rules
     });
-    return this.deriveClonedRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
+    return this.deriveRulesSurface(anchorRules, [wrappedAtRule], { resetScopeFrame: true });
   }
 
   private clearConfiguredImportBoundary(rules: Rules): void {
@@ -263,7 +270,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private createConfiguredImportedSurface(sourceRules: Rules, replacementsByIndex?: Map<number, Node>): Rules {
-    const importedRules = this.deriveClonedRulesSurface(sourceRules, undefined, { preserveSourceNode: true });
+    const importedRules = this.deriveRulesSurface(sourceRules, undefined, { preserveSourceNode: true });
     if (!replacementsByIndex?.size) {
       return importedRules;
     }
@@ -291,7 +298,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return importedRules;
     }
 
-    const finalRules = this.deriveClonedRulesSurface(sourceRules, [], { resetScopeFrame: true });
+    const finalRules = this.deriveRulesSurface(sourceRules, [], { resetScopeFrame: true });
     for (const newNode of additiveNonVariableNodes) {
       finalRules.adopt(newNode);
       finalRules.value.push(newNode);

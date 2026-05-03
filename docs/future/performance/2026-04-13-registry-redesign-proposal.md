@@ -295,10 +295,10 @@ Current narrowing:
 - configured imports now carry variable-only `with/set` bindings through
   `ScopeFrame.liveSlotsByName` and keep replacement/configured surfaces rooted
   in imported `Rules` containers instead of synthetic top-level wrappers
-- the remaining work is structural shell cleanup:
-  dynamic/default-guard mixin wrappers, multi-output mixin carriers, additive
-  non-variable import child-surface wrappers, and the last postlude/import
-  carrier shells that still exist only to carry output shape
+- the remaining structural-shell cleanup was later narrowed and validated in
+  the handoff: the surviving mixin/import/loop derived `Rules` surfaces carry
+  semantic output, boundary, or lookup-gate state rather than fake
+  placement-local state
 
 They are all the same class of problem: evaluate a canonical tree against a
 runtime binding frame.
@@ -1735,10 +1735,11 @@ These slices are about making the source tree shared and light:
   configured `with`/`set` bindings, reference imports, guarded imported mixins,
   detached closure visibility, and import-boundary ownership must all work from
   explicit frame/boundary state rather than copied provenance.
-- Slice 13e: remove the remaining structural shells that exist only to fake
-  placement-local state:
-  additive non-variable import child wrappers, postlude/media carrier shells,
-  and any leftover multi-output mixin carriers.
+- Slice 13e: remove or validate the remaining structural shells that exist only
+  to fake placement-local state. The current handoff records this as complete:
+  surviving import postlude, additive-config, loop-output, and multi-candidate
+  mixin result surfaces are semantic result/boundary surfaces, not a live
+  shell-cleanup queue.
 
 ### Track 1C — Eval / Render API Convergence
 
