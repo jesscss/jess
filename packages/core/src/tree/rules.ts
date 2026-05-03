@@ -1369,11 +1369,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       // Less keeps leading comments before hoisted @import output.
       const isCommentLike = (node: Node): boolean => {
-        const text = String(node.valueOf?.() ?? '').trimStart();
-        if (!text.startsWith('/*')) {
-          return false;
-        }
-        return isNode(node, N.Comment) || isNode(node, N.Any);
+        return isNode(node, N.Comment) && node.visible;
       };
       if (ctx?.topImports?.length) {
         for (const node of this.value) {
