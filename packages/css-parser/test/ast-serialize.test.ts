@@ -64,7 +64,7 @@ describe('serializeTypes coverage', () => {
 
     expect(isNode(combinator, N.Combinator)).toBe(true);
     expect('pre' in combinator).toBe(false);
-    expect(trivia.before.get(selector.value[2].location[0])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(selector.value[2].location[0], 'before')?.map(token => token.image)).toEqual([
       ' ',
       '/* gap */'
     ]);
@@ -275,12 +275,12 @@ describe('serializeTypes coverage', () => {
 
     expect(isNode(firstArg, N.Color)).toBe(true);
     expect(isNode(secondArg, N.Color)).toBe(true);
-    expect(trivia.after.get(firstArg!.location[3])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(firstArg!.location[3], 'after')?.map(token => token.image)).toEqual([
       ' ',
       '/*{comment}*/'
     ]);
     expect(
-      [...trivia.before.entries()]
+      [...trivia.entries('before')]
         .filter(([offset]) => offset > firstArg!.location[3] && offset < secondArg!.location[0])
         .map(([, tokens]) => tokens.map(token => token.image))
     ).toEqual([[
@@ -300,13 +300,13 @@ describe('serializeTypes coverage', () => {
     expect(first?.valueOf()).toBe('#a');
     expect(second?.valueOf()).toBe('.b');
     expect(third?.valueOf()).toBe('.c');
-    expect(trivia.before.get(second!.location[0])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(second!.location[0], 'before')?.map(token => token.image)).toEqual([
       '\n',
       '/*x*/',
       '/*y*/',
       '\n'
     ]);
-    expect(trivia.before.get(third!.location[0])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(third!.location[0], 'before')?.map(token => token.image)).toEqual([
       '/*z*/'
     ]);
   });
@@ -321,13 +321,13 @@ describe('serializeTypes coverage', () => {
 
     expect(first?.valueOf()).toBe('#comments');
     expect(second?.valueOf()).toBe('.comments');
-    expect(trivia.after.get(first!.location[3])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(first!.location[3], 'after')?.map(token => token.image)).toEqual([
       ' ',
       '/* boo */',
       '/* boo again*/'
     ]);
     expect(
-      [...trivia.before.entries()]
+      [...trivia.entries('before')]
         .filter(([offset]) => offset > first!.location[3] && offset < second!.location[0])
         .map(([, tokens]) => tokens.map(token => token.image))
     ).toEqual([[
@@ -335,6 +335,26 @@ describe('serializeTypes coverage', () => {
       '/* boo */',
       '/* boo again*/'
     ]]);
+  });
+
+  test('same-line comments before nested selectors stay in selector trivia', () => {
+    const { tree, trivia } = cssParser.parse('a { /*x*/ b { c: d; } }');
+    const ruleset = tree.value[0];
+    if (!isNode(ruleset, N.Ruleset) || !ruleset.value.rules) {
+      throw new Error('Expected first parsed rule to have nested rules');
+    }
+    const [nested] = ruleset.value.rules.value;
+    if (!isNode(nested, N.Ruleset)) {
+      throw new Error('Expected nested rule to be a ruleset');
+    }
+
+    expect(nested.value.selector.toString({ trivia })).toBe(' /*x*/ b');
+    expect(String(nested.value.selector)).toBe(' /*x*/ b');
+    expect(trivia.lookup(nested.value.selector.location[0], 'before')?.map(token => token.image)).toEqual([
+      ' ',
+      '/*x*/',
+      ' '
+    ]);
   });
 
   test('declaration value comments stay in trivia before declaration terminators', () => {
@@ -350,12 +370,12 @@ describe('serializeTypes coverage', () => {
     const value = declaration.value.value;
 
     expect(value.valueOf()).toBe('yes');
-    expect(trivia.after.get(value.location[3])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(value.location[3], 'after')?.map(token => token.image)).toEqual([
       ' ',
       '/* comment */'
     ]);
     expect(
-      [...trivia.before.entries()]
+      [...trivia.entries('before')]
         .filter(([offset]) => offset > value.location[3])
         .map(([, tokens]) => tokens.map(token => token.image))[0]
     ).toEqual([
@@ -377,13 +397,13 @@ describe('serializeTypes coverage', () => {
     const { name } = declaration.value;
 
     expect(name.valueOf()).toBe('color');
-    expect(trivia.after.get(name.location[3])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(name.location[3], 'after')?.map(token => token.image)).toEqual([
       '/* survive */',
       ' ',
       '/* me too */'
     ]);
     expect(
-      [...trivia.before.entries()]
+      [...trivia.entries('before')]
         .filter(([offset]) => offset > name.location[3])
         .map(([, tokens]) => tokens.map(token => token.image))[0]
     ).toEqual([
@@ -406,12 +426,12 @@ describe('serializeTypes coverage', () => {
 
     expect(name.valueOf()).toBe('@-webkit-keyframes');
     expect(prelude.valueOf()).toBe('hover');
-    expect(trivia.before.get(prelude.location[0])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(prelude.location[0], 'before')?.map(token => token.image)).toEqual([
       ' ',
       '/* Safari */',
       ' '
     ]);
-    expect(trivia.after.get(prelude.location[3])?.map(token => token.image)).toEqual([
+    expect(trivia.lookup(prelude.location[3], 'after')?.map(token => token.image)).toEqual([
       ' ',
       '/* and Chrome */',
       ' '
