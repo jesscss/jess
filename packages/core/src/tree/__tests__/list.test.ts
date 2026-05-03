@@ -3,6 +3,7 @@ import { TreeContext, list, spaced, num, any, ref, rules, vardecl, type Rules as
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -54,10 +55,10 @@ describe('List', () => {
   it('emits trivia before parser-owned list separators', () => {
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
       after: new Map<number, IToken[]>()
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
   });
@@ -65,10 +66,10 @@ describe('List', () => {
   it('leaves plain separator whitespace to list syntax', () => {
     const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
     const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[5, [token(' ')]]]),
       after: new Map<number, IToken[]>()
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
 
     expect(list([first, second], { sep: '/' }).toString({ trivia })).toBe('10px / 2');
   });

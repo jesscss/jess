@@ -2,6 +2,7 @@ import { any, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '..
 import { Context, TreeContext } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -87,10 +88,10 @@ describe('Sequence', () => {
   });
 
   it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map(),
       after: new Map()
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
@@ -106,10 +107,10 @@ describe('Sequence', () => {
       image: '  ',
       tokenType: { name: 'WS' }
     }] as IToken[];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
     const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);

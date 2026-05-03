@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string): IToken => ({
   image,
@@ -42,10 +43,10 @@ describe('url', () => {
   });
 
   it('does not render pure source whitespace inside url syntax', () => {
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[4, [token(' ')]]]),
       after: new Map<number, IToken[]>()
-    };
+    });
     const treeContext = new TreeContext({ trivia });
     const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
     const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);

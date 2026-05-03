@@ -1,6 +1,7 @@
 import type { IToken } from 'chevrotain';
 import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string): IToken => ({
   image,
@@ -59,10 +60,10 @@ describe('Complex selector', () => {
     });
 
     test('does not consume reordered source trivia between generated selector parts', () => {
-      const trivia = {
+      const trivia = createTriviaMap({
         before: new Map([[0, [token('\n')]]]),
         after: new Map([[26, [token('\n')]]])
-      };
+      });
       const treeContext = new TreeContext({ trivia });
       const parent = el('.top', undefined, [0, 1, 1, 3, 1, 4], treeContext);
       const nested = el('.inside', undefined, [20, 2, 3, 26, 2, 10], treeContext);

@@ -13,6 +13,16 @@ import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
 import { emitCommentTriviaBeforeDelimiter } from './util/trivia.js';
 
+function captureListItem(item: Selector, options: ReturnType<typeof getPrintOptions>): string {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'post';
+  try {
+    return options.writer!.capture(() => item.toString(options));
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
   private withSelectors(value: Selector[]): this {
@@ -76,7 +86,7 @@ export class SelectorList extends Selector<Selector[]> {
     const mark = w.mark();
     let item = value[0]!;
 
-    let out = w.capture(() => item.toString(options));
+    let out = captureListItem(item, options);
     w.add(out.trim(), item);
 
     for (let i = 1; i < length; i++) {
@@ -84,7 +94,7 @@ export class SelectorList extends Selector<Selector[]> {
       item = value[i]!;
       emitCommentTriviaBeforeDelimiter(prevItem, item, options);
       w.add(`,\n${space}`);
-      out = (w.capture(() => item.toString(options))).trim();
+      out = captureListItem(item, options).trim();
       w.add(out);
     }
     return w.getSince(mark);

@@ -151,6 +151,42 @@ describe('serializeTypes coverage', () => {
     `);
   });
 
+  test('standalone block comments in mixin bodies parse as direct rules children', () => {
+    const { errors, tree } = parser.parse('.mixin() {/**/}');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toContainString(`
+      (Mixin
+        name:
+          (Any [role=name] '.mixin')
+        rules:
+          (Rules
+            [
+              (Comment '/**/')
+            ]
+          )
+      )
+    `);
+  });
+
+  test('standalone block comments before declarations parse as direct rules children', () => {
+    const { errors, tree } = parser.parse(`
+      .mixin() {
+        /**/
+        color: red;
+      }
+    `);
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree)).toMatch(/\(Rules\s+\[\s+\(Comment '\/\*\*\/'\)\s+\(Declaration/u);
+  });
+
+  test('value block comments stay trivia instead of direct rules children', () => {
+    const { errors, tree } = parser.parse('.mixin() { color: /* */blue; }');
+    expect(errors.length).toBe(0);
+    const serialized = serializeTypes(tree);
+    expect(serialized).toContain('(Declaration');
+    expect(serialized).not.toContain('(Comment');
+  });
+
   test('mixin default guard sets hasDefault and does not leak', () => {
     const { errors, tree } = parser.parse(`
       .withDefault(@x) when (default()) { a: 1; }

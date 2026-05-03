@@ -3,6 +3,7 @@ import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, Lis
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 let context: Context;
 
@@ -184,10 +185,10 @@ describe('Declaration', () => {
     const node = decl({ name: any('b'), value });
     node._location = [4, 1, 5, 25, 1, 26];
     const tokens = [token(' '), token('/* comment */', 'BlockComment')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[23, tokens]]),
       after: new Map([[value.location[3], tokens]])
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
 
     expect(rules([node]).toString({ trivia })).toBeString(`
       b: yes /* comment */;
@@ -199,10 +200,10 @@ describe('Declaration', () => {
     name._location = [4, 1, 5, 8, 1, 9];
     const node = decl({ name, value: any('grey') });
     const tokens = [token('/* survive */', 'BlockComment'), token(' '), token('/* me too */', 'BlockComment')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[35, tokens]]),
       after: new Map([[name.location[3], tokens]])
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
 
     expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
   });

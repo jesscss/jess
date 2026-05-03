@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { OutputWriter, getPrintOptions } from '../print.js';
 import { buildSourceMap } from '../sourcemap.js';
+import { createTriviaMap } from '../trivia.js';
 import { rules, decl, any, ruleset, sellist, sel, el } from '../../index.js';
 
 const token = (image: string): IToken => ({
@@ -69,10 +70,10 @@ describe('source map segments', () => {
     a._location = [0, 1, 1, 0, 1, 5];   // original line 1 (0-based 0)
     b._location = [0, 4, 1, 0, 4, 5];   // original line 2 (0-based 1)
     const root = rules([a, b]);
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map<number, IToken[]>(),
       after: new Map([[a.location[3], [token('\n\n\n')]]])
-    };
+    });
     const css = root.toString(getPrintOptions({ writer: w, trivia }));
     expect(css).toBe('a: 1;\n' + 'b: 2;\n');
     // After first declaration 'a: 1;', writer should have advanced one line on the newline

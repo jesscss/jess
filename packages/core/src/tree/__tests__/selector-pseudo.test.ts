@@ -3,6 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import type { IToken } from 'chevrotain';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 describe('PseudoSelector', () => {
   let context: Context;
@@ -27,10 +28,10 @@ describe('PseudoSelector', () => {
       image: '\n  ',
       tokenType: { name: 'WS' } as IToken['tokenType']
     }];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[10, newline]]),
       after: new Map()
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const inner = sel([
       el('.a', undefined, [10, 1, 11, 12, 1, 13], treeContext),

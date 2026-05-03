@@ -34,7 +34,7 @@ export type PrintOptions = {
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
   emittedTrivia?: Set<IToken[]>;
-  emittedTriviaByNode?: WeakMap<IToken[], WeakSet<object>>;
+  suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -57,6 +57,7 @@ type RestorablePrintStateKey =
   | 'referenceFilterTargets'
   | 'referenceMode'
   | 'referenceRenderEnabled'
+  | 'suppressBoundaryTrivia'
   | 'writer';
 
 type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
@@ -73,7 +74,6 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
   options.referenceFilterTargets ??= false;
   options.composedSelectorCache ??= new WeakMap();
   options.emittedTrivia ??= new Set();
-  options.emittedTriviaByNode ??= new WeakMap();
 }
 
 export interface OutputWriter {
@@ -191,7 +191,6 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.ampersandFirst = seed?.ampersandFirst;
   state.trivia = seed?.trivia ?? context.opts.trivia;
   state.emittedTrivia = new Set();
-  state.emittedTriviaByNode = new WeakMap();
 
   if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
     state.collapseNesting = Boolean(context.opts.collapseNesting);

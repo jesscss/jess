@@ -2,6 +2,7 @@ import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
+import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
@@ -33,7 +34,7 @@ export function hasPrintableBoundaryTrivia(
     return false;
   }
   const offset = key === 'pre' ? node.location[0] : node.location[3];
-  const tokens = key === 'pre' ? trivia.before.get(offset) : trivia.after.get(offset);
+  const tokens = trivia.lookup(offset, key === 'pre' ? 'before' : 'after');
   const printable = getPrintableTriviaTokens(tokens, options);
   return Boolean(printable?.some(token => token.image.trim() !== ''));
 }
@@ -61,33 +62,6 @@ function captureNodeBoundary(
   }
   const offset = key === 'pre' ? node.location[0] : node.location[3];
   const lookup = key === 'pre' ? 'before' : 'after';
-  const tokens = lookup === 'before'
-    ? trivia.before.get(offset)
-    : trivia.after.get(offset);
-  if (
-    tokens
-    && node.sourceNode
-    && node.sourceNode !== node
-  ) {
-    if (lookup === 'after') {
-      for (const beforeTokens of trivia.before.values()) {
-        if (beforeTokens === tokens) {
-          return '';
-        }
-      }
-    }
-    const emittedByNode = options.emittedTriviaByNode ?? (options.emittedTriviaByNode = new WeakMap());
-    let emittedNodes = emittedByNode.get(tokens);
-    if (!emittedNodes) {
-      emittedNodes = new WeakSet<object>();
-      emittedByNode.set(tokens, emittedNodes);
-    }
-    if (emittedNodes.has(node)) {
-      return '';
-    }
-    emittedNodes.add(node);
-    return writer.capture(() => emitTriviaTokens(tokens, options));
-  }
   return writer.capture(() => emitTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options));
 }
 
@@ -118,7 +92,7 @@ type RenderRuleEntry = {
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
   const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
-  const tokens = getPrintableTriviaTokens(trivia?.before.get(node.location[0]), options);
+  const tokens = getPrintableTriviaTokens(trivia?.lookup(node.location[0], 'before'), options);
   if (!tokens) {
     return false;
   }
@@ -496,6 +470,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       && (isNode(node, N.Ruleset) || Boolean(getHoistedRulesetCarrier(node, options)))
     );
     const declarationOutputCache = new Map<number, string>();
+    const declarationTriviaCache = new Map<number, Set<IToken[]>>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
@@ -541,9 +516,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.writer = declWriter;
       options.depth = options.depth + 1;
       const declOut = node.toTrimmedString(options);
+      const emittedDuringCapture = new Set<IToken[]>();
+      if (options.emittedTrivia) {
+        for (const tokens of options.emittedTrivia) {
+          if (!declEmittedTrivia?.has(tokens)) {
+            emittedDuringCapture.add(tokens);
+          }
+        }
+      }
       restoreSetState(options.emittedTrivia, declEmittedTrivia);
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
+      declarationTriviaCache.set(i, emittedDuringCapture);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       const declProp = node.value.name.valueOf();
       let seenValues = seenDeclarationsByProp.get(declProp);
@@ -815,6 +799,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             : isNode(nn, N.Rules)
               ? w.capture(() => nn.toTrimmedString(options))
               : w.capture(() => nn.toTrimmedString(options));
+        if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
+          const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+          const cachedTrivia = declarationTriviaCache.get(idx);
+          if (cachedTrivia) {
+            for (const tokens of cachedTrivia) {
+              emittedTrivia.add(tokens);
+            }
+          }
+        }
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (
@@ -831,15 +824,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             const trimmed = normalized.replace(/[ \t]+$/u, '');
             w.add(trimmed);
             if (/\/\*/u.test(pre) && trimmed && !trimmed.endsWith('\n')) {
-              w.add('\n');
-            }
-          }
-          const post = captureNodeBoundary(nn, 'post', options);
-          if (!/^\s*$/.test(post)) {
-            const normalized = /\/\*/u.test(post) ? normalizeBlockTrivia(post, idt) : normalizeIndent(post, idt);
-            const trimmed = normalized.replace(/[ \t]+$/u, '');
-            w.add(trimmed);
-            if (/\/\*/u.test(post) && trimmed && !trimmed.endsWith('\n')) {
               w.add('\n');
             }
           }

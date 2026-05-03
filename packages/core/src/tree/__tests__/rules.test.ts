@@ -4,6 +4,7 @@ import {
   el,
   sellist,
   rules,
+  comment,
   decl,
   vardecl,
   spaced,
@@ -133,6 +134,19 @@ describe('Rules', () => {
     expect(first).toBe('color: red;');
     expect(second).toBe('color: red;');
     expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
+  it('does not count direct comment children as numeric rule entries', () => {
+    const node = rules([
+      comment('/**/'),
+      decl({ name: 'color', value: any('red') }),
+      comment('/* two */'),
+      decl({ name: 'width', value: any('1px') })
+    ]);
+
+    expect(node.at(0)?.type).toBe('Declaration');
+    expect(node.at(1)?.type).toBe('Declaration');
+    expect(String(node.at(-1))).toBe('width: 1px');
   });
 
   it('keeps source serialization separate from context-owned render state', async () => {

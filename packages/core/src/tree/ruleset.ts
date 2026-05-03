@@ -29,6 +29,7 @@ import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
+import { createTriviaMap } from './util/trivia.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -938,7 +939,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;
     if (withoutComments) {
-      options.trivia = { before: new Map(), after: new Map() };
+      options.trivia = createTriviaMap();
     }
     let selOut: string;
     try {

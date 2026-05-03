@@ -48,6 +48,10 @@ import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-fram
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 const { isArray } = Array;
 
+function isIndexedRuleChild(node: Node): boolean {
+  return !isNode(node, N.Comment);
+}
+
 function captureLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
@@ -2024,7 +2028,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   at(index: number) {
-    return atIndex(this.value, index);
+    return atIndex(this.value.filter(isIndexedRuleChild), index);
   }
 
   /**
@@ -2104,19 +2108,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const dynamicNodes: Node[] = [];
 
     // Process each node with static name, handling both sync and async preEval
+    let indexedRuleCount = 0;
     const processResult = serialForEach(rules.value, (node, index) => {
+      const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
       if (node.type === 'Any' && node.options.role === 'charset') {
         /** Special case where we register the charset node immediately */
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         rules.value[index] = (node as Any).preEval(context);
+        rules.value[index]!.index = nodeIndex;
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
       // both preEval and dynamic resolution — they're handled by the eval queue.
       if (!this._isRegisterableType(node)) {
-        node.index = index;
+        node.index = nodeIndex;
         return;
       }
+      node.index = nodeIndex;
       if (this._hasStaticName(node)) {
         // Pre-evaluate nodes with static names before registration
         // This ensures selectors are evaluated and keySets are available for rulesets
@@ -2124,7 +2132,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.value[index] = preEvaldNode;
-            (preEvaldNode as Node).index = index;
+            (preEvaldNode as Node).index = nodeIndex;
             // After async preEval, check if it still has a static name
             if (this._hasStaticName(preEvaldNode)) {
               staticNodes.push(preEvaldNode);
@@ -2135,7 +2143,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           });
         }
         rules.value[index] = preEvald as Node;
-        (preEvald as Node).index = index;
+        (preEvald as Node).index = nodeIndex;
         const nodeToRegister = preEvald as Node;
         staticNodes.push(nodeToRegister);
         this._registerNodeIfEligible(rules, nodeToRegister, context);
@@ -4249,11 +4257,12 @@ export class MixinCollection extends Node<MixinEntry[]> {
        * Add rules but keep their original parents for further lazy lookups.
        * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
        */
+      let outputRuleIndex = 0;
       for (let i = 0; i < outputRules.length; i++) {
         let rule = outputRules[i]!;
         rule.frozen = true;
         /** Set a sequential index for lookup sorting */
-        rule.index = i;
+        rule.index = isIndexedRuleChild(rule) ? outputRuleIndex++ : undefined;
         output.push(rule);
       }
     }

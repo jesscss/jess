@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Any } from '../../../index.js';
+import { consumeTrivia, createTriviaMap, emitTriviaTokens } from '../trivia.js';
+import { OutputWriter, getPrintOptions } from '../print.js';
 
 const token = (image: string, name = 'WS'): IToken => ({
   image,
@@ -16,22 +18,22 @@ const token = (image: string, name = 'WS'): IToken => ({
 describe('TriviaMap serialization', () => {
   it('serializes trivia looked up before a node offset', () => {
     const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
       after: new Map<number, IToken[]>()
-    };
+    });
 
     expect(node.toString({ trivia })).toBe('\n  /* keep */test');
   });
 
-  it('serializes trivia looked up after a node offset', () => {
+  it('does not serialize trailing trivia from generic node output', () => {
     const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map<number, IToken[]>(),
       after: new Map([[13, [token('\n  ')]]])
-    };
+    });
 
-    expect(node.toString({ trivia })).toBe('test\n  ');
+    expect(node.toString({ trivia })).toBe('test');
   });
 
   it('does not use boundary intent as trivia storage', () => {
@@ -40,18 +42,19 @@ describe('TriviaMap serialization', () => {
     expect(node.toString()).toBe('test');
   });
 
-  it('consumes shared trivia once across copied nodes in one print state', () => {
-    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
-    const copied = node.copy(true);
+  it('consumes a shared trailing lookup once when a parent boundary emits it', () => {
+    const writer = new OutputWriter();
+    const options = getPrintOptions({ writer });
     const tokens = [token(' '), token('/* keep me */', 'BlockComment')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map<number, IToken[]>(),
       after: new Map([[13, tokens]])
-    };
-    const options = { trivia };
+    });
 
-    expect(node.toString(options)).toBe('test /* keep me */');
-    expect(copied.toString(options)).toBe('test');
+    emitTriviaTokens(consumeTrivia(trivia, 13, 'after', options), options);
+    emitTriviaTokens(consumeTrivia(trivia, 13, 'after', options), options);
+
+    expect(writer.toString()).toBe(' /* keep me */');
     expect(tokens.map(item => item.image)).toEqual([' ', '/* keep me */']);
   });
 });

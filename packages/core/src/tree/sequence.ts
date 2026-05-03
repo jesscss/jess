@@ -91,8 +91,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const hasTrivia = Boolean(
         sourceTrivia
         && (
-          options.trivia.after.get(prev.location[3])
-          || options.trivia.before.get(node.location[0])
+          options.trivia.lookup(prev.location[3], 'after')
+          || options.trivia.lookup(node.location[0], 'before')
         )
       );
       const noSep = Boolean(sourceTrivia && prev.location[3] !== undefined && prev.location[3] + 1 === node.location[0]);

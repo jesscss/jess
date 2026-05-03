@@ -4,6 +4,7 @@ import { sel, el, co, pseudo, attr, any, quoted, sellist, compound } from '../in
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node.js'
 
@@ -70,7 +71,7 @@ describe('Selector', () => {
       third._location = [25, 3, 9, 26, 3, 10];
       const firstRun = [token('\n'), token('/*x*/', 'BlockComment'), token('/*y*/', 'BlockComment'), token('\n')];
       const secondRun = [token('/*z*/', 'BlockComment')];
-      const trivia = {
+      const trivia = createTriviaMap({
         before: new Map([
           [second.location[0], firstRun],
           [third.location[0], secondRun]
@@ -79,7 +80,7 @@ describe('Selector', () => {
           [first.location[3], firstRun],
           [second.location[3], secondRun]
         ])
-      } satisfies TriviaMap;
+      }) satisfies TriviaMap;
 
       expect(sellist([first, second, third]).toString({ trivia })).toBe('#a,\n/*x*//*y*/\n.b,\n/*z*/.c');
     });
@@ -90,10 +91,10 @@ describe('Selector', () => {
       const second = el('.comments');
       second._location = [35, 1, 36, 43, 1, 44];
       const tokens = [token(' '), token('/* boo */', 'BlockComment'), token('/* boo again*/', 'BlockComment')];
-      const trivia = {
+      const trivia = createTriviaMap({
         before: new Map([[33, tokens]]),
         after: new Map([[first.location[3], tokens]])
-      } satisfies TriviaMap;
+      }) satisfies TriviaMap;
 
       expect(sellist([first, second]).toString({ trivia })).toBe('#comments /* boo *//* boo again*/,\n.comments');
     });

@@ -10,7 +10,7 @@ import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
-import { emitCommentTriviaAfterNode } from './util/trivia.js';
+import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -278,7 +278,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
 
-    const emptyHeaderTrivia = () => ({ before: new Map(), after: new Map() });
+    const emptyHeaderTrivia = () => createTriviaMap();
     const captureWithoutHeaderTrivia = (fn: () => string): string => {
       const savedTrivia = options.trivia;
       if (withoutComments) {

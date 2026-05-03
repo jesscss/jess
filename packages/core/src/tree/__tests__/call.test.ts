@@ -5,6 +5,7 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { paren } from '../paren.js';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -40,10 +41,10 @@ describe('Call', () => {
       args: new List([first, second])
     });
     const tokens = [token(' '), token('/*{comment}*/', 'BlockComment')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
       after: new Map([[first.location[3], tokens]])
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
 
     expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
   });

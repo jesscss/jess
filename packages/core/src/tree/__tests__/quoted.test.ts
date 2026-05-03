@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 import type { IToken } from 'chevrotain';
 
 describe('quoted', () => {
@@ -52,10 +53,10 @@ describe('quoted', () => {
       image: ' ',
       tokenType: { name: 'WS' } as IToken['tokenType']
     }];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[10, whitespace]]),
       after: new Map()
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const value = color({
       node: 'red',

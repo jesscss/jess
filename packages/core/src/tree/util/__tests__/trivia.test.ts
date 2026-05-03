@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../../context.js';
 import { OutputWriter, getPrintOptions } from '../print.js';
-import { consumeTrivia, emitTriviaTokens } from '../trivia.js';
+import { consumeTrivia, createTriviaMap, emitTriviaTokens } from '../trivia.js';
 
 const token = (image: string): IToken => ({
   image,
@@ -21,10 +21,10 @@ describe('render trivia consumption', () => {
     const writer = new OutputWriter();
     const options = getPrintOptions({ context, writer });
     const tokens = [token('/* once */')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[10, tokens]]),
       after: new Map()
-    };
+    });
 
     emitTriviaTokens(consumeTrivia(trivia, 10, 'before', options), options);
     emitTriviaTokens(consumeTrivia(trivia, 10, 'before', options), options);
@@ -37,10 +37,10 @@ describe('render trivia consumption', () => {
     const writer = new OutputWriter();
     const options = getPrintOptions({ context, writer });
     const tokens = [token('/* before */')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[10, tokens]]),
       after: new Map([[5, tokens]])
-    };
+    });
 
     emitTriviaTokens(consumeTrivia(trivia, 5, 'after', options), options);
     emitTriviaTokens(consumeTrivia(trivia, 10, 'before', options), options);

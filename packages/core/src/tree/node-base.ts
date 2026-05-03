@@ -1118,18 +1118,16 @@ export abstract class Node<
       options.trivia = trivia;
     }
     const intentPre = this._options?.preIntent;
-    const intentPost = this._options?.postIntent;
-    const pre = intentPre === undefined && trivia
+    const suppressPre = options.suppressBoundaryTrivia === 'pre'
+      || options.suppressBoundaryTrivia === 'both';
+    const pre = !suppressPre && intentPre === undefined && trivia
       ? w.capture(() => emitTrivia(trivia, 'before', this.location[0], options))
       : '';
     const preIntent = !pre ? intentPre : undefined;
     const bodyStr = w.capture(() => this.toTrimmedString(options));
-    const post = intentPost === undefined && trivia
-      ? w.capture(() => emitTrivia(trivia, 'after', this.location[3], options))
-      : '';
-    const postIntent = !post ? intentPost : undefined;
+    const postIntent = this._options?.postIntent;
 
-    let result = pre + bodyStr + post;
+    let result = pre + bodyStr;
     if (preIntent) {
       w.signalBoundaryIntent('pre', preIntent);
     }

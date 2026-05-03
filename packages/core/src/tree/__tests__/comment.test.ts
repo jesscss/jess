@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
+import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -39,7 +40,7 @@ describe('Comment', () => {
       ])
     });
     visible._location = [120, 8, 1, 136, 10, 1];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([
         [hidden.location[0], [
           token('// source-only', 'LineComment'),
@@ -51,7 +52,7 @@ describe('Comment', () => {
         ]]
       ]),
       after: new Map<number, IToken[]>()
-    };
+    });
 
     expect(rules([hidden, visible]).toString({ context, trivia })).toBe(`/*
 
@@ -76,7 +77,7 @@ describe('Comment', () => {
     });
     visible._location = [100, 8, 1, 116, 10, 1];
     visible.value.selector._location = visible.location;
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([
         [visible.location[0], [
           token('/* Colors\n * ------\n */', 'Comment'),
@@ -84,7 +85,7 @@ describe('Comment', () => {
         ]]
       ]),
       after: new Map<number, IToken[]>()
-    };
+    });
 
     expect(rules([visible]).toString({ context, trivia })).toBe(`/* Colors
  * ------
@@ -110,14 +111,14 @@ describe('Comment', () => {
       token('/* results in void */', 'Comment'),
       token('\n\n  ')
     ];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([
         [visible.location[0], hiddenPost]
       ]),
       after: new Map([
         [hidden.location[3], hiddenPost]
       ])
-    };
+    });
 
     expect(rules([container]).toString({ context, trivia })).toBe(`.a {
   /* results in void */
@@ -135,14 +136,14 @@ describe('Comment', () => {
       selector: sel([el('.a')]),
       rules: rules([empty, visible])
     });
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([
         [empty.location[0], [
           token('/**/', 'Comment')
         ]]
       ]),
       after: new Map<number, IToken[]>()
-    };
+    });
     context.opts.trivia = trivia;
 
     expect(rules([container]).toString({ context })).toBe(`.a {
@@ -165,12 +166,12 @@ describe('Comment', () => {
       token('/*comment on last line*/', 'Comment'),
       token('\n')
     ];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([[Infinity, tokens]]),
       after: new Map([
         [visible.location[3], tokens]
       ])
-    };
+    });
 
     expect(rules([visible]).toString({ context, trivia })).toBe(`.a {
   color: red;

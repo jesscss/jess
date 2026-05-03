@@ -11,6 +11,7 @@ import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
 import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -141,7 +142,7 @@ describe('AtRule', () => {
     prelude._location = [32, 1, 33, 36, 1, 37];
     const leading = [token(' '), token('/* Safari */', 'BlockComment'), token(' ')];
     const trailing = [token(' '), token('/* and Chrome */', 'BlockComment'), token(' ')];
-    const trivia = {
+    const trivia = createTriviaMap({
       before: new Map([
         [prelude.location[0], leading],
         [55, trailing]
@@ -150,7 +151,7 @@ describe('AtRule', () => {
         [name.location[3], leading],
         [prelude.location[3], trailing]
       ])
-    } satisfies TriviaMap;
+    }) satisfies TriviaMap;
     const node = atrule({
       name,
       prelude,

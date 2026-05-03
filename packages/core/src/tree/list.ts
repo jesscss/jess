@@ -6,6 +6,16 @@ import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
 import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
 
+function captureListItem<T extends Node>(item: T, options: ReturnType<typeof getPrintOptions>): string {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'post';
+  try {
+    return options.writer!.capture(() => item.toString(options));
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
 export type ListOptions = {
   /**
    * Lists can be separated by comma, semi-colon,
@@ -39,7 +49,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return '';
     }
     let item = value[0]!;
-    let out = w.capture(() => item.toString(options));
+    let out = captureListItem(item, options);
     w.add(out.replace(LIST_ITEM_TRIM, ''), item);
     for (let i = 1; i < length; i++) {
       const prev = item;
@@ -50,7 +60,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       } else {
         w.add(`${sep} `);
       }
-      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
+      out = captureListItem(item, options).replace(LIST_ITEM_TRIM, '');
       w.add(out);
     }
     return w.getSince(mark);
