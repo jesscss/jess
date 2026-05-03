@@ -28,12 +28,10 @@ describe('Attribute Selector', () => {
 
       expect(rule1.toString()).toBe('[foo=bar]');
 
-      let quote = quoted('bar');
-      quote.options.preIntent = 'explicit_space';
       let rule2 = attr({
         name: 'FOO',
         op: '=',
-        value: quote
+        value: quoted('bar')
       });
 
       expect(rule2.toString()).toBe('[FOO="bar"]');

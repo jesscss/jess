@@ -36,12 +36,6 @@ describe('TriviaMap serialization', () => {
     expect(node.toString({ trivia })).toBe('test');
   });
 
-  it('does not use boundary intent as trivia storage', () => {
-    const node = new Any('test', { preIntent: 'explicit_space' });
-
-    expect(node.toString()).toBe('test');
-  });
-
   it('consumes a shared trailing lookup once when a parent boundary emits it', () => {
     const writer = new OutputWriter();
     const options = getPrintOptions({ writer });

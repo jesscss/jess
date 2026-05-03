@@ -7,7 +7,6 @@ import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
 import {
-  type BoundaryIntentOptions,
   type PrintOptions,
   getPrintOptions,
   prepareContextPrintState
@@ -38,19 +37,7 @@ type AllNodeOptions = {
    */
   // hoistToParent?: boolean
 
-  /**
-   * Serializer boundary hints for generated/API-created nodes that do not have
-   * a usable source offset for TriviaMap lookup.
-   *
-   * These are not trivia. Parsed whitespace and comments stay in the owning
-   * file context's TriviaMap and are emitted by looking up continuous trivia
-   * before/after a source offset, consuming that run once for the print pass.
-   * preIntent/postIntent only describe what spacing the serializer should infer
-   * when no TriviaMap trivia was emitted for that boundary.
-   */
   semi?: boolean;
-  preIntent?: BoundaryIntentOptions['preIntent'];
-  postIntent?: BoundaryIntentOptions['postIntent'];
 };
 
 /**
@@ -258,6 +245,7 @@ export abstract class Node<
   get requiredSemi(): boolean | undefined {
     return this._requiredSemi;
   }
+
   set requiredSemi(value: boolean | undefined) {
     this._requiredSemi = value;
   }
@@ -875,6 +863,44 @@ export abstract class Node<
   }
 
   /**
+   * Stop this node from reading file-owned trivia during serialization.
+   *
+   * Use this for copied values that are rendered in a new evaluated placement,
+   * such as function return values or mixin argument bindings. The source node
+   * still exists as `sourceNode`; this clears the copied source offsets/context
+   * so whitespace/comments from the original file boundary are not consumed in
+   * the new output position.
+   */
+  detachTrivia(deep?: boolean): this {
+    this._treeContext = undefined;
+    this._location = undefined;
+    if (deep) {
+      this._detachChildTrivia(this.value);
+    }
+    return this;
+  }
+
+  private _detachChildTrivia(value: unknown): void {
+    if (isArray(value)) {
+      for (const item of value) {
+        if (item instanceof Node) {
+          item.detachTrivia(true);
+        } else {
+          this._detachChildTrivia(item);
+        }
+      }
+    } else if (isPlainObject(value)) {
+      for (const k in value) {
+        if (Object.hasOwn(value, k)) {
+          this._detachChildTrivia((value as Record<string, unknown>)[k]);
+        }
+      }
+    } else if (value instanceof Node) {
+      value.detachTrivia(true);
+    }
+  }
+
+  /**
    * `preEval` takes the following steps, which are extended in subclasses:
    * 1. Clone the node (if the source node is wanted/needed)
    * 2. Set `preEvaluated` to true
@@ -1117,23 +1143,14 @@ export abstract class Node<
     if (trivia && options.trivia !== trivia) {
       options.trivia = trivia;
     }
-    const intentPre = this._options?.preIntent;
     const suppressPre = options.suppressBoundaryTrivia === 'pre'
       || options.suppressBoundaryTrivia === 'both';
-    const pre = !suppressPre && intentPre === undefined && trivia
+    const pre = !suppressPre && trivia
       ? w.capture(() => emitTrivia(trivia, 'before', this.location[0], options))
       : '';
-    const preIntent = !pre ? intentPre : undefined;
     const bodyStr = w.capture(() => this.toTrimmedString(options));
-    const postIntent = this._options?.postIntent;
 
     let result = pre + bodyStr;
-    if (preIntent) {
-      w.signalBoundaryIntent('pre', preIntent);
-    }
-    if (postIntent) {
-      w.signalBoundaryIntent('post', postIntent);
-    }
     // Trim output if flag is set
     w.add(result, this);
     return w.getSince(mark);

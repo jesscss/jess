@@ -15,18 +15,16 @@ describe('extract()', () => {
     expect(() => extract(list, new Dimension({ number: 2, unit: '' }))).toThrow('out of range');
   });
 
-  it('normalizes spacing when extracted item is a sequence', () => {
+  it('returns sequence items without mutating spacing metadata', () => {
     const seq = new Sequence([new Any('a'), new Any('b')]);
-    seq.value[0]!.options.preIntent = 'explicit_space';
-    seq.value[1]!.options.preIntent = 'explicit_none';
     const list = new List([seq, new Any('c')]);
 
     const result = extract(list, new Dimension({ number: 1, unit: '' }));
 
     expect(result).toBeInstanceOf(Sequence);
-    const out = result as Sequence;
-    expect(out.value[0]!.options.preIntent).toBe('explicit_none');
-    expect(out.value[1]!.options.preIntent).toBe('explicit_space');
+    expect(result).not.toBe(seq);
+    expect((result as Sequence).value[0]).not.toBe(seq.value[0]);
+    expect(String(result)).toBe('a b');
   });
 
   it('returns the single item for non-finite index when length is one', () => {

@@ -3348,49 +3348,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    function normalizeBoundLeadingItemWhitespace(node: Node): void {
-      if (!isNode(node, N.List | N.Sequence)) {
-        return;
-      }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const items = node.value as Node[];
-      if (items.length > 0) {
-        items[0]!.options.preIntent = 'explicit_none';
-      }
-      for (const item of items) {
-        if (isNode(item, N.List | N.Sequence)) {
-          normalizeBoundLeadingItemWhitespace(item as Node);
-        }
-      }
-    }
-    function needsBoundLeadingItemWhitespaceNormalization(node: Node): boolean {
-      if (!isNode(node, N.List | N.Sequence)) {
-        return false;
-      }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const items = node.value as Node[];
-      if (items.length > 0 && items[0]!.options.preIntent !== 'explicit_none') {
-        return true;
-      }
-      for (const item of items) {
-        if (needsBoundLeadingItemWhitespaceNormalization(item)) {
-          return true;
-        }
-      }
-      return false;
-    }
     function cloneBoundValue(value: Node): Node {
-      if (!isNode(value, N.List | N.Sequence)) {
-        value.frozen = true;
-        return value;
-      }
-      if (!needsBoundLeadingItemWhitespaceNormalization(value)) {
-        value.frozen = true;
-        return value;
-      }
-      const boundValue = value.copy(true, freezeChildren);
+      const boundValue = value.copy(true, freezeChildren).detachTrivia(true);
       boundValue.frozen = true;
-      normalizeBoundLeadingItemWhitespace(boundValue);
       return boundValue;
     }
     function createDerivedRulesSurface(

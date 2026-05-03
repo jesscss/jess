@@ -1,4 +1,4 @@
-import { defineFunction, Node, List, Sequence, Dimension, toNumber, coerceListItems } from '@jesscss/core';
+import { defineFunction, Node, List, Dimension, toNumber, coerceListItems } from '@jesscss/core';
 
 const extract = defineFunction(
   'extract',
@@ -16,14 +16,7 @@ const extract = defineFunction(
       throw new RangeError(`extract() index ${raw} out of range for length ${items.length}`);
     }
     const out = items[normalized - 1]!;
-    if (out instanceof Sequence) {
-      const normalizedOut = out.copy(true) as Sequence;
-      normalizedOut.value.forEach((node: Node, index: number) => {
-        node.options.preIntent = index === 0 ? 'explicit_none' : 'explicit_space';
-      });
-      return normalizedOut;
-    }
-    return out;
+    return out.copy(true).detachTrivia(true);
   },
   {
     params: [{

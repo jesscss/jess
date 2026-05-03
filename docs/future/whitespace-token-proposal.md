@@ -11,10 +11,15 @@ TriviaMap model:
 - the same run may be indexed from both neighboring offsets, but it is consumed once
 - standalone rule-body block comments are direct `Comment` children again; inline/value
   comments remain trivia
+- serializer boundary-intent hints (`preIntent` / `postIntent`,
+  `signalBoundaryIntent`, `captureWithMeta`) have been removed from active code;
+  spacing is decided by source offsets/TriviaMap evidence or by the owning
+  container's default formatting rule
 
 Older text below may still describe `preSkippedTokenMap` / `postSkippedTokenMap`
-as separate parser concepts. Treat that as historical wording; active parser
-code should use the single TriviaMap lookup shape.
+as separate parser concepts, or boundary-intent as future work. Treat that as
+historical wording; active parser code should use the single TriviaMap lookup
+shape, and active serializers should not add per-node spacing intent metadata.
 
 ## Constraint
 
@@ -238,7 +243,7 @@ The `trivia` field is set once at the top-level `render()` / `toString()` call a
 | `pre` / `post` properties | `node-base.ts:242-243` | 2 props on **every node** |
 | `usedSkippedTokens` / `usedSkippedTokensLog` | `cssRecursiveParser.ts` | 1 Set + 1 Array |
 | `stripPrePost()` method | `node-base.ts:1312-1325` | 1 |
-| `getRulesWithComments()` pre/post extraction | `cssRecursiveParser.ts:523-545` | 1 |
+| `getRulesWithComments()` pre/post extraction | replaced by direct rule-body `Comment` children plus trivia lookup | 1 |
 | `adoptCallWhitespace` | `call.ts:311-314` | 1 |
 | `_normalizeFallbackArgSpacing` | `call.ts:177-189` | 1 |
 | `signalBoundaryIntent` | `print.ts` Writer method | 1 |

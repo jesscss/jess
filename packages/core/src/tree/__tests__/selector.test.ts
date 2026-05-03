@@ -144,12 +144,9 @@ describe('Selector', () => {
         co('>'),
         el('#bar')
       ]);
-      let co2 = co('>');
-      co2.options.preIntent = 'explicit_space';
-      co2.options.postIntent = 'explicit_space';
       const sel2 = sel([
         el('.foo'),
-        co2,
+        co('>'),
         el('#bar')
       ]);
       expect(sel1.compare(sel2)).toBe(0);

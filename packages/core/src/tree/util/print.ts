@@ -81,35 +81,10 @@ export interface OutputWriter {
   addSpacer(text: string): void;
   mark(): number;
   getSince(mark: number): string;
-  captureWithMeta(fn: () => void): CapturedOutput;
-  signalBoundaryIntent(side: 'pre' | 'post', intent: BoundaryIntent): void;
   toString(): string;
   toSourceMapV3(): any;
   getSegments(): SourceSegment[];
 }
-
-export type BoundaryIntent = 'implicit' | 'explicit_none' | 'explicit_space';
-
-export type BoundaryIntentOptions = {
-  /**
-   * Boundary hints for generated/API-created nodes that have no usable source
-   * offset for TriviaMap lookup.
-   *
-   * Parsed whitespace/comments are file-context trivia and are emitted by
-   * lookup direction at an offset, then consumed once by the print state.
-   * These hints only tell a parent serializer whether a generated boundary
-   * wants implicit spacing, no spacing, or one explicit space when no trivia
-   * run was emitted.
-   */
-  preIntent?: BoundaryIntent;
-  postIntent?: BoundaryIntent;
-};
-
-export type CapturedOutput = {
-  text: string;
-  leadingIntent: BoundaryIntent;
-  trailingIntent: BoundaryIntent;
-};
 
 export type SourceSegment = {
   genLine: number;     // 0-based
@@ -276,8 +251,6 @@ export class OutputWriter implements OutputWriter {
   private _column = 0;
   private _segments: SourceSegment[] = [];
   private _positions: Array<{ line: number; column: number; segments: number; length: number }> = [];
-  private _boundarySignals: Array<{ side: 'pre' | 'post'; intent: BoundaryIntent; offset: number }> = [];
-  private _signalPositions: number[] = [];
   /** Diagnostic: remember the origin that last wrote a trailing newline */
   private _lastNewlineOrigin: unknown = undefined;
   /** Store segments from the most recent capture for merging when content is added back */
@@ -346,7 +319,6 @@ export class OutputWriter implements OutputWriter {
     if (i === -1) {
       this._column += text.length;
       this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
-      this._signalPositions.push(this._boundarySignals.length);
       // Clear captured segments if we added content without origin (normal add, not merging captured content)
       if (!originParam) {
         this._capturedSegments = null;
@@ -366,7 +338,6 @@ export class OutputWriter implements OutputWriter {
     }
     this._column = text.length - (i + 1);
     this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
-    this._signalPositions.push(this._boundarySignals.length);
     // Clear captured segments if we added content without origin
     if (!originParam) {
       this._capturedSegments = null;
@@ -412,9 +383,6 @@ export class OutputWriter implements OutputWriter {
       this._length = 0;
     }
     this._positions.length = mark;
-    const signalCount = this._signalPositions[mark - 1] ?? 0;
-    this._boundarySignals.length = signalCount;
-    this._signalPositions.length = mark;
   }
 
   /** Capture output from a function without committing to the main buffer */
@@ -429,41 +397,6 @@ export class OutputWriter implements OutputWriter {
     // Store captured segments for potential merging when content is added back
     this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
     return s;
-  }
-
-  captureWithMeta(fn: () => void): CapturedOutput {
-    const m = this.mark();
-    const segmentsBefore = this._segments.length;
-    const startLen = this._length;
-    const signalStart = this._boundarySignals.length;
-    fn();
-    const text = this.getSince(m);
-    const endLen = this._length;
-    const capturedSignals = this._boundarySignals.slice(signalStart);
-    const segmentsCreated = this._segments.slice(segmentsBefore);
-    this.restore(m);
-    this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
-
-    let leadingIntent: BoundaryIntent = 'implicit';
-    let trailingIntent: BoundaryIntent = 'implicit';
-    for (const signal of capturedSignals) {
-      if (signal.side === 'pre' && signal.offset === startLen) {
-        leadingIntent = signal.intent;
-        break;
-      }
-    }
-    for (let i = capturedSignals.length - 1; i >= 0; i--) {
-      const signal = capturedSignals[i]!;
-      if (signal.side === 'post' && signal.offset === endLen) {
-        trailingIntent = signal.intent;
-        break;
-      }
-    }
-    return { text, leadingIntent, trailingIntent };
-  }
-
-  signalBoundaryIntent(side: 'pre' | 'post', intent: BoundaryIntent): void {
-    this._boundarySignals.push({ side, intent, offset: this._length });
   }
 
   toString(): string {

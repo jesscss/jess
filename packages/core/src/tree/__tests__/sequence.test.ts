@@ -1,6 +1,6 @@
 import { any, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import type { IToken } from 'chevrotain';
+import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 
@@ -77,16 +77,6 @@ describe('Sequence', () => {
     expect(`${rule}`).toBe('10 20 30');
   });
 
-  it('should respect explicit zero-space boundary markers', () => {
-    const first = num(10);
-    const second = num(20);
-    const third = num(30);
-    second.options.preIntent = 'explicit_none';
-    const rule = seq([first, second, third]);
-    expect(rule.toTrimmedString()).toBe('1020 30');
-    expect(`${rule}`).toBe('1020 30');
-  });
-
   it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {
     const trivia = createTriviaMap({
       before: new Map(),
@@ -103,10 +93,14 @@ describe('Sequence', () => {
   });
 
   it('emits consumed trivia map whitespace between source-backed sequence nodes', () => {
+    const WS = createToken({ name: 'WS', pattern: / +/ });
     const whitespace = [{
       image: '  ',
-      tokenType: { name: 'WS' }
-    }] as IToken[];
+      startOffset: 2,
+      endOffset: 2,
+      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenType: WS
+    }] satisfies IToken[];
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
@@ -120,5 +114,4 @@ describe('Sequence', () => {
       trivia
     })).toBe('10  20');
   });
-
 });

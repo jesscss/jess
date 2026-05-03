@@ -439,23 +439,6 @@ export class Call extends Node<CallValue, CallOptions> {
           ? String(name.value.key)
           : String(n.valueOf());
         newCall.value.args = await evalArgNodes(args);
-        newCall.value.args?.value.forEach((arg, argIndex) => {
-          // Normalize fallback-call arg spacing to Less-style call serialization.
-          arg.options.preIntent = argIndex === 0 ? 'explicit_none' : 'explicit_space';
-          if (isNode(arg, N.Sequence)) {
-            arg.value.forEach((child, childIndex) => {
-              child.options.preIntent = childIndex === 0 ? 'explicit_none' : 'explicit_space';
-            });
-          } else if (isNode(arg, N.List)) {
-            arg.value.forEach((child) => {
-              if (isNode(child, N.Sequence)) {
-                child.value.forEach((nested, nestedIndex) => {
-                  nested.options.preIntent = nestedIndex === 0 ? 'explicit_none' : 'explicit_space';
-                });
-              }
-            });
-          }
-        });
         return adoptCallWhitespace(newCall);
       } finally {
         context.caller = originalCaller;

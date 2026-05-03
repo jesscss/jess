@@ -60,10 +60,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return '';
     }
 
-    // Serialize first node with toString() to preserve comments
-    const firstCaptured = w.captureWithMeta(() => value[0]!.toString(options));
-    w.add(firstCaptured.text);
-    let prevTrailingIntent = firstCaptured.trailingIntent;
+    // Serialize first node with toString() to preserve comments.
+    w.add(w.capture(() => value[0]!.toString(options)));
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
@@ -74,14 +72,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const prevEndsWithSpace = writtenSoFar.endsWith(' ');
       w.restore(currentMark);
 
-      // This captures the serialized output including trivia and explicit boundary intents.
-      const currentCaptured = w.captureWithMeta(() => node.toString(options));
-      const currentNodeOut = currentCaptured.text;
+      const currentNodeOut = w.capture(() => node.toString(options));
       const currentStartsWithSpace = currentNodeOut.startsWith(' ');
-      const hasExplicitNoSpaceBoundary = (
-        prevTrailingIntent === 'explicit_none'
-        || currentCaptured.leadingIntent === 'explicit_none'
-      );
       const sourceTrivia = (
         !options.context
         && options.trivia
@@ -100,14 +92,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       if (
         !prevEndsWithSpace
         && !currentStartsWithSpace
-        && !hasExplicitNoSpaceBoundary
         && !hasTrivia
         && !noSep
       ) {
         w.add(' ');
       }
       w.add(currentNodeOut);
-      prevTrailingIntent = currentCaptured.trailingIntent;
     }
 
     return w.getSince(mark);
@@ -123,13 +113,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
       const values = b.value.map(v => v.clone(true));
-      if (values.length) {
-        values[0]!.options.preIntent = 'explicit_space';
-      }
       newSequence.value.push(...values);
     } else {
       b = b.clone(true);
-      b.options.preIntent = 'explicit_space';
       newSequence.value.push(b);
     }
     return newSequence;
@@ -212,8 +198,5 @@ export const spaced = (
   value: Node[],
   options?: SequenceOptions
 ) => {
-  for (let i = 1; i < value.length; i++) {
-    value[i]!.options.preIntent = 'explicit_space';
-  }
   return new Sequence(value, options);
 };

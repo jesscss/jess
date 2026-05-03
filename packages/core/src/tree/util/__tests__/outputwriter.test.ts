@@ -96,32 +96,6 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('line1\n');
       expect(captured).toBe('line2\nline3\n');
     });
-
-    it('captureWithMeta defaults to implicit boundary intent', () => {
-      const w = new OutputWriter();
-      const captured = w.captureWithMeta(() => {
-        w.add('abc');
-      });
-      expect(captured).toEqual({
-        text: 'abc',
-        leadingIntent: 'implicit',
-        trailingIntent: 'implicit'
-      });
-    });
-
-    it('captureWithMeta preserves explicit boundary intent signals', () => {
-      const w = new OutputWriter();
-      const captured = w.captureWithMeta(() => {
-        w.signalBoundaryIntent('pre', 'explicit_none');
-        w.add('abc');
-        w.signalBoundaryIntent('post', 'explicit_none');
-      });
-      expect(captured).toEqual({
-        text: 'abc',
-        leadingIntent: 'explicit_none',
-        trailingIntent: 'explicit_none'
-      });
-    });
   });
 
   describe('mark and restore', () => {
