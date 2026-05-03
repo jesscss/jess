@@ -92,6 +92,20 @@ describe('Sequence', () => {
     })).toBe('1020');
   });
 
+  it('uses trivia map source boundaries while rendering through context', () => {
+    const trivia = createTriviaMap({
+      before: new Map(),
+      after: new Map()
+    }) satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
+    const rule = seq([first, second]);
+    context.opts.trivia = trivia;
+
+    expect(rule.render(context, { trivia })).toBe('1020');
+  });
+
   it('emits consumed trivia map whitespace between source-backed sequence nodes', () => {
     const WS = createToken({ name: 'WS', pattern: / +/ });
     const whitespace = [{
@@ -113,5 +127,27 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString({
       trivia
     })).toBe('10  20');
+  });
+
+  it('emits source trivia between sequence nodes while rendering through context', () => {
+    const WS = createToken({ name: 'WS', pattern: / +/ });
+    const whitespace = [{
+      image: '  ',
+      startOffset: 2,
+      endOffset: 2,
+      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenType: WS
+    }] satisfies IToken[];
+    const trivia = createTriviaMap({
+      before: new Map([[3, whitespace]]),
+      after: new Map([[1, whitespace]])
+    }) satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const rule = seq([first, second]);
+    context.opts.trivia = trivia;
+
+    expect(rule.render(context, { trivia })).toBe('10  20');
   });
 });

@@ -75,8 +75,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const currentNodeOut = w.capture(() => node.toString(options));
       const currentStartsWithSpace = currentNodeOut.startsWith(' ');
       const sourceTrivia = (
-        !options.context
-        && options.trivia
+        options.trivia
         && prev.treeContext?.opts?.trivia === options.trivia
         && node.treeContext?.opts?.trivia === options.trivia
       );
