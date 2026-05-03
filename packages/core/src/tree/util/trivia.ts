@@ -62,6 +62,14 @@ function treeTrivia(node: Node): TriviaMap | undefined {
   return isTriviaMap(trivia) ? trivia : undefined;
 }
 
+export function isLineCommentTriviaToken(token: IToken): boolean {
+  return token.tokenType.name === 'LineComment';
+}
+
+export function isBlockCommentTriviaToken(token: IToken): boolean {
+  return token.tokenType.name === 'Comment' || token.tokenType.name === 'BlockComment';
+}
+
 /**
  * Trivia is file-context owned whitespace/comments between source offsets.
  * A serializer may look up the continuous run before or after a given offset,
@@ -78,7 +86,7 @@ export function getPrintableTriviaTokens(
   if (!options?.context) {
     return tokens;
   }
-  const printable = tokens.filter(token => !token.image.startsWith('//'));
+  const printable = tokens.filter(token => !isLineCommentTriviaToken(token));
   return printable.length > 0 ? printable : undefined;
 }
 

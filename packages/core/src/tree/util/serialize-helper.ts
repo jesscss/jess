@@ -22,7 +22,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { consumeTrivia, emitTriviaTokens, getPrintableTriviaTokens } from './trivia.js';
+import { consumeTrivia, emitTriviaTokens, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
 
 type TriviaSide = 'before' | 'after';
 
@@ -101,7 +101,7 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
   if (!tokens) {
     return false;
   }
-  return tokens.some(token => token.image.trimStart().startsWith('/*'));
+  return tokens.some(isBlockCommentTriviaToken);
 }
 
 function getLeadingSelectorComment(node: Node): string | undefined {
