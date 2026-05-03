@@ -17,7 +17,11 @@ describe('Nil', () => {
   });
 
   it('renders nil values through render(context) as empty output', () => {
-    expect(nil().render(context)).toBe('');
+    const node = nil();
+
+    expect(node.render(context)).toBe('');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
   });
 
   it('resolves nil values without touching render state', async () => {

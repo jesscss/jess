@@ -15,8 +15,15 @@ describe('Bool', () => {
   });
 
   it('renders bool values through render(context)', () => {
-    expect(bool(true).render(context)).toBe('true');
-    expect(bool(false).render(context)).toBe('false');
+    const truthy = bool(true);
+    const falsy = bool(false);
+
+    expect(truthy.render(context)).toBe('true');
+    expect(falsy.render(context)).toBe('false');
+    expect(truthy.evaluated).toBe(false);
+    expect(truthy.preEvaluated).toBe(false);
+    expect(falsy.evaluated).toBe(false);
+    expect(falsy.preEvaluated).toBe(false);
   });
 
   it('resolves bool values without touching render state', async () => {

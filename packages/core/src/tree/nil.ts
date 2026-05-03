@@ -11,6 +11,7 @@ import {
   type NodeOptions
 } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -48,6 +49,11 @@ export class Nil extends Node<''> {
   }
 
   override toString() {
+    return '';
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    getPrintOptions({ ...options, context });
     return '';
   }
 }

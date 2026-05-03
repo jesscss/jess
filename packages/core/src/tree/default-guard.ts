@@ -19,5 +19,13 @@ export class DefaultGuard extends Node<string> {
   override evalNode(context: Context): Bool {
     return new Bool(Boolean(context.isDefault));
   }
+
+  override render(context: Context, options?: PrintOptions): string {
+    options = getPrintOptions({ ...options, context });
+    const w = options.writer!;
+    const mark = w.mark();
+    w.add(context.isDefault ? 'true' : 'false', this);
+    return w.getSince(mark);
+  }
 }
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

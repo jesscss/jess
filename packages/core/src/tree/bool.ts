@@ -29,5 +29,9 @@ export class Bool extends Node<boolean> {
     w.add(this.value ? 'true' : 'false', this);
     return w.getSince(mark);
   }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  }
 }
 export const bool = defineType(Bool, 'Bool');

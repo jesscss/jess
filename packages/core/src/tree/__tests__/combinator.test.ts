@@ -15,8 +15,15 @@ describe('Combinator', () => {
   });
 
   it('renders combinators through render(context)', () => {
-    expect(co('>').render(context)).toBe('>');
-    expect(co('+').render(context)).toBe('+');
+    const child = co('>');
+    const adjacent = co('+');
+
+    expect(child.render(context)).toBe('>');
+    expect(adjacent.render(context)).toBe('+');
+    expect(child.evaluated).toBe(false);
+    expect(child.preEvaluated).toBe(false);
+    expect(adjacent.evaluated).toBe(false);
+    expect(adjacent.preEvaluated).toBe(false);
   });
 
   it('resolves combinators without touching render state', async () => {

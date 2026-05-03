@@ -15,8 +15,15 @@ describe('Rest', () => {
   });
 
   it('renders rest values through render(context)', () => {
-    expect(rest('items').render(context)).toBe('...$$items');
-    expect(rest(any('items')).render(context)).toBe('...$items');
+    const named = rest('items');
+    const nodeNamed = rest(any('items'));
+
+    expect(named.render(context)).toBe('...$$items');
+    expect(nodeNamed.render(context)).toBe('...$items');
+    expect(named.evaluated).toBe(false);
+    expect(named.preEvaluated).toBe(false);
+    expect(nodeNamed.evaluated).toBe(false);
+    expect(nodeNamed.preEvaluated).toBe(false);
   });
 
   it('resolves rest values without touching render state', async () => {

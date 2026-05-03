@@ -1,4 +1,5 @@
 import { defineType, Node } from './node.js';
+import type { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -26,6 +27,10 @@ export class Rest extends Node<Node | string | undefined> {
     w.add('...$');
     w.add(this.name);
     return w.getSince(mark);
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
 }
 

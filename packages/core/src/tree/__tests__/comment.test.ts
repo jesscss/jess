@@ -27,7 +27,11 @@ describe('Comment', () => {
   });
 
   it('renders visible block comments through render(context)', () => {
-    expect(comment('/* keep me */').render(context)).toBe('/* keep me */');
+    const node = comment('/* keep me */');
+
+    expect(node.render(context)).toBe('/* keep me */');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
   });
 
   it('preserves printable block trivia before invisible nodes', () => {

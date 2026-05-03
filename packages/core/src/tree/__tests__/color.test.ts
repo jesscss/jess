@@ -232,6 +232,15 @@ describe('Color Node', () => {
       expect(color.toTrimmedString()).toBe('rgb(255, 0, 0)');
     });
 
+    it('should serialize RGB colors with default alpha correctly', () => {
+      const color = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0]
+      });
+
+      expect(color.toTrimmedString()).toBe('rgb(255, 0, 0)');
+    });
+
     it('should serialize RGBA colors correctly', () => {
       const color = new Color({
         format: ColorFormat.RGB,
@@ -278,6 +287,10 @@ describe('Color Node', () => {
 
       expect(rgbColor.render(new Context())).toBe('rgb(255, 0, 0)');
       expect(hexColor.render(new Context())).toBe('#ff0000');
+      expect(rgbColor.evaluated).toBe(false);
+      expect(rgbColor.preEvaluated).toBe(false);
+      expect(hexColor.evaluated).toBe(false);
+      expect(hexColor.preEvaluated).toBe(false);
     });
 
     it('resolves colors without touching render state', async () => {

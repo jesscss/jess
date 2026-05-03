@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
 import { defineType, F_STATIC } from './node.js';
 import { Selector } from './selector.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 
@@ -12,6 +13,10 @@ export class Combinator extends Selector<Combinators> {
   constructor(...args: ConstructorParameters<typeof Selector<Combinators>>) {
     super(...args);
     this.addFlag(F_STATIC);
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
 
   /** @todo move to visitor */

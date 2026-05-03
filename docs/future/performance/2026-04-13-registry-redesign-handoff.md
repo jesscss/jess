@@ -367,6 +367,14 @@ families:
     AST serializer, while `toTrimmedString()` becomes a compatibility shim
     around authored trimmed-syntax helpers where possible.
   - Keep this work visible in Track 1 instead of burying it under Track 5.
+  Current first slice:
+  - Static leaf/value nodes (`Any`/`Keyword`, `Bool`, `Nil`,
+    `Dimension`/`Num`, `Color`, `Combinator`, `Rest`, `Comment`, and
+    `DefaultGuard`) now render directly through `render(context)` without
+    marking source nodes `preEvaluated` or `evaluated`.
+  - `DefaultGuard` is context-dependent, so `render(context)` writes the
+    current `context.isDefault` boolean text directly instead of evaluating the
+    guard node into a retained `Bool`.
 
 - [ ] Slice 13g — Migrate materialization boundaries and expression nodes
   Goal:

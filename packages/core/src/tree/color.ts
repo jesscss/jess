@@ -22,12 +22,25 @@ function clamp(v: number, max: number) {
   return Math.min(Math.max(v, 0), max);
 }
 
+function isChannelTuple(value: unknown): value is ChannelTuple {
+  return Array.isArray(value)
+    && value.length >= 2
+    && typeof value[0] === 'number'
+    && typeof value[1] === 'string';
+}
+
+function rgbaValues(values: ColorValues): [number, number, number, number] {
+  const [r = 0, g = 0, b = 0, a = 1] = values;
+  return [r, g, b, a];
+}
+
 function parseHexString(hex: string): { rgb: [number, number, number]; alpha: number } {
   let rgba: number[] = [];
   let hexValue = hex.slice(1);
 
   if (hexValue.length >= 6) {
-    (hexValue.match(/.{2}/g) as RegExpMatchArray).forEach((c, i) => {
+    const chunks = hexValue.match(/.{2}/g) ?? [];
+    chunks.forEach((c, i) => {
       if (i < 3) {
         rgba.push(parseInt(c, 16));
       } else {
@@ -45,7 +58,7 @@ function parseHexString(hex: string): { rgb: [number, number, number]; alpha: nu
   }
 
   return {
-    rgb: [rgba[0]!, rgba[1]!, rgba[2]!] as [number, number, number],
+    rgb: [rgba[0] ?? 0, rgba[1] ?? 0, rgba[2] ?? 0],
     alpha: rgba.length === 3 ? 1 : rgba[3]!
   };
 }
@@ -86,7 +99,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     if (isArray(value)) {
       // Handle color array [r, g, b, a]
-      const [r, g, b, a] = value as [number, number, number, number];
+      const [r, g, b, a] = rgbaValues(value);
       colorData = {
         rgb: [r, g, b],
         alpha: a
@@ -130,11 +143,14 @@ export class Color extends Node<ColorData, ColorOptions> {
       const { number, unit } = value.value;
       return unit ? [number, unit] : number;
     }
-    return value as ChannelValue;
+    if (isChannelTuple(value)) {
+      return value;
+    }
+    throw new TypeError('Invalid color channel value');
   }
 
   private hueToDegrees(value: ChannelValue): number {
-    value = this.normalizeChannelValue(value) as ChannelValue;
+    value = this.normalizeChannelValue(value);
     if (typeof value === 'number') {
       return value;
     }
@@ -152,7 +168,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   private percentToUnit(value: ChannelValue): number {
-    value = this.normalizeChannelValue(value) as ChannelValue;
+    value = this.normalizeChannelValue(value);
     if (typeof value === 'number') {
       return value;
     }
@@ -161,7 +177,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   private rgbChannelToNumber(value: ChannelValue): number {
-    value = this.normalizeChannelValue(value) as ChannelValue;
+    value = this.normalizeChannelValue(value);
     if (typeof value === 'number') {
       return value;
     }
@@ -170,7 +186,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   private alphaToNumber(value: AlphaValue): number {
-    value = this.normalizeChannelValue(value) as AlphaValue;
+    value = this.normalizeChannelValue(value);
     if (typeof value === 'number') {
       return value;
     }
@@ -183,7 +199,10 @@ export class Color extends Node<ColorData, ColorOptions> {
     if (compress && this.alpha === 0) {
       return '0';
     }
-    const normalizedAlphaSource = this.normalizeChannelValue(alphaSource) as AlphaValue;
+    if (alphaSource === undefined) {
+      return `${this.alpha}`;
+    }
+    const normalizedAlphaSource = this.normalizeChannelValue(alphaSource);
     if (Array.isArray(normalizedAlphaSource)) {
       const [alphaValue, alphaUnit] = normalizedAlphaSource;
       return `${round(alphaValue, 8)}${alphaUnit}`;
@@ -197,8 +216,8 @@ export class Color extends Node<ColorData, ColorOptions> {
       const [r, g, b] = this.rgb;
       return [`${r}`, `${g}`, `${b}`];
     }
-    return rgbSource.map((channel, idx) => {
-      channel = this.normalizeChannelValue(channel) as ChannelValue;
+    const serializeChannel = (channel: ChannelValue, idx: number) => {
+      channel = this.normalizeChannelValue(channel);
       if (typeof channel === 'number') {
         return `${this.rgb[idx]!}`;
       }
@@ -207,7 +226,12 @@ export class Color extends Node<ColorData, ColorOptions> {
         return `${round(clamp(number, 100), 8)}%`;
       }
       return `${this.rgb[idx]!}`;
-    }) as [string, string, string];
+    };
+    return [
+      serializeChannel(rgbSource[0], 0),
+      serializeChannel(rgbSource[1], 1),
+      serializeChannel(rgbSource[2], 2)
+    ];
   }
 
   /**
@@ -278,7 +302,7 @@ export class Color extends Node<ColorData, ColorOptions> {
       }
 
       // Convert from 0-1 to 0-255 range
-      const rgb = [r * 255, g * 255, b * 255] as [number, number, number];
+      const rgb: [number, number, number] = [r * 255, g * 255, b * 255];
       this.value.rgb = rgb;
       // Clear HSL - computed RGB might not match existing HSL
       this.value.hsl = undefined;
@@ -367,7 +391,7 @@ export class Color extends Node<ColorData, ColorOptions> {
       h! /= 6;
     }
 
-    const hsl = [h! * 360, s, l] as [number, number, number];
+    const hsl: [number, number, number] = [h! * 360, s, l];
     this.value.hsl = hsl;
     // Clear RGB - computed HSL might not match existing RGB
     this.value.rgb = undefined;
@@ -411,7 +435,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   }
 
   set rgba(rgba: ColorValues) {
-    const [r, g, b, a] = rgba as [number, number, number, number];
+    const [r, g, b, a] = rgbaValues(rgba);
     this.value.rgb = [r, g, b];
     this.value.alpha = a;
     // Clear HSL since new RGB might not match the old HSL
@@ -537,6 +561,10 @@ export class Color extends Node<ColorData, ColorOptions> {
     return w.getSince(mark);
   }
 
+  override render(context: Context, options?: PrintOptions): string {
+    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  }
+
   override operate(b: Node, op: Operator, context?: Context | undefined): Color {
     let aRGB = this._rgb;
     let newColorValues: [number, number, number];
@@ -550,11 +578,19 @@ export class Color extends Node<ColorData, ColorOptions> {
         throw new TypeError(`Cannot convert "${b}" to a color`);
       }
       // Apply operation to each RGB component with the number
-      newColorValues = aRGB.map(a => calculate(a, op, bVal)) as [number, number, number];
+      newColorValues = [
+        calculate(aRGB[0], op, bVal),
+        calculate(aRGB[1], op, bVal),
+        calculate(aRGB[2], op, bVal)
+      ];
     } else if (b instanceof Color) {
       // Color-to-color operation
       let bRGB = b._rgb;
-      newColorValues = aRGB.map((a, i) => calculate(a, op, bRGB[i]!)) as [number, number, number];
+      newColorValues = [
+        calculate(aRGB[0], op, bRGB[0]),
+        calculate(aRGB[1], op, bRGB[1]),
+        calculate(aRGB[2], op, bRGB[2])
+      ];
       newAlpha = this._alpha * (1 - b._alpha) + b._alpha;
     } else {
       throw new TypeError(`Cannot operate on ${b.type}`);

@@ -9,8 +9,11 @@ describe('Any and Keyword', () => {
   it('renders Any values through render(context) and resolves without touching render state', async () => {
     const renderContext = new Context();
     const resolveContext = new Context();
+    const node = any('foo');
 
-    expect(any('foo').render(renderContext)).toBe('foo');
+    expect(node.render(renderContext)).toBe('foo');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
 
     const resolved = await any('foo').resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('foo');
@@ -24,8 +27,11 @@ describe('Any and Keyword', () => {
   it('renders Keyword values through render(context) and resolves without touching render state', async () => {
     const renderContext = new Context();
     const resolveContext = new Context();
+    const node = keyword('inherit');
 
-    expect(keyword('inherit').render(renderContext)).toBe('inherit');
+    expect(node.render(renderContext)).toBe('inherit');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
 
     const resolved = await keyword('inherit').resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('inherit');

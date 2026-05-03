@@ -22,6 +22,9 @@ export type DimensionValue = {
 };
 
 const { isArray } = Array;
+const LENGTH_UNITS: LengthUnit[] = ['m', 'cm', 'mm', 'in', 'px', 'pt', 'pc'];
+const DURATION_UNITS: DurationUnit[] = ['s', 'ms'];
+const ANGLE_UNITS: AngleUnit[] = ['rad', 'deg', 'grad', 'turn'];
 
 type LengthUnit = 'm' | 'cm' | 'mm' | 'in' | 'px' | 'pt' | 'pc';
 type DurationUnit = 's' | 'ms';
@@ -46,9 +49,9 @@ export class Dimension extends Node<DimensionValue> {
   get unitToGroup() {
     let unitToGroup = this._unitToGroup;
     if (!unitToGroup) {
-      const lengthEntries: UnitMapEntries = ['m', 'cm', 'mm', 'in', 'px', 'pt', 'pc'].map(unit => [unit as LengthUnit, ConversionGroup.Length]);
-      const durationEntries: UnitMapEntries = ['s', 'ms'].map(unit => [unit as DurationUnit, ConversionGroup.Duration]);
-      const angleEntries: UnitMapEntries = ['rad', 'deg', 'grad', 'turn'].map(unit => [unit as AngleUnit, ConversionGroup.Angle]);
+      const lengthEntries: UnitMapEntries = LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]);
+      const durationEntries: UnitMapEntries = DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]);
+      const angleEntries: UnitMapEntries = ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]);
       const entries = lengthEntries.concat(durationEntries).concat(angleEntries);
       this._unitToGroup = unitToGroup = new Map(entries);
     }
@@ -147,10 +150,11 @@ export class Dimension extends Node<DimensionValue> {
     }
 
     const group = conversions[bGroup];
-    // @ts-expect-error - set up proper indexing later
-    let atomicUnit = group[aUnit] as number;
-    // @ts-expect-error - set up proper indexing later
-    let targetUnit = group[bUnit] as number;
+    const atomicUnit = group[aUnit];
+    const targetUnit = group[bUnit];
+    if (atomicUnit === undefined || targetUnit === undefined) {
+      throw new TypeError('Incompatible units. Change the units or use the unit function');
+    }
 
     if (isPreserveMode && (op === '*' || op === '/')) {
       return new Dimension({
@@ -165,7 +169,7 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String((b as any).value ?? '').trim();
+      const text = String(b.value ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
@@ -233,10 +237,11 @@ export class Dimension extends Node<DimensionValue> {
         return undefined;
       }
       const group = conversions[bGroup];
-      // @ts-expect-error - set up proper indexing later
-      let atomicUnit = group[aUnit] as number;
-      // @ts-expect-error - set up proper indexing later
-      let targetUnit = group[bUnit] as number;
+      const atomicUnit = group[aUnit];
+      const targetUnit = group[bUnit];
+      if (atomicUnit === undefined || targetUnit === undefined) {
+        return undefined;
+      }
 
       bVal = bVal / (atomicUnit / targetUnit);
 
@@ -304,6 +309,10 @@ export class Dimension extends Node<DimensionValue> {
     return w.getSince(mark);
   }
 
+  override render(context: Context, options?: PrintOptions): string {
+    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  }
+
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add(this.toString(), this.location)
@@ -324,7 +333,7 @@ const enum ConversionGroup {
   Angle = 2
 }
 
-const conversions = {
+const conversions: Record<ConversionGroup, Partial<Record<ConversionUnit, number>>> = {
   [ConversionGroup.Length]: {
     m: 1,
     cm: 0.01,
@@ -333,17 +342,17 @@ const conversions = {
     px: 0.0254 / 96,
     pt: 0.0254 / 72,
     pc: 0.0254 / 72 * 12
-  } satisfies Record<LengthUnit, number>,
+  },
   [ConversionGroup.Duration]: {
     s: 1,
     ms: 0.001
-  } satisfies Record<DurationUnit, number>,
+  },
   [ConversionGroup.Angle]: {
     rad: 1 / (2 * Math.PI),
     deg: 1 / 360,
     grad: 1 / 400,
     turn: 1
-  } satisfies Record<AngleUnit, number>
+  }
 };
 
 defineType(Dimension, 'Dimension');

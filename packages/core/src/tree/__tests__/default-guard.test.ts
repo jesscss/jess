@@ -14,11 +14,18 @@ describe('DefaultGuard', () => {
   });
 
   it('renders default guard values through render(context)', () => {
+    const truthy = defaultguard('default');
+    const falsy = defaultguard('default');
+
     context.isDefault = true;
-    expect(defaultguard('default').render(context)).toBe('true');
+    expect(truthy.render(context)).toBe('true');
+    expect(truthy.evaluated).toBe(false);
+    expect(truthy.preEvaluated).toBe(false);
 
     context.isDefault = false;
-    expect(defaultguard('default').render(context)).toBe('false');
+    expect(falsy.render(context)).toBe('false');
+    expect(falsy.evaluated).toBe(false);
+    expect(falsy.preEvaluated).toBe(false);
   });
 
   it('resolves default guard values without touching render state', async () => {

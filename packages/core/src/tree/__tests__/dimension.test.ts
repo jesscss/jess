@@ -30,8 +30,15 @@ describe('Dimension', () => {
     });
 
     it('renders dimension values through render(context)', () => {
-      expect(dimension([10, 'px']).render(context)).toBe('10px');
-      expect(num(10).render(context)).toBe('10');
+      const sized = dimension([10, 'px']);
+      const unitless = num(10);
+
+      expect(sized.render(context)).toBe('10px');
+      expect(unitless.render(context)).toBe('10');
+      expect(sized.evaluated).toBe(false);
+      expect(sized.preEvaluated).toBe(false);
+      expect(unitless.evaluated).toBe(false);
+      expect(unitless.preEvaluated).toBe(false);
     });
 
     it('resolves dimensions without touching render state', async () => {
