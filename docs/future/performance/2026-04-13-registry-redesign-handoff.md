@@ -413,6 +413,9 @@ families:
     generic eval stamping, while source serializers remain canonical.
   - `List.resolve(context)` now bypasses generic eval stamping while preserving
     the existing child-eval traversal and list separator/trivia serialization.
+  - `Reference.resolve(context)` now delegates directly to reference lookup
+    evaluation, matching the existing invariant that a reference resolves to
+    another node and should not be retained as an evaluated source node.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

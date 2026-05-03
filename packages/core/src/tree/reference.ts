@@ -1861,6 +1861,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     return result as Node;
   }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
 }
 
 export const ref = defineType(Reference, 'Reference', 'ref');
