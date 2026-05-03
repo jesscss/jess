@@ -419,6 +419,9 @@ families:
   - `Log.resolve(context)` now runs the diagnostic eval body directly, so
     compile-time log directives can emit diagnostics and return `Nil` without
     retaining eval flags on the invisible source node.
+  - Definition-like values (`Collection` and `Func`) now resolve as their
+    canonical source nodes without falling through generic eval stamping; direct
+    variable parameter resolution coverage also asserts the no-stamp invariant.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

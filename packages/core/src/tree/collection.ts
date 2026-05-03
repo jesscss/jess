@@ -28,6 +28,10 @@ export class Collection extends Rules {
     return this;
   }
 
+  override resolve(context: Context): MaybePromise<this> {
+    return this.evalNode(context);
+  }
+
   override preEval(_context: Context): this | Promise<this> {
     if (this.preEvaluated) {
       return this;

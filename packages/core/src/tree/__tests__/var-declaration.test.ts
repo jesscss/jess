@@ -87,6 +87,8 @@ describe('Let', () => {
       const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('$tone');
+      expect(rule.evaluated).toBe(false);
+      expect(rule.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });

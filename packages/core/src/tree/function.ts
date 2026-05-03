@@ -66,6 +66,10 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return w.getSince(mark);
   }
 
+  override resolve(_context: Context): this {
+    return this;
+  }
+
   /**
    * Execute the function and return its looked-up value.
    *
