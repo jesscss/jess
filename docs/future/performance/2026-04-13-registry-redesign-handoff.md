@@ -393,6 +393,10 @@ families:
     plain `calc(...)` rendering now sets the same `context.calcFrames` math
     frame that eval-time `calc(...)` already sets before rendering operation
     args.
+  Current follow-up slice:
+  - `Call.resolve(context)` now delegates to the existing call evaluation body
+    directly, so resolving a CSS/function/mixin call no longer marks the call
+    source node `preEvaluated` / `evaluated` just to obtain the output value.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

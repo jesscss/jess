@@ -214,6 +214,10 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.renderPlainFunctionCall(resolved, context, prepared);
   }
 
+  override resolve(context: Context): Promise<Node> {
+    return this.evalNode(context);
+  }
+
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
     let important = new Any<'flag'>('!important', { role: 'flag' });

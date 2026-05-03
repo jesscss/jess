@@ -64,6 +64,8 @@ describe('Call', () => {
     });
 
     expect(rule.render(context)).toBe('rgb(100, 100, 100)');
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
   });
 
   it('resolves CSS calls without touching render state', async () => {
@@ -76,6 +78,8 @@ describe('Call', () => {
 
     expect(isNode(resolved, N.Call)).toBe(true);
     expect(resolved.toTrimmedString()).toBe('rgb(100, 100, 100)');
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
