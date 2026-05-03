@@ -42,6 +42,10 @@ export class Negative extends Node<Node> {
       }, { rethrow: true })
     );
   }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
 }
 
 export const negative = defineType(Negative, 'Negative');

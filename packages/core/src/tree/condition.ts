@@ -144,5 +144,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       }
     );
   }
+
+  override resolve(context: Context): MaybePromise<Bool> {
+    return this.evalNode(context);
+  }
 }
 export const condition = defineType(Condition, 'Condition');

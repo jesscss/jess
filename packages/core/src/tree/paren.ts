@@ -140,6 +140,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return this;
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add('(')
   //   this.value.toCSS(context, out)

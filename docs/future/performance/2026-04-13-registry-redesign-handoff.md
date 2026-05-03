@@ -383,6 +383,14 @@ families:
     `render(ctx)`, and stop retaining per-placement eval results on nodes.
   - This is the slice family that captures the `eval`/serialization merge for
     value-producing nodes.
+  Current first slice:
+  - Simple value wrappers (`Expression`, `Condition`, `Negative`, and `Paren`)
+    now resolve through their existing `evalNode(context)` logic without using
+    generic `Node.evalStatic(...)` to stamp the wrapper node `preEvaluated` /
+    `evaluated` during direct `render(context)` or `resolve(context)`.
+  - `Operation` is intentionally not in this slice yet: focused calc coverage
+    showed that operation rendering needs math-frame-aware handling before it
+    can bypass the generic eval path safely.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

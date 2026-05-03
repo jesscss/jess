@@ -24,9 +24,12 @@ describe('Expression', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = expr(ref({ key: 'value' }, { type: 'variable' })).render(context);
+    const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const rendered = renderedNode.render(context);
 
     expect(rendered).toBe('foo');
+    expect(renderedNode.evaluated).toBe(false);
+    expect(renderedNode.preEvaluated).toBe(false);
   });
 
   it('resolves expression values without touching render state', async () => {
@@ -40,9 +43,12 @@ describe('Expression', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await expr(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
+    const nodeToResolve = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const resolved = await nodeToResolve.resolve(context);
 
     expect(`${resolved}`).toBe('foo');
+    expect(nodeToResolve.evaluated).toBe(false);
+    expect(nodeToResolve.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

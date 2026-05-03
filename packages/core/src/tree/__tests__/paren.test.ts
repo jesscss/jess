@@ -31,9 +31,12 @@ describe('Paren', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = paren(ref({ key: 'value' }, { type: 'variable' })).render(context);
+    const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
+    const rendered = parenNode.render(context);
 
     expect(rendered).toBe('(foo)');
+    expect(parenNode.evaluated).toBe(false);
+    expect(parenNode.preEvaluated).toBe(false);
   });
 
   it('resolves paren values without touching render state', async () => {
@@ -47,9 +50,12 @@ describe('Paren', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await paren(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
+    const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
+    const resolved = await parenNode.resolve(context);
 
     expect(`${resolved}`).toBe('(foo)');
+    expect(parenNode.evaluated).toBe(false);
+    expect(parenNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

@@ -63,6 +63,8 @@ describe('Condition', () => {
       ]);
 
       expect(node.render(context)).toBe('false');
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
     });
 
     it('resolves conditions without touching render state', async () => {
@@ -75,6 +77,8 @@ describe('Condition', () => {
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('false');
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });
