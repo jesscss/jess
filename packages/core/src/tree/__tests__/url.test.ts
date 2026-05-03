@@ -37,9 +37,12 @@ describe('url', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = url(quoted(ref({ key: 'asset' }, { type: 'variable' }))).render(context);
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    const rendered = urlNode.render(context);
 
     expect(rendered).toBe('url("image.png")');
+    expect(urlNode.evaluated).toBe(false);
+    expect(urlNode.preEvaluated).toBe(false);
   });
 
   it('does not render pure source whitespace inside url syntax', () => {
@@ -71,9 +74,12 @@ describe('url', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await url(quoted(ref({ key: 'asset' }, { type: 'variable' }))).resolve(context);
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    const resolved = await urlNode.resolve(context);
 
     expect(`${resolved}`).toBe('url("image.png")');
+    expect(urlNode.evaluated).toBe(false);
+    expect(urlNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

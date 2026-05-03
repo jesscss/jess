@@ -1,9 +1,11 @@
 import { Node, defineType } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type Any } from './any.js';
+import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
  * e.g. url('foo.png')
@@ -43,6 +45,10 @@ export class Url extends Node<Quoted | Any> {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderUrlSyntax(options);
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 }
 

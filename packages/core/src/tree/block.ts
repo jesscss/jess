@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -26,6 +27,10 @@ export class Block extends Node<Node, BlockOptions> {
     super.toTrimmedString(options);
     w.add(end);
     return w.getSince(mark);
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 }
 

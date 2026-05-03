@@ -26,9 +26,12 @@ describe('QueryCondition', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]).render(context);
+    const queryNode = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]);
+    const rendered = queryNode.render(context);
 
     expect(rendered).toBe('screen and print');
+    expect(queryNode.evaluated).toBe(false);
+    expect(queryNode.preEvaluated).toBe(false);
   });
 
   it('resolves query-condition values without touching render state', async () => {
@@ -42,9 +45,12 @@ describe('QueryCondition', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]).resolve(context);
+    const queryNode = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]);
+    const resolved = await queryNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('screen and print');
+    expect(queryNode.evaluated).toBe(false);
+    expect(queryNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

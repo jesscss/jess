@@ -31,9 +31,12 @@ describe('Block', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = block(ref({ key: 'value' }, { type: 'variable' })).render(context);
+    const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const rendered = blockNode.render(context);
 
     expect(rendered).toBe('{foo}');
+    expect(blockNode.evaluated).toBe(false);
+    expect(blockNode.preEvaluated).toBe(false);
   });
 
   it('resolves block values without touching render state', async () => {
@@ -47,9 +50,12 @@ describe('Block', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await block(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
+    const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const resolved = await blockNode.resolve(context);
 
     expect(`${resolved}`).toBe('{foo}');
+    expect(blockNode.evaluated).toBe(false);
+    expect(blockNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

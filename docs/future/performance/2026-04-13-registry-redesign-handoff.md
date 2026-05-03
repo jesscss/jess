@@ -404,6 +404,10 @@ families:
   - `Sequence.resolve(context)` now bypasses generic eval stamping while still
     using the existing sequence eval logic, including trivia-backed render
     spacing behavior.
+  - Single-value wrappers (`Url` and `Block`) now resolve through their
+    existing child-eval path without stamping the wrapper source node; inherited
+    `QueryCondition` coverage verifies the `Sequence` path for media/supports
+    style conditions.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:
