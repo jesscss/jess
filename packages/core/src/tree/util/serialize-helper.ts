@@ -24,17 +24,22 @@ import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { consumeTrivia, emitTriviaTokens, getPrintableTriviaTokens } from './trivia.js';
 
-export function hasPrintableBoundaryTrivia(
+type TriviaSide = 'before' | 'after';
+
+function boundaryOffset(node: Node, side: TriviaSide): number | undefined {
+  return side === 'before' ? node.location[0] : node.location[3];
+}
+
+export function hasPrintableTriviaAt(
   node: Node,
-  key: 'pre' | 'post',
+  side: TriviaSide,
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
   const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
   if (!trivia) {
     return false;
   }
-  const offset = key === 'pre' ? node.location[0] : node.location[3];
-  const tokens = trivia.lookup(offset, key === 'pre' ? 'before' : 'after');
+  const tokens = trivia.lookup(boundaryOffset(node, side), side);
   const printable = getPrintableTriviaTokens(tokens, options);
   return Boolean(printable?.some(token => token.image.trim() !== ''));
 }
@@ -43,13 +48,13 @@ function hasPrintableTrivia(
   node: Node,
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
-  return hasPrintableBoundaryTrivia(node, 'pre', options)
-    || hasPrintableBoundaryTrivia(node, 'post', options);
+  return hasPrintableTriviaAt(node, 'before', options)
+    || hasPrintableTriviaAt(node, 'after', options);
 }
 
-function captureNodeBoundary(
+function captureNodeTrivia(
   node: Node,
-  key: 'pre' | 'post',
+  side: TriviaSide,
   options: FinalPrintOptions
 ): string {
   const writer = options.writer!;
@@ -60,9 +65,9 @@ function captureNodeBoundary(
   if (!trivia) {
     return '';
   }
-  const offset = key === 'pre' ? node.location[0] : node.location[3];
-  const lookup = key === 'pre' ? 'before' : 'after';
-  return writer.capture(() => emitTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options));
+  return writer.capture(() => {
+    emitTriviaTokens(consumeTrivia(trivia, boundaryOffset(node, side), side, options), options);
+  });
 }
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
@@ -689,22 +694,22 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const preSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+          const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
           options.depth = options.depth + 1;
           options.referenceMode = inReferenceMode;
           options.referenceRenderEnabled = renderEnabled;
-          const pre = captureNodeBoundary(n, 'pre', options);
-          restorePrintState(options, preSaved);
-          if (!/^\s*$/.test(pre)) {
+          const leading = captureNodeTrivia(n, 'before', options);
+          restorePrintState(options, leadingSaved);
+          if (!/^\s*$/.test(leading)) {
             let leafFrames = inFrames;
             if (carriedRuleset) {
               leafFrames = [...inFrames, carriedRuleset.frame];
             }
             ensureRenderedFrames(leafFrames);
             const idt = indent(lastRenderedFrames.length);
-            const normalized = /\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt);
+            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
             w.add(normalized);
-            if (/\/\*/u.test(pre) && normalized && !normalized.endsWith('\n')) {
+            if (/\/\*/u.test(leading) && normalized && !normalized.endsWith('\n')) {
               w.add('\n');
             }
           }
@@ -791,7 +796,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
-        const pre = captureNodeBoundary(nn, 'pre', options);
+        const leading = captureNodeTrivia(nn, 'before', options);
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
@@ -814,40 +819,40 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           isNode(nn, N.Any)
           && !nn.requiredSemi
           && !out.trim()
-          && !pre.trim()
+          && !leading.trim()
         ) {
           continue;
         }
         if (isHiddenStructuralNode) {
-          if (!/^\s*$/.test(pre)) {
-            const normalized = /\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt);
+          if (!/^\s*$/.test(leading)) {
+            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
             const trimmed = normalized.replace(/[ \t]+$/u, '');
             w.add(trimmed);
-            if (/\/\*/u.test(pre) && trimmed && !trimmed.endsWith('\n')) {
+            if (/\/\*/u.test(leading) && trimmed && !trimmed.endsWith('\n')) {
               w.add('\n');
             }
           }
           continue;
         }
         if (isNode(nn, N.Declaration)) {
-          const hasLeadingDeclarationBlockComment = /\/\*/u.test(pre.trimStart());
+          const hasLeadingDeclarationBlockComment = /\/\*/u.test(leading.trimStart());
           if (hasLeadingDeclarationBlockComment) {
-            const normalizedStandalonePre = normalizeBlockTrivia(pre, idt).replace(/[ \t]+$/u, '');
-            if (normalizedStandalonePre) {
-              w.add(normalizedStandalonePre);
-              if (!normalizedStandalonePre.endsWith('\n')) {
+            const normalizedStandaloneLeading = normalizeBlockTrivia(leading, idt).replace(/[ \t]+$/u, '');
+            if (normalizedStandaloneLeading) {
+              w.add(normalizedStandaloneLeading);
+              if (!normalizedStandaloneLeading.endsWith('\n')) {
                 w.add('\n');
               }
             }
           }
-          const normalizedPre = hasLeadingDeclarationBlockComment
-            ? (pre.match(/\n([ \t]*)$/u)?.[1] ?? '')
-            : pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-          const declIn = normalizedPre + out;
+          const normalizedLeading = hasLeadingDeclarationBlockComment
+            ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
+            : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+          const declIn = normalizedLeading + out;
           const hasEmptyValue = /:\s*$/.test(out);
           // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
           // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
-          const declNormalized = hasEmptyValue && (!normalizedPre || normalizedPre.trim() === '')
+          const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
             ? `${idt}${out}`
             : normalizeIndent(declIn, idt, true);
           if (nn.value.name.valueOf().startsWith('--')) {
@@ -857,8 +862,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             w.add(declNormalized, nn);
           }
         } else if (isNode(nn, N.Rules)) {
-          if (!/^\s*$/.test(pre)) {
-            w.add(/\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt));
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
           /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
@@ -867,13 +872,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
        */
           w.add(out, nn);
         } else if (isLeafAtRule) {
-          if (!/^\s*$/.test(pre)) {
-            w.add(/\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt));
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
           w.add(out, nn);
         } else {
-          if (!/^\s*$/.test(pre)) {
-            w.add(/\/\*/u.test(pre) ? normalizeBlockTrivia(pre, idt) : normalizeIndent(pre, idt));
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
           w.add(idt);
           w.add(out, nn);
@@ -887,10 +892,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         }
 
         w.add('\n');
-        let post = captureNodeBoundary(nn, 'post', options);
+        const trailing = captureNodeTrivia(nn, 'after', options);
 
-        if (!/^\s*$/.test(post)) {
-          w.add(/\/\*/u.test(post) ? normalizeBlockTrivia(post, idt) : normalizeIndent(post, idt));
+        if (!/^\s*$/.test(trailing)) {
+          w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
         }
       // }
       // else {

@@ -40,7 +40,7 @@ import {
   normalizeBlockTrivia,
   normalizeIndent,
   serializeRulesContainerInline,
-  hasPrintableBoundaryTrivia
+  hasPrintableTriviaAt
 } from './util/serialize-helper.js';
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
@@ -1623,8 +1623,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const isEvaluatedDefinitionNode = this.evaluated && isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
-        && !hasPrintableBoundaryTrivia(n, 'pre', options)
-        && !hasPrintableBoundaryTrivia(n, 'post', options)
+        && !hasPrintableTriviaAt(n, 'before', options)
+        && !hasPrintableTriviaAt(n, 'after', options)
       ) {
         continue;
       }
@@ -1652,13 +1652,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const hasRenderableChild = n.value.some(child =>
           child.visible
           || child.fullRender
-          || hasPrintableBoundaryTrivia(child, 'pre', options)
-          || hasPrintableBoundaryTrivia(child, 'post', options)
+          || hasPrintableTriviaAt(child, 'before', options)
+          || hasPrintableTriviaAt(child, 'after', options)
         );
         if (
           !hasRenderableChild
-          && !hasPrintableBoundaryTrivia(n, 'pre', options)
-          && !hasPrintableBoundaryTrivia(n, 'post', options)
+          && !hasPrintableTriviaAt(n, 'before', options)
+          && !hasPrintableTriviaAt(n, 'after', options)
         ) {
           continue;
         }
