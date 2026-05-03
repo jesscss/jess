@@ -677,14 +677,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
           continue;
         }
-        if (
-          isNode(n, N.Any)
-          && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
-          && originatesFromReferenceImport(n)
-          && !originatesFromCall(n)
-        ) {
-          continue;
-        }
         if (inReferenceMode && !renderEnabled && !isContainer) {
           continue;
         }

@@ -15,6 +15,7 @@ import {
   call,
   list,
   condition,
+  comment,
   expr,
   defaultguard,
   sellist,
@@ -2626,7 +2627,7 @@ describe('Style import', () => {
         })
       ]));
       localContext.sourceTrees.set(importPath, rules([
-        any('/*\n  tralala\n*/'),
+        comment('/*\n  tralala\n*/'),
         ruleset({
           selector: sellist([sel([el('.fix')])]),
           rules: rules([
