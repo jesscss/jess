@@ -14,6 +14,31 @@ Use current repo evidence and focused tests for active execution state. Do not
 infer a queue from this handoff, and do not recreate the retired auto-loop
 machinery as part of registry or TriviaMap work.
 
+Current checkpoint (`2026-05-04`, `dev` at/after `2c8ee648`):
+
+- Track 1B is closed unless new code evidence shows a remaining shell exists
+  only to fake placement-local state.
+- Track 1C direct `resolve(context)` / `render(context)` ownership is largely
+  swept across core node classes. The remaining raw `return this.evalNode(context)`
+  sites are mostly intentional direct delegations that bypass generic
+  `Node.evalStatic(...)` stamping; do not add redundant overrides just to quiet
+  grep.
+- Invalid production `N.*` checks for node names not present in the 32-bit
+  bitmask table were fixed where they affected runtime behavior:
+  `Num`/`Negative` use direct class checks in Less slash parsing,
+  `InterpolatedSelector` uses a direct class check in Less mixin key
+  normalization, and the stale `N.Number | N.Dimension` check now uses the real
+  `N.Dimension` mask it had already collapsed to at runtime.
+- `packages/jess/test/less/all-less.test.ts` is the only fixture-backed Less
+  integration authority in `packages/jess/test/less`. The other files in that
+  directory are marked `describe.todo`; their local expectations may be bad
+  until revalidated against upstream Less test-data, Less.js behavior, or a
+  documented Jess-specific contract.
+- Less slash parsing distinction to preserve: keyword-ish / generic `Any`
+  slash values such as `foo / 2` stay slash lists even in `mathMode: 'always'`;
+  real parsed `Color / Num` values are operation-shaped when mathMode allows
+  division. Do not collapse those into one "color keyword" rule.
+
 ## Baseline Recovery Checkpoint
 
 `packages/jess/test/less/all-less.test.ts` is currently red again, even after a
@@ -449,6 +474,12 @@ families:
   - Deprecated `JsExpression` now resolves through its existing eval body
     directly, preserving the evaluated JS value behavior without retaining
     eval flags on the source expression node.
+  - Follow-up audit: production code no longer reads undefined `N.Num`,
+    `N.Negative`, `N.Number`, or `N.InterpolatedSelector` masks. Those were
+    runtime bugs because an omitted mask means "is any node" and bitwise OR with
+    `undefined` silently collapses to zero. Remaining undefined `N.StyleImport`
+    / `N.JsImport` uses are parser-test contract drift only; do not patch them
+    by extending the current 32-bit bitmask table casually.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:
