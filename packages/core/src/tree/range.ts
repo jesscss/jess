@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type RangeValue = {
   start: Node;
@@ -28,6 +29,10 @@ export class Range extends Node<RangeValue, RangeOptions> {
   override evalNode(_context: Context): Range {
     // Parsing-only for now; semantics can be implemented later.
     return this;
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

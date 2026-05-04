@@ -419,6 +419,9 @@ families:
     and container selector classes, so basic, complex, compound, and
     selector-list nodes use selector-specific eval setup without falling through
     generic source-node eval stamping.
+  - `Range.resolve(context)` now keeps the current parsing-only range node out
+    of generic eval stamping while preserving its canonical inclusive/exclusive
+    range serialization.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:
