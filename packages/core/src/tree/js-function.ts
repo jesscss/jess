@@ -1,3 +1,4 @@
+import type { Context } from '../context.js';
 import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
@@ -17,6 +18,10 @@ export class JsFunction extends Node<Fn> {
 
     super(fn, options, location, treeContext);
     this.name = typeof value === 'function' ? undefined : value.name;
+  }
+
+  override resolve(_context: Context): this {
+    return this;
   }
 }
 export const jsfunc = defineType(JsFunction, 'JsFunction', 'jsfunc');

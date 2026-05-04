@@ -415,6 +415,9 @@ families:
   - Definition-like values (`Collection` and `Func`) now resolve as their
     canonical source nodes without falling through generic eval stamping; direct
     variable parameter resolution coverage also asserts the no-stamp invariant.
+  - JS host wrapper values (`JsFunction`, `JsObject`, and `JsArray`) now resolve
+    as themselves without generic eval stamping. They are runtime carriers, not
+    evaluated CSS output placements.
   - `AtRule.resolve(context)` now evaluates through a derived at-rule wrapper,
     so direct at-rule resolution can normalize/evaluate its prelude and body
     without retaining eval flags on the canonical source at-rule.
