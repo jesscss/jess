@@ -805,6 +805,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return finalize(finalPath, this.toImportPathNode(maybePath));
   }
 
+  override resolve(context: Context): MaybePromise<Rules> {
+    return this.evalNode(context);
+  }
+
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
     if (!postlude) {
       return rules;

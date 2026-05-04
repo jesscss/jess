@@ -2890,6 +2890,24 @@ describe('Style import', () => {
       const imported = evald.at(0) as Rules;
       expect(imported.value.length).toBe(0);
     });
+
+    it('resolves optional missing imports without touching render state', async () => {
+      const node = style(
+        { path: quoted(any('missing-file.jess')) },
+        { type: 'import', importOptions: { optional: true } }
+      );
+      const anchor = rules([node]);
+      context.root = anchor;
+      context.rulesContext = anchor;
+
+      const resolved = await node.resolve(context);
+
+      expect(isNode(resolved, N.Rules)).toBe(true);
+      expect((resolved as Rules).value.length).toBe(0);
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
+      expect(context.printState.writer).toBeUndefined();
+    });
   });
 
   describe('reference/multiple dedupe matrix', () => {

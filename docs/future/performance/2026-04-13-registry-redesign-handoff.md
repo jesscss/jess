@@ -457,6 +457,10 @@ families:
   - `$for` keeps direct `render(context)` on canonical control syntax, but
     direct `resolve(context)` now evaluates loop output through the existing
     loop body without generic eval stamping the source control node.
+  - `StyleImport.resolve(context)` now delegates directly to import evaluation,
+    so optional/reference import surfaces can be resolved without generic eval
+    stamping the source import node; the full `import-style` test file covers
+    this because import behavior is broad.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
