@@ -31,6 +31,10 @@ export class ExtendList extends Node<Extend[]> {
     w.add(';');
     return w.getSince(mark);
   }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 
 export const extendList = defineType(ExtendList, 'ExtendList');
