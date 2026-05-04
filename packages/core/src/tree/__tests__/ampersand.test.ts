@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
@@ -86,6 +87,22 @@ describe('Ampersand', () => {
     expect(out).toBe('.foo');
     expect(options.composedSelectorStack).toBe(composedSelectorStack);
     expect(options.composedSelectorStack).toEqual([parentSelector]);
+  });
+
+  it('resolves framed ampersands without touching render state', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const node = amp('-bar');
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('.foo-bar');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
   });
 
   it('should collapse selectors when in collapsing mode #1', async () => {

@@ -445,6 +445,9 @@ families:
     rather than generic eval-stamping the source rules container. This is still
     transitional structural state ownership; the target remains moving the live
     render/session state onto `Context`.
+  - `Ampersand` now has focused coverage for framed resolve behavior: it may
+    read the active ruleset frame and produce the merged selector value, but it
+    must not mark the source ampersand as evaluated or allocate print state.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
