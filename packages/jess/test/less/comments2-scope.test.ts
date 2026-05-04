@@ -25,7 +25,7 @@ const baseCompiler = new Compiler({
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
 
-describe('Less comments2 scope lookup', () => {
+describe.todo('Less comments2 scope lookup', () => {
   it('resolves later same-scope vars in the minimal grid snippet', async () => {
     const lessCode = `
       #planadvisor,

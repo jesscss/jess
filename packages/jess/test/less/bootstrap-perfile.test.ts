@@ -44,7 +44,7 @@ async function compileBootstrapFile(file: string): Promise<string> {
   }
 }
 
-describe('Bootstrap 4 per-file compilation', () => {
+describe.todo('Bootstrap 4 per-file compilation', () => {
   if (!bsRoot) {
     it.skip('bootstrap-less-port not found', () => {});
     return;

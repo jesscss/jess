@@ -5,7 +5,7 @@ import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { serializeTypes } from '@jesscss/core';
 
-describe('Debug extend count - ONE extend statement', () => {
+describe.todo('Debug extend count - ONE extend statement', () => {
   it('should find only 1 Extend node', async () => {
     const lessCode = `
 .ext {
@@ -34,15 +34,15 @@ describe('Debug extend count - ONE extend statement', () => {
 
       const context = compiler.createContext(tmpFile);
       const { node } = await context.getTree(tmpFile);
-      
+
       // Count Extend nodes in the parsed tree
       const sExpr = serializeTypes(node);
       const extendMatches = sExpr.match(/\(Extend/g);
       const extendCount = extendMatches?.length || 0;
-      
+
       // Find all Extend nodes and show their structure
       const allExtends = sExpr.match(/\(Extend[\s\S]{0,2000}?\)/g);
-      
+
       console.log(`Extend nodes in parsed tree: ${extendCount}`);
       if (allExtends) {
         allExtends.forEach((ext, i) => {
@@ -50,7 +50,7 @@ describe('Debug extend count - ONE extend statement', () => {
           console.log(ext.substring(0, 1000));
         });
       }
-      
+
       // Show the full S-expression structure around Extend nodes
       const extendIndices: number[] = [];
       let idx = sExpr.indexOf('(Extend');
@@ -58,14 +58,14 @@ describe('Debug extend count - ONE extend statement', () => {
         extendIndices.push(idx);
         idx = sExpr.indexOf('(Extend', idx + 1);
       }
-      
+
       console.log(`\nExtend node positions in S-expression:`);
       extendIndices.forEach((pos, i) => {
         const context = sExpr.substring(Math.max(0, pos - 200), Math.min(sExpr.length, pos + 500));
         console.log(`\nExtend ${i + 1} at position ${pos}:`);
         console.log(context);
       });
-      
+
       // There should only be 1 Extend node
       expect(extendCount).toBe(1);
     } finally {

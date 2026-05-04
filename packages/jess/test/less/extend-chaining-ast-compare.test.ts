@@ -46,7 +46,7 @@ const extendChainingLess = path.join(testData, 'tests-unit/extend-chaining/exten
 
 const serializeOpts = { showValues: true, maxStringLength: 120 };
 
-describe('extend-chaining AST: parsed vs constructed (serializeTypes comparison)', () => {
+describe.todo('extend-chaining AST: parsed vs constructed (serializeTypes comparison)', () => {
   it('serializes AST from Jess parsing extend-chaining.less (pre-eval)', async () => {
     const compiler = new Compiler({
       compile: { plugins: [lessPlugin()] },

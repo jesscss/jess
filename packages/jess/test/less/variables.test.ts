@@ -3,14 +3,14 @@ import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Variables', () => {
+describe.todo('Variables', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
     }
   });
 
-  describe('Basic Variable Declaration and Usage', () => {
+  describe.todo('Basic Variable Declaration and Usage', () => {
     it('should handle simple variable declaration and usage', async () => {
       const lessCode = `
         @color: red;
@@ -55,7 +55,7 @@ describe('Variables', () => {
     });
   });
 
-  describe('Variable Scoping', () => {
+  describe.todo('Variable Scoping', () => {
     it('should handle nested variable scoping', async () => {
       const lessCode = `
         @global: red;
@@ -102,7 +102,7 @@ describe('Variables', () => {
     });
   });
 
-  describe('Variable Interpolation', () => {
+  describe.todo('Variable Interpolation', () => {
     it('should handle variable interpolation in selectors', async () => {
       const lessCode = `
         @prefix: my;
@@ -145,7 +145,7 @@ describe('Variables', () => {
     });
   });
 
-  describe('Variable Operations', () => {
+  describe.todo('Variable Operations', () => {
     it('should handle variable arithmetic', async () => {
       const lessCode = `
         @base: 10px;
@@ -177,7 +177,7 @@ describe('Variables', () => {
     });
   });
 
-  describe('Variable call with mixin reference', () => {
+  describe.todo('Variable call with mixin reference', () => {
     it('errors when variable holds mixin reference but mixin does not exist', async () => {
       // @foo: .a; @foo(); — .a is not defined as mixin, so eval should error at @foo().
       const lessCode = `

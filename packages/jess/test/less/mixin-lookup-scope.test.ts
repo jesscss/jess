@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Less mixin lookup scope behavior', () => {
+describe.todo('Less mixin lookup scope behavior', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [

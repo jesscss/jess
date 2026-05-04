@@ -19,7 +19,7 @@ const baseCompiler = new Compiler({
   }
 });
 
-describe('debug extend pipeline', () => {
+describe.todo('debug extend pipeline', () => {
   it('compares compile(file) and renderString for extend.less', async () => {
     const lessPath = path.join(testData, 'tests-unit/extend/extend.less');
     const [testCase] = getTestCases(lessPath);

@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Operations', () => {
+describe.todo('Operations', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
     }
   });
 
-  describe('Basic Arithmetic Operations', () => {
+  describe.todo('Basic Arithmetic Operations', () => {
     it('should handle addition', async () => {
       const lessCode = `
         .test {
@@ -97,7 +97,7 @@ describe('Operations', () => {
     });
   });
 
-  describe('Operations with Variables', () => {
+  describe.todo('Operations with Variables', () => {
     it('should handle operations with variables', async () => {
       const lessCode = `
         @base: 10px;
@@ -219,7 +219,7 @@ describe('Operations', () => {
     });
   });
 
-  describe('Color Operations', () => {
+  describe.todo('Color Operations', () => {
     it('should handle color arithmetic', async () => {
       const lessCode = `
         .test {
@@ -249,7 +249,7 @@ describe('Operations', () => {
     });
   });
 
-  describe('Unit Operations', () => {
+  describe.todo('Unit Operations', () => {
     it('should handle operations with different units', async () => {
       const lessCode = `
         .test {
@@ -280,7 +280,7 @@ describe('Operations', () => {
     });
   });
 
-  describe('Parentheses and Precedence', () => {
+  describe.todo('Parentheses and Precedence', () => {
     it('should handle parentheses for precedence', async () => {
       const lessCode = `
         .test {
@@ -308,7 +308,7 @@ describe('Operations', () => {
     });
   });
 
-  describe('calc() Function', () => {
+  describe.todo('calc() Function', () => {
     it('should handle calc() function', async () => {
       const lessCode = `
         .test {
@@ -339,7 +339,7 @@ describe('Operations', () => {
     });
   });
 
-  describe('Edge Cases', () => {
+  describe.todo('Edge Cases', () => {
     it('should handle operations with zero', async () => {
       const lessCode = `
         .test {

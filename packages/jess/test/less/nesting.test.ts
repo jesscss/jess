@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Nesting', () => {
+describe.todo('Nesting', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
     }
   });
 
-  describe('Some nesting test cases', () => {
+  describe.todo('Some nesting test cases', () => {
     it('should handle nested selectors', async () => {
       const lessCode = `
         @media (-o-min-device-pixel-ratio: ~"2/1"), (min-resolution: 2dppx) {

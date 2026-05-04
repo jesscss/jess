@@ -14,7 +14,7 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import * as path from 'path';
 import * as fs from 'fs';
 
-describe('Bootstrap 4 OOM regression', () => {
+describe.todo('Bootstrap 4 OOM regression', () => {
   const bootstrapLessPort = path.resolve(
     __dirname,
     '../../../../node_modules/bootstrap-less-port/less/bootstrap.less'

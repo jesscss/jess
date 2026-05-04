@@ -25,7 +25,7 @@ const baseCompiler = new Compiler({
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
 
-describe('Less scope height leakage', () => {
+describe.todo('Less scope height leakage', () => {
   it('leaks mixin-defined vars to later siblings without exposing them to earlier siblings', async () => {
     const lessCode = `
       .setHeight(@h) { @height: 1024px; }

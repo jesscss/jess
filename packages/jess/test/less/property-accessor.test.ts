@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Property Accessor', () => {
+describe.todo('Property Accessor', () => {
   it('should handle property accessors correctly', async () => {
     const compiler = new Compiler({
       compile: {

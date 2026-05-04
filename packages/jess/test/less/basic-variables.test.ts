@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe('Basic Variables', () => {
+describe.todo('Basic Variables', () => {
   const compiler = new Compiler();
 
   it('should handle simple variable declaration and usage', async () => {

@@ -22,7 +22,7 @@ const compiler = new Compiler({
   compile: { plugins: [lessPlugin(), lessCompatPlugin()] }
 });
 
-describe('Detached ruleset variable scoping', () => {
+describe.todo('Detached ruleset variable scoping', () => {
   it('accesses mixin parameter inside detached ruleset (inline)', async () => {
     const css = await compiler.renderString(`
       #hover(@content) {

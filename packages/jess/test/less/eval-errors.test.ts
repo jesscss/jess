@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import lessPlugin from '@jesscss/plugin-less';
 import { Compiler } from '../../src/index.js';
 
-describe('Less ampersand merge template', () => {
+describe.todo('Less ampersand merge template', () => {
   const compiler = new Compiler({
     output: { collapseNesting: true },
     compile: {

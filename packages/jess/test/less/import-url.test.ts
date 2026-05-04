@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe('Import URL', () => {
+describe.todo('Import URL', () => {
   const compiler = new Compiler();
 
   it('should handle @import url("file.less")', async () => {

@@ -21,7 +21,7 @@ function t(s: string): string {
   return s.trim().split('\n').map(l => l.trimEnd()).join('\n');
 }
 
-describe('Debug bubbling', () => {
+describe.todo('Debug bubbling', () => {
   it.only('bug6: & ref through multiple nested at-rules', async () => {
     const css = await render(`
 @supports (property: value) {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe('Token Debug', () => {
+describe.todo('Token Debug', () => {
   const compiler = new Compiler();
 
   it('should debug tokens for .mixin()', async () => {

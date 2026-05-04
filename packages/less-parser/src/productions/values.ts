@@ -65,11 +65,11 @@ function isDivisionLikeNode(node: Node | undefined): boolean {
   if (
     isNode(node, N.Color)
     || isNode(node, N.Dimension)
-    || isNode(node, N.Num)
+    || node instanceof Num
     || isNode(node, N.Reference)
     || isNode(node, N.Call)
     || isNode(node, N.Operation)
-    || isNode(node, N.Negative)
+    || node instanceof Negative
     || isNode(node, N.Expression)
   ) {
     return true;

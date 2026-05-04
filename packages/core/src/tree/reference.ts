@@ -1534,8 +1534,8 @@ function evaluateCalcSlashListValue(
   const [left, right] = declValue.value;
   const finalize = (l: Node, r: Node): Node => {
     if (
-      !isNode(l, N.Number | N.Dimension)
-      || !isNode(r, N.Number | N.Dimension)
+      !isNode(l, N.Dimension)
+      || !isNode(r, N.Dimension)
     ) {
       return declValue;
     }

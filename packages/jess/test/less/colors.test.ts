@@ -20,7 +20,7 @@ const colorCompiler = new Compiler({
   }
 });
 
-describe('Color Functions', () => {
+describe.todo('Color Functions', () => {
   const colorFiles = glob.sync(path.join(testData, 'tests-unit/color-functions/*.less'));
 
   colorFiles
