@@ -418,6 +418,9 @@ families:
   - JS host wrapper values (`JsFunction`, `JsObject`, and `JsArray`) now resolve
     as themselves without generic eval stamping. They are runtime carriers, not
     evaluated CSS output placements.
+  - `MixinCollection` now resolves as the resolved callable-candidate carrier
+    it already is, without generic eval stamping. Actual mixin invocation still
+    belongs to `MixinCollection.evalCall(...)`.
   - `JsImport` now resolves as a canonical source directive without generic eval
     stamping; its eventual module-loading behavior belongs to the JS import
     runtime, not default child-walk evaluation.

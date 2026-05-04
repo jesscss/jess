@@ -112,6 +112,12 @@ describe('reference', () => {
       expect(resolved.value[0]).not.toBe(mixinDef);
       expect(resolved.value[0]!.type).toBe('Mixin');
       expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+
+      const resolvedAgain = resolved.resolve(context);
+
+      expect(resolvedAgain).toBe(resolved);
+      expect(resolved.evaluated).toBe(false);
+      expect(resolved.preEvaluated).toBe(false);
     });
 
     it('should get a variable from scope', async () => {

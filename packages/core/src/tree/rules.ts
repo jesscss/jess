@@ -3298,6 +3298,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
     return this;
   }
 
+  override resolve(_context: Context): this {
+    return this;
+  }
+
   async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
     const mixinArr = this.value;
     const mixinLength = mixinArr.length;
