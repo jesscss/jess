@@ -3140,6 +3140,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     return pipeResult as MaybePromise<this>;
   }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.clone(false).eval(context);
+  }
 }
 
 export const rules = defineType(Rules, 'Rules');

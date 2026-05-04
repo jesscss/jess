@@ -212,48 +212,38 @@ The same principle applies to quoted forms, references, URLs, interpolation,
 and any other node where canonical source syntax is not the same as evaluated
 output.
 
-## Serialization Contract Decision Needed
+## Serialization Contract
 
-There is an active architectural blur between canonical serialization and
-evaluated output serialization.
+`render(context)` and canonical serialization should share the same node-owned
+serialization machinery. The difference is not "render serializer" versus
+"source serializer"; it is whether the node is serialized as-is or first
+resolved/evaluated in the active context.
 
-Current evidence in code:
+Working decision to preserve:
 
-- [node-base.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/node-base.ts)
-  documents `toString()` / `toTrimmedString()` as canonical/source-oriented
-  serialization, and `render(context)` as the evaluated output path.
-- But `render(context)` currently still flows through
-  `resolved.toTrimmedString(prepared)` at
-  [node-base.ts:1267](/Users/matthew/git/oss/jess/packages/core/src/tree/node-base.ts:1267).
-- Output/container paths still call `toTrimmedString()` directly in several
-  render-sensitive seams, especially:
-  - [serialize-helper.ts:656](/Users/matthew/git/oss/jess/packages/core/src/tree/util/serialize-helper.ts:656)
-  - [serialize-helper.ts:702](/Users/matthew/git/oss/jess/packages/core/src/tree/util/serialize-helper.ts:702)
-  - [rules.ts:1625](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts:1625)
-  - [rules.ts:1638](/Users/matthew/git/oss/jess/packages/core/src/tree/rules.ts:1638)
-
-Working decision to preserve unless explicitly changed:
-
-- `toTrimmedString()` is canonical/authored node-body serialization.
-- `toString()` is canonical/authored full-node serialization including outer
-  trivia.
-- Canonical serializers may serialize non-visible nodes if that is required for
-  source round-tripping or canonical AST inspection.
-- Final evaluated output should not rely on that behavior implicitly.
-- If non-visible nodes are ever allowed into evaluated output, it must happen
-  through an explicit render-aware path, not by accidentally falling through to
-  canonical `toTrimmedString()`.
+- `toString()` serializes the node as it exists now.
+- `toTrimmedString()` serializes the same node as-is, but without outer
+  formatting/trivia that belongs to its containing surface.
+- `render(context)` resolves/evaluates the node for the active context, then
+  serializes the resulting node through the normal `toString()` /
+  `toTrimmedString()` path.
+- Sharing `toTrimmedString()` from `render(context)` is expected and desirable
+  when the resolved node shape is already the evaluated output shape.
+- Output/container callers own visibility, ordering, boundary, and traversal
+  policy. A node serializer should not grow ad-hoc visibility policy just to
+  compensate for the wrong caller emitting the wrong child.
 
 Practical guidance for the next fix:
 
-- Treat empty-frame leaks like `mi-test-d .person {}` as likely evidence that an
-  output path is still using canonical serialization, not necessarily that the
-  node's canonical serializer is wrong.
-- Before changing visibility checks on a node type, first ask whether the caller
-  should be using `render(...)` or another output-aware child emission path
-  instead of `toTrimmedString()`.
-- Any local fix in this area should leave a clearer boundary behind, not widen
-  the overlap between canonical serializers and evaluated output.
+- Treat empty-frame leaks like `mi-test-d .person {}` as likely evidence that a
+  caller is emitting the wrong resolved child, using the wrong traversal policy,
+  or keeping structural eval state in the wrong place; do not assume the
+  individual node serializer is wrong.
+- Before changing visibility checks on a node type, first ask what node shape
+  `resolve(...)` should return and which output/container caller is responsible
+  for deciding whether that node participates in final output.
+- Any local fix in this area should make the transform-then-serialize boundary
+  clearer, not split canonical and evaluated syntax into parallel serializers.
 
 Implementation note: the current `context.printState <-> printState.context`
 cycle is transitional convenience state, not target architecture. Track 1C
@@ -435,9 +425,10 @@ families:
   Current first slice:
   - Focused no-stamp coverage now proves direct `Declaration.resolve(...)` and
     `Ruleset.resolve(...)` leave their source node eval flags alone.
-  - Root `Rules.resolve(...)` still falls through the old generic eval/preEval
-    path and marks the source rules container. Treat that as the next 13h
-    structural state-ownership target, not as a local value-node gap.
+  - `Rules.resolve(context)` now evaluates through a derived rules wrapper
+    rather than generic eval-stamping the source rules container. This is still
+    transitional structural state ownership; the target remains moving the live
+    render/session state onto `Context`.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
