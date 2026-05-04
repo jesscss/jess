@@ -25,10 +25,14 @@ describe('Nil', () => {
   });
 
   it('resolves nil values without touching render state', async () => {
-    const resolved = await nil().resolve(context);
+    const node = nil();
+
+    const resolved = await node.resolve(context);
 
     expect(resolved).toBeInstanceOf((nil()).constructor);
     expect(resolved.value).toBe('');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

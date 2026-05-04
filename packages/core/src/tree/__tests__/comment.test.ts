@@ -185,9 +185,13 @@ describe('Comment', () => {
   });
 
   it('resolves comments without touching render state', async () => {
-    const resolved = await comment('/* keep me */').resolve(context);
+    const node = comment('/* keep me */');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('/* keep me */');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

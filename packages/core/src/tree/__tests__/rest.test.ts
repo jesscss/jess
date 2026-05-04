@@ -27,9 +27,13 @@ describe('Rest', () => {
   });
 
   it('resolves rest values without touching render state', async () => {
-    const resolved = await rest('items').resolve(context);
+    const node = rest('items');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('...$$items');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

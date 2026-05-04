@@ -56,6 +56,10 @@ export class Nil extends Node<''> {
     getPrintOptions({ ...options, context });
     return '';
   }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 
 export const nil = defineType(Nil, 'Nil');

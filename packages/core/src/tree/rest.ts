@@ -32,6 +32,10 @@ export class Rest extends Node<Node | string | undefined> {
   override render(context: Context, options?: PrintOptions): string {
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 
 export const rest = defineType(Rest, 'Rest');

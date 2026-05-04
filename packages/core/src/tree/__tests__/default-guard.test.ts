@@ -30,9 +30,13 @@ describe('DefaultGuard', () => {
 
   it('resolves default guard values without touching render state', async () => {
     context.isDefault = true;
-    const resolved = await defaultguard('default').resolve(context);
+    const node = defaultguard('default');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('true');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

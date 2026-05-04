@@ -427,6 +427,10 @@ families:
     the source mixin as an evaluated output placement.
   - `CustomDeclaration` coverage now proves it inherits the declaration
     no-stamp resolve path while still restoring `context.inCustom`.
+  - Static/leaf syntax nodes (`Any`/`Keyword`, `Bool`, `Nil`,
+    `Dimension`/`Num`, `Color`, `Comment`, `Combinator`, `Rest`, and
+    `DefaultGuard`) now have focused same-node resolve assertions, with direct
+    resolve ownership where generic eval stamping had still been leaking in.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

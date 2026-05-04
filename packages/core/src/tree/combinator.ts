@@ -1,7 +1,8 @@
 import type { Context } from '../context.js';
-import { defineType, F_STATIC } from './node.js';
+import { defineType, F_STATIC, type Node } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 
@@ -17,6 +18,10 @@ export class Combinator extends Selector<Combinators> {
 
   override render(context: Context, options?: PrintOptions): string {
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 
   /** @todo move to visitor */

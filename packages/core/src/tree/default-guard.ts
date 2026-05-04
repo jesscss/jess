@@ -20,6 +20,10 @@ export class DefaultGuard extends Node<string> {
     return new Bool(Boolean(context.isDefault));
   }
 
+  override resolve(context: Context): Bool {
+    return this.evalNode(context);
+  }
+
   override render(context: Context, options?: PrintOptions): string {
     options = getPrintOptions({ ...options, context });
     const w = options.writer!;

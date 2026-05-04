@@ -42,9 +42,13 @@ describe('Dimension', () => {
     });
 
     it('resolves dimensions without touching render state', async () => {
-      const resolved = await dimension([10, 'px']).resolve(context);
+      const node = dimension([10, 'px']);
+
+      const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('10px');
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });

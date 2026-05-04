@@ -313,6 +313,10 @@ export class Dimension extends Node<DimensionValue> {
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
 
+  override resolve(_context: Context): this {
+    return this;
+  }
+
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add(this.toString(), this.location)

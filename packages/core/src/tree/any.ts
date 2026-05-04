@@ -69,6 +69,10 @@ export class Any<
     return this;
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
   override render(context: Context, options?: PrintOptions): string {
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }

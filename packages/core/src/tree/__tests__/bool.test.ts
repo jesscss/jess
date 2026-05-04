@@ -27,10 +27,14 @@ describe('Bool', () => {
   });
 
   it('resolves bool values without touching render state', async () => {
-    const resolved = await bool(true).resolve(context);
+    const node = bool(true);
+
+    const resolved = await node.resolve(context);
 
     expect(resolved).toBeInstanceOf((bool(true)).constructor);
     expect(resolved.value).toBe(true);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

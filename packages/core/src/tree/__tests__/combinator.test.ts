@@ -27,9 +27,13 @@ describe('Combinator', () => {
   });
 
   it('resolves combinators without touching render state', async () => {
-    const resolved = await co('>').resolve(context);
+    const node = co('>');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('>');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

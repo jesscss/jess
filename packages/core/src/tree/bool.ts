@@ -33,5 +33,9 @@ export class Bool extends Node<boolean> {
   override render(context: Context, options?: PrintOptions): string {
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 export const bool = defineType(Bool, 'Bool');

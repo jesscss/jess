@@ -565,6 +565,10 @@ export class Color extends Node<ColorData, ColorOptions> {
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
 
+  override resolve(_context: Context): this {
+    return this;
+  }
+
   override operate(b: Node, op: Operator, context?: Context | undefined): Color {
     let aRGB = this._rgb;
     let newColorValues: [number, number, number];

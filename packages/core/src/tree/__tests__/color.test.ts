@@ -304,6 +304,8 @@ describe('Color Node', () => {
       const resolved = await color.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('rgb(255, 0, 0)');
+      expect(color.evaluated).toBe(false);
+      expect(color.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 

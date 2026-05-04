@@ -31,5 +31,9 @@ export class Comment extends Node<string, CommentOptions> {
     }
     return this.toTrimmedString(getPrintOptions({ ...options, context }));
   }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 export const comment = defineType(Comment, 'Comment');

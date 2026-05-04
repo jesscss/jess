@@ -15,8 +15,10 @@ describe('Any and Keyword', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
 
-    const resolved = await any('foo').resolve(resolveContext);
+    const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('foo');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
 
@@ -33,8 +35,10 @@ describe('Any and Keyword', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
 
-    const resolved = await keyword('inherit').resolve(resolveContext);
+    const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('inherit');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
 });
