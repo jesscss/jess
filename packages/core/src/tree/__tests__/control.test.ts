@@ -147,6 +147,28 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {
+    const context = new Context();
+    const node = new If({
+      branches: [
+        {
+          condition: bool(true),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }
+      ]
+    });
+
+    const resolved = node.resolve(context);
+
+    expect(resolved).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('serializes $for source syntax through toTrimmedString()', () => {
     const node = makeLoop(
       makePattern(['value'], 'single'),
@@ -228,6 +250,33 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
+  });
+
+  it('keeps direct $while resolve(context) on source syntax without eval stamping', () => {
+    const context = new Context();
+    const node = new While({
+      condition: bool(true),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    const resolved = node.resolve(context);
+
+    expect(resolved).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('adopts $while condition and rules as children', () => {
+    const condition = bool(true);
+    const body = rules([decl({ name: 'color', value: any('red') })]);
+    const node = new While({
+      condition,
+      rules: body
+    });
+
+    expect(condition.parent).toBe(node);
+    expect(body.parent).toBe(node);
   });
 
   it('evaluates $for with block pattern + expression iterable', async () => {
@@ -417,7 +466,7 @@ describe('Control Nodes', () => {
     }
   });
 
-  it('forces public rulesVisibility for $if and $for rules', () => {
+  it('forces public rulesVisibility for $if, $for, and $while rules', () => {
     const privateRules = rules([], {
       rulesVisibility: {
         Declaration: 'private',
@@ -445,6 +494,17 @@ describe('Control Nodes', () => {
         }
       })
     });
+    const whileNode = new While({
+      condition: new Any('true', { role: 'any' }),
+      rules: rules([], {
+        rulesVisibility: {
+          Declaration: 'private',
+          Ruleset: 'private',
+          VarDeclaration: 'private',
+          Mixin: 'private'
+        }
+      })
+    });
     expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
     expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
     expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
@@ -453,6 +513,10 @@ describe('Control Nodes', () => {
     expect(forNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
     expect(forNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
     expect(forNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(whileNode.value.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(whileNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(whileNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(whileNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 
   it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {

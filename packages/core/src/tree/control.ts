@@ -192,6 +192,10 @@ export class If extends Node<IfValue> {
   override render(context: Context, options?: PrintOptions): string {
     return renderControlSourceSyntax(this, context, options);
   }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 
 export type StructuredLoopValue = {
@@ -384,6 +388,7 @@ export class While extends Node<WhileValue> {
   constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    makeDirectiveRulesPublic(value.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -399,6 +404,10 @@ export class While extends Node<WhileValue> {
 
   override render(context: Context, options?: PrintOptions): string {
     return renderControlSourceSyntax(this, context, options);
+  }
+
+  override resolve(_context: Context): this {
+    return this;
   }
 }
 

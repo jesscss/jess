@@ -460,6 +460,10 @@ families:
   - `$for` keeps direct `render(context)` on canonical control syntax, but
     direct `resolve(context)` now evaluates loop output through the existing
     loop body without generic eval stamping the source control node.
+  - `$if` and `$while` keep direct `render(context)` and `resolve(context)` on
+    canonical source syntax until parent `Rules` owns evaluated control-flow
+    emission, but direct resolution no longer falls through generic eval
+    stamping. `$while` body visibility now matches `$if` / `$for`.
   - `StyleImport.resolve(context)` now delegates directly to import evaluation,
     so optional/reference import surfaces can be resolved without generic eval
     stamping the source import node; the full `import-style` test file covers
