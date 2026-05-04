@@ -415,6 +415,10 @@ families:
   - `AtRule.resolve(context)` now evaluates through a derived at-rule wrapper,
     so direct at-rule resolution can normalize/evaluate its prelude and body
     without retaining eval flags on the canonical source at-rule.
+  - The selector family now has direct `resolve(context)` ownership on simple
+    and container selector classes, so basic, complex, compound, and
+    selector-list nodes use selector-specific eval setup without falling through
+    generic source-node eval stamping.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

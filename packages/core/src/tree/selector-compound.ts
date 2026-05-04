@@ -1,4 +1,5 @@
 import {
+  type Node,
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
@@ -139,6 +140,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel.withComponents(value);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 
   /** @todo move to visitors */

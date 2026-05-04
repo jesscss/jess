@@ -36,9 +36,13 @@ describe('BasicSelector', () => {
   });
 
   it('resolves selectors without touching render state', async () => {
-    const resolved = await el('.foo').resolve(context);
+    const node = el('.foo');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

@@ -74,16 +74,20 @@ describe('Compound Selector', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await compound([
+    const selector = compound([
       el('a'),
       attr({
         name: 'data',
         op: '=',
         value: ref({ key: 'capture-attr' }, { type: 'variable' })
       })
-    ]).resolve(context);
+    ]);
+
+    const resolved = await selector.resolve(context);
 
     expect(`${resolved}`).toBe('a[data=foo]');
+    expect(selector.evaluated).toBe(false);
+    expect(selector.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

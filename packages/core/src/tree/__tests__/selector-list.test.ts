@@ -92,7 +92,7 @@ describe('Selector list', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await sellist([
+    const selector = sellist([
       compound([
         el('a'),
         attr({
@@ -102,9 +102,13 @@ describe('Selector list', () => {
         })
       ]),
       el('.bar')
-    ]).resolve(context);
+    ]);
+
+    const resolved = await selector.resolve(context);
 
     expect(`${resolved}`).toBe('a[data=foo],\n.bar');
+    expect(selector.evaluated).toBe(false);
+    expect(selector.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

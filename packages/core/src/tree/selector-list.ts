@@ -1,4 +1,5 @@
 import {
+  type Node,
   defineType,
   F_EXTENDED,
   F_EXTEND_TARGET
@@ -215,6 +216,10 @@ export class SelectorList extends Selector<Selector[]> {
         return list.withSelectors(flattened);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 }
 

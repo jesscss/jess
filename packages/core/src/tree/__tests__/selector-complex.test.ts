@@ -88,7 +88,7 @@ describe('Complex selector', () => {
       context.root = evald as RulesClass;
       context.rulesContext = evald as RulesClass;
 
-      const resolved = await sel([
+      const selector = sel([
         compound([
           el('a'),
           attr({
@@ -99,9 +99,13 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.foo')
-      ]).resolve(context);
+      ]);
+
+      const resolved = await selector.resolve(context);
 
       expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(selector.evaluated).toBe(false);
+      expect(selector.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });
