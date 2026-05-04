@@ -454,6 +454,9 @@ families:
   - `Extend.resolve(context)` now delegates to the existing extend eval body
     directly, so direct resolution can return `Nil` / register extend side
     effects without generic eval stamping the source directive.
+  - `$for` keeps direct `render(context)` on canonical control syntax, but
+    direct `resolve(context)` now evaluates loop output through the existing
+    loop body without generic eval stamping the source control node.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +

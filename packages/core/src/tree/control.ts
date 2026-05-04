@@ -312,6 +312,10 @@ export class For extends Node<StructuredLoopValue> {
     return run();
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;

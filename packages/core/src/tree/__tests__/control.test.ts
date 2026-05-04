@@ -181,6 +181,23 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('resolves $for output without touching render state', async () => {
+    const context = new Context();
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toContain('item: a');
+    expect(resolved.toTrimmedString()).toContain('item: b');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('serializes $while source syntax through toTrimmedString()', () => {
     const node = new While({
       condition: bool(true),
