@@ -74,6 +74,26 @@ describe('Mixin', () => {
     context.depth = 2;
   });
 
+  it('resolves mixin definitions without touching render state', async () => {
+    const node = mixin({
+      name: any('.button'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      .button() {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   describe('calling', () => {
     it('should call a simple mixin', async () => {
       // Create a mixin definition: .my-mixin() { color: red; }

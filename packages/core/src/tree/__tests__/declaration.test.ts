@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -68,6 +68,28 @@ describe('Declaration', () => {
     expect(resolved.toTrimmedString()).toBe('color: red');
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('resolves custom declarations without touching render state', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = customdecl({
+      name: any('--color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('--color:red');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.inCustom).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

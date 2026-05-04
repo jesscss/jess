@@ -422,6 +422,11 @@ families:
   - `Range.resolve(context)` now keeps the current parsing-only range node out
     of generic eval stamping while preserving its canonical inclusive/exclusive
     range serialization.
+  - `Mixin.resolve(context)` now treats mixin definitions like other
+    definition-only nodes: direct resolve returns the definition without marking
+    the source mixin as an evaluated output placement.
+  - `CustomDeclaration` coverage now proves it inherits the declaration
+    no-stamp resolve path while still restoring `context.inCustom`.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:

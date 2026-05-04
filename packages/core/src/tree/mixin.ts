@@ -164,6 +164,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return this;
   }
 
+  override resolve(_context: Context): this {
+    return this.evalNode();
+  }
+
   // override async evalNode(context: Context): Promise<Rules | Expression> {
   //   let { name, body, params, guard } = this.value
   //   if (name instanceof Interpolated) {
