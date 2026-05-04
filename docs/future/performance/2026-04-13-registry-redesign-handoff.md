@@ -431,6 +431,9 @@ families:
     `Dimension`/`Num`, `Color`, `Comment`, `Combinator`, `Rest`, and
     `DefaultGuard`) now have focused same-node resolve assertions, with direct
     resolve ownership where generic eval stamping had still been leaking in.
+  - Deprecated `JsExpression` now resolves through its existing eval body
+    directly, preserving the evaluated JS value behavior without retaining
+    eval flags on the source expression node.
 
 - [ ] Slice 13h — Migrate structural render ownership and session state
   Goal:
