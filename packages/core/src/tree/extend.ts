@@ -270,6 +270,10 @@ export class Extend extends Node<ExtendValue> {
     context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
     return new Nil();
   }
+
+  override resolve(context: Context): MaybePromise<Nil> {
+    return this.evalNode(context);
+  }
 }
 
 function getRulesetOwnSelector(ruleset: Ruleset): Selector | undefined {

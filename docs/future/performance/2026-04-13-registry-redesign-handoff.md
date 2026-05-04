@@ -451,6 +451,9 @@ families:
   - `Ampersand` now has focused coverage for framed resolve behavior: it may
     read the active ruleset frame and produce the merged selector value, but it
     must not mark the source ampersand as evaluated or allocate print state.
+  - `Extend.resolve(context)` now delegates to the existing extend eval body
+    directly, so direct resolution can return `Nil` / register extend side
+    effects without generic eval stamping the source directive.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
