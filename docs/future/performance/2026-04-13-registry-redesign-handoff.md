@@ -268,6 +268,9 @@ Working rule from that fix:
   carries `context`
 - rebasing onto `context.printState` is only correct for fresh top-level entry
   into printing, not for preview/fork child paths
+- `writer` is now treated as explicit print state in that check, matching the
+  frame-array behavior and keeping preview/trivia consumers from mutating
+  `context.printState` just because they need a render context.
 
 ## Work Checklist
 

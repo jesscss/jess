@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Any } from '../../../index.js';
+import { Context } from '../../../context.js';
 import { consumeTrivia, createTriviaMap, emitTriviaTokens } from '../trivia.js';
 import { OutputWriter, getPrintOptions } from '../print.js';
 
@@ -16,6 +17,18 @@ const token = (image: string, name = 'WS'): IToken => ({
 });
 
 describe('TriviaMap serialization', () => {
+  it('keeps explicit writer print states detached from context print state', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const options = { context, writer };
+
+    const resolved = getPrintOptions(options);
+
+    expect(resolved).toBe(options);
+    expect(resolved.writer).toBe(writer);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('serializes trivia looked up before a node offset', () => {
     const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
     const trivia = createTriviaMap({

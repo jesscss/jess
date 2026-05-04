@@ -113,7 +113,8 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   if (options?.context) {
     if (options !== options.context.printState) {
       const hasExplicitPrintState = (
-        options.inFrames !== undefined
+        options.writer !== undefined
+        || options.inFrames !== undefined
         || options.treeFrames !== undefined
         || options.lastRenderedFrames !== undefined
         || options.frameHeaders !== undefined
