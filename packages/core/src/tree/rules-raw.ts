@@ -1,4 +1,5 @@
 import { defineType } from './node.js';
+import type { Context } from '../context.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -32,6 +33,10 @@ export class RawRules extends Rules {
       child.toString(options);
     }
     return w.getSince(mark);
+  }
+
+  override resolve(_context: Context): this {
+    return this;
   }
 }
 

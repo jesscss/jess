@@ -421,6 +421,9 @@ families:
   - `MixinCollection` now resolves as the resolved callable-candidate carrier
     it already is, without generic eval stamping. Actual mixin invocation still
     belongs to `MixinCollection.evalCall(...)`.
+  - `RawRules` now resolves as a source-owned verbatim container instead of
+    inheriting `Rules.resolve(...)` and creating an evaluated clone. This keeps
+    direct render/resolve aligned with its exact-output purpose.
   - `JsImport` now resolves as a canonical source directive without generic eval
     stamping; its eventual module-loading behavior belongs to the JS import
     runtime, not default child-walk evaluation.
