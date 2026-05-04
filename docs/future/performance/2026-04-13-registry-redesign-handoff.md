@@ -418,6 +418,9 @@ families:
   - JS host wrapper values (`JsFunction`, `JsObject`, and `JsArray`) now resolve
     as themselves without generic eval stamping. They are runtime carriers, not
     evaluated CSS output placements.
+  - `JsImport` now resolves as a canonical source directive without generic eval
+    stamping; its eventual module-loading behavior belongs to the JS import
+    runtime, not default child-walk evaluation.
   - `AtRule.resolve(context)` now evaluates through a derived at-rule wrapper,
     so direct at-rule resolution can normalize/evaluate its prelude and body
     without retaining eval flags on the canonical source at-rule.
