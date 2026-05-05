@@ -120,6 +120,20 @@ describe('OutputWriter', () => {
       expect(w.getSince(mark1)).toBe('chunk2chunk3');
     });
 
+    it('checks suffixes without materializing the buffer', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.add('\n');
+      w.add('two');
+
+      expect(w.endsWith('two')).toBe(true);
+      expect(w.endsWith('\ntwo')).toBe(true);
+      expect(w.endsWith('one\ntwo')).toBe(true);
+      expect(w.endsWith('three')).toBe(false);
+      expect(w.endsWith('')).toBe(true);
+    });
+
     it('restore reverts to mark position', () => {
       const w = new OutputWriter();
 

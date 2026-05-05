@@ -81,6 +81,7 @@ export interface OutputWriter {
   addSpacer(text: string): void;
   mark(): number;
   getSince(mark: number): string;
+  endsWith(suffix: string): boolean;
   toString(): string;
   toSourceMapV3(): any;
   getSegments(): SourceSegment[];
@@ -363,6 +364,27 @@ export class OutputWriter implements OutputWriter {
       return '';
     }
     return this.chunks.slice(mark).join('');
+  }
+
+  endsWith(suffix: string): boolean {
+    if (suffix === '') {
+      return true;
+    }
+    if (suffix.length > this._length) {
+      return false;
+    }
+    let suffixIndex = suffix.length;
+    for (let i = this.chunks.length - 1; i >= 0 && suffixIndex > 0; i--) {
+      const chunk = this.chunks[i]!;
+      const size = Math.min(chunk.length, suffixIndex);
+      const chunkStart = chunk.length - size;
+      const suffixStart = suffixIndex - size;
+      if (chunk.slice(chunkStart) !== suffix.slice(suffixStart, suffixIndex)) {
+        return false;
+      }
+      suffixIndex -= size;
+    }
+    return suffixIndex === 0;
   }
 
   /** Restore writer state to a given mark, discarding appended chunks and segments */

@@ -1554,13 +1554,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (emittedCount === 0) {
         return;
       }
-      const currentBuffer = w.getSince(0);
-      const bufferEndsWithNewline = currentBuffer.endsWith('\n');
       const needsInlineBoundarySpacing = (
         (lastEmittedType === 'Any' && n.type !== 'Any')
         || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
       );
-      if (!bufferEndsWithNewline || needsInlineBoundarySpacing) {
+      if (!w.endsWith('\n') || needsInlineBoundarySpacing) {
         w.addSpacer('\n');
       }
     };

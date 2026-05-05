@@ -49,6 +49,17 @@ function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts:
   return n.find('declaration', key, undefined, opts);
 }
 
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
 // function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
 //   context.rulesContext = n;
 //   opts.searchParents = true;
@@ -180,6 +191,17 @@ describe('Rules', () => {
     expect(firstWriter.toString()).toBe('color: red;');
     expect(secondWriter.toString()).toBe('color: red;');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('does not inspect the whole output buffer for each emitted child boundary', () => {
+    const writer = new WholeBufferCountingWriter();
+    const declarations = Array.from({ length: 12 }, (_, index) => (
+      decl({ name: `p${index}`, value: any(String(index)) })
+    ));
+    const node = rules(declarations);
+
+    expect(node.toString({ writer })).toContain('p11: 11;');
+    expect(writer.wholeBufferReads).toBeLessThanOrEqual(declarations.length + 4);
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
