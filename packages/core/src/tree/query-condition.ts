@@ -1,6 +1,6 @@
 import type { PrintOptions } from '..';
 import { getPrintOptions } from './util/print.js';
-import { defineType } from './node.js';
+import { defineType, type Node } from './node.js';
 import { Sequence } from './sequence.js';
 
 /**
@@ -23,17 +23,23 @@ export class QueryCondition extends Sequence {
       return '';
     }
 
-    // Print first node as-is
-    let node = value[0]!;
-    let out = w.capture(() => node.toString(options));
-    w.add(out.replace(/^\s*|\s*$/g, ''), node);
+    const emitTrimmed = (node: Node) => {
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        node.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
+    };
+
+    emitTrimmed(value[0]!);
 
     // Space out sub-nodes
     for (let i = 1; i < length; i++) {
       let node = value[i]!;
       w.add(' ');
-      let out = w.capture(() => node.toString(options));
-      w.add(out.replace(/^\s*|\s*$/g, ''), node);
+      emitTrimmed(node);
     }
     return w.getSince(mark);
   }

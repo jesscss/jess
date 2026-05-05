@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, query, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('QueryCondition', () => {
   let context: Context;
@@ -13,6 +23,14 @@ describe('QueryCondition', () => {
     const node = query([any('screen'), any('and'), ref({ key: 'mode' }, { type: 'variable' })]);
 
     expect(node.toTrimmedString()).toBe('screen and $mode');
+  });
+
+  it('streams query-condition parts without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = query([any('screen'), any('and'), any('(color)')]);
+
+    expect(node.toTrimmedString({ writer })).toBe('screen and (color)');
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved query-condition values through render(context)', async () => {

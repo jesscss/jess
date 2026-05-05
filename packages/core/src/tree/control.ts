@@ -325,8 +325,13 @@ export class For extends Node<StructuredLoopValue> {
     const w = options.writer!;
     const mark = w.mark();
     const emitTrimmed = (node: Node) => {
-      const out = w.capture(() => node.toString(options));
-      w.add(out.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), node);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        node.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
     };
 
     w.add('$for ', this);

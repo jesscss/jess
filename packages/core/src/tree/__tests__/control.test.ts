@@ -27,6 +27,16 @@ import {
   sel
 } from '../index.js';
 import { Context } from '../../context.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
@@ -181,6 +191,29 @@ describe('Control Nodes', () => {
         item: $value;
       }
     `);
+  });
+
+  it('streams $for range bounds without capture scaffolding', () => {
+    const singlePattern = makePattern(['value'], 'single');
+    if (!(singlePattern instanceof VarDeclaration)) {
+      throw new Error('Expected single var pattern');
+    }
+    const writer = new CountingWriter();
+    const node = new For({
+      pattern: { kind: 'single', value: singlePattern },
+      iterable: {
+        kind: 'range',
+        start: any('1'),
+        end: any('5'),
+        step: any('2'),
+        includeStart: true,
+        includeEnd: false
+      },
+      rules: rules([])
+    });
+
+    expect(node.toTrimmedString({ writer })).toContain('$for ($value of 1 to <5 step 2)');
+    expect(writer.captures).toBe(0);
   });
 
   it('keeps direct $for render(context) on source syntax until parent Rules owns evaluated emission', () => {
