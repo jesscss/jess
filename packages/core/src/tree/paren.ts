@@ -7,6 +7,7 @@ import { Dimension } from './dimension.js';
 import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -45,6 +46,23 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
   }
 };
 
+function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>): void {
+  if (options.trivia) {
+    emitTriviaTokens(
+      consumeTrivia(options.trivia, value.location[0], 'before', options),
+      options,
+      { skipLeadingWhitespace: true }
+    );
+  }
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'pre';
+  try {
+    value.toString(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
 /**
  * An expression in parenthesis
  */
@@ -74,8 +92,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     let value = this.value;
     if (value) {
       if (value instanceof Node) {
-        let out = w.capture(() => value.toString(options));
-        w.add(out.replace(/^[ \t\r\f]*|[ \t\r\f]*$/g, ''), value);
+        emitParenValue(value, options);
       } else {
         w.add(String(value), this);
       }
