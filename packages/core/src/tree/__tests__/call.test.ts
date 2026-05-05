@@ -180,6 +180,21 @@ describe('Call', () => {
     expect(rule.render(context)).toBe('func((a, b), c)');
   });
 
+  it('streams rendered escaped call arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.render(context, { writer })).toBe('func((a, b), c)');
+    expect(writer.toString()).toBe('func((a, b), c)');
+    expect(writer.captures).toBe(0);
+  });
+
   /** @todo */
   it('should serialize a mixin call', () => {
     let rule = call({

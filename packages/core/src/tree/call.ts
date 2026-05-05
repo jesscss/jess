@@ -89,13 +89,15 @@ export class Call extends Node<CallValue, CallOptions> {
     const last = normalizedArgs.length - 1;
     for (let i = 0; i <= last; i++) {
       const arg = normalizedArgs[i]!;
-      let argOut: string;
       if (arg instanceof Paren && arg.options?.escaped) {
-        const inner = arg.value
-          ? w.capture(() => arg.value!.render(context, printOptions))
-          : '';
-        argOut = `(${inner.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, '')})`;
-        w.add(argOut, arg);
+        w.add('(', arg);
+        if (arg.value) {
+          const innerMark = w.mark();
+          arg.value.render(context, printOptions);
+          w.trimHorizontalStartSince(innerMark);
+          w.trimHorizontalEndSince(innerMark);
+        }
+        w.add(')', arg);
       } else {
         const argMark = w.mark();
         arg.render(context, printOptions);
