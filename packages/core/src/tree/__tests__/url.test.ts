@@ -3,6 +3,16 @@ import type { IToken } from 'chevrotain';
 import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 const token = (image: string): IToken => ({
   image,
@@ -61,6 +71,15 @@ describe('url', () => {
     const node = url(any('data:image/png;base64,\n    aaa\n    bbb'));
 
     expect(node.render(context)).toBe('url(data:image/png;base64,\n  aaa\n  bbb)');
+  });
+
+  it('streams rendered url values without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = url(any('data:image/png;base64,\n    aaa\n    bbb'));
+
+    expect(node.render(context, { writer })).toBe('url(data:image/png;base64,\n  aaa\n  bbb)');
+    expect(writer.toString()).toBe('url(data:image/png;base64,\n  aaa\n  bbb)');
+    expect(writer.captures).toBe(0);
   });
 
   it('resolves url values without touching render state', async () => {

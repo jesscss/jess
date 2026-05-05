@@ -19,10 +19,15 @@ export class Url extends Node<Node> {
     const mark = w.mark();
     w.add('url(');
     if (options.context) {
-      const valueOut = w.capture(() => this.value.toString(options))
-        .replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '')
-        .replace(/\n[ \t\r\f]+/g, '\n  ');
-      w.add(valueOut, this.value);
+      const valueMark = w.mark();
+      this.value.toString(options);
+      w.replaceSince(
+        valueMark,
+        value => value
+          .replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '')
+          .replace(/\n[ \t\r\f]+/g, '\n  '),
+        this.value
+      );
     } else {
       this.value.toString(options);
     }

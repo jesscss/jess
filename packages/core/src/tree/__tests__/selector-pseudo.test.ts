@@ -4,6 +4,16 @@ import type { TriviaMap } from '../../types/index.js';
 import type { IToken } from 'chevrotain';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('PseudoSelector', () => {
   let context: Context;
@@ -42,6 +52,35 @@ describe('PseudoSelector', () => {
     node.generated = true;
 
     expect(node.toTrimmedString({ trivia })).toBe(':is(.a .b)');
+  });
+
+  it('streams generated selector arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = pseudo({
+      name: ':is',
+      arg: sel([
+        el('.a'),
+        co(' '),
+        el('.b')
+      ])
+    });
+    node.generated = true;
+
+    expect(node.toTrimmedString({ writer })).toBe(':is(.a .b)');
+    expect(writer.toString()).toBe(':is(.a .b)');
+    expect(writer.captures).toBe(0);
+  });
+
+  it('streams selector list arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = pseudo({
+      name: ':not',
+      arg: sellist([el('.a'), el('.b')])
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe(':not(.a, .b)');
+    expect(writer.toString()).toBe(':not(.a, .b)');
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved pseudo selector values through render(context)', async () => {

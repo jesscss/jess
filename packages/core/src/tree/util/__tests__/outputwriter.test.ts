@@ -158,6 +158,20 @@ describe('OutputWriter', () => {
       expect(w.endsWith('')).toBe(true);
     });
 
+    it('replaces a marked range while keeping earlier chunks', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add('one\n  two');
+
+      w.replaceSince(mark, text => text.replace(/\n\s*/u, ' '));
+
+      expect(w.toString()).toBe('before one two');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(14);
+    });
+
     it('queues a spacer before the next non-whitespace chunk', () => {
       const w = new OutputWriter();
 
