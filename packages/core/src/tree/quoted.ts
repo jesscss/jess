@@ -38,7 +38,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     w.add(quote);
     const value = this.value;
     if (value instanceof Node) {
-      w.add(w.capture(() => value.toTrimmedString(options)), value);
+      value.toTrimmedString(options);
     } else {
       w.add(value, this);
     }

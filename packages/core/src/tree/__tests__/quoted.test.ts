@@ -4,6 +4,16 @@ import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import type { IToken } from 'chevrotain';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('quoted', () => {
   let context: Context;
@@ -68,6 +78,13 @@ describe('quoted', () => {
     }, undefined, [10, 1, 11, 12, 1, 13], treeContext);
 
     expect(quoted(value).toTrimmedString({ trivia })).toBe('"red"');
+  });
+
+  it('streams node values without capture scaffolding', () => {
+    const writer = new CountingWriter();
+
+    expect(quoted(any('hello')).toTrimmedString({ writer })).toBe('"hello"');
+    expect(writer.captures).toBe(0);
   });
 
   it('resolves quoted values without touching render state', async () => {
