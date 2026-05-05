@@ -165,17 +165,21 @@ describe('Rules', () => {
     expect(node.toString()).toBe('$tone');
   });
 
-  it('reuses context-owned print state for explicit toString options with context', () => {
+  it('keeps explicit toString writers detached from context print state', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })
     ]);
+    const firstWriter = new OutputWriter();
+    const secondWriter = new OutputWriter();
 
-    const first = node.toString({ context, writer: new OutputWriter() });
-    const second = node.toString({ context, writer: new OutputWriter() });
+    const first = node.toString({ context, writer: firstWriter });
+    const second = node.toString({ context, writer: secondWriter });
 
     expect(first).toBe('color: red;\n');
     expect(second).toBe('color: red;\n');
-    expect(context.printState.writer?.toString()).toBe('color: red;');
+    expect(firstWriter.toString()).toBe('color: red;');
+    expect(secondWriter.toString()).toBe('color: red;');
+    expect(context.printState.writer).toBeUndefined();
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {

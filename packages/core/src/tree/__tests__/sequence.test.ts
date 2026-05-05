@@ -89,7 +89,7 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
     const rule = seq([first, second]);
 
@@ -104,12 +104,53 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
     const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
     const rule = seq([first, second]);
     context.opts.trivia = trivia;
 
     expect(rule.render(context, { trivia })).toBe('1020');
+  });
+
+  it('does not let source adjacency merge evaluated identifier-like values', () => {
+    const trivia = createTriviaMap({
+      before: new Map(),
+      after: new Map()
+    }) satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = any('is', undefined, [0, 1, 1, 2, 1, 3], treeContext);
+    const second = any('equal', undefined, [2, 1, 3, 7, 1, 8], treeContext);
+    const rule = seq([first, second]);
+    rule.evaluated = true;
+
+    expect(rule.toTrimmedString({
+      trivia
+    })).toBe('is equal');
+  });
+
+  it('falls back to sequence spacing when source whitespace was already consumed', () => {
+    const WS = createToken({ name: 'WS', pattern: / +/ });
+    const whitespace = [{
+      image: ' ',
+      startOffset: 2,
+      endOffset: 2,
+      tokenTypeIdx: WS.tokenTypeIdx,
+      tokenType: WS
+    }] satisfies IToken[];
+    const trivia = createTriviaMap({
+      before: new Map([[3, whitespace]]),
+      after: new Map([[1, whitespace]])
+    }) satisfies TriviaMap;
+    const treeContext = new TreeContext({ trivia });
+    const first = any('is', undefined, [0, 1, 1, 1, 1, 2], treeContext);
+    const second = any('equal', undefined, [3, 1, 4, 7, 1, 8], treeContext);
+    const rule = seq([first, second]);
+    rule.evaluated = true;
+
+    expect(rule.toTrimmedString({
+      emittedTrivia: new Set([whitespace]),
+      trivia
+    })).toBe('is equal');
   });
 
   it('emits consumed trivia map whitespace between source-backed sequence nodes', () => {

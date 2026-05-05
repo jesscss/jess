@@ -30,7 +30,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('coalesces adjacent identical headers for interpolated and literal rulesets', () => {
+  it('keeps authored literal and interpolated sibling rulesets separate without collapse', () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([el('.foo')])]),
@@ -56,6 +56,8 @@ describe('Rule', () => {
     expect(`${node}`).toBeString(`
       .foo {
         a: 1;
+      }
+      .foo {
         a: 2;
       }
     `);

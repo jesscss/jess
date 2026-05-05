@@ -18,6 +18,14 @@ export type SequenceOptions = {
   preserveWhitespace?: boolean;
 };
 
+function wouldMergeIdentifier(prevOut: string, currentOut: string): boolean {
+  return /[A-Za-z_-]$/u.test(prevOut) && /^[A-Za-z0-9_-]/u.test(currentOut);
+}
+
+function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
+  return Boolean(tokens?.some(token => token.tokenType.name !== 'WS'));
+}
+
 /**
  * A continuous collection of nodes. Historically in Less,
  * these were termed "expressions", but in computer science,
@@ -72,8 +80,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const prevEndsWithSpace = writtenSoFar.endsWith(' ');
       w.restore(currentMark);
 
-      const currentNodeOut = w.capture(() => node.toString(options));
-      const currentStartsWithSpace = currentNodeOut.startsWith(' ');
       const sourceTrivia = (
         options.trivia
         && prev.treeContext?.opts?.trivia === options.trivia
@@ -82,17 +88,27 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const hasTrivia = Boolean(
         sourceTrivia
         && (
-          options.trivia.lookup(prev.location[3], 'after')
-          || options.trivia.lookup(node.location[0], 'before')
+          hasNonWhitespaceTrivia(options.trivia.lookup(prev.location[3], 'after'))
+          || hasNonWhitespaceTrivia(options.trivia.lookup(node.location[0], 'before'))
         )
       );
-      const noSep = Boolean(sourceTrivia && prev.location[3] !== undefined && prev.location[3] + 1 === node.location[0]);
+      const prevEnd = prev.location[3];
+      const nodeStart = node.location[0];
+      const noSep = Boolean(
+        sourceTrivia
+        && prevEnd !== undefined
+        && nodeStart !== undefined
+        && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
+      );
+      const currentNodeOut = w.capture(() => node.toString(options));
+      const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+      const canOmitFallbackSpace = noSep && !wouldMergeIdentifier(writtenSoFar, currentNodeOut);
 
       if (
         !prevEndsWithSpace
         && !currentStartsWithSpace
         && !hasTrivia
-        && !noSep
+        && !canOmitFallbackSpace
       ) {
         w.add(' ');
       }

@@ -377,7 +377,7 @@ families:
 
 ### Track 1C — Eval / Render API Convergence
 
-- [ ] Slice 13f — Establish `render(ctx)` / `resolve(ctx)` ownership for leaf and value nodes
+- [x] Slice 13f — Establish `render(ctx)` / `resolve(ctx)` ownership for leaf and value nodes
   Goal:
   - Replace "eval stores result, later `toTrimmedString()` reads it" with
     "render or resolve now, then discard" for literal/value/leaf nodes.
@@ -394,7 +394,7 @@ families:
     current `context.isDefault` boolean text directly instead of evaluating the
     guard node into a retained `Bool`.
 
-- [ ] Slice 13g — Migrate materialization boundaries and expression nodes
+- [x] Slice 13g — Migrate materialization boundaries and expression nodes
   Goal:
   - `Operation`, function calls, interpolated identifiers, dynamic names, and
     guard/value computations should compute via `resolve(ctx)`, write through
@@ -481,7 +481,7 @@ families:
     / `N.JsImport` uses are parser-test contract drift only; do not patch them
     by extending the current 32-bit bitmask table casually.
 
-- [ ] Slice 13h — Migrate structural render ownership and session state
+- [x] Slice 13h — Migrate structural render ownership and session state
   Goal:
   - `Rules`, `Ruleset`, `AtRule`, `Ampersand`, selector composition, and other
     structural render nodes should move live state onto the active session
@@ -518,6 +518,22 @@ families:
     no-stamp behavior is already covered by focused package-local tests. Do
     not add redundant `resolve` methods to those classes just to quiet a raw
     `evalNode` grep.
+  Closure review:
+  - Track 1C is closed. Direct `render(context)` / `resolve(context)` coverage
+    now exists across leaf/value nodes, expression/materialization boundaries,
+    and the structural render surfaces that were still falling through generic
+    `Node.evalStatic(...)` source-node stamping.
+  - Remaining raw `return this.evalNode(context)` methods are intentional
+    direct ownership paths: they use the node-specific evaluation body without
+    entering `Node.evalStatic(...)`, so they do not by themselves mark the
+    source node `preEvaluated` / `evaluated`.
+  - Remaining generic `preEvaluated` / `evaluated` state is runtime evaluation
+    state, not proof that Track 1C is incomplete. Reopen Track 1C only with a
+    focused failing test or code path showing direct `render(context)` /
+    `resolve(context)` is still stamping a canonical source node through
+    generic evaluation.
+  - Remaining `OutputWriter.mark()` / `getSince()` / `restore()` /
+    `capture()` usage belongs to Track 5 serializer-buffer work, not Track 1C.
 - [x] Slice 14 — Retire `DeclarationRegistry` hot path for variable lookups; once all callers confirmed to go through `findVarDeclarationFast` / `liveSlotsByName`, remove the `targetRules.find('declaration', ...)` fallback for `type === 'variable'`
   Status:
   - Done: hot variable lookup now uses `findVarDeclarationFast` +
@@ -1133,10 +1149,12 @@ Track 1 is no longer about outer renderKey plumbing. That runtime is gone.
 
 What remains:
 
-1. Treat Track 1B as closed unless new code evidence shows a derived surface
-   exists only to fake placement-local state.
-2. Track eval/serialization merge work as explicit Track 1C slices
-   (`13f`/`13g`/`13h`) instead of implicitly burying it under Track 5.
+1. Treat Track 1B and Track 1C as closed unless new focused code evidence
+   shows a canonical-tree or direct-render invariant is still broken.
+2. Start Track 5 with a narrow serializer-buffer spike: inventory the live
+   `OutputWriter` mark/capture/backtracking sites, decide which are true
+   segmented-buffer needs versus local formatting helpers, and keep the first
+   implementation slice measurable.
 3. Keep the handoff compressed: remove stale references to `_renderKey`,
    `_childForks`, `getValue(renderKey)`, and wrapper renderKey transport as if
    they are still live work.

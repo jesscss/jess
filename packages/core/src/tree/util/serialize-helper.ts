@@ -115,24 +115,34 @@ function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boole
   return false;
 }
 
-function hasFrameTrivia(node: Node, options: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
-  return hasPrintableTriviaAt(node, 'before', options)
-    || hasPrintableTriviaAt(node, 'after', options);
+function containsNodeType(value: unknown, type: string): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const node = value as { type?: unknown; value?: unknown };
+  if (node.type === type) {
+    return true;
+  }
+  const childValue = node.value;
+  if (Array.isArray(childValue)) {
+    return childValue.some(child => containsNodeType(child, type));
+  }
+  return containsNodeType(childValue, type);
 }
 
 function canMergeSameHeaderRuleset(
   currentFrame: Ruleset,
-  priorFrame: Ruleset,
-  options: Pick<FinalPrintOptions, 'context' | 'trivia'>
+  priorFrame: Ruleset
 ): boolean {
   const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
   const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  const currentSelector = currentOwn ?? currentFrame.value.selector;
+  const priorSelector = priorOwn ?? priorFrame.value.selector;
   return (
     isNode(currentOwn, N.Ampersand)
     || isNode(priorOwn, N.Ampersand)
-    || currentOwn?.type === 'InterpolatedSelector'
-    || priorOwn?.type === 'InterpolatedSelector'
-    || (!hasFrameTrivia(currentFrame, options) && !hasFrameTrivia(priorFrame, options))
+    || containsNodeType(currentSelector, 'InterpolatedSelector')
+    || containsNodeType(priorSelector, 'InterpolatedSelector')
   );
 }
 
@@ -592,7 +602,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               currentFrame === priorFrame
               || isAncestorFrame(priorFrame, currentFrame)
               || isAncestorFrame(currentFrame, priorFrame)
-              || canMergeSameHeaderRuleset(currentFrame, priorFrame, options)
+              || canMergeSameHeaderRuleset(currentFrame, priorFrame)
             );
           const sameHeader = (
             currentHeader === priorComparableHeader

@@ -86,7 +86,7 @@ describe('CSS Nesting Collapse', () => {
     );
   });
 
-  it('coalesces adjacent identical headers during serialization', async () => {
+  it('keeps independent adjacent identical headers separate during serialization', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.same')]),
@@ -108,6 +108,8 @@ describe('CSS Nesting Collapse', () => {
     expect(css).toBeString(`
       .same {
         case: 2;
+      }
+      .same {
         case: 3;
       }`
     );
