@@ -45,14 +45,14 @@ import {
 import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
-import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { consumeTriviaText } from './util/trivia.js';
 const { isArray } = Array;
 
 function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
 }
 
-function captureLeadingTrivia(node: Node, options: PrintOptions): string {
+function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
     | undefined;
@@ -60,25 +60,17 @@ function captureLeadingTrivia(node: Node, options: PrintOptions): string {
     options.trivia = trivia;
   }
   const offset = node.location[0];
-  return options.writer!.capture(() => {
-    if (trivia) {
-      emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
-    }
-  });
+  return trivia ? consumeTriviaText(trivia, offset, 'before', options) : '';
 }
 
-function captureEofTrivia(node: Node, options: PrintOptions): string {
+function consumeEofTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
     | undefined;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
-  return options.writer!.capture(() => {
-    if (trivia) {
-      emitTriviaTokens(consumeTrivia(trivia, Infinity, 'before', options), options);
-    }
-  });
+  return trivia ? consumeTriviaText(trivia, Infinity, 'before', options) : '';
 }
 
 export const enum Priority {
@@ -1357,7 +1349,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       if (ctx?.topImports?.length) {
         for (const node of this.value) {
-          const leadingTrivia = captureLeadingTrivia(node, options);
+          const leadingTrivia = consumeLeadingTrivia(node, options);
           if (leadingTrivia.trim()) {
             w.add(normalizeIndent(leadingTrivia, ''), node);
             break;
@@ -1417,7 +1409,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       w.add(bodyStr);
     }
     if (depth === 0) {
-      const eofTrivia = captureEofTrivia(this, options);
+      const eofTrivia = consumeEofTrivia(this, options);
       if (eofTrivia.trim()) {
         const current = w.getSince(mark);
         if (current && !current.endsWith('\n')) {
@@ -1590,7 +1582,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (!hasPrintableTriviaAt(n, 'before', options)) {
         return false;
       }
-      const leading = captureLeadingTrivia(n, options);
+      const leading = consumeLeadingTrivia(n, options);
       if (!/\/\*/.test(leading)) {
         return false;
       }

@@ -217,6 +217,17 @@ export function consumeTrivia(
   return tokens;
 }
 
+export function consumeTriviaText(
+  trivia: TriviaMap,
+  offset: number | undefined,
+  lookup: TriviaLookup,
+  options: TriviaEmitOptions
+): string {
+  return getPrintableTriviaTokens(consumeTrivia(trivia, offset, lookup, options), options)
+    ?.map(token => token.image)
+    .join('') ?? '';
+}
+
 export function consumeTriviaBetween(
   trivia: TriviaMap | undefined,
   prev: Node,
