@@ -6,6 +6,16 @@ import { N } from '../node-type.js';
 import { paren } from '../paren.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -31,6 +41,17 @@ describe('Call', () => {
     });
     expect(`${rule}`).toBe('rgb(100, 100, 100)');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('streams canonical function arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
+    expect(writer.captures).toBe(0);
   });
 
   it('serializes comment trivia owned by function argument separators', () => {

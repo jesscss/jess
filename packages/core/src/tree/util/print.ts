@@ -83,6 +83,8 @@ export interface OutputWriter {
   mark(): number;
   getSince(mark: number): string;
   endsWith(suffix: string): boolean;
+  trimHorizontalStartSince(mark: number): void;
+  trimHorizontalEndSince(mark: number): void;
   trimEndSince(mark: number): void;
   toString(): string;
   toSourceMapV3(): any;
@@ -402,6 +404,49 @@ export class OutputWriter implements OutputWriter {
       suffixIndex -= size;
     }
     return suffixIndex === 0;
+  }
+
+  trimHorizontalStartSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let first = mark;
+    while (first < this.chunks.length) {
+      const chunk = this.chunks[first]!;
+      const trimmed = chunk.replace(/^[ \t\r\f]+/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[first] = trimmed;
+        break;
+      }
+      this.chunks[first] = '';
+      first++;
+    }
+    this.refreshPositions();
+  }
+
+  trimHorizontalEndSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let last = this.chunks.length - 1;
+    while (last >= mark) {
+      const chunk = this.chunks[last]!;
+      const trimmed = chunk.replace(/[ \t\r\f]+$/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[last] = trimmed;
+        this.chunks.length = last + 1;
+        break;
+      }
+      this.chunks.length = last;
+      last--;
+    }
+    this.refreshPositions();
   }
 
   trimEndSince(mark: number): void {

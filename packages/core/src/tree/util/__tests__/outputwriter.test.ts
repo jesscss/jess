@@ -250,6 +250,30 @@ describe('OutputWriter', () => {
       expect(w.line).toBe(0);
       expect(w.column).toBe(7);
     });
+
+    it('trims horizontal whitespace at the start of a marked range', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add(' \t\r\fvalue');
+
+      w.trimHorizontalStartSince(mark);
+
+      expect(w.toString()).toBe('before value');
+    });
+
+    it('trims horizontal whitespace at the end of a marked range', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add('value \t\r\f');
+
+      w.trimHorizontalEndSince(mark);
+
+      expect(w.toString()).toBe('before value');
+    });
   });
 
   describe('_positions array behavior', () => {

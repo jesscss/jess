@@ -173,8 +173,10 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const argsOut = w.capture(() => args.toTrimmedString(options));
-      w.add(argsOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), args);
+      const argsMark = w.mark();
+      args.toTrimmedString(options);
+      w.trimHorizontalStartSince(argsMark);
+      w.trimHorizontalEndSince(argsMark);
     }
     w.add(')');
     if (this._options?.markImportant) {
