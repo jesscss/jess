@@ -3,7 +3,7 @@ import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
-import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -265,7 +265,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
-    const w = options.writer;
     let { name, prelude, rules } = this.value;
 
     let idt = indent(options.depth);
@@ -290,8 +289,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         options.trivia = savedTrivia;
       }
     };
+    const printDetached = (printOptions: PrintOptions, fn: (nextOptions: PrintOptions) => void): string => {
+      const writer = new OutputWriter();
+      fn({
+        ...printOptions,
+        writer
+      });
+      return writer.toString();
+    };
 
-    const nameOut = captureWithoutHeaderTrivia(() => w.capture(() => name.toString(options)));
+    const nameOut = captureWithoutHeaderTrivia(() => printDetached(options, nextOptions => name.toString(nextOptions)));
     const nameEndsWithSpace = /\s$/.test(nameOut);
     if (prelude) {
       const preludeTrivia = withoutComments
@@ -305,7 +312,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             emittedTrivia: options.emittedTrivia
           }
         : options;
-      const preludeOut = captureWithoutHeaderTrivia(() => w.capture(() => prelude.toString(preludePrintOptions)));
+      const preludeOut = captureWithoutHeaderTrivia(() => printDetached(preludePrintOptions, nextOptions => prelude.toString(nextOptions)));
       if (!preludeOut.trim()) {
         out += nameOut;
         if (rules) {
@@ -329,7 +336,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       out += finalPreludeOut;
       const preludePost = withoutComments
         ? ''
-        : w.capture(() => emitCommentTriviaAfterNode(prelude, options));
+        : printDetached(options, nextOptions => emitCommentTriviaAfterNode(prelude, nextOptions));
       out += preludePost;
       if (rules) {
         const preludeEndsWithSpace = /\s$/.test(preludeOut + preludePost);

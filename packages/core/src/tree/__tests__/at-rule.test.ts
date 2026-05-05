@@ -12,6 +12,7 @@ import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -27,6 +28,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('AtRule', () => {
   beforeEach(() => {
@@ -168,6 +178,20 @@ describe('AtRule', () => {
     });
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
+  });
+
+  it('streams at-rule headers without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+
+    expect(node.getHeaderString(options)).toBe('@media screen {\n');
+    expect(writer.toString()).toBe('');
+    expect(writer.captures).toBe(0);
   });
 
   describe('nested @media rules', () => {
