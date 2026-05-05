@@ -1,37 +1,26 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { Context } from '../../context.js';
-import { extend, el, N } from '../index.js';
-import { ExtendList } from '../extend-list.js';
-import { isNode } from '../util/is-node.js';
+import { describe, expect, it } from 'vitest';
+import { ExtendFlag, el, extend } from '../index.js';
+import { OutputWriter } from '../util/print.js';
 
-let context: Context;
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('Extend', () => {
-  beforeEach(() => {
-    context = new Context();
-  });
+  it('streams source and target selectors without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = extend({
+      selector: el('.source'),
+      target: el('.target'),
+      flag: ExtendFlag.Exact
+    });
 
-  it('resolves unrooted extend directives without touching render state', async () => {
-    const node = extend({ target: el('.base') });
-
-    const resolved = await node.resolve(context);
-
-    expect(isNode(resolved, N.Nil)).toBe(true);
-    expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
-    expect(context.printState.writer).toBeUndefined();
-  });
-
-  it('resolves extend lists without eval stamping the source list', () => {
-    const node = new ExtendList([
-      extend({ target: el('.base') })
-    ]);
-
-    const resolved = node.resolve(context);
-
-    expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
-    expect(context.printState.writer).toBeUndefined();
+    expect(node.toTrimmedString({ writer })).toBe('$extend .source -> .target !exact;');
+    expect(writer.captures).toBe(0);
   });
 });

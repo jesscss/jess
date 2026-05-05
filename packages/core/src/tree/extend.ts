@@ -61,19 +61,26 @@ export class Extend extends Node<ExtendValue> {
     const w = options.writer!;
     let { target, selector, flag, namespace } = this.value;
     const mark = w.mark();
+    const emitTrimmed = (node: Selector) => {
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        node.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
+    };
     w.add('$extend');
     if (selector) {
-      let out = w.capture(() => selector.toString(options)).trim();
       w.add(' ');
-      w.add(out, selector);
+      emitTrimmed(selector);
       w.add(' ->');
     }
-    let out = w.capture(() => target.toString(options)).trim();
     w.add(' ');
     if (namespace) {
       w.add(`${namespace}|`);
     }
-    w.add(out, target);
+    emitTrimmed(target);
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
     }
