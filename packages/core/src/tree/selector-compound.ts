@@ -8,6 +8,7 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 
 /**
  * @example
@@ -17,6 +18,28 @@ import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState }
  */
 /** Anything other than type (element) or universal, which must come first */
 const nonElementRegex = /^[.#:[]/;
+
+function emitCompoundPart(
+  part: SimpleSelector,
+  options: ReturnType<typeof getPrintOptions>,
+  emitLeadingTrivia: boolean
+): void {
+  if (emitLeadingTrivia && options.trivia) {
+    emitTriviaTokens(
+      consumeTrivia(options.trivia, part.location[0], 'before', options),
+      options,
+      { skipLeadingWhitespace: true }
+    );
+  }
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'pre';
+  try {
+    part.toString(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
 export class CompoundSelector extends Selector<SimpleSelector[]> {
   private withComponents(value: Selector[]): this {
     const node = this.clone();
@@ -34,8 +57,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     const saved = savePrintState(options, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       options.ampersandFirst = (i === 0);
-      const out = w.capture(() => value[i]!.toString(options));
-      w.add(out.trim(), value[i]!);
+      emitCompoundPart(value[i]!, options, i > 0);
     }
     restorePrintState(options, saved);
     return w.getSince(mark);

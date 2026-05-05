@@ -1,5 +1,29 @@
+import type { IToken } from 'chevrotain';
 import { any, attr, compound, el, pseudo, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 let context: Context;
 
@@ -37,6 +61,21 @@ describe('Compound Selector', () => {
         el('.class')
       ]).valueOf();
       expect(sel1).toEqual(sel2);
+    });
+
+    test('streams compound selector parts without capture scaffolding', () => {
+      const writer = new CountingWriter();
+      const first = el('.sel');
+      first._location = [0, 1, 1, 3, 1, 4];
+      const second = el('.a');
+      second._location = [16, 1, 17, 17, 1, 18];
+      const trivia = createTriviaMap({
+        before: new Map([[second.location[0], [token('/*comment*/', 'BlockComment')]]]),
+        after: new Map<number, IToken[]>()
+      }) satisfies TriviaMap;
+
+      expect(compound([first, second]).toString({ trivia, writer })).toBe('.sel/*comment*/.a');
+      expect(writer.captures).toBe(0);
     });
   });
 
