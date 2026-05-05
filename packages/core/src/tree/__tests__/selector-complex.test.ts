@@ -2,6 +2,16 @@ import type { IToken } from 'chevrotain';
 import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 const token = (image: string): IToken => ({
   image,
@@ -30,6 +40,18 @@ describe('Complex selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a > .foo');
+    });
+
+    test('streams non-space combinators without capture scaffolding', () => {
+      const writer = new CountingWriter();
+      const node = sel([
+        el('a'),
+        co('>'),
+        el('.foo')
+      ]);
+
+      expect(node.toTrimmedString({ writer })).toBe('a > .foo');
+      expect(writer.captures).toBe(2);
     });
 
     test('renders resolved complex selector values through render(context)', async () => {

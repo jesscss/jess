@@ -66,11 +66,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         }
         let co = component.value;
         if (co !== ' ') {
-          let out = w.capture(() => component.toString(options));
-          if (out !== '|') {
-            w.add(` ${out.trim()} `, component);
+          if (co !== '|') {
+            w.add(` ${co} `, component);
           } else {
-            w.add(out.trim(), component);
+            w.add(co, component);
           }
         } else {
           const prev = value[i - 1];
