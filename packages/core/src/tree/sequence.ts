@@ -18,8 +18,8 @@ export type SequenceOptions = {
   preserveWhitespace?: boolean;
 };
 
-function wouldMergeIdentifier(prevOut: string, currentOut: string): boolean {
-  return /[A-Za-z_-]$/u.test(prevOut) && /^[A-Za-z0-9_-]/u.test(currentOut);
+function endsWithIdentifier(value: string): boolean {
+  return /[A-Za-z_-]$/u.test(value);
 }
 
 function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
@@ -103,10 +103,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     for (let i = 1; i < length; i++) {
       const prev = value[i - 1]!;
       const node = value[i]!;
-      const currentMark = w.mark();
       const writtenSoFar = w.getSince(mark);
       const prevEndsWithSpace = writtenSoFar.endsWith(' ');
-      w.restore(currentMark);
 
       const sourceTrivia = (
         options.trivia
@@ -128,19 +126,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         && nodeStart !== undefined
         && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
       );
-      const currentNodeOut = w.capture(() => node.toString(options));
-      const currentStartsWithSpace = currentNodeOut.startsWith(' ');
-      const canOmitFallbackSpace = noSep && !wouldMergeIdentifier(writtenSoFar, currentNodeOut);
+      const needsMergeGuard = noSep && endsWithIdentifier(writtenSoFar);
 
       if (
         !prevEndsWithSpace
-        && !currentStartsWithSpace
         && !hasTrivia
-        && !canOmitFallbackSpace
+        && (!noSep || needsMergeGuard)
       ) {
-        w.add(' ');
+        w.queueSpacer(' ', needsMergeGuard
+          ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
+          : undefined);
       }
-      w.add(currentNodeOut);
+      node.toString(options);
     }
 
     return w.getSince(mark);

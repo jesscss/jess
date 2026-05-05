@@ -158,6 +158,38 @@ describe('OutputWriter', () => {
       expect(w.endsWith('')).toBe(true);
     });
 
+    it('queues a spacer before the next non-whitespace chunk', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.queueSpacer(' ');
+      w.add('two');
+
+      expect(w.toString()).toBe('one two');
+    });
+
+    it('drops a queued spacer when the next chunk already starts with whitespace', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.queueSpacer(' ');
+      w.add(' two');
+
+      expect(w.toString()).toBe('one two');
+    });
+
+    it('uses a queued spacer predicate to protect identifier boundaries', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_-]/u.test(nextText));
+      w.add('.two');
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_-]/u.test(nextText));
+      w.add('three');
+
+      expect(w.toString()).toBe('one.two three');
+    });
+
     it('restore reverts to mark position', () => {
       const w = new OutputWriter();
 

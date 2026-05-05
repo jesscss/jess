@@ -120,12 +120,12 @@ describe('Sequence', () => {
     expect(`${rule}`).toBe('10 20 30');
   });
 
-  it('streams the first sequence item without capture scaffolding', () => {
+  it('streams sequence items without capture scaffolding', () => {
     const writer = new CountingWriter();
     const rule = seq([num(10), num(20), num(30)]);
 
     expect(rule.toTrimmedString({ writer })).toBe('10 20 30');
-    expect(writer.captures).toBe(2);
+    expect(writer.captures).toBe(0);
   });
 
   it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {

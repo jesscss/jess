@@ -79,6 +79,7 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
 export interface OutputWriter {
   add(text: string, origin?: unknown): void;
   addSpacer(text: string): void;
+  queueSpacer(text: string, shouldAdd?: (nextText: string) => boolean): void;
   mark(): number;
   getSince(mark: number): string;
   endsWith(suffix: string): boolean;
@@ -258,6 +259,7 @@ export class OutputWriter implements OutputWriter {
   private _lastNewlineOrigin: unknown = undefined;
   /** Store segments from the most recent capture for merging when content is added back */
   private _capturedSegments: SourceSegment[] | null = null;
+  private _queuedSpacer: { text: string; shouldAdd: (nextText: string) => boolean } | null = null;
 
   get line() {
     return this._line;
@@ -270,6 +272,13 @@ export class OutputWriter implements OutputWriter {
   add(text: string, originParam?: unknown): void {
     if (!text) {
       return;
+    }
+    const queuedSpacer = this._queuedSpacer;
+    if (queuedSpacer) {
+      this._queuedSpacer = null;
+      if (queuedSpacer.shouldAdd(text)) {
+        this.addSpacer(queuedSpacer.text);
+      }
     }
     this.chunks.push(text);
     this._length += text.length;
@@ -356,6 +365,13 @@ export class OutputWriter implements OutputWriter {
     this._capturedSegments = pendingSegments;
   }
 
+  queueSpacer(text: string, shouldAdd: (nextText: string) => boolean = nextText => !/^[ \t\r\n\f]/u.test(nextText)): void {
+    if (!text) {
+      return;
+    }
+    this._queuedSpacer = { text, shouldAdd };
+  }
+
   mark(): number {
     return this.chunks.length;
   }
@@ -429,6 +445,7 @@ export class OutputWriter implements OutputWriter {
       this._length = 0;
     }
     this._positions.length = mark;
+    this._queuedSpacer = null;
   }
 
   private refreshPositions(): void {
