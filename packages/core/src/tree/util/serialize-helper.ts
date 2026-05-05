@@ -726,7 +726,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.depth = options.depth + 1;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const previewOut = w.capture(() => nn.toTrimmedString(getPrintOptions(options)));
+          const previewOut = renderNodeText(nn, getPrintOptions(options));
           restoreSetState(options.emittedTrivia, previewEmittedTrivia);
           options.inFrames.length = previewInFramesLength;
           options.treeFrames.length = previewTreeFramesLength;
@@ -779,7 +779,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           : isNode(nn, N.Declaration)
             ? (declarationOutputCache.get(idx) ?? renderNodeText(nn, options))
             : isNode(nn, N.Rules)
-              ? w.capture(() => nn.toTrimmedString(options))
+              ? renderNodeText(nn, options)
               : renderNodeText(nn, options);
         if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());

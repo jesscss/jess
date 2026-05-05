@@ -519,6 +519,28 @@ describe('CSS Nesting Collapse', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('streams reference rule wrappers in collapsed containers without capture scaffolding', async () => {
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          rules([
+            decl({ name: 'color', value: spaced([el('red')]) })
+          ], {
+            referenceMode: true
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ context, writer, collapseNesting: true });
+
+    expect(css).toBe('');
+    expect(writer.captures).toBe(0);
+  });
+
   it('should bubble @supports rules to root level', async () => {
     const node = rules([
       ruleset({

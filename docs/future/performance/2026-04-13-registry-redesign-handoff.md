@@ -169,7 +169,10 @@ The benchmark and architecture audits still point to four larger cost centers:
    and the node-level `render/resolve` migration still need to fully harden the
    "one canonical tree, no forks, no retained per-placement eval state" target.
 2. **serializer backtracking / buffered render (Track 5)** — the audit shows
-   `OutputWriter.mark/getSince/restore/capture` are still huge runtime costs.
+   `OutputWriter.mark/getSince/restore` text peeks are still huge runtime costs.
+   Production `writer.capture()` calls under `packages/core/src/tree` have been
+   removed; the remaining cost is explicit preview/rollback and the frame-state
+   coupling those previews preserve.
    Moving toward typed render buffers and deferred selector finalization is the
    follow-through after Track 1C, not a bucket for node-level render migration
    slices that belong in Track 1.
@@ -695,8 +698,11 @@ no AST traversal. Straightforward to test in isolation.
   - Highest-value sites to reason about first:
     1. `Rules` full-buffer inspection (`getSince(0)` in boundary insertion)
        because it can join the entire output-so-far per emitted child.
-    2. `Rules` / `serialize-helper` preview captures that serialize a child
-       once to decide visibility and again to emit it.
+    2. Resolved checkpoint: `Rules` / `serialize-helper` no longer call
+       `writer.capture()` for child preview/emit paths. Those paths still use
+       explicit `mark/getSince/restore` text previews and rely on the same
+       frame-stack side effects, so this is cleanup progress rather than the
+       target buffered renderer.
     3. `Sequence` boundary inspection because it is the one live explicit
        mark/getSince/restore loop and sits on declaration-value hot paths.
     4. Generic `Node.toString()` capture of leading trivia and body; this was

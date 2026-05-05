@@ -1576,6 +1576,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     };
+    const renderText = (fn: () => void): string => {
+      const mark = w.mark();
+      fn();
+      const out = w.getSince(mark);
+      w.restore(mark);
+      return out;
+    };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
       emitBoundaryIfNeeded(n);
       if (prefix) {
@@ -1679,7 +1686,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const previewOut = w.capture(() => n.toTrimmedString(getPrintOptions(options)));
+        const previewOut = renderText(() => n.toTrimmedString(getPrintOptions(options)));
         restoreSetState(options.emittedTrivia, previewEmittedTrivia);
         options.inFrames.length = previewInFramesLength;
         options.treeFrames.length = previewTreeFramesLength;
@@ -1697,7 +1704,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           options.depth = depth;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          childRule = w.capture(() => n.toTrimmedString(options));
+          childRule = renderText(() => n.toTrimmedString(options));
           options.emittedTrivia = childEmittedTrivia;
           restorePrintState(options, childSaved);
         }

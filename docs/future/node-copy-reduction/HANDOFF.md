@@ -214,6 +214,10 @@ Serialization note:
 
 - `Rules` / `Ruleset` serialization still carries too much ad-hoc control flow,
   especially in `packages/core/src/tree/util/serialize-helper.ts`.
+- Current checkpoint: `rules.ts` and `serialize-helper.ts` no longer call
+  `writer.capture()` in production paths. Remaining Track 5 debt is the explicit
+  `mark/getSince/restore` text-preview pattern and the coupled frame-stack side
+  effects it preserves.
 - Current text-prefix / start-character checks are transitional debugging debt,
   not acceptable target architecture.
 - Future cleanup should move those decisions onto node shape and explicit
