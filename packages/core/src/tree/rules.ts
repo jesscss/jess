@@ -17,6 +17,7 @@ import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
+  OutputWriter,
   type PrintOptions,
   getPrintOptions,
   savePrintState,
@@ -71,6 +72,15 @@ function consumeEofTrivia(node: Node, options: PrintOptions): string {
     options.trivia = trivia;
   }
   return trivia ? consumeTriviaText(trivia, Infinity, 'before', options) : '';
+}
+
+function printDetached(options: PrintOptions, fn: (nextOptions: PrintOptions) => string): string {
+  const writer = new OutputWriter();
+  const out = fn({
+    ...options,
+    writer
+  });
+  return writer.toString() || out;
 }
 
 export const enum Priority {
@@ -1340,8 +1350,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
-        // Use capture to avoid double-writing (toTrimmedString writes to writer AND returns the string)
-        const charsetStr = w.capture(() => charset.toTrimmedString(options));
+        const charsetStr = printDetached(options, nextOptions => charset.toTrimmedString(nextOptions));
         w.add(charsetStr, charset);
         w.add('\n');
         // Do not permanently flip `charsetEmitted` here; restore at end.
@@ -1368,7 +1377,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           if (!isCommentLike(node)) {
             break;
           }
-          const commentStr = w.capture(() => node.toTrimmedString(options));
+          const commentStr = printDetached(options, nextOptions => node.toTrimmedString(nextOptions));
           w.add(normalizeIndent(commentStr, ''), node);
           w.add('\n');
           const wasVisible = node.hasFlag(F_VISIBLE);
@@ -1390,7 +1399,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
               }
             }
           }
-          const importStr = w.capture(() => importRule.toString(options));
+          const importStr = printDetached(options, nextOptions => importRule.toString(nextOptions));
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
         }

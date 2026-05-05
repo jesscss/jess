@@ -20,7 +20,8 @@ import {
   style,
   quoted,
   type Declaration,
-  type Selector
+  type Selector,
+  atrule
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
@@ -51,12 +52,18 @@ function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts:
 
 class WholeBufferCountingWriter extends OutputWriter {
   wholeBufferReads = 0;
+  captures = 0;
 
   override getSince(mark: number): string {
     if (mark === 0) {
       this.wholeBufferReads++;
     }
     return super.getSince(mark);
+  }
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
   }
 }
 
@@ -202,6 +209,21 @@ describe('Rules', () => {
 
     expect(node.toString({ writer })).toContain('p11: 11;');
     expect(writer.wholeBufferReads).toBeLessThanOrEqual(declarations.length + 4);
+  });
+
+  it('streams root charset and imports without capture scaffolding', () => {
+    const writer = new WholeBufferCountingWriter();
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css'))
+      })
+    ];
+    const node = rules([]);
+
+    expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(writer.captures).toBe(0);
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
@@ -797,7 +819,6 @@ describe('Rules', () => {
         const evald = await width.eval(context);
         expect(`${evald}`).toBe('total-width: 96em');
       });
-
 
       it('shadows variables #1', async () => {
         let node = rules([
