@@ -16,6 +16,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import {
+  OutputWriter,
   type PrintOptions,
   type FinalPrintOptions,
   getPrintOptions,
@@ -823,7 +824,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
-    const w = options.writer;
     const { selector } = this.value as RulesetValue;
     const idt = indent(options.depth);
 
@@ -942,8 +942,14 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       options.trivia = createTriviaMap();
     }
     let selOut: string;
+    const selectorWriter = new OutputWriter();
+    const selectorPrintOptions = {
+      ...options,
+      writer: selectorWriter
+    };
     try {
-      selOut = w.capture(() => renderSelector.toString(options));
+      renderSelector.toString(selectorPrintOptions);
+      selOut = selectorWriter.toString();
     } finally {
       options.trivia = savedTrivia;
     }

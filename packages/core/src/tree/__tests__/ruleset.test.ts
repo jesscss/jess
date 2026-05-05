@@ -7,6 +7,15 @@ import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 
 let context: Context;
 
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
+
 describe('Rule', () => {
   beforeEach(() => {
     context = new Context();
@@ -118,6 +127,19 @@ describe('Rule', () => {
 
     expect(header).toContain('.foo');
     expect(options.referenceFilterTargets).toBe(false);
+  });
+
+  it('streams header selectors without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: sellist([sel([el('.foo')])]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+
+    expect(node.getHeaderString(options)).toBe('.foo {\n');
+    expect(writer.toString()).toBe('');
+    expect(writer.captures).toBe(0);
   });
 
   it('getHeaderString keeps selector visibility forcing render-local', () => {
