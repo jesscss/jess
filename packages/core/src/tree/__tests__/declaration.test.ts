@@ -7,11 +7,11 @@ import { createTriviaMap } from '../util/trivia.js';
 
 let context: Context;
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+const token = (image: string, tokenTypeName = 'WS', startOffset = 0): IToken => ({
   image,
   tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
+  startOffset,
+  endOffset: startOffset + image.length - 1,
   startLine: 1,
   endLine: 1,
   startColumn: 1,
@@ -48,6 +48,23 @@ describe('Declaration', () => {
     }).render(context);
 
     expect(rendered).toBe('color: red');
+  });
+
+  it('keeps toTrimmedString canonical even when a render context is present', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+
+    expect(node.toTrimmedString({ context })).toBe('color: $tone');
+    expect(node.render(context)).toBe('color: red');
   });
 
   it('resolves declarations without touching render state', async () => {
@@ -350,6 +367,20 @@ describe('Declaration', () => {
       background-position: 45
         -23;
     `);
+  });
+
+  it('does not treat boundary trivia before a value as authored multiline value text', () => {
+    const name = any('color', { role: 'property' });
+    name._location = [0, 1, 1, 5, 1, 6];
+    const value = any('white');
+    value._location = [8, 2, 1, 12, 2, 6];
+    const node = decl({ name, value });
+    node._location = [0, 1, 1, 12, 2, 6];
+    const trivia = createTriviaMap({
+      before: new Map([[value.location[0], [token('\n', 'WS', 6)]]])
+    }) satisfies TriviaMap;
+
+    expect(node.toTrimmedString({ trivia })).toBe('color: white');
   });
 
   it('does not re-merge sequence assignments during post-eval coalescing in nested at-rules', async () => {

@@ -125,6 +125,10 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
   return `${nameText}(${argTexts.join(', ')})`;
 };
 
+const captureValueBody = (value: Node, options: ReturnType<typeof getPrintOptions>): string => {
+  return options.writer!.capture(() => value.toTrimmedString(options));
+};
+
 /**
  * A continuous collection of nodes.
  *
@@ -213,10 +217,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       //   drop that trailing line break so semicolon insertion stays inline.
       // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
       //   insert a single separator space for stable CSS output.
-      const renderStructuredCustomValue = Boolean(options.context && shouldResolveCustomPropertyValue(value));
-      let customOut = renderStructuredCustomValue
-        ? w.capture(() => value.render(options.context!, options))
-        : w.capture(() => value.toString(options));
+      let customOut = w.capture(() => value.toString(options));
       customOut = stringifyCustomFallbackFunctionCall(value, options) ?? customOut;
       customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
       customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
@@ -233,9 +234,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Capture value output to normalize spacing after ':'
       let valOut = '';
       try {
-        valOut = options.context
-          ? w.capture(() => value.render(options.context!, options))
-          : w.capture(() => value.toString(options));
+        valOut = captureValueBody(value, options);
       } catch (error: unknown) {
         throw error;
       }
