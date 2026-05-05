@@ -68,8 +68,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return '';
     }
 
-    // Serialize first node with toString() to preserve comments.
-    w.add(w.capture(() => value[0]!.toString(options)));
+    value[0]!.toString(options);
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {

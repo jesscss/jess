@@ -3,6 +3,16 @@ import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 /**
  * @todo - sequences need to make sure that the result could be re-parsed
@@ -81,6 +91,14 @@ describe('Sequence', () => {
   it('should serialize to a single value', () => {
     let rule = seq([num(10), num(20), num(30)]);
     expect(`${rule}`).toBe('10 20 30');
+  });
+
+  it('streams the first sequence item without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = seq([num(10), num(20), num(30)]);
+
+    expect(rule.toTrimmedString({ writer })).toBe('10 20 30');
+    expect(writer.captures).toBe(2);
   });
 
   it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {
