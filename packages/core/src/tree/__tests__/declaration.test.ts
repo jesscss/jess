@@ -230,6 +230,24 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe(node.toTrimmedString());
   });
 
+  it('streams custom declaration values without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = decl({
+      name: any('--custom'),
+      value: call({
+        name: 'if',
+        args: new List([
+          call({ name: 'not', args: new List([any('true')]) }),
+          any('5')
+        ])
+      })
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('--custom:if(not(true), 5)');
+    expect(writer.toString()).toBe('--custom:if(not(true), 5)');
+    expect(writer.captures).toBe(0);
+  });
+
   it('serializes important declarations with one space before !important', async () => {
     const node = rules([
       decl({

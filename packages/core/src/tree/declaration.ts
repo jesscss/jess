@@ -14,7 +14,7 @@ import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 
@@ -105,6 +105,14 @@ const unwrapAtomicCustomValue = (node: Node): Node => {
   return node;
 };
 
+const stringifyDetached = (node: Node, options: PrintOptions): string => {
+  const printOptions = getPrintOptions(options);
+  return node.toString({
+    ...printOptions,
+    writer: new OutputWriter()
+  });
+};
+
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
   const atomicValue = unwrapAtomicCustomValue(node);
   if (!isLessFunctionFallbackCall(atomicValue)) {
@@ -117,10 +125,10 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
     ? String(printableKey)
     : Array.isArray(printableKey)
       ? printableKey.map(part => String(part)).join('')
-      : getPrintOptions(options).writer!.capture(() => printableKey.toString(options)).trim();
+      : stringifyDetached(printableKey, options).trim();
   const argTexts = (args?.value ?? [])
     .filter(Boolean)
-    .map(arg => getPrintOptions(options).writer!.capture(() => arg.toString(options)).trim());
+    .map(arg => stringifyDetached(arg, options).trim());
 
   return `${nameText}(${argTexts.join(', ')})`;
 };
@@ -214,18 +222,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       //   drop that trailing line break so semicolon insertion stays inline.
       // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
       //   insert a single separator space for stable CSS output.
-      let customOut = w.capture(() => value.toString(options));
-      customOut = stringifyCustomFallbackFunctionCall(value, options) ?? customOut;
-      customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
-      customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
-      if (!/^[ \t\r\f]/.test(customOut) && customOut.trimStart().startsWith('/*')) {
-        customOut = ` ${customOut}`;
-      }
       const atomicValue = unwrapAtomicCustomValue(value);
-      if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
-        customOut = ` ${customOut}`;
-      }
-      w.add(customOut, value);
+      const valueMark = w.mark();
+      value.toString(options);
+      w.replaceSince(valueMark, (valueOut) => {
+        let customOut = stringifyCustomFallbackFunctionCall(value, options) ?? valueOut;
+        customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+        customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
+        if (!/^[ \t\r\f]/.test(customOut) && customOut.trimStart().startsWith('/*')) {
+          customOut = ` ${customOut}`;
+        }
+        if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
+          customOut = ` ${customOut}`;
+        }
+        return customOut;
+      }, value);
       restorePrintState(options, saved);
     } else {
       const valueMark = w.mark();
