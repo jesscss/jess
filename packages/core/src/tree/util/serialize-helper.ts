@@ -22,7 +22,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { consumeTrivia, emitTriviaTokens, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
+import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
 
 type TriviaSide = 'before' | 'after';
 
@@ -57,7 +57,6 @@ function captureNodeTrivia(
   side: TriviaSide,
   options: FinalPrintOptions
 ): string {
-  const writer = options.writer!;
   const trivia: TriviaMap | undefined = options.trivia ?? node.treeContext?.opts?.trivia;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
@@ -65,9 +64,7 @@ function captureNodeTrivia(
   if (!trivia) {
     return '';
   }
-  return writer.capture(() => {
-    emitTriviaTokens(consumeTrivia(trivia, boundaryOffset(node, side), side, options), options);
-  });
+  return consumeTriviaText(trivia, boundaryOffset(node, side), side, options);
 }
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
