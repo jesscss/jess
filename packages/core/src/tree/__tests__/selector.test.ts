@@ -5,6 +5,7 @@ import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
 // import type { Class } from 'type-fest'
 // import type { Node } from '../node.js'
 
@@ -20,6 +21,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 /** @todo - move to https://github.com/SamVerschueren/tsd */
 // test('Test types', () => {
@@ -83,6 +93,21 @@ describe('Selector', () => {
       }) satisfies TriviaMap;
 
       expect(sellist([first, second, third]).toString({ trivia })).toBe('#a,\n/*x*//*y*/\n.b,\n/*z*/.c');
+    });
+
+    it('streams selector list items without capture scaffolding', () => {
+      const writer = new CountingWriter();
+      const first = el('#a');
+      first._location = [0, 1, 1, 1, 1, 2];
+      const second = el('.b');
+      second._location = [17, 3, 1, 18, 3, 2];
+      const trivia = createTriviaMap({
+        before: new Map([[second.location[0], [token('\n'), token('/*x*/', 'BlockComment'), token('\n')]]]),
+        after: new Map<number, IToken[]>()
+      }) satisfies TriviaMap;
+
+      expect(sellist([first, second]).toString({ trivia, writer })).toBe('#a,\n/*x*/\n.b');
+      expect(writer.captures).toBe(0);
     });
 
     it('serializes comment trivia between selector list members before separators', () => {

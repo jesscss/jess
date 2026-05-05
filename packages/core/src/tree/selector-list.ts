@@ -12,13 +12,21 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
-import { emitCommentTriviaBeforeDelimiter } from './util/trivia.js';
+import {
+  consumeTrivia,
+  emitCommentTriviaBeforeDelimiter,
+  emitTriviaTokens
+} from './util/trivia.js';
 
-function captureListItem(item: Selector, options: ReturnType<typeof getPrintOptions>): string {
+function emitSelectorListItem(
+  item: Selector,
+  options: ReturnType<typeof getPrintOptions>,
+  suppressPre = false
+): void {
   const saved = options.suppressBoundaryTrivia;
-  options.suppressBoundaryTrivia = 'post';
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   try {
-    return options.writer!.capture(() => item.toString(options));
+    item.toString(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -87,16 +95,21 @@ export class SelectorList extends Selector<Selector[]> {
     const mark = w.mark();
     let item = value[0]!;
 
-    let out = captureListItem(item, options);
-    w.add(out.trim(), item);
+    emitSelectorListItem(item, options);
 
     for (let i = 1; i < length; i++) {
       const prevItem = item;
       item = value[i]!;
       emitCommentTriviaBeforeDelimiter(prevItem, item, options);
       w.add(`,\n${space}`);
-      out = captureListItem(item, options).trim();
-      w.add(out);
+      if (options.trivia) {
+        emitTriviaTokens(
+          consumeTrivia(options.trivia, item.location[0], 'before', options),
+          options,
+          { skipLeadingWhitespace: true }
+        );
+      }
+      emitSelectorListItem(item, options, true);
     }
     return w.getSince(mark);
   }

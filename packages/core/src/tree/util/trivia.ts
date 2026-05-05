@@ -92,11 +92,17 @@ export function getPrintableTriviaTokens(
 
 export function emitTriviaTokens(
   tokens: IToken[] | undefined,
-  options: TriviaEmitOptions
+  options: TriviaEmitOptions,
+  emitOptions?: { skipLeadingWhitespace?: boolean }
 ): void {
-  const printable = getPrintableTriviaTokens(tokens, options);
+  let printable = getPrintableTriviaTokens(tokens, options);
   if (!printable) {
     return;
+  }
+  if (emitOptions?.skipLeadingWhitespace) {
+    printable = printable.filter((token, index) => {
+      return index > 0 || token.tokenType.name !== 'WS';
+    });
   }
   const writer = options.writer!;
   for (const token of printable) {

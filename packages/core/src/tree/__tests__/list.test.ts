@@ -4,6 +4,7 @@ import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -15,6 +16,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('List compare', () => {
   it('treats separator differences as equal in strict mode', () => {
@@ -63,6 +73,19 @@ describe('List', () => {
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
   });
 
+  it('streams list items without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
+    const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const trivia = createTriviaMap({
+      before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
+      after: new Map<number, IToken[]>()
+    }) satisfies TriviaMap;
+
+    expect(list([first, second]).toString({ trivia, writer })).toBe('screen /* comment */, print');
+    expect(writer.captures).toBe(0);
+  });
+
   it('leaves plain separator whitespace to list syntax', () => {
     const first = new Any('10px', undefined, [0, 1, 1, 3, 1, 4]);
     const second = new Any('2', undefined, [7, 1, 8, 7, 1, 8]);
@@ -72,6 +95,25 @@ describe('List', () => {
     }) satisfies TriviaMap;
 
     expect(list([first, second], { sep: '/' }).toString({ trivia })).toBe('10px / 2');
+  });
+
+  it('preserves multiline separator whitespace without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const first = new Any('the', undefined, [0, 1, 1, 2, 1, 3]);
+    const second = new Any('great', undefined, [14, 2, 14, 18, 2, 19]);
+    const third = new Any('wall', undefined, [30, 3, 14, 33, 3, 18]);
+    const trivia = createTriviaMap({
+      before: new Map([
+        [second.location[0], [token('\n            ')]],
+        [third.location[0], [token('\n            ')]]
+      ]),
+      after: new Map<number, IToken[]>()
+    }) satisfies TriviaMap;
+
+    expect(list([first, second, third]).toString({ trivia, writer })).toBe(
+      'the,\n            great,\n            wall'
+    );
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved list values through render(context)', async () => {

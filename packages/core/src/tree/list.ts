@@ -3,15 +3,22 @@ import { defineType, Node } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
-import { LIST_ITEM_TRIM } from './util/regex.js';
-import { emitCommentTriviaBetweenNodes } from './util/trivia.js';
+import {
+  consumeTrivia,
+  emitCommentTriviaBetweenNodes,
+  emitTriviaTokens
+} from './util/trivia.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
-function captureListItem<T extends Node>(item: T, options: ReturnType<typeof getPrintOptions>): string {
+function emitListItem<T extends Node>(
+  item: T,
+  options: ReturnType<typeof getPrintOptions>,
+  suppressPre = false
+): void {
   const saved = options.suppressBoundaryTrivia;
-  options.suppressBoundaryTrivia = 'post';
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   try {
-    return options.writer!.capture(() => item.toString(options));
+    item.toString(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -50,19 +57,31 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return '';
     }
     let item = value[0]!;
-    let out = captureListItem(item, options);
-    w.add(out.replace(LIST_ITEM_TRIM, ''), item);
+    emitListItem(item, options);
     for (let i = 1; i < length; i++) {
       const prev = item;
       item = value[i]!;
       emitCommentTriviaBetweenNodes(prev, item, options);
+      const leadingTrivia = options.trivia
+        ? consumeTrivia(options.trivia, item.location[0], 'before', options)
+        : undefined;
+      const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+        ? leadingTrivia[0].image
+        : '';
+      const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
       if (sep === '/') {
-        w.add(' / ');
+        w.add(preserveLeadingWhitespace ? ' /' : ' / ');
       } else {
-        w.add(`${sep} `);
+        w.add(preserveLeadingWhitespace ? sep : `${sep} `);
       }
-      out = captureListItem(item, options).replace(LIST_ITEM_TRIM, '');
-      w.add(out);
+      if (leadingTrivia) {
+        emitTriviaTokens(
+          leadingTrivia,
+          options,
+          { skipLeadingWhitespace: !preserveLeadingWhitespace }
+        );
+      }
+      emitListItem(item, options, true);
     }
     return w.getSince(mark);
   }
