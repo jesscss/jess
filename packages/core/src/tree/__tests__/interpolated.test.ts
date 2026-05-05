@@ -11,6 +11,16 @@ import {
   vardecl
 } from '../index.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('Interpolated', () => {
   let context: Context;
@@ -26,6 +36,21 @@ describe('Interpolated', () => {
     });
 
     expect(node.toTrimmedString()).toBe('hello-$name');
+  });
+
+  it('streams interpolated source syntax without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [
+        ref({ key: 'name' }, { type: 'variable' }),
+        list([any('one'), any('two')])
+      ]
+    });
+
+    expect(node.toTrimmedString({ writer })).toBe('hello-$name-one, two');
+    expect(writer.toString()).toBe('hello-$name-one, two');
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved interpolated values through render(context)', async () => {

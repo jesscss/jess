@@ -251,6 +251,20 @@ describe('OutputWriter', () => {
       expect(w.column).toBe(7);
     });
 
+    it('trims all whitespace at the start of a marked range', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add(' \n\tvalue');
+
+      w.trimStartSince(mark);
+
+      expect(w.toString()).toBe('before value');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(12);
+    });
+
     it('trims horizontal whitespace at the start of a marked range', () => {
       const w = new OutputWriter();
 

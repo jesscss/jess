@@ -7,7 +7,7 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 
 // Placeholder that's very unlikely to appear in user strings
@@ -45,6 +45,18 @@ function serializeGeneratedIsWrapper(replacement: Node): string {
   const pseudo = PseudoSelector.create({ name: ':is', arg });
   pseudo.generated = true;
   return pseudo.toTrimmedString().replace(/\n\s*/g, ' ');
+}
+
+function stringifyReplacement(replacement: Node, options: PrintOptions, preserveQuotedSyntax?: boolean): string {
+  if (isNode(replacement, N.Quoted) && !preserveQuotedSyntax) {
+    return String(replacement.valueOf());
+  }
+  const printOpts = getPrintOptions(options);
+  const result = replacement.toTrimmedString({
+    ...printOpts,
+    writer: new OutputWriter()
+  });
+  return isNode(replacement, N.Reference) ? result : result.trim();
 }
 
 export type InterpolatedValue = {
@@ -101,7 +113,6 @@ export class Interpolated<
     let output = source;
     let i = 0;
     let printOpts = getPrintOptions(options);
-    let w = printOpts!.writer;
     INTERPOLATION_PLACEHOLDER_REGEXP.lastIndex = 0;
     output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
       let replacement: Node | undefined;
@@ -112,19 +123,7 @@ export class Interpolated<
       }
       let result = '';
       if (replacement) {
-        if (isNode(replacement, N.Reference)) {
-          // Preserve exact interpolation reference syntax (including quoted property keys).
-          result = w.capture(() => replacement.toTrimmedString(printOpts));
-        } else if (isNode(replacement, N.Quoted) && !this.options.preserveQuotedSyntax) {
-          // Interpolated string slots merge raw string content.
-          // Using valueOf() avoids re-emitting inner quote delimiters.
-          result = String(replacement.valueOf());
-        } else {
-          result = w.capture(() => replacement!.toTrimmedString(printOpts));
-        }
-        if (!isNode(replacement, N.Reference)) {
-          result = result.trim();
-        }
+        result = stringifyReplacement(replacement, printOpts, this.options.preserveQuotedSyntax);
       }
       return result;
     });
@@ -132,12 +131,39 @@ export class Interpolated<
     return output;
   }
 
+  private writeReplacement(replacement: Node, options: PrintOptions): void {
+    const w = getPrintOptions(options).writer!;
+    if (isNode(replacement, N.Quoted) && !this.options.preserveQuotedSyntax) {
+      // Interpolated string slots merge raw string content.
+      // Using valueOf() avoids re-emitting inner quote delimiters.
+      w.add(String(replacement.valueOf()), replacement);
+      return;
+    }
+    const mark = w.mark();
+    replacement.toTrimmedString(options);
+    if (!isNode(replacement, N.Reference)) {
+      w.trimStartSince(mark);
+      w.trimEndSince(mark);
+    }
+  }
+
+  private writeInterpolated(replacements: Node[], options: PrintOptions): void {
+    const w = getPrintOptions(options).writer!;
+    const segments = this.value.source.split(INTERPOLATION_PLACEHOLDER);
+    for (let i = 0; i < replacements.length; i++) {
+      w.add(segments[i] ?? '', this);
+      this.writeReplacement(replacements[i]!, options);
+    }
+    if (segments.length > replacements.length) {
+      w.add(segments.slice(replacements.length).join(INTERPOLATION_PLACEHOLDER), this);
+    }
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.value.replacements, options);
-    w.add(result, this);
+    this.writeInterpolated(this.value.replacements, options);
     return w.getSince(mark);
   }
 
