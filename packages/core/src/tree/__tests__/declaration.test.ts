@@ -4,6 +4,16 @@ import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 let context: Context;
 
@@ -32,6 +42,19 @@ describe('Declaration', () => {
 
     expect(rule.toTrimmedString()).toBe('color: #eee');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('streams non-custom declaration syntax without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = decl({
+      name: any('color'),
+      value: any('red'),
+      important: any('!important', { role: 'flag' })
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('color: red !important');
+    expect(writer.toString()).toBe('color: red !important');
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved declarations through render(context)', async () => {

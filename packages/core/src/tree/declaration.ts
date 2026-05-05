@@ -125,10 +125,6 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
   return `${nameText}(${argTexts.join(', ')})`;
 };
 
-const captureValueBody = (value: Node, options: ReturnType<typeof getPrintOptions>): string => {
-  return options.writer!.capture(() => value.toTrimmedString(options));
-};
-
 /**
  * A continuous collection of nodes.
  *
@@ -203,8 +199,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
-    const normalizedName = w.capture(() => name.toTrimmedString(options)).replace(/\s+$/, '');
-    w.add(normalizedName, name);
+    const nameMark = w.mark();
+    name.toTrimmedString(options);
+    w.trimEndSince(nameMark);
     emitCommentTriviaAfterNode(name, options);
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
@@ -231,20 +228,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       w.add(customOut, value);
       restorePrintState(options, saved);
     } else {
-      // Capture value output to normalize spacing after ':'
-      let valOut = '';
-      try {
-        valOut = captureValueBody(value, options);
-      } catch (error: unknown) {
-        throw error;
-      }
-      w.add(this.formatNonCustomValue(valOut, options), value);
+      const valueMark = w.mark();
+      value.toTrimmedString(options);
+      w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important) {
-          let imp = w.capture(() => important.toString(options));
-          imp = imp.replace(/^\s+|\s+$/g, '');
-
-          w.add(` ${imp}`, important);
+          w.add(' ');
+          const importantMark = w.mark();
+          important.toString(options);
+          w.trimStartSince(importantMark);
+          w.trimEndSince(importantMark);
         }
       }
     }
