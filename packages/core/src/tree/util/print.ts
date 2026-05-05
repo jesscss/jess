@@ -82,6 +82,7 @@ export interface OutputWriter {
   mark(): number;
   getSince(mark: number): string;
   endsWith(suffix: string): boolean;
+  trimEndSince(mark: number): void;
   toString(): string;
   toSourceMapV3(): any;
   getSegments(): SourceSegment[];
@@ -387,6 +388,28 @@ export class OutputWriter implements OutputWriter {
     return suffixIndex === 0;
   }
 
+  trimEndSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let last = this.chunks.length - 1;
+    while (last >= mark) {
+      const chunk = this.chunks[last]!;
+      const trimmed = chunk.replace(/[ \t\r\n\f]+$/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[last] = trimmed;
+        this.chunks.length = last + 1;
+        break;
+      }
+      this.chunks.length = last;
+      last--;
+    }
+    this.refreshPositions();
+  }
+
   /** Restore writer state to a given mark, discarding appended chunks and segments */
   restore(mark: number): void {
     if (mark < 0 || mark > this.chunks.length) {
@@ -406,6 +429,33 @@ export class OutputWriter implements OutputWriter {
       this._length = 0;
     }
     this._positions.length = mark;
+  }
+
+  private refreshPositions(): void {
+    const segmentCounts = this._positions.map(pos => pos.segments);
+    this._positions = [];
+    this._length = 0;
+    this._line = 0;
+    this._column = 0;
+    for (let i = 0; i < this.chunks.length; i++) {
+      const text = this.chunks[i]!;
+      this._length += text.length;
+      const newline = text.lastIndexOf('\n');
+      if (newline === -1) {
+        this._column += text.length;
+      } else {
+        this._line += text.split('\n').length - 1;
+        this._column = text.length - (newline + 1);
+      }
+      this._positions.push({
+        line: this._line,
+        column: this._column,
+        segments: segmentCounts[i] ?? this._segments.length,
+        length: this._length
+      });
+    }
+    const last = this._positions.at(-1);
+    this._segments.length = last?.segments ?? 0;
   }
 
   /** Capture output from a function without committing to the main buffer */

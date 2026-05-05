@@ -1,6 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { OutputWriter } from '../print.js';
 
+type WriterPosition = {
+  line: number;
+  column: number;
+  segments: number;
+  length: number;
+};
+
+function isWriterPosition(value: unknown): value is WriterPosition {
+  return typeof value === 'object'
+    && value !== null
+    && typeof Reflect.get(value, 'line') === 'number'
+    && typeof Reflect.get(value, 'column') === 'number'
+    && typeof Reflect.get(value, 'segments') === 'number'
+    && typeof Reflect.get(value, 'length') === 'number';
+}
+
+function positionsFor(writer: OutputWriter): WriterPosition[] {
+  const positions: unknown = Reflect.get(writer, '_positions');
+  if (!Array.isArray(positions) || !positions.every(isWriterPosition)) {
+    throw new TypeError('Expected OutputWriter positions');
+  }
+  return positions;
+}
+
 describe('OutputWriter', () => {
   describe('position tracking', () => {
     it('properly advances output position with plain add', () => {
@@ -165,6 +189,35 @@ describe('OutputWriter', () => {
       expect(w.column).toBe(originalColumn);
       expect(w.toString()).toBe(originalString);
     });
+
+    it('trimEndSince removes trailing whitespace after a mark', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add('value');
+      w.add(' \n\t');
+
+      w.trimEndSince(mark);
+
+      expect(w.toString()).toBe('before value');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(12);
+    });
+
+    it('trimEndSince does not trim before the mark', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add(' \n\t');
+
+      w.trimEndSince(mark);
+
+      expect(w.toString()).toBe('before ');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(7);
+    });
   });
 
   describe('_positions array behavior', () => {
@@ -176,7 +229,7 @@ describe('OutputWriter', () => {
       w.add('\nnew line');
 
       // Access private _positions array for testing
-      const positions = (w as any)._positions;
+      const positions = positionsFor(w);
       expect(positions).toHaveLength(3);
       expect(positions[0]).toEqual({ line: 0, column: 5, segments: 0, length: 5 });
       expect(positions[1]).toEqual({ line: 0, column: 11, segments: 0, length: 11 });
@@ -187,14 +240,14 @@ describe('OutputWriter', () => {
       const w = new OutputWriter();
 
       w.add('before');
-      const beforePositions = [...(w as any)._positions];
+      const beforePositions = [...positionsFor(w)];
 
       const captured = w.capture(() => {
         w.add('captured\ncontent');
       });
 
       // _positions should be unchanged after capture
-      expect((w as any)._positions).toEqual(beforePositions);
+      expect(positionsFor(w)).toEqual(beforePositions);
       expect(captured).toBe('captured\ncontent');
     });
 
@@ -203,13 +256,13 @@ describe('OutputWriter', () => {
 
       w.add('line1\n');
       const mark = w.mark();
-      const positionsAtMark = [...(w as any)._positions];
+      const positionsAtMark = [...positionsFor(w)];
 
       w.add('line2\nline3\n');
-      expect((w as any)._positions).toHaveLength(2); // Only 2 chunks: 'line2\n' and 'line3\n'
+      expect(positionsFor(w)).toHaveLength(2); // Only 2 chunks: 'line2\n' and 'line3\n'
 
       w.restore(mark);
-      expect((w as any)._positions).toEqual(positionsAtMark);
+      expect(positionsFor(w)).toEqual(positionsAtMark);
     });
 
     it('_positions tracks segments count', () => {
@@ -222,7 +275,7 @@ describe('OutputWriter', () => {
       };
 
       w.add('content', mockOrigin);
-      const positions = (w as any)._positions;
+      const positions = positionsFor(w);
       expect(positions[0].segments).toBe(1);
     });
   });

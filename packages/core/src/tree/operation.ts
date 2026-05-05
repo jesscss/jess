@@ -7,6 +7,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
+import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -43,11 +44,24 @@ export class Operation extends Node<OperationValue> {
     const w = options.writer!;
     const mark = w.mark();
     let [left, op, right] = this.value;
-    let leftStr = w.capture(() => left.toString(options));
-    let rightStr = w.capture(() => right.toString(options));
-    w.add(leftStr.trimEnd(), left);
+    const leftMark = w.mark();
+    left.toString(options);
+    w.trimEndSince(leftMark);
     w.add(` ${op} `, this);
-    w.add(rightStr.trimStart(), right);
+    if (options.trivia) {
+      emitTriviaTokens(
+        consumeTrivia(options.trivia, right.location[0], 'before', options),
+        options,
+        { skipLeadingWhitespace: true }
+      );
+    }
+    const saved = options.suppressBoundaryTrivia;
+    options.suppressBoundaryTrivia = 'pre';
+    try {
+      right.toString(options);
+    } finally {
+      options.suppressBoundaryTrivia = saved;
+    }
     return w.getSince(mark);
   }
 

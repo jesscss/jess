@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, call, decl, dimension, list, num, op, paren, ref, rules, ruleset, type Rules as RulesClass, vardecl } from '../index.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('Operation', () => {
   let context: Context;
@@ -13,6 +23,14 @@ describe('Operation', () => {
     const rule = op([num(10), '+', num(20)]);
 
     expect(rule.toTrimmedString()).toBe('10 + 20');
+  });
+
+  it('streams operation operands without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = op([num(10), '+', num(20)]);
+
+    expect(rule.toTrimmedString({ writer })).toBe('10 + 20');
+    expect(writer.captures).toBe(0);
   });
 
   it('renders resolved operation values through render(context)', async () => {
