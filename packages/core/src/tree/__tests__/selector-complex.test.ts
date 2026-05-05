@@ -42,7 +42,7 @@ describe('Complex selector', () => {
       expect(node.toTrimmedString()).toBe('a > .foo');
     });
 
-    test('streams non-space combinators without capture scaffolding', () => {
+    test('streams selector components without capture scaffolding', () => {
       const writer = new CountingWriter();
       const node = sel([
         el('a'),
@@ -51,7 +51,7 @@ describe('Complex selector', () => {
       ]);
 
       expect(node.toTrimmedString({ writer })).toBe('a > .foo');
-      expect(writer.captures).toBe(2);
+      expect(writer.captures).toBe(0);
     });
 
     test('renders resolved complex selector values through render(context)', async () => {

@@ -54,6 +54,19 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     const mark = w.mark();
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
+    const emitComponent = (component: ComplexSelectorComponent) => {
+      const savedBoundaryTrivia = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        if (options.context) {
+          component.toTrimmedString(options);
+        } else {
+          component.toString(options);
+        }
+      } finally {
+        options.suppressBoundaryTrivia = savedBoundaryTrivia;
+      }
+    };
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
       if (!isNode(component, N.Combinator)) {
@@ -90,13 +103,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           }
         }
       } else {
-        let out = w.capture(() => {
-          if (options.context) {
-            return component.toTrimmedString(options);
-          }
-          return component.toString(options);
-        });
-        w.add(out.trim(), component);
+        emitComponent(component);
       }
     }
     restorePrintState(options, saved);
