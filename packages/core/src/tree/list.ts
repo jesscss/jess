@@ -8,7 +8,7 @@ import {
   emitCommentTriviaBetweenNodes,
   emitTriviaTokens
 } from './util/trivia.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -46,6 +46,13 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  private withResolvedValue(value: Node[]): List<Node> {
+    return new List<Node>(
+      value,
+      this._options ? { ...this._options } : undefined
+    ).inherit(this);
+  }
+
   private renderListSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -134,7 +141,26 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    const values = new Array<Node>(this.value.length);
+    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
+      const out = item.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((resolved) => {
+          values[index] = resolved;
+        });
+      }
+      values[index] = out as Node;
+    });
+
+    const finalize = (): Node => {
+      const unchanged = values.every((node, index) => node === this.value[index]);
+      return unchanged ? this : this.withResolvedValue(values);
+    };
+
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(finalize);
+    }
+    return finalize();
   }
 
   /** @todo? Lists should collapse nested lists? */

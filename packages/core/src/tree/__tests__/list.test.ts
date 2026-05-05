@@ -161,6 +161,27 @@ describe('List', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('keeps source list values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('four')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const listNode = list([
+      any('one'),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]);
+    const resolved = await listNode.resolve(context);
+
+    expect(`${resolved}`).toBe('one, four');
+    expect(listNode.toTrimmedString()).toBe('one, $item');
+  });
+
   it('should serialize to a list', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
     expect(`${rule}`).toBe('1 2 3, four');

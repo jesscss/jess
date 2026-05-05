@@ -1,7 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -16,6 +16,12 @@ export interface Block extends Node<Node, BlockOptions> {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
+  private withValue(value: Node): this {
+    const node = this.clone(false) as this;
+    node.value = value;
+    return node;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -30,7 +36,17 @@ export class Block extends Node<Node, BlockOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    const value = this.value.resolve(context);
+    const finalize = (resolvedValue: Node): Node => {
+      if (resolvedValue === this.value) {
+        return this;
+      }
+      return this.withValue(resolvedValue);
+    };
+    if (isThenable(value)) {
+      return (value as Promise<Node>).then(finalize);
+    }
+    return finalize(value as Node);
   }
 }
 

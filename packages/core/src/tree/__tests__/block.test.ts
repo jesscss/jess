@@ -58,4 +58,22 @@ describe('Block', () => {
     expect(blockNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
+
+  it('keeps source block values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const resolved = await blockNode.resolve(context);
+
+    expect(`${resolved}`).toBe('{foo}');
+    expect(blockNode.toTrimmedString()).toBe('{$value}');
+  });
 });

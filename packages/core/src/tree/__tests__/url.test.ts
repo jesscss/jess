@@ -82,4 +82,22 @@ describe('url', () => {
     expect(urlNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
+
+  it('keeps source url values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    const resolved = await urlNode.resolve(context);
+
+    expect(`${resolved}`).toBe('url("image.png")');
+    expect(urlNode.toTrimmedString()).toBe('url("$asset")');
+  });
 });

@@ -1,16 +1,18 @@
 import { Node, defineType } from './node.js';
-import { type Quoted } from './quoted.js';
-import { type Any } from './any.js';
 import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
  * e.g. url('foo.png')
  */
-export class Url extends Node<Quoted | Any> {
+export class Url extends Node<Node> {
+  private withValue(value: Node): Url {
+    return new Url(value).inherit(this);
+  }
+
   private renderUrlSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -40,7 +42,7 @@ export class Url extends Node<Quoted | Any> {
       }
       return quotedValue;
     }
-    return value.value;
+    return String(value.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -48,7 +50,17 @@ export class Url extends Node<Quoted | Any> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    const value = this.value.resolve(context);
+    const finalize = (resolvedValue: Node): Node => {
+      if (resolvedValue === this.value) {
+        return this;
+      }
+      return this.withValue(resolvedValue);
+    };
+    if (isThenable(value)) {
+      return (value as Promise<Node>).then(finalize);
+    }
+    return finalize(value as Node);
   }
 }
 
