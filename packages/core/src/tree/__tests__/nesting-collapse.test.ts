@@ -494,6 +494,31 @@ describe('CSS Nesting Collapse', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('streams leaf at-rules in collapsed containers without capture scaffolding', async () => {
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          atrule({
+            name: any('@property'),
+            prelude: any('--brand-color')
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ context, writer, collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        @property --brand-color;
+      }`
+    );
+    expect(writer.captures).toBe(0);
+  });
+
   it('should bubble @supports rules to root level', async () => {
     const node = rules([
       ruleset({

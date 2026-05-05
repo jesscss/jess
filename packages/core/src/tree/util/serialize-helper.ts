@@ -67,6 +67,15 @@ function captureNodeTrivia(
   return consumeTriviaText(trivia, boundaryOffset(node, side), side, options);
 }
 
+function renderNodeText(node: Node, options: FinalPrintOptions): string {
+  const writer = options.writer;
+  const mark = writer.mark();
+  const out = node.toTrimmedString(options);
+  const text = writer.getSince(mark) || out;
+  writer.restore(mark);
+  return text;
+}
+
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
   const isBareAmpNode = (node: Selector): boolean => {
     return isNode(node, N.Ampersand)
@@ -768,10 +777,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
-            ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
+            ? (declarationOutputCache.get(idx) ?? renderNodeText(nn, options))
             : isNode(nn, N.Rules)
               ? w.capture(() => nn.toTrimmedString(options))
-              : w.capture(() => nn.toTrimmedString(options));
+              : renderNodeText(nn, options);
         if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
           const cachedTrivia = declarationTriviaCache.get(idx);

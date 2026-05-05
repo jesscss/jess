@@ -1735,20 +1735,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       closeRenderedFramesToBaseline();
       const leafSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+      const leafMark = w.mark();
+      const prefix = depth !== 0 ? space : undefined;
+      emitBoundaryIfNeeded(n);
+      if (prefix) {
+        w.addSpacer(prefix);
+      }
       options.depth = depth;
       options.referenceMode = referenceMode;
       options.referenceRenderEnabled = referenceRenderEnabled;
-      const capturedRule = w.capture(() => n.toTrimmedString(options));
-      const rule = capturedRule || undefined;
+      n.toTrimmedString(options);
       restorePrintState(options, leafSaved);
-      if (!rule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
+      const emitted = w.getSince(leafMark);
+      if (!emitted) {
+        w.restore(leafMark);
         continue;
       }
-      if (!rule) {
-        continue;
+      if (n.requiredSemi && n.options.semi !== false) {
+        w.add(';', n);
       }
-      const prefix = !isChildRules && !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-      emitCaptured(rule, n, prefix);
+      markEmitted(n);
     }
     while (lastRenderedFrames.length > renderedFrameBaseline) {
       const depthToClose = lastRenderedFrames.length - 1;
