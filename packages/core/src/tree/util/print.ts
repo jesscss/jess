@@ -83,6 +83,7 @@ export interface OutputWriter {
   mark(): number;
   getSince(mark: number): string;
   endsWith(suffix: string): boolean;
+  lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
   trimStartSince(mark: number): void;
   trimHorizontalStartSince(mark: number): void;
@@ -406,6 +407,16 @@ export class OutputWriter implements OutputWriter {
       suffixIndex -= size;
     }
     return suffixIndex === 0;
+  }
+
+  lastChar(): string | undefined {
+    for (let i = this.chunks.length - 1; i >= 0; i--) {
+      const chunk = this.chunks[i]!;
+      if (chunk) {
+        return chunk.at(-1);
+      }
+    }
+    return undefined;
   }
 
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void {

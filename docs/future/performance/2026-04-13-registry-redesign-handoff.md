@@ -703,8 +703,10 @@ no AST traversal. Straightforward to test in isolation.
        explicit `mark/getSince/restore` text previews and rely on the same
        frame-stack side effects, so this is cleanup progress rather than the
        target buffered renderer.
-    3. `Sequence` boundary inspection because it is the one live explicit
-       mark/getSince/restore loop and sits on declaration-value hot paths.
+    3. Resolved checkpoint: `Sequence` no longer inspects the emitted text range
+       for each child boundary. It now asks the writer for the last emitted
+       character when deciding implicit spacing / identifier merge guards, and
+       keeps only the final `getSince(mark)` needed to return its own text.
     4. Generic `Node.toString()` capture of leading trivia and body; this was
        pure boundary scaffolding and has been removed so generic nodes stream
        leading trivia and body directly.

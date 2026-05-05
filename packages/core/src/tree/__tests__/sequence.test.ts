@@ -1,16 +1,34 @@
-import { any, list, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, any, list, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
-import { OutputWriter } from '../util/print.js';
+import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
+class DirectText extends Node<string> {
+  override toString(options?: PrintOptions): string {
+    return this.toTrimmedString(options);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const w = getPrintOptions(options).writer!;
+    w.add(this.value);
+    return this.value;
   }
 }
 
@@ -126,6 +144,18 @@ describe('Sequence', () => {
 
     expect(rule.toTrimmedString({ writer })).toBe('10 20 30');
     expect(writer.captures).toBe(0);
+  });
+
+  it('does not inspect the emitted sequence text for each child boundary', () => {
+    const writer = new CountingWriter();
+    const rule = seq([
+      new DirectText('10'),
+      new DirectText('20'),
+      new DirectText('30')
+    ]);
+
+    expect(rule.toTrimmedString({ writer })).toBe('10 20 30');
+    expect(writer.reads).toBe(1);
   });
 
   it('uses trivia map source boundaries instead of inserting implicit sequence spacing', () => {

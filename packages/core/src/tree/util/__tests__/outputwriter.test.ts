@@ -158,6 +158,18 @@ describe('OutputWriter', () => {
       expect(w.endsWith('')).toBe(true);
     });
 
+    it('reads the last emitted character without materializing the buffer', () => {
+      const w = new OutputWriter();
+
+      expect(w.lastChar()).toBeUndefined();
+      w.add('one');
+      expect(w.lastChar()).toBe('e');
+      w.add('\n');
+      expect(w.lastChar()).toBe('\n');
+      w.add('two');
+      expect(w.lastChar()).toBe('o');
+    });
+
     it('replaces a marked range while keeping earlier chunks', () => {
       const w = new OutputWriter();
 

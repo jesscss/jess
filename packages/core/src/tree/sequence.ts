@@ -18,8 +18,8 @@ export type SequenceOptions = {
   preserveWhitespace?: boolean;
 };
 
-function endsWithIdentifier(value: string): boolean {
-  return /[A-Za-z_-]$/u.test(value);
+function isIdentifierChar(value: string | undefined): boolean {
+  return Boolean(value && /[A-Za-z_-]/u.test(value));
 }
 
 function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
@@ -103,8 +103,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     for (let i = 1; i < length; i++) {
       const prev = value[i - 1]!;
       const node = value[i]!;
-      const writtenSoFar = w.getSince(mark);
-      const prevEndsWithSpace = writtenSoFar.endsWith(' ');
+      const prevLastChar = w.lastChar();
+      const prevEndsWithSpace = prevLastChar === ' ';
 
       const sourceTrivia = (
         options.trivia
@@ -126,7 +126,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         && nodeStart !== undefined
         && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
       );
-      const needsMergeGuard = noSep && endsWithIdentifier(writtenSoFar);
+      const needsMergeGuard = noSep && isIdentifierChar(prevLastChar);
 
       if (
         !prevEndsWithSpace
