@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import {
   any,
+  attr,
+  compound,
+  el,
   interpolated,
   interpolatedSelector,
   INTERPOLATION_PLACEHOLDER,
@@ -70,5 +73,35 @@ describe('InterpolatedSelector', () => {
     expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source interpolated selector child containers canonical after resolve(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const replacement = compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]);
+    const selectorNode = interpolatedSelector(interpolated({
+      source: INTERPOLATION_PLACEHOLDER,
+      replacements: [replacement]
+    }));
+    const resolved = await selectorNode.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('a[data=foo]');
+    expect(replacement.toTrimmedString()).toBe('a[data=$capture-attr]');
+    expect(selectorNode.toTrimmedString()).toBe('a[data=$capture-attr]');
   });
 });

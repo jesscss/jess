@@ -130,6 +130,35 @@ describe('Complex selector', () => {
       expect(selector.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
+
+    test('keeps source complex selector values canonical after resolve(context)', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const selector = sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]);
+      const resolved = await selector.resolve(context);
+
+      expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
+    });
   });
 
   describe('keys', () => {

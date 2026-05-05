@@ -83,7 +83,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
   }
 
-  override evalNode(context: Context): MaybePromise<Bool> {
+  private evaluateCondition(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Bool> {
     let [left, op, right] = this.value;
     let negated = this._options?.negate === true;
     const normalizeDefaultCall = (node: Node): Node => {
@@ -113,7 +113,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     };
 
     return pipe(
-      () => left.eval(context),
+      () => mode === 'eval' ? left.eval(context) : left.resolve(context),
       (a) => {
         a = normalizeDefaultCall(a);
         if (!right) {
@@ -126,7 +126,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (!right) {
           return [a];
         }
-        let b = right.eval(context);
+        let b = mode === 'eval' ? right.eval(context) : right.resolve(context);
         if (isThenable(b)) {
           return (b as Promise<Node>).then(bb => [a, bb] as const);
         }
@@ -145,8 +145,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     );
   }
 
+  override evalNode(context: Context): MaybePromise<Bool> {
+    return this.evaluateCondition(context, 'eval');
+  }
+
   override resolve(context: Context): MaybePromise<Bool> {
-    return this.evalNode(context);
+    return this.evaluateCondition(context, 'resolve');
   }
 }
 export const condition = defineType(Condition, 'Condition');

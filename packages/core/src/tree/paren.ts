@@ -158,7 +158,52 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    const currentValue = this.value;
+    if (currentValue) {
+      const guardBool = getDefaultGuardBool(currentValue, context);
+      if (guardBool) {
+        return guardBool;
+      }
+      const isOp = isOpOrExpression(currentValue);
+      if (isOp) {
+        context.parenFrames.push(true);
+      }
+      const maybeResolved = currentValue.resolve(context);
+      const after = (v: Node): Node => {
+        let value = v;
+        if (isOp) {
+          context.parenFrames.pop();
+        }
+        const evaluatedGuardBool = getDefaultGuardBool(value, context);
+        if (evaluatedGuardBool) {
+          return evaluatedGuardBool;
+        }
+        if (this._options?.escaped && value instanceof Node) {
+          if (value instanceof List && value.options?.sep === ';') {
+            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+          }
+          return value;
+        }
+        while (value instanceof Paren && value.value) {
+          value = value.value;
+        }
+        if (value instanceof Bool || value instanceof Dimension) {
+          return value;
+        }
+        if (isOp && !isOpOrExpression(value)) {
+          return value;
+        }
+        if (value === currentValue) {
+          return this;
+        }
+        return this.withValue(value);
+      };
+      if (isThenable(maybeResolved)) {
+        return (maybeResolved as Promise<Node>).then(after);
+      }
+      return after(maybeResolved as Node);
+    }
+    return this;
   }
 
   // toCSS(context: Context, out: OutputCollector) {

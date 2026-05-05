@@ -39,6 +39,35 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return node;
   }
 
+  private evaluateValues(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node[]> {
+    const values = new Array<Node>(this.value.length);
+    const maybe = serialForEach(this.value.map((n, i) => [n, i] as const), ([n, i]) => {
+      const out = mode === 'eval' ? n.eval(context) : n.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((res) => {
+          values[i] = res;
+        });
+      }
+      values[i] = out as Node;
+    });
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(() => values);
+    }
+    return values;
+  }
+
+  private finalizeValues(values: Node[]): Node {
+    const filtered = values.filter(n => n && !(n instanceof Nil));
+    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
+      return filtered[0]!;
+    }
+    const unchanged = (
+      filtered.length === this.value.length
+      && filtered.every((node, index) => node === this.value[index])
+    );
+    return unchanged ? this : this.withValue(filtered);
+  }
+
   override compare(other: Node) {
     if (other instanceof Sequence) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
@@ -153,38 +182,19 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return this;
     }
     return pipe(
-      () => {
-        const values = new Array<Node>(this.value.length);
-        const maybe = serialForEach(this.value.map((n, i) => [n, i] as const), ([n, i]) => {
-          const out = n.eval(context);
-          if (isThenable(out)) {
-            return (out as Promise<Node>).then((res) => {
-              values[i] = res;
-            });
-          }
-          values[i] = out as Node;
-        });
-        if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => values);
-        }
-        return values;
-      },
-      (values) => {
-        const filtered = values.filter(n => n && !(n instanceof Nil));
-        if (filtered.length === 1 && !this._options?.preserveWhitespace) {
-          return filtered[0]!;
-        }
-        const unchanged = (
-          filtered.length === this.value.length
-          && filtered.every((node, index) => node === this.value[index])
-        );
-        return unchanged ? this : this.withValue(filtered);
-      }
+      () => this.evaluateValues(context, 'eval'),
+      values => this.finalizeValues(values)
     );
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
+    return pipe(
+      () => this.evaluateValues(context, 'resolve'),
+      values => this.finalizeValues(values)
+    );
   }
 
   /** @todo move to visitors */

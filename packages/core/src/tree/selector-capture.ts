@@ -38,23 +38,27 @@ export class SelectorCapture extends Node<Selector> {
     return this.renderCaptureSyntax(options);
   }
 
-  override evalNode(context: Context): MaybePromise<Selector> {
-    const requireSelector = (value: unknown): Selector => {
-      if (isSelectorNode(value)) {
-        return value;
-      }
-      throw new Error('SelectorCapture requires a selector-valued payload');
-    };
+  private requireSelector(value: unknown): Selector {
+    if (isSelectorNode(value)) {
+      return value;
+    }
+    throw new Error('SelectorCapture requires a selector-valued payload');
+  }
 
+  override evalNode(context: Context): MaybePromise<Selector> {
     const out = this.value.eval(context);
     if (isThenable(out)) {
-      return out.then(requireSelector);
+      return out.then(value => this.requireSelector(value));
     }
-    return requireSelector(out);
+    return this.requireSelector(out);
   }
 
   override resolve(context: Context): MaybePromise<Selector> {
-    return this.evalNode(context);
+    const out = this.value.resolve(context);
+    if (isThenable(out)) {
+      return out.then(value => this.requireSelector(value));
+    }
+    return this.requireSelector(out);
   }
 }
 

@@ -1,4 +1,4 @@
-import { bool, condition, dimension, num } from '../index.js';
+import { any, bool, condition, dimension, list, num, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -80,6 +80,29 @@ describe('Condition', () => {
       expect(node.evaluated).toBe(false);
       expect(node.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('keeps source condition child containers canonical after resolve(context)', async () => {
+      const root = rules([
+        vardecl({
+          name: any('item'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await root.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const node = condition([
+        list([
+          any('one'),
+          ref({ key: 'item' }, { type: 'variable' })
+        ])
+      ]);
+      const resolved = await node.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('false');
+      expect(node.toTrimmedString()).toBe('one, $item');
     });
   });
 

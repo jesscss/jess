@@ -101,7 +101,27 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    return this.evalNode(context);
+    const cont = (value: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
+      if (this._options?.escaped) {
+        if (value instanceof Node) {
+          return value;
+        }
+        return new Any(value);
+      }
+      if (value === this.value) {
+        return this;
+      }
+      return this.withValue(value);
+    };
+    const { value } = this;
+    if (value instanceof Node) {
+      const out = value.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node | Any | Interpolated>).then(cont);
+      }
+      return cont(out as Node | Any | Interpolated);
+    }
+    return cont(value);
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');

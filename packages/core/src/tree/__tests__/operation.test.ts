@@ -80,6 +80,31 @@ describe('Operation', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('keeps source operation child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const operationNode = op([
+      list([
+        any('one'),
+        ref({ key: 'item' }, { type: 'variable' })
+      ]),
+      '+',
+      any('two')
+    ]);
+    const resolved = await operationNode.resolve(context);
+
+    expect(`${resolved}`).toBe('one, foo, two');
+    expect(operationNode.toTrimmedString()).toBe('one, $item + two');
+  });
+
   it('preserves slash-list operands instead of forcing math on outer operations', async () => {
     const node = rules([
       vardecl({

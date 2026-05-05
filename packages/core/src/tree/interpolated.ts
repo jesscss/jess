@@ -223,7 +223,14 @@ export class Interpolated<
   }
 
   override resolve(context: Context): MaybePromise<Any> {
-    return this.evalNode(context);
+    const out = this._evalToInterpolated(context, 'resolve');
+    if (isThenable(out)) {
+      return (out as Promise<Interpolated<Role>>).then((node) => {
+        return node.createGeneric();
+      });
+    }
+    const result = (out as Interpolated<Role>).createGeneric();
+    return result;
   }
 
   /**
@@ -231,7 +238,7 @@ export class Interpolated<
    * because depending on the context, it will turn into different
    * node types.
    */
-  _evalToInterpolated(context: Context): MaybePromise<this> {
+  _evalToInterpolated(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<this> {
     const node = this;
     const currentReplacements = node.value.replacements;
     const evaluatedReplacements = [...currentReplacements];
@@ -246,7 +253,7 @@ export class Interpolated<
     };
 
     let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
-      const out = n.eval(context);
+      const out = mode === 'eval' ? n.eval(context) : n.resolve(context);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           evaluatedReplacements[idx] = result;

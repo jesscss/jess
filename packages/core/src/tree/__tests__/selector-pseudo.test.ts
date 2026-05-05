@@ -88,4 +88,25 @@ describe('PseudoSelector', () => {
     expect(pseudoNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
+
+  it('keeps source pseudo selector values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([el('.foo'), el('.bar')])
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    const resolved = await pseudoNode.resolve(context);
+
+    expect(`${resolved}`).toBe(':is(.foo, .bar)');
+    expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
+  });
 });

@@ -65,10 +65,10 @@ export class Operation extends Node<OperationValue> {
     return w.getSince(mark);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
+  private evaluateOperands(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
     let n = this;
     let [left, op, right] = n.value;
-    const maybeLeft = left.eval(context);
+    const maybeLeft = mode === 'eval' ? left.eval(context) : left.resolve(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
         if (l === left && r === right) {
@@ -126,7 +126,7 @@ export class Operation extends Node<OperationValue> {
       return n.withOperands(l, r);
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {
-      const maybeRight = right.eval(context);
+      const maybeRight = mode === 'eval' ? right.eval(context) : right.resolve(context);
       if (isThenable(maybeRight)) {
         return (maybeRight as Promise<Node>).then((r) => {
           return finalize(l, r);
@@ -141,8 +141,12 @@ export class Operation extends Node<OperationValue> {
     return handleLeft(maybeLeft as Node);
   }
 
+  override evalNode(context: Context): MaybePromise<Node> {
+    return this.evaluateOperands(context, 'eval');
+  }
+
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    return this.evaluateOperands(context, 'resolve');
   }
 }
 

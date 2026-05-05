@@ -130,6 +130,31 @@ describe('Compound Selector', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  test('keeps source compound selector values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const selector = compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]);
+    const resolved = await selector.resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(selector.toTrimmedString()).toBe('a[data=$capture-attr]');
+  });
+
   describe('keys', () => {
     test('simple compound', async () => {
       let sel1 = compound([

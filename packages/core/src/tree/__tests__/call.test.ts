@@ -83,6 +83,32 @@ describe('Call', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('keeps source CSS call child containers canonical after resolve(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('channel'),
+        value: num(20)
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const arg = list([
+      num(10),
+      ref({ key: 'channel' }, { type: 'variable' })
+    ]);
+    const rule = call({
+      name: 'rgb',
+      args: list([arg, num(30)])
+    });
+    const resolved = await rule.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('rgb(10, 20, 30)');
+    expect(arg.toTrimmedString()).toBe('10, $channel');
+    expect(rule.toTrimmedString()).toBe('rgb(10, $channel, 30)');
+  });
+
   it('reduces safe direct arithmetic while preserving nested calc calls when rendering calc()', () => {
     const direct = call({
       name: 'calc',

@@ -214,8 +214,8 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.renderPlainFunctionCall(resolved, context, prepared);
   }
 
-  override resolve(context: Context): Promise<Node> {
-    return this.evalNode(context);
+  override async resolve(context: Context): Promise<Node> {
+    return await this.clone(true).eval(context);
   }
 
   /** Recursively makes declarations important */

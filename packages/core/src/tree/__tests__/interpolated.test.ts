@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import {
   any,
   interpolated,
+  list,
   quoted,
   ref,
   rules,
@@ -70,6 +71,30 @@ describe('Interpolated', () => {
     expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source interpolated child containers canonical after resolve(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const interpolatedNode = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [list([
+        any('one'),
+        ref({ key: 'name' }, { type: 'variable' })
+      ])]
+    });
+    const resolved = await interpolatedNode.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('hello-one, world');
+    expect(interpolatedNode.toTrimmedString()).toBe('hello-one, $name');
   });
 
   it('preserves quoted replacement syntax when requested', () => {

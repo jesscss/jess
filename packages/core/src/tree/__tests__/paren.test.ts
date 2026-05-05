@@ -96,6 +96,27 @@ describe('Paren', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('keeps source paren child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const parenNode = paren(list([
+      any('one'),
+      ref({ key: 'value' }, { type: 'variable' })
+    ]));
+    const resolved = await parenNode.resolve(context);
+
+    expect(`${resolved}`).toBe('(one, foo)');
+    expect(parenNode.toTrimmedString()).toBe('(one, $value)');
+  });
+
   it('normalizes escaped semicolon lists to commas on eval', async () => {
     const resolved = await paren(
       list([num(7), num(8), num(9)], { sep: ';' }),

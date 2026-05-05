@@ -31,7 +31,12 @@ export class Expression extends Node<Node> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    const { value } = this;
+    const out = value.resolve(context);
+    if (isThenable(out)) {
+      return out as Promise<Node>;
+    }
+    return out as Node;
   }
 
   override toTrimmedString(options?: PrintOptions): string {

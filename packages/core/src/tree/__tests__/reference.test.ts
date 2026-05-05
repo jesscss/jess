@@ -95,6 +95,64 @@ describe('reference', () => {
       expect(context.printState.writer).toBeUndefined();
     });
 
+    it('keeps referenced source value containers canonical after resolve(context)', async () => {
+      const value = list([
+        any('one'),
+        ref({ key: 'item' }, { type: 'variable' })
+      ]);
+      const node = rules([
+        vardecl({
+          name: any('item'),
+          value: any('foo')
+        }),
+        vardecl({
+          name: any('source'),
+          value
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      expect(value.toTrimmedString()).toBe('one, $item');
+
+      const refNode = ref({ key: 'source' }, { type: 'variable' });
+      const resolved = await refNode.resolve(context);
+
+      expect(`${resolved}`).toBe('one, foo');
+      expect(value.toTrimmedString()).toBe('one, $item');
+      expect(refNode.toTrimmedString()).toBe('$source');
+    });
+
+    it('keeps fallback value containers canonical after resolve(context)', async () => {
+      const root = rules([
+        vardecl({
+          name: any('item'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await root.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const fallback = list([
+        any('one'),
+        ref({ key: 'item' }, { type: 'variable' })
+      ]);
+      const refNode = ref(
+        { key: 'missing' },
+        {
+          type: 'variable',
+          fallbackValue: fallback
+        }
+      );
+      const resolved = await refNode.resolve(context);
+
+      expect(`${resolved}`).toBe('one, foo');
+      expect(fallback.toTrimmedString()).toBe('one, $item');
+      expect(refNode.toTrimmedString()).toBe('$missing');
+    });
+
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),

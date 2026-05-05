@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
+import { any, attr, compound, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
 
 describe('SelectorCapture', () => {
   let context: Context;
@@ -50,5 +50,30 @@ describe('SelectorCapture', () => {
     expect(captureNode.evaluated).toBe(false);
     expect(captureNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source selector capture child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const captureNode = selcap(compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]));
+    const resolved = await captureNode.resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(captureNode.toTrimmedString()).toBe('*[a[data=$capture-attr]]');
   });
 });

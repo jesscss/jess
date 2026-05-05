@@ -232,7 +232,77 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    attachSelectorBitLibrary(this, context.selectorBits);
+    return pipe(
+      () => {
+        const list = this;
+        const currentValue = list.value;
+        const resolvedValue = [...currentValue];
+        const maybe = serialForEach(resolvedValue, (item, i) => {
+          const out = item.resolve(context);
+          if (isThenable(out)) {
+            return Promise.resolve(out).then((res) => {
+              if (isNode(res, N.Selector)) {
+                resolvedValue[i] = res;
+              }
+              return undefined;
+            });
+          }
+          if (isNode(out, N.Selector)) {
+            resolvedValue[i] = out;
+          }
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => [list, currentValue, resolvedValue] as const);
+        }
+        return [list, currentValue, resolvedValue] as const;
+      },
+      ([list, currentValue, resolvedValue]) => {
+        const flattened: Selector[] = [];
+        for (const item of resolvedValue) {
+          if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
+            const arg = item.value.arg;
+            if (arg && isNode(arg, N.SelectorList)) {
+              flattened.push(...arg.value);
+              continue;
+            }
+          }
+          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+              const arg = only.value.arg;
+              if (arg && isNode(arg, N.SelectorList)) {
+                flattened.push(...arg.value);
+                continue;
+              }
+            }
+          }
+          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+            const only = item.value[0]!;
+            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
+              const arg = only.value.arg;
+              if (arg && isNode(arg, N.SelectorList)) {
+                flattened.push(...arg.value);
+                continue;
+              }
+            }
+          }
+          flattened.push(item);
+        }
+        if (flattened.length === 1) {
+          return flattened[0]!;
+        }
+        const changed = (
+          flattened.length !== currentValue.length
+          || flattened.some((item, idx) => item !== currentValue[idx])
+        );
+        if (!changed) {
+          return list;
+        }
+        return list.withSelectors(flattened);
+      }
+    );
   }
 }
 

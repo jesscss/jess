@@ -165,7 +165,58 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    attachSelectorBitLibrary(this, context.selectorBits);
+    return pipe(
+      () => {
+        const sel = this;
+        const currentValue = sel.value;
+        const resolvedValue: Array<Selector | Nil> = [...currentValue];
+        const maybe = serialForEach(resolvedValue, (item, i) => {
+          const out = item.resolve(context);
+          if (isThenable(out)) {
+            return out.then((res) => {
+              if (res instanceof Selector || res instanceof Nil) {
+                resolvedValue[i] = res;
+              }
+              return undefined;
+            });
+          }
+          if (out instanceof Selector || out instanceof Nil) {
+            resolvedValue[i] = out;
+          }
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => [sel, currentValue, resolvedValue] as const);
+        }
+        return [sel, currentValue, resolvedValue] as const;
+      },
+      ([sel, currentValue, resolvedValue]) => {
+        let value = resolvedValue.filter((n): n is Selector => n && !(n instanceof Nil));
+        value = value.sort((a, b) => {
+          let aIsElement = !nonElementRegex.test(a.valueOf());
+          let bIsElement = !nonElementRegex.test(b.valueOf());
+          if (aIsElement && bIsElement) {
+            return a.valueOf() < b.valueOf() ? -1 : 1;
+          }
+          return aIsElement ? -1 : bIsElement ? 1 : 0;
+        });
+        if (value.length === 0) {
+          return (new Nil()).inherit(this);
+        }
+        if (value.length === 1) {
+          return value[0]!.inherit(this) as Selector;
+        }
+        const changed = (
+          value.length !== currentValue.length
+          || value.some((part, idx) => part !== currentValue[idx])
+        );
+        if (!changed) {
+          return sel;
+        }
+        return sel.withComponents(value);
+      }
+    );
   }
 
   /** @todo move to visitors */

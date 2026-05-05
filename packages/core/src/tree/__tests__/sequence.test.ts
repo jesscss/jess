@@ -1,4 +1,4 @@
-import { any, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, list, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
@@ -86,6 +86,33 @@ describe('Sequence', () => {
     expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source sequence child containers canonical after resolve(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: any('item'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const child = list([
+      any('one'),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]);
+    const node = seq([
+      num(0),
+      child,
+      num(2)
+    ]);
+    const resolved = await node.resolve(context);
+
+    expect(`${resolved}`).toBe('0 one, foo 2');
+    expect(child.toTrimmedString()).toBe('one, $item');
+    expect(node.toTrimmedString()).toBe('0 one, $item 2');
   });
 
   it('should serialize to a single value', () => {

@@ -1,4 +1,4 @@
-import { expr, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { expr, any, list, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -50,6 +50,27 @@ describe('Expression', () => {
     expect(nodeToResolve.evaluated).toBe(false);
     expect(nodeToResolve.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source expression child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const nodeToResolve = expr(list([
+      any('one'),
+      ref({ key: 'value' }, { type: 'variable' })
+    ]));
+    const resolved = await nodeToResolve.resolve(context);
+
+    expect(`${resolved}`).toBe('one, foo');
+    expect(nodeToResolve.toTrimmedString()).toBe('$(one, $value)');
   });
 
   it('should serialize an expression', () => {

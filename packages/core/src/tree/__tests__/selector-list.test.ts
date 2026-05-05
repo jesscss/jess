@@ -111,4 +111,32 @@ describe('Selector list', () => {
     expect(selector.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
+
+  test('keeps source selector-list values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const selector = sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
+        })
+      ]),
+      el('.bar')
+    ]);
+    const resolved = await selector.resolve(context);
+
+    expect(`${resolved}`).toBe('a[data=foo],\n.bar');
+    expect(selector.toTrimmedString()).toBe('a[data=$attr-name],\n.bar');
+  });
 });

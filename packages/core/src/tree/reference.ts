@@ -1310,7 +1310,7 @@ function finalizeFallbackReferenceResult(args: {
     any.options.role = referenceNode.options.role;
     return any;
   }
-  const out = fallbackValue.eval(context);
+  const out = fallbackValue.copy(true, freezeChildren).eval(context);
   if (isThenable(out)) {
     return Promise.resolve(out).then(node => node);
   }
@@ -1602,7 +1602,7 @@ function evaluateReferenceValueNode(
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
     }
-    return declValue.eval(context);
+    return declValue.copy(true, freezeChildren).eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }

@@ -244,7 +244,91 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalNode(context);
+    attachSelectorBitLibrary(this, context.selectorBits);
+    return pipe(
+      () => {
+        const selector = this;
+        const currentValue = selector.value;
+        const resolvedValue: Array<ComplexSelectorComponent | Nil> = [...currentValue];
+        const maybe = serialForEach(resolvedValue, (sel, i) => {
+          const out = sel.resolve(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then((res) => {
+              if (res instanceof Selector || res instanceof Nil) {
+                resolvedValue[i] = res as ComplexSelectorComponent | Nil;
+              }
+              return undefined;
+            });
+          }
+          if (out instanceof Selector || out instanceof Nil) {
+            resolvedValue[i] = out as ComplexSelectorComponent | Nil;
+          }
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => [selector, currentValue, resolvedValue] as const);
+        }
+        return [selector, currentValue, resolvedValue] as const;
+      },
+      ([selector, currentValue, resolvedValue]) => {
+        let value = [...resolvedValue];
+        const unresolvedAmpersands = value.filter(isUnresolvedAmpersand);
+        const hasOtherSelectorParts = value.some((part) => {
+          return !isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand);
+        });
+        if (hasOtherSelectorParts && unresolvedAmpersands.length > 0) {
+          for (const amp of unresolvedAmpersands) {
+            const file = amp.treeContext?.file;
+            const selectorText = String(selector.valueOf?.() ?? '&');
+            context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
+              ctx: file ? { file } : undefined,
+              filePath: file?.fullPath,
+              line: amp.location?.[1],
+              column: amp.location?.[2],
+              meta: { selector: selectorText }
+            })));
+          }
+        }
+        value = value.filter((part) => {
+          if (isNode(part, N.Nil)) {
+            return false;
+          }
+          if (hasOtherSelectorParts && isUnresolvedAmpersand(part)) {
+            return false;
+          }
+          return true;
+        });
+        value = value.filter((part, i) => {
+          if (!isNode(part, N.Combinator)) {
+            return true;
+          }
+          const prev = value[i - 1];
+          const next = value[i + 1];
+          if (i === 0) {
+            return Boolean(next && !isNode(next, N.Combinator));
+          }
+          return Boolean(prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator));
+        });
+        if (value.length === 0) {
+          return new Nil().inherit(selector);
+        }
+        if (value.length === 1) {
+          const only = value[0]!.inherit(selector);
+          if (selector.hoistToRoot) {
+            Reflect.set(only, 'hoistToRoot', true);
+          }
+          return only;
+        }
+        const changed = (
+          value.length !== currentValue.length
+          || value.some((part, idx) => part !== currentValue[idx])
+        );
+        if (!changed) {
+          return selector;
+        }
+        return selector.withComponents(value.filter(isComplexSelectorComponent));
+      }
+    );
   }
   // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
   //   let elements = [...selector.value] as ComplexSelectorValue
