@@ -682,15 +682,16 @@ no AST traversal. Straightforward to test in isolation.
 
 - [x] Track 5 capture-site orientation
   Current read:
-  - Do not treat raw `capture()` count as equivalent to serializer
-    backtracking. Most explicit restores now come from `OutputWriter.capture()`
-    itself; the only live non-test `restore()` caller is `Sequence`, which is
-    doing boundary inspection inside a value list.
-  - Several captures are legacy trivia/boundary isolation from the pre/post
-    era. Those should be removed only after proving the caller no longer needs
-    consumed-trivia containment, sourcemap segment replay, or normalized
-    indentation. A capture that exists to isolate trivia side effects is a
-    different problem than a capture that previews output and rewinds.
+  - Treat every `capture()` as suspect until the caller proves a current
+    semantic need. "Not active backtracking" is not a defense: captures left
+    over from pre/post trivia isolation are still overhead and should be
+    removed when direct streaming preserves the same trivia and sourcemap
+    behavior.
+  - Several captures are likely legacy trivia/boundary isolation from the
+    pre/post era. For each one, ask what side effect it protects against now:
+    consumed-trivia containment, sourcemap segment replay, string trimming /
+    normalization, empty-output preview, or true speculative output. If the
+    answer is only "old boundary scaffolding", delete it behind a focused test.
   - Highest-value sites to reason about first:
     1. `Rules` full-buffer inspection (`getSince(0)` in boundary insertion)
        because it can join the entire output-so-far per emitted child.
@@ -698,13 +699,13 @@ no AST traversal. Straightforward to test in isolation.
        once to decide visibility and again to emit it.
     3. `Sequence` boundary inspection because it is the one live explicit
        mark/getSince/restore loop and sits on declaration-value hot paths.
-    4. Generic `Node.toString()` capture of leading trivia and body, which may
-       be cheap for small leaf nodes but can still inflate aggregate capture
-       counts when every source node pays for boundary isolation.
+    4. Generic `Node.toString()` capture of leading trivia and body; this was
+       pure boundary scaffolding and has been removed so generic nodes stream
+       leading trivia and body directly.
   - Lower-priority captures include small delimiter/list/function helpers where
     the capture is mostly a local string transform (`trim`, comma joining,
-    quote/url normalization). These are worth simplifying after the structural
-    serializer-buffer work, but they should not drive Track 5 architecture.
+    quote/url normalization). These are still candidates for removal, but each
+    needs a replacement for that string transform before the capture goes away.
 - [ ] **Decide eval shape** (priority queue vs linear render with deferred misses — see Open design question above). Spike both against the Less benchmark and jess corpus; gate the rest of this checklist on the result. If Shape B (linear + `PendingRefSlot`) wins, revise the segment and post-step sections accordingly before implementation.
 - [ ] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
   Current status: `Rules` now carries local structural `_hasExtends` and `_hasReferenceImports`

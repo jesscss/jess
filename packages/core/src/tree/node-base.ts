@@ -1145,14 +1145,10 @@ export abstract class Node<
     }
     const suppressPre = options.suppressBoundaryTrivia === 'pre'
       || options.suppressBoundaryTrivia === 'both';
-    const pre = !suppressPre && trivia
-      ? w.capture(() => emitTrivia(trivia, 'before', this.location[0], options))
-      : '';
-    const bodyStr = w.capture(() => this.toTrimmedString(options));
-
-    let result = pre + bodyStr;
-    // Trim output if flag is set
-    w.add(result, this);
+    if (!suppressPre && trivia) {
+      emitTrivia(trivia, 'before', this.location[0], options);
+    }
+    this.toTrimmedString(options);
     return w.getSince(mark);
   }
 

@@ -16,6 +16,15 @@ const token = (image: string, name = 'WS'): IToken => ({
   tokenType: { name } as IToken['tokenType']
 });
 
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
+
 describe('TriviaMap serialization', () => {
   it('keeps explicit writer print states detached from context print state', () => {
     const context = new Context();
@@ -37,6 +46,19 @@ describe('TriviaMap serialization', () => {
     });
 
     expect(node.toString({ trivia })).toBe('\n  /* keep */test');
+  });
+
+  it('serializes generic node boundary trivia without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const trivia = createTriviaMap({
+      before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
+      after: new Map<number, IToken[]>()
+    });
+
+    expect(node.toString({ trivia, writer })).toBe('\n  /* keep */test');
+    expect(writer.toString()).toBe('\n  /* keep */test');
+    expect(writer.captures).toBe(0);
   });
 
   it('does not serialize trailing trivia from generic node output', () => {
