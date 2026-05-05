@@ -95,10 +95,13 @@ export class Call extends Node<CallValue, CallOptions> {
           ? w.capture(() => arg.value!.render(context, printOptions))
           : '';
         argOut = `(${inner.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, '')})`;
+        w.add(argOut, arg);
       } else {
-        argOut = w.capture(() => arg.render(context, printOptions));
+        const argMark = w.mark();
+        arg.render(context, printOptions);
+        w.trimHorizontalStartSince(argMark);
+        w.trimHorizontalEndSince(argMark);
       }
-      w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
       if (i < last) {
         w.add(', ');
       }

@@ -89,6 +89,18 @@ describe('Call', () => {
     expect(rule.preEvaluated).toBe(false);
   });
 
+  it('streams rendered CSS call arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('rgb(100, 100, 100)');
+    expect(writer.toString()).toBe('rgb(100, 100, 100)');
+    expect(writer.captures).toBe(0);
+  });
+
   it('resolves CSS calls without touching render state', async () => {
     const rule = call({
       name: 'rgb',
