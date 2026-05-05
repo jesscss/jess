@@ -44,8 +44,13 @@ export class Range extends Node<RangeValue, RangeOptions> {
     const includeEnd = this._options?.includeEnd !== false;
 
     const emitTrimmed = (n: Node) => {
-      const s = w.capture(() => n.toString(options));
-      w.add(s.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), n);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        n.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
     };
 
     emitTrimmed(start);
