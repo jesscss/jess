@@ -315,7 +315,7 @@ function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
   return selector.hasFlag(F_EXTENDED);
 }
 
-function getHoistedRulesetCarrier(
+function getHoistedParent(
   node: AtRule | Ruleset,
   options: FinalPrintOptions
 ): { frame: Ruleset; selector: Selector } | undefined {
@@ -331,7 +331,7 @@ function getHoistedRulesetCarrier(
     return undefined;
   }
   const frame = rulesetFrames[rulesetFrames.length - 1]!;
-  let carriedSelector: Selector | undefined;
+  let parentSelector: Selector | undefined;
   for (let i = 0; i < rulesetFrames.length; i++) {
     const currentFrame = rulesetFrames[i]!;
     const currentSelector = currentFrame.value.selector;
@@ -339,29 +339,26 @@ function getHoistedRulesetCarrier(
       continue;
     }
     const nextSelector = currentSelector as Selector;
-    carriedSelector = carriedSelector
-      ? Ruleset.composeSelector(nextSelector, carriedSelector)
+    parentSelector = parentSelector
+      ? Ruleset.composeSelector(nextSelector, parentSelector)
       : nextSelector;
   }
-  return carriedSelector ? { frame, selector: carriedSelector } : undefined;
+  return parentSelector ? { frame, selector: parentSelector } : undefined;
 }
 
-function getCarriedRulesetHeader(
-  carrier: { frame: Ruleset; selector: Selector },
+function renderHoistedParentHeader(
+  parent: { frame: Ruleset; selector: Selector },
   options: FinalPrintOptions,
   depth: number
 ): string {
-  const previousComposedSelectorStack = options.composedSelectorStack;
-  const saved = savePrintState(options, ['collapseNesting', 'composedSelectorStack']);
-  options.collapseNesting = false;
-  options.composedSelectorStack = previousComposedSelectorStack ?? [];
-  const savedStack = saveArrayState(options.composedSelectorStack);
-  if (options.composedSelectorStack) {
-    options.composedSelectorStack.length = 0;
-  }
-  const selectorOut = options.writer.capture(() => carrier.selector.toString(options));
-  restoreArrayState(options.composedSelectorStack, savedStack);
-  restorePrintState(options, saved);
+  const writer = new OutputWriter();
+  parent.selector.toString({
+    ...options,
+    writer,
+    collapseNesting: false,
+    composedSelectorStack: []
+  });
+  const selectorOut = writer.toString();
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }
 
@@ -477,7 +474,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       rules,
       options,
       options.collapseNesting === true
-      && (isNode(node, N.Ruleset) || Boolean(getHoistedRulesetCarrier(node, options)))
+      && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
     const declarationOutputCache = new Map<number, string>();
     const declarationTriviaCache = new Map<number, Set<IToken[]>>();
@@ -567,7 +564,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // Note: in the hoisted branch above, `node` is already included.
 
       let lastRenderedFrames = options.lastRenderedFrames;
-      const carriedRuleset = getHoistedRulesetCarrier(node, options);
+      const hoistedParent = getHoistedParent(node, options);
       const ensureRenderedFrames = (leafFrames: Array<AtRule | Ruleset>) => {
         let matches = -1;
         for (let i = 0; i < lastRenderedFrames.length; i++) {
@@ -583,14 +580,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.depth = i;
           const headerProbeEmittedTrivia = saveSetState(options.emittedTrivia);
           const currentHeader = (
-            carriedRuleset && i === leafFrames.length - 1 && currentFrame === carriedRuleset.frame
+            hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
           )
-            ? getCarriedRulesetHeader(carriedRuleset, options, i)
+            ? renderHoistedParentHeader(hoistedParent, options, i)
             : currentFrame.getHeaderString(options, true);
           const priorComparableHeader = (
-            carriedRuleset && i === leafFrames.length - 1 && priorFrame === carriedRuleset.frame
+            hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
           )
-            ? getCarriedRulesetHeader(carriedRuleset, options, i)
+            ? renderHoistedParentHeader(hoistedParent, options, i)
             : priorFrame.getHeaderString(options, true);
           restoreSetState(options.emittedTrivia, headerProbeEmittedTrivia);
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
@@ -627,16 +624,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.depth = i;
           if (s === undefined) {
             s = (
-              carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+              hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
-              ? getCarriedRulesetHeader(carriedRuleset, options, i)
+              ? renderHoistedParentHeader(hoistedParent, options, i)
               : leafFrames[i]!.getHeaderString(options);
             frameHeaders[i] = s;
           } else if (s === '') {
             s = (
-              carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+              hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
-              ? getCarriedRulesetHeader(carriedRuleset, options, i)
+              ? renderHoistedParentHeader(hoistedParent, options, i)
               : leafFrames[i]!.getHeaderString(options, true);
             frameHeaders[i] = s;
           }
@@ -673,8 +670,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           restorePrintState(options, leadingSaved);
           if (!/^\s*$/.test(leading)) {
             let leafFrames = inFrames;
-            if (carriedRuleset) {
-              leafFrames = [...inFrames, carriedRuleset.frame];
+            if (hoistedParent) {
+              leafFrames = [...inFrames, hoistedParent.frame];
             }
             ensureRenderedFrames(leafFrames);
             const idt = indent(lastRenderedFrames.length);
@@ -735,8 +732,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
         }
         let leafFrames = inFrames;
-        if (carriedRuleset) {
-          leafFrames = [...inFrames, carriedRuleset.frame];
+        if (hoistedParent) {
+          leafFrames = [...inFrames, hoistedParent.frame];
         }
         ensureRenderedFrames(leafFrames);
 
@@ -874,12 +871,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // }
       }
       if (
-        carriedRuleset
+        hoistedParent
         && !closeFramesOnExit
-        && lastRenderedFrames[lastRenderedFrames.length - 1] === carriedRuleset.frame
+        && lastRenderedFrames[lastRenderedFrames.length - 1] === hoistedParent.frame
       ) {
-        const carriedDepth = lastRenderedFrames.length - 1;
-        w.add(indent(carriedDepth) + '}\n');
+        const parentDepth = lastRenderedFrames.length - 1;
+        w.add(indent(parentDepth) + '}\n');
         frameHeaders.pop();
         lastRenderedFrames.pop();
       }

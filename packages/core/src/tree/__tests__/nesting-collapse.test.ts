@@ -5,6 +5,7 @@ import {
 import { Context } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -16,6 +17,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   endColumn: image.length,
   tokenType: { name: tokenTypeName } as IToken['tokenType']
 });
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('CSS Nesting Collapse', () => {
   let context: Context;
@@ -452,6 +462,36 @@ describe('CSS Nesting Collapse', () => {
         }
       }`
     );
+  });
+
+  it('streams hoisted parent selector headers without capture scaffolding', async () => {
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              decl({ name: 'color', value: spaced([el('red')]) })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const evald = await node.eval(context);
+    const css = evald.toString({ context, writer, collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media (max-width: 768px) {
+        .parent {
+          color: red;
+        }
+      }`
+    );
+    expect(writer.captures).toBe(0);
   });
 
   it('should bubble @supports rules to root level', async () => {
