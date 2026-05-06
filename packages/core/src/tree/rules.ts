@@ -2042,6 +2042,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
+    return this._prepareRegistrationIfNeeded(context);
+  }
+
+  private _prepareRegistrationIfNeeded(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       context.depth++;
       const rules = this;
@@ -3009,13 +3013,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._setupContextForRules(context, this);
-    // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
-    // preEval currently registers the root and all nested rulesets so extend lookups find targets in child roots.
+    // Run registration prep first if needed (e.g. when jess compile() calls eval() directly).
+    // This still performs the old recursive prep internally; the call site no
+    // longer depends on the public preEval method as the eval entrypoint.
     const runRegistrationPrepIfNeeded = (rules: Rules): MaybePromise<Rules> => {
       if (rules.preEvaluated) {
         return rules;
       }
-      const result = rules.preEval(context);
+      const result = rules._prepareRegistrationIfNeeded(context);
       return isThenable(result) ? (result as Promise<Rules>) : result;
     };
     const afterRegistrationPrep = (rules: Rules) => {
