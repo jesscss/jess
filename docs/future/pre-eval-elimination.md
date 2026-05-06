@@ -802,6 +802,8 @@ The first code slice was a no-behavior-change extraction inside
   registration loop
 - extracted the eval entrypoint's registration-prep bridge into a named
   `Rules` helper
+- renamed the `Rules` registration-prep entrypoint around its one-time
+  preparation semantics
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
