@@ -2163,22 +2163,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     });
 
     const finish = () => {
-      // Stamp fast maps so the hot-path (findVarDeclarationFast / findMixinFast) can distinguish
-      // "registration prep completed with nothing registerable" from "scope never processed at all".
-      rules.varsByName ??= new Map();
-      rules.mixinsByName ??= new Map();
-      if (pendingNodes.length === 0) {
-        this._restoreRegistrationContext(context, saved);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        return rules as this;
-      }
-      return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
+      return this._finishRegistration(rules, context, saved, pendingNodes);
     };
 
     if (isThenable(processResult)) {
       return (processResult as Promise<void>).then(() => finish());
     }
     return finish();
+  }
+
+  private _finishRegistration(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>,
+    pendingNodes: Node[]
+  ): MaybePromise<this> {
+    // Stamp fast maps so the hot-path (findVarDeclarationFast / findMixinFast) can distinguish
+    // "registration prep completed with nothing registerable" from "scope never processed at all".
+    rules.varsByName ??= new Map();
+    rules.mixinsByName ??= new Map();
+    if (pendingNodes.length === 0) {
+      this._restoreRegistrationContext(context, saved);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return rules as this;
+    }
+    return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
   }
 
   /**

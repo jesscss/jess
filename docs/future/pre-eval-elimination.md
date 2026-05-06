@@ -791,6 +791,8 @@ The first code slice was a no-behavior-change extraction inside
   async identity prep before registration
 - aligned the pending registration resolver parameter names with the new
   pending bucket language
+- extracted the `Rules` registration completion step so scan, map stamping,
+  restore, and pending-resolution responsibilities are separated
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
