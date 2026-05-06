@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { defaultguard } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('DefaultGuard', () => {
   let context: Context;
@@ -26,6 +27,16 @@ describe('DefaultGuard', () => {
     expect(falsy.render(context)).toBe('false');
     expect(falsy.evaluated).toBe(false);
     expect(falsy.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved default guard render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = defaultguard('default');
+
+    context.isDefault = true;
+
+    expect(await node.render(context, buffer)).toBe('true');
+    expect(buffer.parts).toEqual(['true']);
   });
 
   it('resolves default guard values without touching render state', async () => {

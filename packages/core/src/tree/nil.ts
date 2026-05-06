@@ -12,6 +12,10 @@ import {
 } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -52,8 +56,14 @@ export class Nil extends Node<''> {
     return '';
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    getPrintOptions({ ...options, context });
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    if (isRenderBuffer(bufferOrOptions)) {
+      getPrintOptions({ ...options, context });
+      return '';
+    }
+    getPrintOptions({ ...bufferOrOptions, context });
     return '';
   }
 

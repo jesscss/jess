@@ -788,8 +788,9 @@ no AST traversal. Straightforward to test in isolation.
   current node serializers. It resolves a node, serializes the immediate output
   into a flat buffer, and refuses segmented buffers so delayed-output behavior
   has to be implemented explicitly by the nodes that need it. Static leaf nodes
-  `Any`, `Combinator`, `Bool`, and visible `Comment` now accept flat buffers
-  directly while preserving their existing string `render(context)` path.
+  `Any`, `Combinator`, `Bool`, `Nil`, `Rest`, `DefaultGuard`, and visible
+  `Comment` now accept flat buffers directly while preserving their existing
+  string `render(context)` path.
 - [ ] Migrate extend collection from AST walk to render-pass side table population
 - [ ] Implement post-step: selector finalization, extend application, reference visibility
 - [ ] Migrate `extend-roots.ts` reachability logic to pure `ExtendRoot × ExtendRoot` predicate

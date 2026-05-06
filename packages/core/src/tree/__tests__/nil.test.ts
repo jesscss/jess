@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { nil } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Nil', () => {
   let context: Context;
@@ -22,6 +23,14 @@ describe('Nil', () => {
     expect(node.render(context)).toBe('');
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
+  });
+
+  it('keeps flat buffers empty for nil render output', () => {
+    const buffer = createRenderBuffer('flat');
+    const node = nil();
+
+    expect(node.render(context, buffer)).toBe('');
+    expect(buffer.parts).toEqual([]);
   });
 
   it('resolves nil values without touching render state', async () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, rest } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Rest', () => {
   let context: Context;
@@ -24,6 +25,14 @@ describe('Rest', () => {
     expect(named.preEvaluated).toBe(false);
     expect(nodeNamed.evaluated).toBe(false);
     expect(nodeNamed.preEvaluated).toBe(false);
+  });
+
+  it('writes rest render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = rest('items');
+
+    expect(await node.render(context, buffer)).toBe('...$$items');
+    expect(buffer.parts).toEqual(['...$$items']);
   });
 
   it('resolves rest values without touching render state', async () => {
