@@ -619,20 +619,20 @@ that trivia should move back onto nodes.
 
 Registry redesign (Track 1) and direct instance fields (Track 2) are prerequisites.
 
-**Open design question (exploratory): priority queue vs linear render with deferred misses.**
-Before this track hardens, decide empirically whether to keep the existing
-priority-queue staging (classify children, evaluate in bucket order, requeue on
-resolution) or switch to a single source-order render that streams strings and
-queues `PendingRefSlot` placeholder segments for unresolved lookups, draining
-them at the end of each `Rules` walk. The segmented buffer below already
-requires deferred finalization for extends / `@media` bubbling / reference
-imports; a pending-ref segment reuses that machinery rather than adding a
-second ordering source of truth. Static bucket pre-population from
+**Eval shape decision: linear render with explicit pending work.**
+Track 5 should target a single source-order render/eval walk that streams
+strings and queues typed placeholder segments for unresolved work. The current
+priority queue should not survive as the normal renderer. Keep only the narrow
+schedulers that have code evidence today: `StyleImport` path-resolution retries
+and local fixed-point retries for dynamic declaration names. The segmented
+buffer below already requires deferred finalization for extends / `@media`
+bubbling / reference imports; pending-ref segments reuse that machinery rather
+than adding a second ordering source of truth. Static bucket pre-population from
 `_indexRules` means forward refs usually resolve on first touch, so the miss
 list is expected to be small or empty in the common case. See
 [pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
-("Open Question: Priority Queue vs Linear Render With Deferred Misses") for
-the full tradeoff and the measurements to take before committing.
+("Decision: Linear Render With Deferred Misses") for the decision and the
+measurements to keep taking during implementation.
 
 **Key design constraint: extends and `@import (reference)` require deferred selector finalization.**
 A true single-pass top-to-bottom render cannot know at the time it encounters `.a {}` whether
@@ -717,7 +717,12 @@ no AST traversal. Straightforward to test in isolation.
     the capture is mostly a local string transform (`trim`, comma joining,
     quote/url normalization). These are still candidates for removal, but each
     needs a replacement for that string transform before the capture goes away.
-- [ ] **Decide eval shape** (priority queue vs linear render with deferred misses — see Open design question above). Spike both against the Less benchmark and jess corpus; gate the rest of this checklist on the result. If Shape B (linear + `PendingRefSlot`) wins, revise the segment and post-step sections accordingly before implementation.
+- [x] **Decide eval shape**: Shape B is the Track 5 target. Use linear
+  render/eval with typed pending segments, plus narrow schedulers for the two
+  proven blocking cases (`StyleImport` path interpolation and dynamic
+  declaration-name fixed points). Continue measuring miss counts and cascade
+  depth while implementing, but do not preserve the broad priority queue as the
+  default renderer.
 - [x] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
   Current status: `Rules` now carries local structural `_hasExtends` and `_hasReferenceImports`
   flags as Track 5 prep. They are maintained during `registerNode(...)`, survive

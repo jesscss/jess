@@ -1625,13 +1625,11 @@ The practical boundary: transitive `_hasExtends` is the optimization you get for
 users who need incremental builds, migrating from `@import` to `@compose` is the
 correct path — not attempting deeper static analysis of Less import semantics.
 
-### Open question (exploratory): priority queue vs linear render with deferred misses
+### Eval shape decision: linear render with deferred misses
 
-The shape above assumes the existing priority queue in `Rules.evalNode()`
-continues to stage evaluation (imports → calls → declarations →
-mixins/rulesets → extends → at-rules). That is one of two plausible shapes
-for the render pass and should be chosen empirically before this track
-hardens.
+The Track 5 target is Shape B: a single source-order render/eval walk with
+typed pending segments for unresolved work. The existing priority queue in
+`Rules.evalNode()` is inherited machinery, not the target renderer.
 
 - **Shape A — Priority queue.** Classify children into buckets, evaluate in
   bucket order, requeue blocked nodes when dependencies resolve. Semantic
@@ -1648,11 +1646,12 @@ hardens.
   `_indexRules`, most forward references are expected to resolve on first
   touch, making the miss list small or empty in the common case.
 
-A hybrid — Shape B as default, Shape A only where it provably costs less — is
-likely the right final answer. See
+Use Shape B as default. Keep Shape A-like scheduling only where the current code
+already proves a blocker exists: `StyleImport` path interpolation retries and
+local fixed-point retries for dynamic declaration names. See
 [pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
-("Open Question: Priority Queue vs Linear Render With Deferred Misses") for
-the full tradeoff and the measurements to take before committing.
+("Decision: Linear Render With Deferred Misses") for the full tradeoff and the
+measurements to keep taking while implementing.
 
 ### Post-step
 

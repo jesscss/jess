@@ -541,10 +541,11 @@ Likely candidates:
 
 The more of that moves to serialization, the less work eval has to front-load.
 
-## Open Question: Priority Queue vs Linear Render With Deferred Misses
+## Decision: Linear Render With Deferred Misses
 
-Status: exploratory. Decide empirically before Track 5 (buffered render)
-hardens a direction.
+Status: decided for the Track 5 target. Use Shape B as the default runtime
+shape: linear render/eval with explicit pending slots for misses. Do not carry
+the current broad priority queue forward as the normal renderer.
 
 The discussion above assumes the existing priority queue is the right shape and
 the work is to lean into it harder. That assumption is worth testing. There is a
@@ -580,14 +581,29 @@ after a fixed-point pass is a real error.
   (a miss resolved only after a later miss resolves) need a fixed-point loop;
   diagnostic quality for unresolved names has to be preserved explicitly.
 
-### The hybrid worth considering
+### Target Hybrid
 
-Default to Shape B. Fall back to Shape A only where Shape B provably costs more
-— e.g. constructs with known resolution hazards. Most stylesheets are nearly
-source-order resolvable once static buckets are pre-populated; paying queue
-overhead for every node to handle rare cases is likely the wrong default.
+Default to Shape B. Keep narrow schedulers only where the current code already
+shows a real blocking shape:
 
-### What to measure before committing
+- `StyleImport` path interpolation can fail before the import path is known.
+  Current `Rules._evaluateQueue(...)` retries only this tagged path-resolution
+  error; content evaluation errors are not retried.
+- Dynamic declaration names can depend on other dynamic declaration names.
+  Current `Rules._resolveDynamicNodes(...)` already handles this as a local
+  fixed-point loop with a small retry cap.
+
+Everything else should either resolve from indexed scope state or emit a typed
+pending segment with an explicit drain step. The future renderer should not keep
+bucket ordering for every child just to support these two special cases.
+
+This still preserves the evaluated-node boundary described at the top of this
+file: a node may transform or evaluate before it serializes. The target is not
+direct string emission that bypasses node semantics; it is one local render/eval
+walk with explicit pending work instead of a separate tree-wide pre-pass plus a
+general priority queue.
+
+### What to measure while implementing
 
 - Per-file histogram of how many references actually need deferral vs resolve
   on first touch, across the Less benchmark and the jess test corpus.
@@ -596,8 +612,9 @@ overhead for every node to handle rare cases is likely the wrong default.
 - Worst-case cascade depth for fixed-point drain (expected: 1–2 in realistic
   code; pathological cases can be capped with an explicit iteration limit).
 
-Until those numbers exist, treat the priority queue's current dominance as
-inherited, not proven.
+Use those numbers to validate the pending-slot implementation and decide where
+the two narrow schedulers belong. Do not use the current queue's existence as
+evidence that the broad queue is the target architecture.
 
 ## A Conservative Migration Path
 
