@@ -2353,13 +2353,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _resolvePendingDeclarationNames(
     context: Context,
-    dynamicDeclarations: Node[],
+    pendingDeclarations: Node[],
     handleResolvedNode: (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean
   ): MaybePromise<void> {
     // Retry because one declaration's name might depend on another's being registered.
     const MAX_DECL_RETRIES = 5;
     let declRetries = 0;
-    const unresolvedDecls: Node[] = [...dynamicDeclarations];
+    const unresolvedDecls: Node[] = [...pendingDeclarations];
 
     const resolveDeclarations = (): MaybePromise<void> => {
       declRetries++;
@@ -2408,25 +2408,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _resolveOtherDynamicNodesOnce(
     context: Context,
-    otherDynamic: Node[],
+    pendingOther: Node[],
     handleResolvedNode: (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean
   ): MaybePromise<void> {
     // Their interpolated names typically depend on declaration VALUES
     // (e.g. @infix from breakpoint-infix()), which aren't evaluated until the
     // eval phase. Retrying during registration prep won't help.
     const resolveOtherOnce = (): MaybePromise<void> => {
-      for (let i = 0; i < otherDynamic.length; i++) {
-        const node = otherDynamic[i]!;
+      for (let i = 0; i < pendingOther.length; i++) {
+        const node = pendingOther[i]!;
         try {
           const result = node.preEval(context);
 
           if (isThenable(result)) {
-            const remaining = otherDynamic.slice(i + 1);
+            const remaining = pendingOther.slice(i + 1);
             return (result as Promise<Node>).then((resolvedNode) => {
               handleResolvedNode(resolvedNode, node, []);
               // Continue with remaining nodes
-              otherDynamic.length = 0;
-              otherDynamic.push(...remaining);
+              pendingOther.length = 0;
+              pendingOther.push(...remaining);
               return resolveOtherOnce();
             });
           }

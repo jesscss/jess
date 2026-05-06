@@ -789,6 +789,8 @@ The first code slice was a no-behavior-change extraction inside
   with the actual registration context snapshot type
 - extracted the shared `Rules` prepared-node storage path used by sync and
   async identity prep before registration
+- aligned the pending registration resolver parameter names with the new
+  pending bucket language
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
