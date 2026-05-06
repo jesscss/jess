@@ -798,6 +798,8 @@ The first code slice was a no-behavior-change extraction inside
   bookkeeping rather than name registration
 - extracted the `Rules` source-order registration scan from the registration
   completion step
+- extracted resolved-node recording and application from the `Rules` pending
+  registration loop
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

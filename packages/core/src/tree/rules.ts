@@ -2214,10 +2214,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const preEvald = node.preEval(context);
     if (isThenable(preEvald)) {
       return (preEvald as Promise<Node>).then((preEvaldNode) => {
-        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pendingNodes, context);
+        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pendingNodes);
       });
     }
-    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pendingNodes, context);
+    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pendingNodes);
   }
 
   /**
@@ -2246,14 +2246,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pendingNodes: Node[],
-    context: Context
+    pendingNodes: Node[]
   ): void {
     rules.value[index] = node;
     node.index = nodeIndex;
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
-      this._registerNodeIfEligible(rules, node, context);
+      this._registerNodeIfEligible(rules, node);
       return;
     }
     pendingNodes.push(node);
@@ -2304,7 +2303,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Register a node if it's eligible for registration
    */
-  private _registerNodeIfEligible(rules: Rules, node: Node, _context: Context) {
+  private _registerNodeIfEligible(rules: Rules, node: Node) {
     if (isNode(node, N.Declaration)) {
       rules.registerNode(node);
     } else if (isNode(node, N.Mixin)) {
@@ -2324,35 +2323,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const resolvedNodes: Node[] = [];
 
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
-      if (resolvedNode.index === undefined) {
-        resolvedNode.index = node.index;
-      }
-      if (resolvedNode.type === 'Ruleset') {
-        rules.registerNode(resolvedNode);
-      }
-      if (isNode(resolvedNode, N.Nil) || this._hasStaticName(resolvedNode)) {
-        resolvedNodes.push(resolvedNode);
-        this._registerNodeIfEligible(rules, resolvedNode, context);
-        return true; // made progress
-      } else {
-        stillUnresolved.push(resolvedNode);
-        return false;
-      }
-    };
-
-    const applyResolvedNodes = () => {
-      for (let i = 0; i < rules.value.length; i++) {
-        const node = rules.value[i]!;
-        const resolvedNode = resolvedNodes.find(n => n.index === node.index);
-        if (resolvedNode && resolvedNode !== node) {
-          rules.value[i] = resolvedNode.inherit(node);
-          rules.adopt(resolvedNode);
-        }
-      }
+      return this._recordResolvedRegistrationNode(rules, resolvedNodes, resolvedNode, node, stillUnresolved);
     };
 
     const finishResolution = (): this => {
-      applyResolvedNodes();
+      this._applyResolvedRegistrationNodes(rules, resolvedNodes);
       this._restoreRegistrationContext(context, saved);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return rules as this;
@@ -2363,11 +2338,44 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pipe(
       () => this._resolvePendingDeclarationNames(context, pendingDeclarations, handleResolvedNode),
       () => {
-        applyResolvedNodes();
+        this._applyResolvedRegistrationNodes(rules, resolvedNodes);
         return this._resolveOtherDynamicNodesOnce(context, pendingOther, handleResolvedNode);
       },
       () => finishResolution()
     );
+  }
+
+  private _recordResolvedRegistrationNode(
+    rules: Rules,
+    resolvedNodes: Node[],
+    resolvedNode: Node,
+    node: Node,
+    stillUnresolved: Node[]
+  ): boolean {
+    if (resolvedNode.index === undefined) {
+      resolvedNode.index = node.index;
+    }
+    if (resolvedNode.type === 'Ruleset') {
+      rules.registerNode(resolvedNode);
+    }
+    if (isNode(resolvedNode, N.Nil) || this._hasStaticName(resolvedNode)) {
+      resolvedNodes.push(resolvedNode);
+      this._registerNodeIfEligible(rules, resolvedNode);
+      return true;
+    }
+    stillUnresolved.push(resolvedNode);
+    return false;
+  }
+
+  private _applyResolvedRegistrationNodes(rules: Rules, resolvedNodes: Node[]): void {
+    for (let i = 0; i < rules.value.length; i++) {
+      const node = rules.value[i]!;
+      const resolvedNode = resolvedNodes.find(n => n.index === node.index);
+      if (resolvedNode && resolvedNode !== node) {
+        rules.value[i] = resolvedNode.inherit(node);
+        rules.adopt(resolvedNode);
+      }
+    }
   }
 
   private _isDeclarationRegistrationNode(node: Node): boolean {
