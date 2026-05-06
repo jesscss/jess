@@ -770,11 +770,17 @@ The first code slice was a no-behavior-change extraction inside
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
-The next implementation slice is to introduce `Rules`-owned pending registration state and move one
-registration surface at a time to it, starting with dynamic declaration names.
-Dynamic declaration names are the right first surface because they already have
-a local fixed-point shape in `_resolveDynamicNodes()` and do not require solving
-extend finalization or import rendering in the same patch.
+The current implementation slice has started introducing `Rules`-owned pending
+registration state by splitting dynamic declaration-name retry into
+`Rules._resolvePendingDeclarationNames()`. That helper still runs under the
+existing `preEval()` call path for now, but the fixed-point declaration-name
+surface is no longer buried inside the generic dynamic-node bucket.
+
+The next step is to move that pending declaration-name helper closer to
+`Rules.evalNode()` setup so declaration registration no longer depends on a
+completed tree-wide preparatory pass. Dynamic declaration names remain the right
+first surface because they already have a local fixed-point shape and do not
+require solving extend finalization or import rendering in the same patch.
 
 ## Non-Goals
 

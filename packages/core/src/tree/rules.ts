@@ -2309,23 +2309,35 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return rules as this;
     };
 
-    // Separate declarations (whose dynamic names might depend on each other)
-    // from non-declarations (which depend on declaration VALUES, not names,
-    // so retrying during preEval won't help).
-    const isDeclarationType = (n: Node) =>
-      isNode(n, N.VarDeclaration) || isNode(n, N.Declaration);
-
     const dynamicDeclarations: Node[] = [];
     const otherDynamic: Node[] = [];
     for (const node of dynamicNodes) {
-      if (isDeclarationType(node)) {
+      if (this._isDeclarationRegistrationNode(node)) {
         dynamicDeclarations.push(node);
       } else {
         otherDynamic.push(node);
       }
     }
 
-    // Phase 1: Resolve declarations with dynamic names.
+    return pipe(
+      () => this._resolvePendingDeclarationNames(context, dynamicDeclarations, handleResolvedNode),
+      () => {
+        applyResolvedNodes();
+        return this._resolveOtherDynamicNodesOnce(context, otherDynamic, handleResolvedNode);
+      },
+      () => finishResolution()
+    );
+  }
+
+  private _isDeclarationRegistrationNode(node: Node): boolean {
+    return isNode(node, N.VarDeclaration) || isNode(node, N.Declaration);
+  }
+
+  private _resolvePendingDeclarationNames(
+    context: Context,
+    dynamicDeclarations: Node[],
+    handleResolvedNode: (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean
+  ): MaybePromise<void> {
     // Retry because one declaration's name might depend on another's being registered.
     const MAX_DECL_RETRIES = 5;
     let declRetries = 0;
@@ -2373,9 +2385,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     };
 
-    // Phase 2: Try non-declarations once. Their interpolated names typically
-    // depend on declaration VALUES (e.g. @infix from breakpoint-infix()),
-    // which aren't evaluated until the eval phase. Retrying won't help.
+    return resolveDeclarations();
+  }
+
+  private _resolveOtherDynamicNodesOnce(
+    context: Context,
+    otherDynamic: Node[],
+    handleResolvedNode: (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean
+  ): MaybePromise<void> {
+    // Their interpolated names typically depend on declaration VALUES
+    // (e.g. @infix from breakpoint-infix()), which aren't evaluated until the
+    // eval phase. Retrying during registration prep won't help.
     const resolveOtherOnce = (): MaybePromise<void> => {
       for (let i = 0; i < otherDynamic.length; i++) {
         const node = otherDynamic[i]!;
@@ -2400,14 +2420,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     };
 
-    return pipe(
-      () => resolveDeclarations(),
-      () => {
-        applyResolvedNodes();
-        return resolveOtherOnce();
-      },
-      () => finishResolution()
-    );
+    return resolveOtherOnce();
   }
 
   /**
