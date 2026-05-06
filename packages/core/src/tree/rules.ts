@@ -59,6 +59,10 @@ function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrat
   return node.type === 'StyleImport';
 }
 
+function isStyleImportPathResolutionError(error: unknown): boolean {
+  return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
+}
+
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
@@ -2635,7 +2639,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const onEvalError = (error: unknown): Node | undefined => {
           // Most node failures are semantic failures and should throw immediately.
           // Retry scheduling is reserved for StyleImport ordering/interpolation cases.
-          if (rule.type !== 'StyleImport') {
+          if (!isStyleImportRegistrationNode(rule)) {
             throw error;
           }
           // Final pass: no retries remain.
@@ -2648,9 +2652,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           // Path resolution is cheap (no cloning). Content evaluation errors
           // (after cloning the import tree) are never retried — each retry
           // would re-clone the entire tree, causing memory blowup.
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const isPathError = error instanceof Error && (error as any)._isPathResolutionError;
-          if (!isPathError) {
+          if (!isStyleImportPathResolutionError(error)) {
             throw error;
           }
 

@@ -806,6 +806,8 @@ The first code slice was a no-behavior-change extraction inside
   preparation semantics
 - kept `StyleImport` registration detection structural to avoid introducing a
   circular runtime import back into `Rules`
+- routed `StyleImport` path-retry detection through explicit local predicates
+  instead of ad hoc string / `any` checks
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
