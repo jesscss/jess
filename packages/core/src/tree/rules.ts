@@ -2050,35 +2050,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       context.depth++;
       const rules = this;
-      const isNestableAtRuleBody = this._isNestableAtRuleBody();
       rules.preEvaluated = true;
-      // Save current context and set up new context for registration lookups.
-      const saved = this._snapshotContext(context);
-      this._setupContextForRules(context, rules);
-
-      // Set context.root early if this is the main root
-      const isMainRoot = !context.root;
-      if (isMainRoot) {
-        context.root = rules;
-      }
-
-      // Set context.root if not already set (needed for visitors during registration prep).
-      if (!context.root) {
-        context.root = rules;
-      }
-
-      // Register main root as extend root if this is the root (needed for extends during registration prep).
-      // Check rules === context.root at registration time (not using stale isMainRoot)
-      if (rules === context.root && !context.extendRoots.root) {
-        context.extendRoots.registerRoot(rules);
-        context.extendRoots.pushExtendRoot(rules);
-      }
-
-      // Always push nestable at-rule body so inner rulesets register to it (not document root).
-      // Needed for both: wrapper (collapseNesting) and direct body (collapseNesting: false).
-      if (isNestableAtRuleBody) {
-        context.extendRoots.pushExtendRoot(rules);
-      }
+      const { saved, isNestableAtRuleBody } = this._setupRegistrationContext(context, rules);
 
       const mp = this._prepareRegistration(rules, context, saved);
       const popNestableBody = () => {
@@ -2096,6 +2069,41 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return mp;
     }
     return this;
+  }
+
+  private _setupRegistrationContext(context: Context, rules: Rules): {
+    saved: ReturnType<Rules['_snapshotContext']>;
+    isNestableAtRuleBody: boolean;
+  } {
+    const isNestableAtRuleBody = this._isNestableAtRuleBody();
+    const saved = this._snapshotContext(context);
+    this._setupContextForRules(context, rules);
+
+    // Set context.root early if this is the main root.
+    const isMainRoot = !context.root;
+    if (isMainRoot) {
+      context.root = rules;
+    }
+
+    // Set context.root if not already set (needed for visitors during registration prep).
+    if (!context.root) {
+      context.root = rules;
+    }
+
+    // Register main root as extend root if this is the root (needed for extends during registration prep).
+    // Check rules === context.root at registration time (not using stale isMainRoot).
+    if (rules === context.root && !context.extendRoots.root) {
+      context.extendRoots.registerRoot(rules);
+      context.extendRoots.pushExtendRoot(rules);
+    }
+
+    // Always push nestable at-rule body so inner rulesets register to it (not document root).
+    // Needed for both: wrapper (collapseNesting) and direct body (collapseNesting: false).
+    if (isNestableAtRuleBody) {
+      context.extendRoots.pushExtendRoot(rules);
+    }
+
+    return { saved, isNestableAtRuleBody };
   }
 
   private _isNestableAtRuleBody(): boolean {

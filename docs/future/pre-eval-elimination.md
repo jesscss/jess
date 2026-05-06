@@ -781,6 +781,8 @@ The first code slice was a no-behavior-change extraction inside
   single restore path before it moves closer to eval setup
 - named the `Rules` nestable-at-rule-body registration check that decides when
   a body becomes the current extend root during prep
+- extracted `Rules` registration context setup so root / extend-root preparation
+  is a named surface before eval owns it directly
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
