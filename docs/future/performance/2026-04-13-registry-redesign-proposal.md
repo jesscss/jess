@@ -519,6 +519,12 @@ Everything else should remain a plain string in the buffer. A proposed segment
 type must prove the delayed-finalization need it represents; "it might be
 useful later" is not enough.
 
+Delayed segments do not get to defer all of their children by default. The
+children of `RulesetBlock`, `HoistBlock`, `MergeSlot`, and pending slots should
+be serialized to strings as soon as they are final. Keep only the smallest
+structured wrapper needed for the delayed decision itself; do not retain
+renderable child nodes or expand segment trees when a string is enough.
+
 #### Segment types (segmented mode only)
 
 ```ts

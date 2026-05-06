@@ -649,6 +649,13 @@ pending lookup. Do not add segment types for ordinary node shape, traversal
 convenience, ownership bookkeeping, or speculative future reuse. If output can
 be written as a string in flat mode, it should stay a string.
 
+Delayed segments should still serialize their children aggressively. A
+`RulesetBlock`, `HoistBlock`, `MergeSlot`, or pending slot may keep the minimum
+wrapper state needed for its own finalization, but any child output that is
+already final should be pushed as strings inside that segment. Do not keep child
+nodes or child-shaped segment trees alive just because their parent segment is
+delayed.
+
 #### Buffer segment types
 
 ```ts

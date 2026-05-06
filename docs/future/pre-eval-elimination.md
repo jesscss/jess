@@ -645,4 +645,6 @@ If `preEval` is removed, the replacement should be a genuinely smaller and more
 local runtime model, not the same model with different method names. The render
 buffer may carry typed delayed-output slots, but only for output that cannot be
 finalized immediately. It should not grow node identity, parent/child ownership,
-lookup APIs, or general traversal semantics.
+lookup APIs, or general traversal semantics. Children inside delayed slots
+should still serialize to strings as soon as they are final; a delayed parent is
+not permission to retain renderable child structure.
