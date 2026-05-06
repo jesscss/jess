@@ -6,6 +6,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import type { IToken } from 'chevrotain';
 import { OutputWriter } from '../util/print.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -58,6 +59,26 @@ describe('quoted', () => {
     const rendered = quotedNode.render(context);
 
     expect(rendered).toBe('"hello"');
+    expect(quotedNode.evaluated).toBe(false);
+    expect(quotedNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved quoted render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('message'),
+        value: any('hello')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+
+    expect(await quotedNode.render(context, buffer)).toBe('"hello"');
+    expect(buffer.parts).toEqual(['"hello"']);
     expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.preEvaluated).toBe(false);
   });

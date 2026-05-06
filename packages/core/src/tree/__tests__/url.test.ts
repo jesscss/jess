@@ -4,6 +4,7 @@ import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass } from '../i
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -51,6 +52,26 @@ describe('url', () => {
     const rendered = urlNode.render(context);
 
     expect(rendered).toBe('url("image.png")');
+    expect(urlNode.evaluated).toBe(false);
+    expect(urlNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved url render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+
+    expect(await urlNode.render(context, buffer)).toBe('url("image.png")');
+    expect(buffer.parts).toEqual(['url("image.png")']);
     expect(urlNode.evaluated).toBe(false);
     expect(urlNode.preEvaluated).toBe(false);
   });

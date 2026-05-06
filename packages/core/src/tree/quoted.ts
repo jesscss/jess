@@ -4,6 +4,11 @@ import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -62,6 +67,15 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override valueOf(): string {
     const { value } = this;
     return value instanceof Node ? value.valueOf() : value;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
