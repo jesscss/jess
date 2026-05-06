@@ -263,7 +263,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    /** We need a derived declaration, because pre-eval normalization mutates name/value/options. */
+    /** We need a derived declaration, because registration prep mutates name/value/options. */
     let node = this.clone(false) as this;
     node.preEvaluated = true;
     // Index should already be assigned by parent Rules
@@ -454,7 +454,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           setVal(new List(mergedItems.map(item => item.copy(true))));
         };
-        /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
+        /** Registration prep already stabilized the name; eval handles the value. */
         if (node.type === 'VarDeclaration') {
           return node;
         }

@@ -100,8 +100,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   /**
-   * Pre-evaluate name and prelude (similar to Ruleset.preEval)
-   * This allows us to extract layer names before rules are evaluated
+   * Prepare name identity and body registration.
+   * Prelude evaluation stays in evalNode so live-scope lookups stay correct.
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
@@ -447,7 +447,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           this._extractAndStoreLayerName(node, context);
 
           // Register extend root for nestable at-rules (including @layer).
-          // Run preEval first so we push and later register the Rules that is actually evaluated
+          // Prepare first so we push and later register the Rules that is actually evaluated
           // (clone or original). Otherwise we push the original but eval runs on a clone, so the
           // registered root has no rulesets and extend-chaining / nested at-rule extends fail.
           let pushedExtendRoot = false;
@@ -564,8 +564,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return node;
       },
       () => {
-        // Pop the frame that was pushed in preEval
-        // This frame was kept on the stack during rules evaluation so children could access it
+        // Pop the frame that was kept on the stack during rules evaluation so children could access it.
         context.frames.pop();
         let rules = node.value.rules;
         if (rules && rules.visibleRules().length === 0) {
