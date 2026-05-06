@@ -2087,8 +2087,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.extendRoots.pushExtendRoot(rules);
       }
 
-      // Multi-pass registration system for handling interpolated names
-      const mp = this._multiPassPreEval(rules, context, saved);
+      const mp = this._prepareRegistration(rules, context, saved);
       const popNestableBody = () => {
         if (isNestableAtRuleBody) {
           context.extendRoots.popExtendRoot();
@@ -2107,9 +2106,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * Multi-pass preEval system to handle interpolated names and dependencies
+   * Registration prep for the current Rules surface.
+   *
+   * This still runs from preEval for now, but the work is registration setup:
+   * assign source-order indices, stabilize registerable identities, register
+   * static names, and leave genuinely blocked names in narrow pending buckets.
    */
-  private _multiPassPreEval(rules: Rules, context: Context, saved: any): MaybePromise<this> {
+  private _prepareRegistration(rules: Rules, context: Context, saved: any): MaybePromise<this> {
     // First pass: Only register nodes with static names
     const staticNodes: Node[] = [];
     const dynamicNodes: Node[] = [];
@@ -2177,8 +2180,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return rules as this;
       }
-      // Multi-pass resolution of dynamic nodes
-      return this._resolveDynamicNodes(rules, context, saved, dynamicNodes);
+      return this._resolvePendingRegistration(rules, context, saved, dynamicNodes);
     };
 
     if (isThenable(processResult)) {
@@ -2200,9 +2202,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Check if a node type participates in name-based registration.
-   * Only these node types have names/selectors that _resolveDynamicNodes
+   * Only these node types have names/selectors that _resolvePendingRegistration
    * needs to resolve. Everything else (Call, Expression, Comment, etc.)
-   * goes straight to the eval queue without preEval.
+   * goes straight to the eval queue.
    */
   private _isRegisterableType(node: Node): boolean {
     return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || (node as Node).type === 'StyleImport';
@@ -2264,10 +2266,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  /**
-   * Multi-pass resolution of dynamic nodes with interpolated names
-   */
-  private _resolveDynamicNodes(rules: Rules, context: Context, saved: any, dynamicNodes: Node[]): MaybePromise<this> {
+  private _resolvePendingRegistration(rules: Rules, context: Context, saved: any, dynamicNodes: Node[]): MaybePromise<this> {
     const resolvedNodes: Node[] = [];
 
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {

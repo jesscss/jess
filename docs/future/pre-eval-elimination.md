@@ -110,7 +110,7 @@ That makes indexing a setup concern, not a reason to keep a separate pass.
 
 ### Registration Before Evaluation
 
-`_multiPassPreEval()` currently tries to make the tree lookup-ready before
+`Rules._prepareRegistration()` still tries to make the tree lookup-ready before
 evaluation starts:
 
 - register declarations, mixins, and rulesets with static names
@@ -252,9 +252,9 @@ One plausible future structure:
 The key change is that registration becomes incremental state inside
 `Rules.evalNode()`, not a completed prerequisite from another pass.
 
-## What Would Replace `_multiPassPreEval()`
+## What Would Replace `_prepareRegistration()`
 
-`_multiPassPreEval()` is currently doing two jobs:
+`Rules._prepareRegistration()` is currently doing two jobs:
 
 - eager registration of static names
 - speculative retries for dynamic names
@@ -668,7 +668,7 @@ shows a real blocking shape:
   Current `Rules._evaluateQueue(...)` retries only this tagged path-resolution
   error; content evaluation errors are not retried.
 - Dynamic declaration names can depend on other dynamic declaration names.
-  Current `Rules._resolveDynamicNodes(...)` already handles this as a local
+  Current `Rules._resolvePendingRegistration(...)` already handles this as a local
   fixed-point loop with a small retry cap.
 
 Everything else should either resolve from indexed scope state or emit a typed
@@ -725,7 +725,7 @@ A safer order is:
    recursion through `Node.preEval()`.
 
 4. **Teach `Rules` local pending registration.**
-   Replace `_multiPassPreEval()` with `Rules`-owned local state:
+   Replace `_prepareRegistration()` with `Rules`-owned local state:
    - `pendingDeclarationNames`
    - `pendingCallableNames`
    - `pendingSelectorIdentity`
