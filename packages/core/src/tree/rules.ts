@@ -2062,13 +2062,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.root = rules;
       }
 
-      /**
-       * I think maybe we can just set the index to the actual order?
-       */
-      for (let i = 0; i < rules.value.length; i++) {
-        let n = rules.value[i]!;
-        n.index = i;
-      }
       // Set context.root if not already set (needed for preEval visitors)
       if (!context.root) {
         context.root = rules;
@@ -2117,7 +2110,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const staticNodes: Node[] = [];
     const dynamicNodes: Node[] = [];
 
-    // Process each node with static name, handling both sync and async preEval
+    // Process each node with static name, handling both sync and async preEval.
+    // Comment nodes do not participate in numeric rule indexing.
     let indexedRuleCount = 0;
     const processResult = serialForEach(rules.value, (node, index) => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
