@@ -3013,6 +3013,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return { rules, rulesToHoist: maybeHoist as boolean };
   }
 
+  private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+    this._setupContextForRules(context, this);
+    // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
+    // preEval currently registers the root and all nested rulesets so extend lookups find targets in child roots.
+    const runRegistrationPrepIfNeeded = (rules: Rules): MaybePromise<Rules> => {
+      if (rules.preEvaluated) {
+        return rules;
+      }
+      const result = rules.preEval(context);
+      return isThenable(result) ? (result as Promise<Rules>) : result;
+    };
+    const afterRegistrationPrep = (rules: Rules) => {
+      this._setupContextForRules(context, rules);
+      // When we're the outermost Rules, use the tree we're evaling as root
+      // (may differ from context.root set in getTree, or be preEval's clone).
+      if (context.rulesEvalStack.length === 1) {
+        context.root = rules;
+      }
+      return this._afterPreEvalStep(rules, context);
+    };
+    const rulesAfterPrep = runRegistrationPrepIfNeeded(this);
+    if (isThenable(rulesAfterPrep)) {
+      return (rulesAfterPrep as Promise<Rules>).then(afterRegistrationPrep);
+    }
+    return afterRegistrationPrep(rulesAfterPrep as Rules);
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3041,31 +3068,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       pipeResult = pipe(
-        () => {
-          this._setupContextForRules(context, this);
-          // Run preEval first if not yet run (e.g. when jess compile() calls eval() without preEval).
-          // preEval registers the root and all nested rulesets so extend lookups find targets in child roots (e.g. .ma inside @media).
-          const runPreEvalIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-            if (rules.preEvaluated) {
-              return rules;
-            }
-            const result = rules.preEval(context);
-            return isThenable(result) ? (result as Promise<Rules>) : result;
-          };
-          const rulesAfterPreEval = runPreEvalIfNeeded(this);
-          const afterPreEval = (rules: Rules) => {
-            this._setupContextForRules(context, rules);
-            // When we're the outermost Rules, use the tree we're evaling as root (may differ from context.root set in getTree, or be preEval's clone).
-            if (context.rulesEvalStack.length === 1) {
-              context.root = rules;
-            }
-            return this._afterPreEvalStep(rules, context);
-          };
-          if (isThenable(rulesAfterPreEval)) {
-            return (rulesAfterPreEval as Promise<Rules>).then(afterPreEval);
-          }
-          return afterPreEval(rulesAfterPreEval as Rules);
-        },
+        () => this._prepareForEval(context),
         ({ rules }: { rules: Rules; rulesToHoist: boolean }) => {
         // Note: Rulesets from imported Rules are already registered to their own treeRoot
         // during preEval when the imported Rules node is evaluated. The extend search
