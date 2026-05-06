@@ -2134,11 +2134,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     let indexedRuleCount = 0;
     const processResult = serialForEach(rules.value, (node, index) => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
-      if (node.type === 'Any' && node.options.role === 'charset') {
-        /** Special case where we register the charset node immediately */
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules.value[index] = (node as Any).preEval(context);
-        rules.value[index]!.index = nodeIndex;
+      if (this._prepareCharsetNode(rules, node, index, nodeIndex, context)) {
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
@@ -2177,6 +2173,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return rules as this;
     }
     return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
+  }
+
+  private _prepareCharsetNode(
+    rules: Rules,
+    node: Node,
+    index: number,
+    nodeIndex: number | undefined,
+    context: Context
+  ): boolean {
+    if (node.type !== 'Any' || node.options.role !== 'charset') {
+      return false;
+    }
+    // Charset is root output-order bookkeeping, not name registration.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    rules.value[index] = (node as Any).preEval(context);
+    rules.value[index]!.index = nodeIndex;
+    return true;
   }
 
   private _prepareRegisterableNode(
