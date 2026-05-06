@@ -718,14 +718,14 @@ no AST traversal. Straightforward to test in isolation.
     quote/url normalization). These are still candidates for removal, but each
     needs a replacement for that string transform before the capture goes away.
 - [ ] **Decide eval shape** (priority queue vs linear render with deferred misses — see Open design question above). Spike both against the Less benchmark and jess corpus; gate the rest of this checklist on the result. If Shape B (linear + `PendingRefSlot`) wins, revise the segment and post-step sections accordingly before implementation.
-- [ ] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
+- [x] Add `_hasExtends` and `_hasReferenceImports` flags to `Rules` during `_indexRules`
   Current status: `Rules` now carries local structural `_hasExtends` and `_hasReferenceImports`
   flags as Track 5 prep. They are maintained during `registerNode(...)`, survive
-  evaluated import wrapping, and currently reflect the local `Rules` surface
-  (e.g. direct extend nodes, direct reference-mode child wrappers / reference
-  imports). This is enough to start gating later render work on a per-container
-  basis, but it is **not yet** the full transitive import-graph / whole-file
-  segmented-render decision described below.
+  evaluated import wrapping, and reflect nested `Rules` subtrees because parent
+  indexing indexes child `Rules` before reading their subtree flags. This is
+  enough to start gating later render work on a per-container basis, but it is
+  **not yet** the full transitive import-graph / whole-file segmented-render
+  decision described below.
   - **`@compose`**: flags are per-file, set at that file's own index time — each file is a
     closed rendering unit; children cannot affect parents at all (parents pass state *down*
     to children only via `mutable: true`); flat/segmented decision is independent per file
