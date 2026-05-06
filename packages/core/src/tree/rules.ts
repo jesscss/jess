@@ -2110,11 +2110,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * static names, and leave genuinely blocked names in narrow pending buckets.
    */
   private _prepareRegistration(rules: Rules, context: Context, saved: any): MaybePromise<this> {
-    // First pass: Only register nodes with static names
-    const staticNodes: Node[] = [];
-    const dynamicNodes: Node[] = [];
+    const pendingNodes: Node[] = [];
 
-    // Process each node with static name, handling both sync and async preEval.
+    // Process each node with a registerable identity, handling both sync and async prep.
     // Comment nodes do not participate in numeric rule indexing.
     let indexedRuleCount = 0;
     const processResult = serialForEach(rules.value, (node, index) => {
@@ -2134,29 +2132,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       node.index = nodeIndex;
       if (this._hasStaticName(node)) {
-        // Pre-evaluate nodes with static names before registration
-        // This ensures selectors are evaluated and keySets are available for rulesets
+        // Prepare static identities before registration. Rulesets still need selector/keySet prep.
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
             rules.value[index] = preEvaldNode;
             (preEvaldNode as Node).index = nodeIndex;
-            // After async preEval, check if it still has a static name
+            // After async prep, check if it still has a static name.
             if (this._hasStaticName(preEvaldNode)) {
-              staticNodes.push(preEvaldNode);
               this._registerNodeIfEligible(rules, preEvaldNode, context);
             } else {
-              dynamicNodes.push(preEvaldNode);
+              pendingNodes.push(preEvaldNode);
             }
           });
         }
         rules.value[index] = preEvald as Node;
         (preEvald as Node).index = nodeIndex;
         const nodeToRegister = preEvald as Node;
-        staticNodes.push(nodeToRegister);
         this._registerNodeIfEligible(rules, nodeToRegister, context);
       } else {
-        dynamicNodes.push(node);
+        pendingNodes.push(node);
       }
     });
 
@@ -2165,8 +2160,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // "preEval completed with nothing registerable" from "scope never processed at all".
       rules.varsByName ??= new Map();
       rules.mixinsByName ??= new Map();
-      // If no dynamic nodes, we're done
-      if (dynamicNodes.length === 0) {
+      if (pendingNodes.length === 0) {
         // Restore context after preEval is complete
         context.rulesContext = saved.rulesContext;
         context.treeRoot = saved.treeRoot;
@@ -2178,7 +2172,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return rules as this;
       }
-      return this._resolvePendingRegistration(rules, context, saved, dynamicNodes);
+      return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
     };
 
     if (isThenable(processResult)) {
@@ -2264,7 +2258,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _resolvePendingRegistration(rules: Rules, context: Context, saved: any, dynamicNodes: Node[]): MaybePromise<this> {
+  private _resolvePendingRegistration(rules: Rules, context: Context, saved: any, pendingNodes: Node[]): MaybePromise<this> {
     const resolvedNodes: Node[] = [];
 
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
@@ -2306,21 +2300,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return rules as this;
     };
 
-    const dynamicDeclarations: Node[] = [];
-    const otherDynamic: Node[] = [];
-    for (const node of dynamicNodes) {
+    const pendingDeclarations: Node[] = [];
+    const pendingOther: Node[] = [];
+    for (const node of pendingNodes) {
       if (this._isDeclarationRegistrationNode(node)) {
-        dynamicDeclarations.push(node);
+        pendingDeclarations.push(node);
       } else {
-        otherDynamic.push(node);
+        pendingOther.push(node);
       }
     }
 
     return pipe(
-      () => this._resolvePendingDeclarationNames(context, dynamicDeclarations, handleResolvedNode),
+      () => this._resolvePendingDeclarationNames(context, pendingDeclarations, handleResolvedNode),
       () => {
         applyResolvedNodes();
-        return this._resolveOtherDynamicNodesOnce(context, otherDynamic, handleResolvedNode);
+        return this._resolveOtherDynamicNodesOnce(context, pendingOther, handleResolvedNode);
       },
       () => finishResolution()
     );

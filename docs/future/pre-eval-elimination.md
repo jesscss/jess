@@ -775,6 +775,8 @@ The first code slice was a no-behavior-change extraction inside
   registration so it no longer pretends to evaluate the prelude
 - extracted `StyleImport` path identity prep inside `evalNode()` so the narrow
   path-resolution retry surface is explicit
+- removed the unused static registration accumulator in `Rules` and renamed the
+  dynamic registration arrays to pending buckets
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
