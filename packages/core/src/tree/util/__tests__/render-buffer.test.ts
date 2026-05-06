@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addExtendRecord,
   createRenderBuffer,
+  createRenderBufferForFlags,
   finalizeRenderBuffer,
   pushRenderSegment,
   writeRenderText,
@@ -33,6 +34,13 @@ describe('RenderBuffer', () => {
 
     expect(buffer.parts).toEqual(['.a', ' { color: red; }']);
     expect(finalizeRenderBuffer(buffer, finalizers)).toBe('.a { color: red; }');
+  });
+
+  it('chooses flat mode until delayed finalization is needed', () => {
+    expect(createRenderBufferForFlags({}).kind).toBe('flat');
+    expect(createRenderBufferForFlags({ hasExtends: false, hasReferenceImports: false }).kind).toBe('flat');
+    expect(createRenderBufferForFlags({ hasExtends: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasReferenceImports: true }).kind).toBe('segmented');
   });
 
   it('stores strings directly inside segmented children', () => {

@@ -773,7 +773,10 @@ no AST traversal. Straightforward to test in isolation.
   proves flat mode stays string-only, delayed segment children can still be
   strings, nested segment bodies recurse only through caller-provided
   finalizers, and extend records are collected as a side table.
-- [ ] Implement flat-mode `RenderBuffer` (common case: no extends, no reference imports — pure `string[]`, no segment allocation, no post-step)
+- [x] Implement flat-mode `RenderBuffer` (common case: no extends, no reference imports — pure `string[]`, no segment allocation, no post-step)
+  Current status: `createRenderBufferForFlags(...)` chooses flat mode unless
+  `_hasExtends` or `_hasReferenceImports` requires segmented mode. This is still
+  the buffer utility layer, not node-level render integration.
 - [ ] Implement segmented-mode `RenderBuffer` (has extends or reference imports)
 - [ ] Implement `render(ctx, buf: RenderBuffer)` on each node type; flat mode pushes strings directly
 - [ ] Migrate extend collection from AST walk to render-pass side table population

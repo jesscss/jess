@@ -13,6 +13,11 @@ export type Segment =
 
 export type RenderBuffer = FlatRenderBuffer | SegmentedRenderBuffer;
 
+export type RenderBufferFlags = {
+  hasExtends?: boolean;
+  hasReferenceImports?: boolean;
+};
+
 export type FlatRenderBuffer = {
   kind: 'flat';
   parts: string[];
@@ -73,6 +78,10 @@ export function createRenderBuffer(kind: RenderBuffer['kind']): RenderBuffer {
   return kind === 'flat'
     ? { kind, parts: [] }
     : { kind, segments: [], extendRecords: [] };
+}
+
+export function createRenderBufferForFlags(flags: RenderBufferFlags): RenderBuffer {
+  return createRenderBuffer(flags.hasExtends || flags.hasReferenceImports ? 'segmented' : 'flat');
 }
 
 export function writeRenderText(buffer: RenderBuffer, text: string): void {
