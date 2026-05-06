@@ -105,34 +105,39 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
-      if (!(this.value.name instanceof Interpolated)) {
-        return this._preEvalPrelude(this, context, this);
+      const prepared = this._prepareNameIdentity(context);
+      if (isThenable(prepared)) {
+        return (prepared as Promise<AtRule>).then(node => this._preEvalPrelude(node, context, this));
       }
-      const node = this.clone(false) as AtRule;
-      node.preEvaluated = true;
-
-      // Evaluate name if needed (for interpolated names)
-      let { name } = node.value;
-      if (name && name instanceof Interpolated) {
-        const maybeKey = name.eval(context);
-        if (isThenable(maybeKey)) {
-          return Promise.resolve(maybeKey).then((key) => {
-            if (!(key instanceof Any)) {
-              throw new TypeError('Expected interpolated at-rule name to resolve to Any');
-            }
-            node.value.name = key;
-            return this._preEvalPrelude(node, context, this);
-          });
-        }
-        if (!(maybeKey instanceof Any)) {
-          throw new TypeError('Expected interpolated at-rule name to resolve to Any');
-        }
-        node.value.name = maybeKey;
-      }
-
-      return this._preEvalPrelude(node, context, this);
+      return this._preEvalPrelude(prepared as AtRule, context, this);
     }
     return this;
+  }
+
+  private _prepareNameIdentity(context: Context): MaybePromise<AtRule> {
+    if (!(this.value.name instanceof Interpolated)) {
+      return this;
+    }
+
+    const node = this.clone(false) as AtRule;
+    node.preEvaluated = true;
+
+    const maybeKey = node.value.name.eval(context);
+    if (isThenable(maybeKey)) {
+      return Promise.resolve(maybeKey).then((key) => {
+        if (!(key instanceof Any)) {
+          throw new TypeError('Expected interpolated at-rule name to resolve to Any');
+        }
+        node.value.name = key;
+        return node;
+      });
+    }
+
+    if (!(maybeKey instanceof Any)) {
+      throw new TypeError('Expected interpolated at-rule name to resolve to Any');
+    }
+    node.value.name = maybeKey;
+    return node;
   }
 
   private _preEvalPrelude(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {

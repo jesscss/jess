@@ -767,6 +767,8 @@ The first code slice was a no-behavior-change extraction inside
 - extracted mixin callable-name prep from `Mixin.preEval()`
 - extracted ruleset selector identity prep and child-rules registration from
   `Ruleset.preEval()`
+- extracted at-rule name identity prep from `AtRule.preEval()` without moving
+  import queuing or child-rules traversal yet
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
