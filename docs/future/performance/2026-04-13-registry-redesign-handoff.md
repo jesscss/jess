@@ -696,8 +696,11 @@ no AST traversal. Straightforward to test in isolation.
     normalization, empty-output preview, or true speculative output. If the
     answer is only "old boundary scaffolding", delete it behind a focused test.
   - Highest-value sites to reason about first:
-    1. `Rules` full-buffer inspection (`getSince(0)` in boundary insertion)
-       because it can join the entire output-so-far per emitted child.
+    1. Resolved checkpoint: root `Rules.toString()` no longer joins the emitted
+       range for body-emptiness or EOF-newline checks, and no longer routes body
+       emission through `Rules.toTrimmedString()` just to discard that return
+       string. It now streams the body directly and keeps one full-range join for
+       the final returned text.
     2. Resolved checkpoint: `Rules` / `serialize-helper` no longer call
        `writer.capture()` for child preview/emit paths. Those paths still use
        explicit `mark/getSince/restore` text previews and rely on the same

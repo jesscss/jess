@@ -144,6 +144,19 @@ describe('OutputWriter', () => {
       expect(w.getSince(mark1)).toBe('chunk2chunk3');
     });
 
+    it('checks whether content was emitted since a mark without materializing it', () => {
+      const w = new OutputWriter();
+
+      expect(w.hasContentSince(w.mark())).toBe(false);
+      w.add('chunk1');
+      const mark = w.mark();
+      expect(w.hasContentSince(mark)).toBe(false);
+      w.add('chunk2');
+      expect(w.hasContentSince(mark)).toBe(true);
+      w.restore(mark);
+      expect(w.hasContentSince(mark)).toBe(false);
+    });
+
     it('checks suffixes without materializing the buffer', () => {
       const w = new OutputWriter();
 

@@ -1411,17 +1411,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    const bodyMark = w.mark();
-    const bodyStr = this.toTrimmedString(options);
-    const bodyEmitted = w.getSince(bodyMark);
-    if (bodyEmitted.length === 0 && bodyStr) {
-      w.add(bodyStr);
-    }
+    this._emitRulesBody(options);
     if (depth === 0) {
       const eofTrivia = consumeEofTrivia(this, options);
       if (eofTrivia.trim()) {
-        const current = w.getSince(mark);
-        if (current && !current.endsWith('\n')) {
+        if (w.hasContentSince(mark) && !w.endsWith('\n')) {
           w.add('\n');
         }
         w.add(/\/\*/u.test(eofTrivia) ? normalizeBlockTrivia(eofTrivia, '') : normalizeIndent(eofTrivia, ''));
@@ -1728,13 +1722,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.referenceRenderEnabled = referenceRenderEnabled;
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(options));
-        const emitted = w.getSince(mark);
-        if (!emitted && rule) {
+        if (!w.hasContentSince(mark) && rule) {
           w.add(rule, n);
         }
         restorePrintState(options, containerSaved);
-        const emittedNow = w.getSince(mark);
-        if (!emittedNow) {
+        if (!w.hasContentSince(mark)) {
           continue;
         }
         markEmitted(n);
@@ -1753,8 +1745,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.referenceRenderEnabled = referenceRenderEnabled;
       n.toTrimmedString(options);
       restorePrintState(options, leafSaved);
-      const emitted = w.getSince(leafMark);
-      if (!emitted) {
+      if (!w.hasContentSince(leafMark)) {
         w.restore(leafMark);
         continue;
       }

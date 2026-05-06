@@ -1,14 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { any, decl, rules } from '../index.js';
+import { Node, any, decl, rules } from '../index.js';
 import { Context } from '../../context.js';
-import { OutputWriter } from '../util/print.js';
+import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  wholeBufferReads = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+}
+
+class DirectRule extends Node<string> {
+  override toString(options?: PrintOptions): string {
+    return this.toTrimmedString(options);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const w = getPrintOptions(options).writer!;
+    w.add(this.value);
+    return this.value;
   }
 }
 
@@ -37,5 +57,16 @@ describe('Rules streaming', () => {
 
     expect(node.toString({ context, writer })).toBe('color: red;\nbackground: blue;\n');
     expect(writer.captures).toBe(0);
+  });
+
+  it('does not inspect root output for each emitted child boundary', () => {
+    const writer = new CountingWriter();
+    const declarations = Array.from({ length: 12 }, (_, index) => (
+      new DirectRule(`p${index}: ${index};`)
+    ));
+    const node = rules(declarations);
+
+    expect(node.toString({ writer })).toContain('p11: 11;');
+    expect(writer.wholeBufferReads).toBe(1);
   });
 });

@@ -82,6 +82,7 @@ export interface OutputWriter {
   queueSpacer(text: string, shouldAdd?: (nextText: string) => boolean): void;
   mark(): number;
   getSince(mark: number): string;
+  hasContentSince(mark: number): boolean;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -386,6 +387,18 @@ export class OutputWriter implements OutputWriter {
       return '';
     }
     return this.chunks.slice(mark).join('');
+  }
+
+  hasContentSince(mark: number): boolean {
+    if (mark < 0 || mark > this.chunks.length) {
+      return false;
+    }
+    for (let i = mark; i < this.chunks.length; i++) {
+      if (this.chunks[i]) {
+        return true;
+      }
+    }
+    return false;
   }
 
   endsWith(suffix: string): boolean {
