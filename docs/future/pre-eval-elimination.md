@@ -793,6 +793,7 @@ The first code slice was a no-behavior-change extraction inside
   pending bucket language
 - extracted the `Rules` registration completion step so scan, map stamping,
   restore, and pending-resolution responsibilities are separated
+- extracted per-node registerable prep from the `Rules` source-order scan
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

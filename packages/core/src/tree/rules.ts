@@ -2148,18 +2148,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       node.index = nodeIndex;
-      if (this._hasStaticName(node)) {
-        // Prepare static identities before registration. Rulesets still need selector/keySet prep.
-        const preEvald = node.preEval(context);
-        if (isThenable(preEvald)) {
-          return (preEvald as Promise<Node>).then((preEvaldNode) => {
-            this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pendingNodes, context);
-          });
-        }
-        this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pendingNodes, context);
-      } else {
-        pendingNodes.push(node);
-      }
+      return this._prepareRegisterableNode(rules, node, index, nodeIndex, pendingNodes, context);
     });
 
     const finish = () => {
@@ -2188,6 +2177,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return rules as this;
     }
     return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
+  }
+
+  private _prepareRegisterableNode(
+    rules: Rules,
+    node: Node,
+    index: number,
+    nodeIndex: number | undefined,
+    pendingNodes: Node[],
+    context: Context
+  ): MaybePromise<void> {
+    if (!this._hasStaticName(node)) {
+      pendingNodes.push(node);
+      return;
+    }
+    // Prepare static identities before registration. Rulesets still need selector/keySet prep.
+    const preEvald = node.preEval(context);
+    if (isThenable(preEvald)) {
+      return (preEvald as Promise<Node>).then((preEvaldNode) => {
+        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pendingNodes, context);
+      });
+    }
+    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pendingNodes, context);
   }
 
   /**
