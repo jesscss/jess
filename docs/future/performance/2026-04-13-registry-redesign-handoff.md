@@ -792,6 +792,8 @@ no AST traversal. Straightforward to test in isolation.
   `Comment`, plus value leaves `Dimension` and `Color`, now accept flat buffers
   directly while preserving their existing string `render(context)` path.
   Resolved string-wrapper nodes `Quoted` and `Url` also use the flat bridge.
+  Simple resolved wrapper nodes `Block`, `Expression`, `Negative`, and `Paren`
+  also use the flat bridge.
   `Call` also accepts a flat buffer through a deliberately thin bridge around
   its existing call-render path; it does not introduce a second call serializer.
 - [ ] Migrate extend collection from AST walk to render-pass side table population

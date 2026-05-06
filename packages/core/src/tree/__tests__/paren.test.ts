@@ -5,6 +5,7 @@ import { any, list, num, paren, ref, rules, type Rules as RulesClass, vardecl } 
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -59,6 +60,26 @@ describe('Paren', () => {
     const rendered = parenNode.render(context);
 
     expect(rendered).toBe('(foo)');
+    expect(parenNode.evaluated).toBe(false);
+    expect(parenNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved paren render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
+
+    expect(await parenNode.render(context, buffer)).toBe('(foo)');
+    expect(buffer.parts).toEqual(['(foo)']);
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.preEvaluated).toBe(false);
   });

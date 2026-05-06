@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Block', () => {
   let context: Context;
@@ -35,6 +36,26 @@ describe('Block', () => {
     const rendered = blockNode.render(context);
 
     expect(rendered).toBe('{foo}');
+    expect(blockNode.evaluated).toBe(false);
+    expect(blockNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved block render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+
+    expect(await blockNode.render(context, buffer)).toBe('{foo}');
+    expect(buffer.parts).toEqual(['{foo}']);
     expect(blockNode.evaluated).toBe(false);
     expect(blockNode.preEvaluated).toBe(false);
   });

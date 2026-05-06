@@ -9,6 +9,7 @@ import {
   type Rules as RulesClass,
   vardecl
 } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Negative', () => {
   let context: Context;
@@ -36,6 +37,26 @@ describe('Negative', () => {
     const rendered = negativeNode.render(context);
 
     expect(rendered).toBe('-20');
+    expect(negativeNode.evaluated).toBe(false);
+    expect(negativeNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved negative render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+
+    expect(await negativeNode.render(context, buffer)).toBe('-20');
+    expect(buffer.parts).toEqual(['-20']);
     expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.preEvaluated).toBe(false);
   });

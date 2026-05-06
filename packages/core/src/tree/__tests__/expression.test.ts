@@ -1,5 +1,6 @@
 import { expr, any, list, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -28,6 +29,26 @@ describe('Expression', () => {
     const rendered = renderedNode.render(context);
 
     expect(rendered).toBe('foo');
+    expect(renderedNode.evaluated).toBe(false);
+    expect(renderedNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved expression render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+
+    expect(await renderedNode.render(context, buffer)).toBe('foo');
+    expect(buffer.parts).toEqual(['foo']);
     expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.preEvaluated).toBe(false);
   });
