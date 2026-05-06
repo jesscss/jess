@@ -59,6 +59,10 @@ function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrat
   return node.type === 'StyleImport';
 }
 
+function isCharsetNode(node: Node): node is Any<'charset'> {
+  return node.type === 'Any' && node.options.role === 'charset';
+}
+
 function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
 }
@@ -2203,12 +2207,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     nodeIndex: number | undefined,
     context: Context
   ): boolean {
-    if (node.type !== 'Any' || node.options.role !== 'charset') {
+    if (!isCharsetNode(node)) {
       return false;
     }
     // Charset is root output-order bookkeeping, not name registration.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    rules.value[index] = (node as Any).preEval(context);
+    rules.value[index] = node.preEval(context);
     rules.value[index]!.index = nodeIndex;
     return true;
   }
