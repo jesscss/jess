@@ -7,6 +7,11 @@ import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type AnyRole =
   'ident'
@@ -73,8 +78,13 @@ export class Any<
     return this.evalNode(context);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

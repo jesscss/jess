@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { bool } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Bool', () => {
   let context: Context;
@@ -24,6 +25,14 @@ describe('Bool', () => {
     expect(truthy.preEvaluated).toBe(false);
     expect(falsy.evaluated).toBe(false);
     expect(falsy.preEvaluated).toBe(false);
+  });
+
+  it('writes bool render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = bool(true);
+
+    expect(await node.render(context, buffer)).toBe('true');
+    expect(buffer.parts).toEqual(['true']);
   });
 
   it('resolves bool values without touching render state', async () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { co } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Combinator', () => {
   let context: Context;
@@ -24,6 +25,14 @@ describe('Combinator', () => {
     expect(child.preEvaluated).toBe(false);
     expect(adjacent.evaluated).toBe(false);
     expect(adjacent.preEvaluated).toBe(false);
+  });
+
+  it('writes combinator render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = co('>');
+
+    expect(await node.render(context, buffer)).toBe('>');
+    expect(buffer.parts).toEqual(['>']);
   });
 
   it('resolves combinators without touching render state', async () => {

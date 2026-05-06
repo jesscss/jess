@@ -1,5 +1,6 @@
 import { any, keyword } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Any and Keyword', () => {
   it('renders Any syntax through toTrimmedString()', () => {
@@ -20,6 +21,15 @@ describe('Any and Keyword', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
+  });
+
+  it('writes Any render output into flat buffers', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = any('foo');
+
+    expect(await node.render(context, buffer)).toBe('foo');
+    expect(buffer.parts).toEqual(['foo']);
   });
 
   it('renders Keyword syntax through toTrimmedString()', () => {

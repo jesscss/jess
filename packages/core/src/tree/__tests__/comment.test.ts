@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
@@ -32,6 +33,14 @@ describe('Comment', () => {
     expect(node.render(context)).toBe('/* keep me */');
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
+  });
+
+  it('writes visible comment render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = comment('/* keep me */');
+
+    expect(await node.render(context, buffer)).toBe('/* keep me */');
+    expect(buffer.parts).toEqual(['/* keep me */']);
   });
 
   it('preserves printable block trivia before invisible nodes', () => {

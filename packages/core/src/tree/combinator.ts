@@ -3,6 +3,11 @@ import { defineType, F_STATIC, type Node } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type Combinators = ' ' | '>' | '+' | '~' | '|' | '||';
 
@@ -16,8 +21,13 @@ export class Combinator extends Selector<Combinators> {
     this.addFlag(F_STATIC);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override resolve(context: Context): MaybePromise<Node> {
