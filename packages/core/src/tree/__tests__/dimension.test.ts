@@ -1,5 +1,6 @@
 import { dimension, num } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -39,6 +40,14 @@ describe('Dimension', () => {
       expect(sized.preEvaluated).toBe(false);
       expect(unitless.evaluated).toBe(false);
       expect(unitless.preEvaluated).toBe(false);
+    });
+
+    it('writes dimension render output into flat buffers', async () => {
+      const buffer = createRenderBuffer('flat');
+      const node = dimension([10, 'px']);
+
+      expect(await node.render(context, buffer)).toBe('10px');
+      expect(buffer.parts).toEqual(['10px']);
     });
 
     it('resolves dimensions without touching render state', async () => {

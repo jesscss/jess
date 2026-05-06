@@ -5,6 +5,12 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
 type ChannelValue = number | ChannelTuple;
@@ -561,8 +567,13 @@ export class Color extends Node<ColorData, ColorOptions> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override resolve(_context: Context): this {

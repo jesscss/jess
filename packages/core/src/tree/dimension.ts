@@ -12,6 +12,12 @@ import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
@@ -309,8 +315,13 @@ export class Dimension extends Node<DimensionValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return this.toTrimmedString(getPrintOptions({ ...options, context }));
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override resolve(_context: Context): this {

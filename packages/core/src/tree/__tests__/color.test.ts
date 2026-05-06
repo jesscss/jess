@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -291,6 +292,18 @@ describe('Color Node', () => {
       expect(rgbColor.preEvaluated).toBe(false);
       expect(hexColor.evaluated).toBe(false);
       expect(hexColor.preEvaluated).toBe(false);
+    });
+
+    it('writes color render output into flat buffers', async () => {
+      const buffer = createRenderBuffer('flat');
+      const color = new Color({
+        format: ColorFormat.RGB,
+        rgb: [255, 0, 0],
+        alpha: 1
+      });
+
+      expect(await color.render(new Context(), buffer)).toBe('rgb(255, 0, 0)');
+      expect(buffer.parts).toEqual(['rgb(255, 0, 0)']);
     });
 
     it('resolves colors without touching render state', async () => {
