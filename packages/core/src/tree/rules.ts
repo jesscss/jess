@@ -2188,16 +2188,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     saved: ReturnType<Rules['_snapshotContext']>,
     pendingNodes: Node[]
   ): MaybePromise<this> {
-    // Stamp fast maps so the hot-path (findVarDeclarationFast / findMixinFast) can distinguish
-    // "registration prep completed with nothing registerable" from "scope never processed at all".
-    rules.varsByName ??= new Map();
-    rules.mixinsByName ??= new Map();
+    this._stampRegistrationMaps(rules);
     if (pendingNodes.length === 0) {
       this._restoreRegistrationContext(context, saved);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return rules as this;
     }
     return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
+  }
+
+  private _stampRegistrationMaps(rules: Rules): void {
+    // Let fast lookup distinguish "registration prep completed with nothing
+    // registerable" from "scope never processed at all".
+    rules.varsByName ??= new Map();
+    rules.mixinsByName ??= new Map();
   }
 
   private _prepareCharsetNode(
