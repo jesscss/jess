@@ -804,6 +804,8 @@ The first code slice was a no-behavior-change extraction inside
   `Rules` helper
 - renamed the `Rules` registration-prep entrypoint around its one-time
   preparation semantics
+- kept `StyleImport` registration detection structural to avoid introducing a
+  circular runtime import back into `Rules`
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

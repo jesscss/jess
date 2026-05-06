@@ -49,9 +49,14 @@ import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-fram
 import { consumeTriviaText } from './util/trivia.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
+type StyleImportRegistrationNode = Node<{ path: unknown }>;
 
 function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
+}
+
+function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrationNode {
+  return node.type === 'StyleImport';
 }
 
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -2238,7 +2243,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * goes straight to the eval queue.
    */
   private _isRegisterableType(node: Node): boolean {
-    return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || (node as Node).type === 'StyleImport';
+    return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || isStyleImportRegistrationNode(node);
   }
 
   private _storePreparedRegistrationNode(
@@ -2274,9 +2279,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const name = node.value.name;
       return this._isStatic(name);
     }
-    if (node.type === 'StyleImport') {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const path = (node as any).value.path;
+    if (isStyleImportRegistrationNode(node)) {
+      const path = node.value.path;
       return this._isStatic(path);
     }
     if (isNode(node, N.Ruleset)) {
@@ -2286,7 +2290,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList)) {
         return true;
       }
-      // After preEval, the selector should be resolved to static identifiers
+      // After identity prep, the selector should be resolved to static identifiers.
       if (node.preEvaluated) {
         return true;
       }
