@@ -641,6 +641,14 @@ needs to surface at all. The solution is a *buffered render with typed segments*
 is strings, but selector-bearing nodes push structured segments that are finalized in a cheap
 post-step.
 
+**Do not build AST v2.**
+The render buffer is temporary output state, not a second tree. Add a segment
+only when a piece of output has a proven delayed-finalization need: selector
+extension, reference visibility, hoisting, merge declarations, or a concrete
+pending lookup. Do not add segment types for ordinary node shape, traversal
+convenience, ownership bookkeeping, or speculative future reuse. If output can
+be written as a string in flat mode, it should stay a string.
+
 #### Buffer segment types
 
 ```ts

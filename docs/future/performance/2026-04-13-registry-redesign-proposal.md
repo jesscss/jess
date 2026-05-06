@@ -502,6 +502,23 @@ below. The post-step runs after the walk.
 The flag check is a single branch at render startup. `_indexRules` already pays
 the traversal cost; the flag is free.
 
+#### Buffer is not AST v2
+
+The buffer is a short-lived render artifact. It must not become a parallel AST
+with node identity, parent/child ownership, traversal APIs, lookup state, or
+semantic mutation rules. Segment types are allowed only for output that cannot
+be finalized immediately:
+
+- selector finalization for extends
+- reference-import visibility
+- hoisted at-rule output
+- merged declarations
+- explicit pending lookup slots
+
+Everything else should remain a plain string in the buffer. A proposed segment
+type must prove the delayed-finalization need it represents; "it might be
+useful later" is not enough.
+
 #### Segment types (segmented mode only)
 
 ```ts

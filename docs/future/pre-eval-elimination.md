@@ -639,6 +639,10 @@ This document does not propose:
 - removing selector composition semantics
 - flattening evaluation order until tests happen to pass
 - replacing one global pass with a hidden global scan inside `eval`
+- replacing the evaluated AST with a second render-buffer AST
 
 If `preEval` is removed, the replacement should be a genuinely smaller and more
-local runtime model, not the same model with different method names.
+local runtime model, not the same model with different method names. The render
+buffer may carry typed delayed-output slots, but only for output that cannot be
+finalized immediately. It should not grow node identity, parent/child ownership,
+lookup APIs, or general traversal semantics.
