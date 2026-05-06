@@ -773,6 +773,8 @@ The first code slice was a no-behavior-change extraction inside
   import queuing or child-rules traversal yet
 - renamed the remaining at-rule prep wrapper around import queuing / child
   registration so it no longer pretends to evaluate the prelude
+- extracted `StyleImport` path identity prep inside `evalNode()` so the narrow
+  path-resolution retry surface is explicit
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

@@ -514,6 +514,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return this;
   }
 
+  private _preparePathIdentity(context: Context): MaybePromise<Node> {
+    try {
+      return this.value.path.eval(context);
+    } catch (e: any) {
+      // Tag path-resolution errors so the eval-queue retry policy can
+      // distinguish "path interpolation not ready" (cheap, worth retrying)
+      // from "content evaluation failed" (expensive clone, not worth retrying).
+      e._isPathResolutionError = true;
+      throw e;
+    }
+  }
+
   /**
    * @note
    * When imports are evaluated, they should be deeply cloned. The reason is that
@@ -525,20 +537,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { path, with: withValues } = node.value;
+    const { with: withValues } = node.value;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
-    let maybePath;
-    try {
-      maybePath = path.eval(context);
-    } catch (e: any) {
-      // Tag path-resolution errors so the eval-queue retry policy can
-      // distinguish "path interpolation not ready" (cheap, worth retrying)
-      // from "content evaluation failed" (expensive clone, not worth retrying).
-      e._isPathResolutionError = true;
-      throw e;
-    }
+    const maybePath = this._preparePathIdentity(context);
     let originalDepth = context.depth;
     context.depth = this.depth;
 
