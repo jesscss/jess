@@ -27,7 +27,9 @@ The intended shape is local and streaming:
 So "single pass" means "no retained eval tree", not "no intermediate evaluated
 node exists at all".
 
-This note is exploratory. It is not an implementation plan.
+This note is both a design record and an implementation guide. The exact code
+shape can still change, but the ordering decisions below are the target unless a
+focused test proves a missing semantic constraint.
 
 ## Why `Rules` Is The Choke Point
 
@@ -151,7 +153,74 @@ That implies a new contract:
 - child traversal happens because evaluation reached that child, not because a
   global prep phase touched everything first
 
-## A Possible `Rules.evalNode()` Shape
+## Evaluation Order Decision
+
+The target order is **source-order render/eval with local prep**, not the
+current broad priority queue.
+
+That does not mean "evaluate every child before registration" or "serialize raw
+source text directly." It means `Rules` owns one local walk with a few explicit
+preconditions:
+
+1. **Scope setup first.** Establish `context.root`, `context.rulesContext`,
+   `treeRoot`, import/reference scope, and the current extend root for this
+   `Rules`.
+2. **Index before lookup.** Assign stable child `.index` values from source
+   order before any reference lookup can run. This preserves nearest-prior
+   declaration behavior without forcing evaluation itself into priority order.
+3. **Static registration before child evaluation.** Register lookup identities
+   that are already stable: static declarations, static mixins/functions,
+   static callable rulesets, and known extend/reference flags. This keeps normal
+   forward references cheap and avoids turning every reference into a deferred
+   miss.
+4. **Local dynamic identity prep.** Dynamic declaration keys, interpolated mixin
+   names, interpolated selectors, and interpolated at-rule names are not
+   "pre-evaluated" as whole subtrees. They get a local identity-prep attempt only
+   when registration needs their key/selector/name.
+5. **Source-order render/eval walk.** Walk children in authored order. A child
+   may materialize a local evaluated node via `resolve(context)` before it
+   serializes, but the result is not retained as a whole evaluated tree.
+6. **Typed deferral for real misses.** If a value is needed only for final
+   output and is not currently resolvable, emit a typed pending slot and record
+   the miss. Do not reintroduce a general priority queue.
+7. **Drain narrow pending work.** Run fixed-point drains only for the specific
+   shapes that genuinely need them:
+   - dynamic declaration names in the current `Rules`
+   - `StyleImport` path interpolation
+   - pending render slots that could not resolve during the linear walk
+8. **Finalize after nested containers have been visited.** `processExtends`
+   still runs only after the outermost root has evaluated enough of the tree for
+   every extend-relevant ruleset to be registered to the correct extend root.
+
+The current `NodeTypeToPriority` queue was useful as a bridge because preEval
+made lookup state exist before output evaluation. It should not be preserved as
+the normal renderer. Its only durable lessons are the two narrow blockers above:
+imports can be blocked on path identity, and dynamic declaration keys can be
+blocked on other declaration identities.
+
+## Why We Pre-Evaluated Parts First
+
+The old phase did not exist because every node had meaningful pre-work. It
+existed because a few parts of a few nodes were needed before their full
+evaluation:
+
+| Current preEval surface | Why it happened early | Replacement |
+| --- | --- | --- |
+| `Rules` context/root setup | References, imports, and extends need the right root/scope before any child runs. | Keep as a shallow `Rules` setup step at the start of eval/render. |
+| Child `.index` assignment | Linear lookup semantics depend on source positions, especially nearest-prior declarations. | Keep early index assignment in `Rules`; preserve index on replacements/materialized output. |
+| Static declaration/mixin/ruleset registration | Forward refs and mixin calls need names/selectors indexed before first use. | Keep static identity registration before the source-order walk. Registration means "identity is stable," not "node is pre-evaluated." |
+| Dynamic declaration names | Declaration keys can be interpolated and can depend on other declarations. | Use a local fixed-point pending-name set for the current `Rules`; do not retry unrelated children. |
+| `Ruleset` selector prep | Mixin lookup and extends need a stable own selector and key sets. | Split into selector identity prep near registration. Body evaluation waits for source-order traversal. |
+| `Declaration` assignment normalization | `+=`, `+_=`/merge forms change the semantic value, not only the output text. | Move to an early one-time declaration eval/identity step; only key resolution belongs to registration prep. |
+| `AtRule` name/prelude prep | Interpolated names and import hoisting were mixed with child traversal. | Name identity is local prep; prelude evaluation stays in eval where live scope is correct; import hoisting moves to render/finalization. |
+| `Mixin` name prep | Callable registry needs a stable name, but mixin bodies must not be walked until call time. | Keep cheap callable identity prep; continue avoiding body traversal during registration. |
+| `Any(role='charset')` | Root output ordering needed to remember the first charset and hide duplicate/source token output. | Treat as root/render setup or charset collection, not a general node preEval hook. |
+| `Collection` / control mark-only overrides | These existed to avoid generic recursion or to mark phase completion. | Delete after base generic preEval is no longer part of the contract; do not replace them with new hooks. |
+
+The key rule is: **prepare the part that defines lookup identity; do not prepare
+the whole node unless full node evaluation is actually needed.**
+
+## `Rules.evalNode()` Target Shape
 
 One plausible future structure:
 
@@ -159,19 +228,22 @@ One plausible future structure:
    Set `context.root`, establish the correct extend root, snapshot context, and
    assign child indices before any registration or queue scheduling.
 
-2. Build one queue from the current children.
-   This can reuse the existing priority queue idea in `_buildEvalQueue()`.
+2. Register immediately stable identities.
+   This can reuse pieces of `_indexRules()` and `registerNode()`, but it must
+   not mark nodes pre-evaluated or recurse through child bodies.
 
-3. Classify registrable children into:
+3. Classify dynamic identity nodes into:
    - immediately registerable
    - pending-name
    - non-registrable
 
-4. Evaluate the queue.
-   Before or after a node evaluates, attempt registration if that node's lookup
-   identity is now stable.
+4. Walk children in source order.
+   Before rendering/evaluating a node, attempt the local identity prep needed
+   for that node's registration surface. After a node produces output or a
+   derived node, register any newly materialized lookup identities.
 
-5. When a node resolves a blocked name, requeue only the affected pending nodes.
+5. When a node resolves a blocked identity, retry only the affected local
+   pending set.
 
 6. Run final root-only work once.
    This includes `processExtends(context)` and any final output-order
@@ -211,17 +283,22 @@ The simplest version does not need a full dependency graph:
 That is still iterative, but it is much smaller than
 "whole-tree preEval, then whole-tree eval".
 
-### Better Version
+### Blocking Kinds
 
-A stronger version would distinguish:
+Track these as separate buckets, even if the first implementation only uses a
+couple of arrays:
 
-- nodes blocked on declaration names
-- nodes blocked on declaration values
-- nodes blocked on selector composition context
-- nodes blocked on import materialization
+- `declaration-name`: a declaration cannot be registered until its key resolves.
+- `callable-name`: a mixin/function/ruleset callable identity is not stable.
+- `selector-identity`: selector/key-set composition is not stable enough for
+  mixin/extend indexing.
+- `import-path`: import path interpolation failed before the file can load.
+- `render-ref`: output needs a value that was not resolvable during the linear
+  walk.
 
-Then `Rules.evalNode()` could wake up only the relevant bucket when something
-changes.
+Do not wake all buckets when one changes. In particular, a resolved declaration
+value should not cause comments, calls, static rulesets, or unrelated at-rules to
+run again.
 
 ## Likely Node Splits
 
@@ -515,18 +592,19 @@ interpolated declaration name was blocked.
 If a declaration name resolves inside one `Rules`, only retry pending-name nodes
 in that same `Rules` unless there is a proven cross-boundary dependency.
 
-### 4. Make Ordering Explicit In The Queue
+### 4. Make Ordering Explicit In The Walk
 
-The existing priority queue already encodes most of the useful staging:
+The existing priority queue documents which concerns were order-sensitive, but
+it should not survive as a broad renderer. Treat it as evidence for narrow
+blockers, not as the target architecture:
 
-- imports
-- calls
-- declarations
-- mixins / rulesets / extends / at-rules
+- import path identity can need retry
+- dynamic declaration keys can need a fixed-point pass
+- ruleset/extend identity must be known before final extend processing
 
-That is a better foundation than `preEval` retries because it already expresses
-semantic order. Future work should lean into that queue instead of duplicating
-it with a second preparatory traversal.
+The normal path should be source-order traversal with explicit local prep and
+typed pending slots. If a new priority bucket seems necessary, first prove the
+specific semantic dependency with a focused test.
 
 ### 5. Push More Output Shaping To Serialization
 
@@ -620,16 +698,82 @@ evidence that the broad queue is the target architecture.
 
 This probably should not be attempted as one large rewrite.
 
-A safer order would be:
+A safer order is:
 
-1. Document the exact responsibilities currently hidden in `Rules.preEval()`.
-2. Move pure render-order concerns out of eval entirely.
-3. Split node-local "prepare identity" logic from full node evaluation.
-4. Teach `Rules.evalNode()` to manage pending registrations directly.
-5. Remove `_multiPassPreEval()`.
-6. Remove the public assumption that `eval()` implies a prior deep `preEval()`.
+1. **Characterize current hidden preEval work.**
+   Add focused tests or debug counters for:
+   - which nodes register during `Rules.preEval()`
+   - which dynamic declaration names actually need more than one retry
+   - which `StyleImport` retries are path-identity failures
+   - which rulesets are registered only because of recursive child preEval
+
+2. **Introduce explicit identity-prep helpers without changing behavior.**
+   Add small private helpers for the real identity surfaces:
+   - declaration key prep
+   - declaration assignment normalization
+   - mixin callable-name prep
+   - ruleset selector identity prep
+   - at-rule name prep
+
+   Initially these helpers can be called from existing `preEval()` methods so
+   tests stay stable, but the helper names should describe the smaller concern.
+
+3. **Move mark-only hooks out of the way.**
+   Only after the base generic `preEval()` recursion is no longer needed, delete
+   mark-only overrides such as `Collection.preEval()` and the control-node
+   preEval. Removing them too early can accidentally re-enable broad child
+   recursion through `Node.preEval()`.
+
+4. **Teach `Rules` local pending registration.**
+   Replace `_multiPassPreEval()` with `Rules`-owned local state:
+   - `pendingDeclarationNames`
+   - `pendingCallableNames`
+   - `pendingSelectorIdentity`
+   - `pendingImportPaths`
+
+   The first useful implementation can keep the existing eval queue for output,
+   but registration should stop depending on a completed tree-wide pre-pass.
+
+5. **Fold recursive child preEval into container eval.**
+   `Ruleset` and `AtRule` should evaluate child `Rules` when the source-order
+   walk reaches their body. They may still prepare identity before registration,
+   but they should not force a depth-first preparatory traversal just to make
+   rendering possible.
+
+6. **Replace the broad priority queue with source-order render/eval.**
+   Keep only the two proven narrow schedulers:
+   - import path retry
+   - dynamic declaration-key fixed point
+
+   Everything else resolves from indexed scope state, evaluates locally, or
+   emits a typed pending render slot.
+
+7. **Remove the public preEval assumption.**
+   Once `Rules.evalNode()` owns setup, registration, pending names, and body
+   traversal, remove the public contract that `eval()` implies a prior
+   tree-wide `preEval()`.
 
 This keeps the intermediate states understandable and testable.
+
+## First Implementation Slice
+
+Do not start by deleting `preEval()`.
+
+The first code slice should be a no-behavior-change extraction inside
+`Rules`/identity nodes:
+
+- extract declaration key prep and assignment normalization from
+  `Declaration.preEval()` into named private helpers
+- extract mixin callable-name prep from `Mixin.preEval()`
+- extract ruleset selector identity prep from `Ruleset.preEval()`
+- add focused tests that prove these helpers do not pre-evaluate child bodies
+  unless the current behavior explicitly requires it
+
+After that, introduce `Rules`-owned pending registration state and move one
+registration surface at a time to it, starting with dynamic declaration names.
+Dynamic declaration names are the right first surface because they already have
+a local fixed-point shape in `_resolveDynamicNodes()` and do not require solving
+extend finalization or import rendering in the same patch.
 
 ## Non-Goals
 
