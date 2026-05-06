@@ -796,6 +796,8 @@ The first code slice was a no-behavior-change extraction inside
 - extracted per-node registerable prep from the `Rules` source-order scan
 - extracted charset prep from the registration scan as output-order
   bookkeeping rather than name registration
+- extracted the `Rules` source-order registration scan from the registration
+  completion step
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

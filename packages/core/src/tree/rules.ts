@@ -2127,6 +2127,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>
   ): MaybePromise<this> {
+    const pendingResult = this._scanRegistrationNodes(rules, context);
+    if (isThenable(pendingResult)) {
+      return (pendingResult as Promise<Node[]>).then(pendingNodes =>
+        this._finishRegistration(rules, context, saved, pendingNodes)
+      );
+    }
+    return this._finishRegistration(rules, context, saved, pendingResult as Node[]);
+  }
+
+  private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<Node[]> {
     const pendingNodes: Node[] = [];
 
     // Process each node with a registerable identity, handling both sync and async prep.
@@ -2147,14 +2157,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._prepareRegisterableNode(rules, node, index, nodeIndex, pendingNodes, context);
     });
 
-    const finish = () => {
-      return this._finishRegistration(rules, context, saved, pendingNodes);
-    };
-
     if (isThenable(processResult)) {
-      return (processResult as Promise<void>).then(() => finish());
+      return (processResult as Promise<void>).then(() => pendingNodes);
     }
-    return finish();
+    return pendingNodes;
   }
 
   private _finishRegistration(
