@@ -9,6 +9,11 @@ import {
   emitTriviaTokens
 } from './util/trivia.js';
 import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -109,6 +114,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override toTrimmedString(options?: PrintOptions) {
     return this.renderListSyntax(options);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   override compare(other: Node) {

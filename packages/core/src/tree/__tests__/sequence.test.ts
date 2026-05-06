@@ -4,6 +4,7 @@ import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -78,6 +79,30 @@ describe('Sequence', () => {
     const rendered = sequenceNode.render(context);
 
     expect(rendered).toBe('10 20 30');
+    expect(sequenceNode.evaluated).toBe(false);
+    expect(sequenceNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved sequence render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('mid'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const sequenceNode = seq([
+      num(10),
+      ref({ key: 'mid' }, { type: 'variable' }),
+      num(30)
+    ]);
+
+    expect(await sequenceNode.render(context, buffer)).toBe('10 20 30');
+    expect(buffer.parts).toEqual(['10 20 30']);
     expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.preEvaluated).toBe(false);
   });

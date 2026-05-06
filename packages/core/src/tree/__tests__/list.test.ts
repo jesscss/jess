@@ -5,6 +5,7 @@ import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -134,6 +135,29 @@ describe('List', () => {
     const rendered = listNode.render(context);
 
     expect(rendered).toBe('1 2 3, four');
+    expect(listNode.evaluated).toBe(false);
+    expect(listNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved list render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('four')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const listNode = list([
+      spaced([num(1), any('2'), any('3')]),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]);
+
+    expect(await listNode.render(context, buffer)).toBe('1 2 3, four');
+    expect(buffer.parts).toEqual(['1 2 3, four']);
     expect(listNode.evaluated).toBe(false);
     expect(listNode.preEvaluated).toBe(false);
   });
