@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   addExtendRecord,
+  createHoistBlock,
+  createMergeSlot,
+  createPendingRefSlot,
   createRenderBuffer,
   createRenderBufferForFlags,
+  createRulesetBlock,
+  createSegmentBody,
   finalizeRenderBuffer,
   isRenderBuffer,
   pushRenderSegment,
+  writeSegmentText,
   writeRenderText,
   type HoistBlock,
   type MergeSlot,
@@ -53,12 +59,14 @@ describe('RenderBuffer', () => {
 
   it('stores strings directly inside segmented children', () => {
     const buffer = createRenderBuffer('segmented');
-    const block: RulesetBlock = {
-      kind: 'ruleset',
+    const body = createSegmentBody();
+    writeSegmentText(body, 'color: red;');
+    writeSegmentText(body, '\nbackground: blue;');
+    const block: RulesetBlock = createRulesetBlock({
       selector: selector('.a'),
-      body: ['color: red;', '\nbackground: blue;'],
+      body,
       isReference: false
-    };
+    });
 
     pushRenderSegment(buffer, block);
 
@@ -68,29 +76,25 @@ describe('RenderBuffer', () => {
 
   it('recurses through only the delayed wrapper state', () => {
     const buffer = createRenderBuffer('segmented');
-    const hoist: HoistBlock = {
-      kind: 'hoist',
+    const hoist: HoistBlock = createHoistBlock({
       atRule: '@media screen',
       body: [
-        {
-          kind: 'ruleset',
+        createRulesetBlock({
           selector: selector('.a'),
           body: ['color: red;'],
           isReference: false
-        }
+        })
       ]
-    };
-    const merge: MergeSlot = {
-      kind: 'merge',
+    });
+    const merge: MergeSlot = createMergeSlot({
       property: 'box-shadow',
       separator: ',',
       segments: ['0 0 red', ',', '0 0 blue']
-    };
-    const pending: PendingRefSlot = {
-      kind: 'pending-ref',
+    });
+    const pending: PendingRefSlot = createPendingRefSlot({
       key: '@color',
       segments: ['color: red;']
-    };
+    });
 
     pushRenderSegment(buffer, hoist);
     writeRenderText(buffer, '\n');

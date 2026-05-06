@@ -115,6 +115,52 @@ export function writeRenderText(buffer: RenderBuffer, text: string): void {
   buffer.segments.push(text);
 }
 
+export function createSegmentBody(): Segment[] {
+  return [];
+}
+
+export function writeSegmentText(segments: Segment[], text: string): void {
+  if (text !== '') {
+    segments.push(text);
+  }
+}
+
+export function createRulesetBlock(args: Omit<RulesetBlock, 'kind' | 'body'> & { body?: Segment[] }): RulesetBlock {
+  return {
+    kind: 'ruleset',
+    body: args.body ?? createSegmentBody(),
+    selector: args.selector,
+    isReference: args.isReference,
+    extendRoot: args.extendRoot
+  };
+}
+
+export function createHoistBlock(args: Omit<HoistBlock, 'kind' | 'body'> & { body?: Segment[] }): HoistBlock {
+  return {
+    kind: 'hoist',
+    body: args.body ?? createSegmentBody(),
+    atRule: args.atRule,
+    selectorContext: args.selectorContext
+  };
+}
+
+export function createMergeSlot(args: Omit<MergeSlot, 'kind' | 'segments'> & { segments?: Segment[] }): MergeSlot {
+  return {
+    kind: 'merge',
+    segments: args.segments ?? createSegmentBody(),
+    property: args.property,
+    separator: args.separator
+  };
+}
+
+export function createPendingRefSlot(args: Omit<PendingRefSlot, 'kind' | 'segments'> & { segments?: Segment[] }): PendingRefSlot {
+  return {
+    kind: 'pending-ref',
+    segments: args.segments ?? createSegmentBody(),
+    key: args.key
+  };
+}
+
 export function renderNodeToBuffer(
   node: RenderBufferNode,
   context: Context,

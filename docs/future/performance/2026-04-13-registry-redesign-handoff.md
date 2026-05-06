@@ -777,7 +777,12 @@ no AST traversal. Straightforward to test in isolation.
   Current status: `createRenderBufferForFlags(...)` chooses flat mode unless
   `_hasExtends` or `_hasReferenceImports` requires segmented mode. This is still
   the buffer utility layer, not node-level render integration.
-- [ ] Implement segmented-mode `RenderBuffer` (has extends or reference imports)
+- [x] Implement segmented-mode `RenderBuffer` (has extends or reference imports)
+  Current status: segmented buffers carry `segments` plus `extendRecords`, and
+  helper constructors create `RulesetBlock`, `HoistBlock`, `MergeSlot`, and
+  `PendingRefSlot` with explicit child segment bodies. This is still segment
+  storage/finalization plumbing; selector extension, reference visibility, and
+  hoist semantics are separate post-step work below.
 - [ ] Implement `render(ctx, buf: RenderBuffer)` on each node type; flat mode pushes strings directly
   Current status: `renderNodeToBuffer(...)` provides a flat-buffer bridge for
   current node serializers. It resolves a node, serializes the immediate output
