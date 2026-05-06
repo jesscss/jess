@@ -967,18 +967,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       node.preEvaluated = true;
       let { selector, rules, guard } = node.value;
       const { selectorBits } = context;
-      // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
-      // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
-      // (like Less `@base`) become inaccessible.
-      if (!node.options.generated) {
-        if (context.leakyRules) {
-          rules.options.rulesVisibility.Mixin = 'public';
-          rules.options.rulesVisibility.VarDeclaration = 'optional';
-        } else {
-          rules.options.rulesVisibility.Mixin = 'private';
-          rules.options.rulesVisibility.VarDeclaration = 'private';
-        }
-      }
+      this._prepareRulesVisibility(node, context);
       // Check if there's a root-only at-rule between us and the parent ruleset
       // If so, don't inherit the parent selector (root-only at-rules like @keyframes
       // don't propagate parent selectors to their children)
@@ -997,21 +986,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       }
 
       const parentSelector = parentRuleset?.selector;
-      // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
-      if ('keySetLibrary' in selector && !(selector instanceof Nil)) {
-        (selector as Selector).keySetLibrary ??= selectorBits;
-      }
-      const ownSelector = !(selector instanceof Nil)
-        ? ((selector as Selector).copy(true) as Selector)
-        : selector;
-      if ('keySetLibrary' in ownSelector && !(ownSelector instanceof Nil)) {
-        (ownSelector as Selector).keySetLibrary ??= selectorBits;
-      }
-      if (node.options) {
-        (node.options as RulesetOptions).ownSelector = ownSelector;
-      } else {
-        node.options = { ownSelector } as RulesetOptions;
-      }
+      this._storeOwnSelector(node, selector, selectorBits);
       /* getImplicitSelector removed — selector stays as-authored.
        * Composed form (with parent context) computed on-demand during:
        * - serialization (composedSelectorStack in PrintOptions)
@@ -1021,61 +996,106 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       // Just evaluate the selector
       return pipe(
         () => selector.eval(context),
-        (sel) => {
-          // If this ruleset shares its value with a descendant ruleset, give descendants
-          // their own value before we overwrite value.selector so they keep their selector.
-          Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, node.value);
-          // Store the evaluated selector - this is what will be in the frame
-          node.value.selector = sel as Selector | Nil;
-          if (sel.hoistToRoot) {
-            node.hoistToRoot = true;
-          }
-          // Wire up the BitSet library on the evaluated selector so that
-          // extend fast-rejection via keySet/requiredKeySet works. The
-          // library is shared across all selectors in a compilation via
-          // context.selectorBits; assigning it here ensures that when the
-          // lazy `keySet` getter fires during extend matching, it produces
-          // real BitSets instead of undefined.
-          if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
-            (sel as Selector).keySetLibrary ??= selectorBits;
-          }
-          // Register the concrete Ruleset with the current extend root.
-          const extendRoot = context.extendRoots.getCurrentExtendRoot();
-          if (extendRoot) {
-            registerRulesetWithRoot(extendRoot, node as Ruleset);
-          }
-          // Depth-first: preEval child rules immediately so all nested rulesets/extends
-          // are registered in source order before we process extends.
-          // Push this ruleset to the frame so nested rulesets get the correct parent selector
-          // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
-          const childRules = node.value.rules;
-          if (childRules && !childRules.preEvaluated) {
-            context.rulesetFrames.push(node as Ruleset);
-            if (extendRoot) {
-              context.extendRoots.registerRoot(childRules, extendRoot);
-            }
-            const preEvaldRules = childRules.preEval(context);
-            if (isThenable(preEvaldRules)) {
-              return (preEvaldRules as Promise<Rules>).then((rules) => {
-                context.rulesetFrames.pop();
-                node.value.rules = rules;
-                if (extendRoot && rules !== childRules) {
-                  context.extendRoots.registerRoot(rules, extendRoot);
-                }
-                return node;
-              });
-            }
-            context.rulesetFrames.pop();
-            node.value.rules = preEvaldRules as Rules;
-            if (extendRoot && preEvaldRules !== childRules) {
-              context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
-            }
-          }
-          return node;
-        }
+        sel => this._storeEvaluatedSelector(node, sel as Selector | Nil, context)
       );
     }
     return this;
+  }
+
+  private _prepareRulesVisibility(node: this, context: Context): void {
+    const { rules } = node.value;
+    // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
+    // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
+    // (like Less `@base`) become inaccessible.
+    if (node.options.generated) {
+      return;
+    }
+    if (context.leakyRules) {
+      rules.options.rulesVisibility.Mixin = 'public';
+      rules.options.rulesVisibility.VarDeclaration = 'optional';
+    } else {
+      rules.options.rulesVisibility.Mixin = 'private';
+      rules.options.rulesVisibility.VarDeclaration = 'private';
+    }
+  }
+
+  private _storeOwnSelector(node: this, selector: Selector | Nil, selectorBits: Context['selectorBits']): void {
+    // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
+    if ('keySetLibrary' in selector && !(selector instanceof Nil)) {
+      (selector as Selector).keySetLibrary ??= selectorBits;
+    }
+    const ownSelector = !(selector instanceof Nil)
+      ? ((selector as Selector).copy(true) as Selector)
+      : selector;
+    if ('keySetLibrary' in ownSelector && !(ownSelector instanceof Nil)) {
+      (ownSelector as Selector).keySetLibrary ??= selectorBits;
+    }
+    if (node.options) {
+      (node.options as RulesetOptions).ownSelector = ownSelector;
+    } else {
+      node.options = { ownSelector } as RulesetOptions;
+    }
+  }
+
+  private _storeEvaluatedSelector(
+    node: this,
+    sel: Selector | Nil,
+    context: Context
+  ): MaybePromise<this> {
+    // If this ruleset shares its value with a descendant ruleset, give descendants
+    // their own value before we overwrite value.selector so they keep their selector.
+    Ruleset.ensureDescendantRulesetsHaveOwnValue(node as Ruleset, node.value);
+    // Store the evaluated selector - this is what will be in the frame
+    node.value.selector = sel;
+    if (sel.hoistToRoot) {
+      node.hoistToRoot = true;
+    }
+    // Wire up the BitSet library on the evaluated selector so that
+    // extend fast-rejection via keySet/requiredKeySet works. The
+    // library is shared across all selectors in a compilation via
+    // context.selectorBits; assigning it here ensures that when the
+    // lazy `keySet` getter fires during extend matching, it produces
+    // real BitSets instead of undefined.
+    if ('keySetLibrary' in sel && !(sel instanceof Nil)) {
+      (sel as Selector).keySetLibrary ??= context.selectorBits;
+    }
+    // Register the concrete Ruleset with the current extend root.
+    const extendRoot = context.extendRoots.getCurrentExtendRoot();
+    if (extendRoot) {
+      registerRulesetWithRoot(extendRoot, node as Ruleset);
+    }
+    return this._preEvalChildRules(node, context, extendRoot);
+  }
+
+  private _preEvalChildRules(node: this, context: Context, extendRoot: Rules | undefined): MaybePromise<this> {
+    // Depth-first: preEval child rules immediately so all nested rulesets/extends
+    // are registered in source order before we process extends.
+    // Push this ruleset to the frame so nested rulesets get the correct parent selector
+    // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
+    const childRules = node.value.rules;
+    if (childRules && !childRules.preEvaluated) {
+      context.rulesetFrames.push(node as Ruleset);
+      if (extendRoot) {
+        context.extendRoots.registerRoot(childRules, extendRoot);
+      }
+      const preEvaldRules = childRules.preEval(context);
+      if (isThenable(preEvaldRules)) {
+        return (preEvaldRules as Promise<Rules>).then((rules) => {
+          context.rulesetFrames.pop();
+          node.value.rules = rules;
+          if (extendRoot && rules !== childRules) {
+            context.extendRoots.registerRoot(rules, extendRoot);
+          }
+          return node;
+        });
+      }
+      context.rulesetFrames.pop();
+      node.value.rules = preEvaldRules as Rules;
+      if (extendRoot && preEvaldRules !== childRules) {
+        context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
+      }
+    }
+    return node;
   }
 
   /** Attach an (invisible) ampersand to the selector(s) if it's not already there */

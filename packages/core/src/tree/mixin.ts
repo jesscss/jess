@@ -125,6 +125,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (this.preEvaluated) {
       return this;
     }
+    return this._prepareMixinIdentity(context);
+  }
+
+  private _prepareMixinIdentity(context: Context): MaybePromise<this> {
     // Mixins should NOT pre-evaluate their rules during initial registration.
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
     // So we only handle the name (if interpolated) and mark as preEvaluated,

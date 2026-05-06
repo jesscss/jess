@@ -759,17 +759,18 @@ This keeps the intermediate states understandable and testable.
 
 Do not start by deleting `preEval()`.
 
-The first code slice should be a no-behavior-change extraction inside
+The first code slice was a no-behavior-change extraction inside
 `Rules`/identity nodes:
 
-- extract declaration key prep and assignment normalization from
+- extracted declaration key prep and assignment normalization from
   `Declaration.preEval()` into named private helpers
-- extract mixin callable-name prep from `Mixin.preEval()`
-- extract ruleset selector identity prep from `Ruleset.preEval()`
-- add focused tests that prove these helpers do not pre-evaluate child bodies
-  unless the current behavior explicitly requires it
+- extracted mixin callable-name prep from `Mixin.preEval()`
+- extracted ruleset selector identity prep and child-rules registration from
+  `Ruleset.preEval()`
+- added a focused mixin test proving callable identity prep still does not
+  pre-evaluate the mixin body
 
-After that, introduce `Rules`-owned pending registration state and move one
+The next implementation slice is to introduce `Rules`-owned pending registration state and move one
 registration surface at a time to it, starting with dynamic declaration names.
 Dynamic declaration names are the right first surface because they already have
 a local fixed-point shape in `_resolveDynamicNodes()` and do not require solving

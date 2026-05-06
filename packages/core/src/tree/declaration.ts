@@ -267,114 +267,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let node = this.clone(false) as this;
     node.preEvaluated = true;
     // Index should already be assigned by parent Rules
-    return this._applyAssignmentNormalization(node, context);
+    return this._prepareDeclarationIdentity(node, context);
   }
 
-  private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
-    let { name, value } = node.value;
+  private _prepareDeclarationIdentity(node: this, context: Context): MaybePromise<this> {
+    let { name } = node.value;
     const setName = (newName: Any<'property'>) => {
       node.set('name', newName);
       name = newName;
-    };
-    const setValue = (newValue: Node) => {
-      node.set('value', newValue);
-      value = newValue;
-    };
-
-    const applyAssignmentNormalization = (key: Any<'property'>) => {
-      /** Normalize assignment types */
-      let assign = node.options?.assign;
-      const rawAssign = assign as string | undefined;
-      if (rawAssign === '+,:') {
-        assign = AssignmentType.MergeList;
-      } else if (rawAssign === '+_:') {
-        assign = AssignmentType.MergeSequence;
-      }
-      if (assign) {
-        const normalizedAssign = assign;
-        /** Reference type */
-        let type: 'declaration' | 'variable' =
-          node.type === 'Declaration' ? 'declaration' : 'variable';
-        switch (assign) {
-          case AssignmentType.MergeList:
-          case AssignmentType.MergeSequence: {
-            const isLessMergeAssign = (assignValue: string): boolean => (
-              assignValue === AssignmentType.MergeList
-              || assignValue === AssignmentType.MergeSequence
-              || assignValue === '+,:'
-              || assignValue === '+_:'
-            );
-            const ref = new Reference({ key }, {
-              type,
-              fallbackValue: new Nil(),
-              // Assignment normalization clears `assign` to Default, so matching by
-              // assignment flag prevents later merge iterations from seeing prior values.
-              // For Less-style property merges, any prior merge node participates in the chain,
-              // but plain declarations do not.
-              // Exclude only the current node to avoid self-reference.
-              filter: n => (
-                n !== node
-                && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
-              )
-            });
-            /**
-             * @note - It's up to Sequence and List to handle
-             *         the merging of the values, if Nil()
-             *         or a nested list.
-             */
-            const isMergeListAssign = assign === AssignmentType.MergeList;
-            value = isMergeListAssign
-              ? new List([ref, value])
-              : spaced([ref, value]);
-            setValue(value);
-            break;
-          }
-          case AssignmentType.Add: {
-            if (node.type === 'Declaration') {
-              // Less property `+:` appends comma-separated items.
-              // Use list composition (not generic `Operation +`) so scalar previous values
-              // remain distinct list members rather than string-concatenating.
-              setValue(new List([
-                new Reference({ key }, {
-                  type,
-                  fallbackValue: new Nil(),
-                  // Prevent self-referential reads while normalizing this node.
-                  filter: n => n !== node
-                }),
-                value
-              ]));
-            } else {
-              setValue(
-                new Operation([
-                  new Reference({ key }, { type }),
-                  '+',
-                  value
-                ])
-              );
-            }
-            break;
-          }
-          case AssignmentType.CondAssign: {
-            setValue(
-              new Reference({ key }, {
-                type,
-                fallbackValue: value
-              })
-            );
-            break;
-          }
-        }
-        node.options.normalizedFromAssign = normalizedAssign;
-      }
-      const out = node.value.value.preEval(context);
-      if (isThenable(out)) {
-        return out.then((value) => {
-          setValue(value);
-          return node;
-        });
-      }
-      setValue(out);
-      return node;
     };
 
     if (name instanceof Interpolated) {
@@ -382,13 +282,114 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
           setName(key);
-          return applyAssignmentNormalization(key);
+          return this._normalizeAssignmentValue(node, key, context);
         });
       }
       setName(maybeKey);
-      return applyAssignmentNormalization(maybeKey);
+      return this._normalizeAssignmentValue(node, maybeKey, context);
     }
-    return applyAssignmentNormalization(name);
+    return this._normalizeAssignmentValue(node, name, context);
+  }
+
+  private _normalizeAssignmentValue(node: this, key: Any<'property'>, context: Context): MaybePromise<this> {
+    let { value } = node.value;
+    const setValue = (newValue: Node) => {
+      node.set('value', newValue);
+      value = newValue;
+    };
+    /** Normalize assignment types */
+    let assign = node.options?.assign;
+    const rawAssign = assign as string | undefined;
+    if (rawAssign === '+,:') {
+      assign = AssignmentType.MergeList;
+    } else if (rawAssign === '+_:') {
+      assign = AssignmentType.MergeSequence;
+    }
+    if (assign) {
+      const normalizedAssign = assign;
+      /** Reference type */
+      let type: 'declaration' | 'variable' =
+        node.type === 'Declaration' ? 'declaration' : 'variable';
+      switch (assign) {
+        case AssignmentType.MergeList:
+        case AssignmentType.MergeSequence: {
+          const isLessMergeAssign = (assignValue: string): boolean => (
+            assignValue === AssignmentType.MergeList
+            || assignValue === AssignmentType.MergeSequence
+            || assignValue === '+,:'
+            || assignValue === '+_:'
+          );
+          const ref = new Reference({ key }, {
+            type,
+            fallbackValue: new Nil(),
+            // Assignment normalization clears `assign` to Default, so matching by
+            // assignment flag prevents later merge iterations from seeing prior values.
+            // For Less-style property merges, any prior merge node participates in the chain,
+            // but plain declarations do not.
+            // Exclude only the current node to avoid self-reference.
+            filter: n => (
+              n !== node
+              && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
+            )
+          });
+          /**
+           * @note - It's up to Sequence and List to handle
+           *         the merging of the values, if Nil()
+           *         or a nested list.
+           */
+          const isMergeListAssign = assign === AssignmentType.MergeList;
+          value = isMergeListAssign
+            ? new List([ref, value])
+            : spaced([ref, value]);
+          setValue(value);
+          break;
+        }
+        case AssignmentType.Add: {
+          if (node.type === 'Declaration') {
+            // Less property `+:` appends comma-separated items.
+            // Use list composition (not generic `Operation +`) so scalar previous values
+            // remain distinct list members rather than string-concatenating.
+            setValue(new List([
+              new Reference({ key }, {
+                type,
+                fallbackValue: new Nil(),
+                // Prevent self-referential reads while normalizing this node.
+                filter: n => n !== node
+              }),
+              value
+            ]));
+          } else {
+            setValue(
+              new Operation([
+                new Reference({ key }, { type }),
+                '+',
+                value
+              ])
+            );
+          }
+          break;
+        }
+        case AssignmentType.CondAssign: {
+          setValue(
+            new Reference({ key }, {
+              type,
+              fallbackValue: value
+            })
+          );
+          break;
+        }
+      }
+      node.options.normalizedFromAssign = normalizedAssign;
+    }
+    const out = node.value.value.preEval(context);
+    if (isThenable(out)) {
+      return out.then((value) => {
+        setValue(value);
+        return node;
+      });
+    }
+    setValue(out);
+    return node;
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {

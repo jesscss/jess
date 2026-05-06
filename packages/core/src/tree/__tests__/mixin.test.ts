@@ -94,6 +94,21 @@ describe('Mixin', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('pre-evaluates mixin identity without pre-evaluating the body', async () => {
+    const bodyDecl = decl({ name: 'color', value: any('red') });
+    const body = rules([bodyDecl]);
+    const node = mixin({
+      name: any('.button'),
+      rules: body
+    });
+
+    const prepared = await node.preEval(context);
+
+    expect(prepared.preEvaluated).toBe(true);
+    expect(body.preEvaluated).toBe(false);
+    expect(bodyDecl.preEvaluated).toBe(false);
+  });
+
   describe('calling', () => {
     it('should call a simple mixin', async () => {
       // Create a mixin definition: .my-mixin() { color: red; }
