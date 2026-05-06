@@ -802,6 +802,14 @@ no AST traversal. Straightforward to test in isolation.
   `Range` also accept flat-buffer rendering.
   `Call` also accepts a flat buffer through a deliberately thin bridge around
   its existing call-render path; it does not introduce a second call serializer.
+  Stop treating broad flat-buffer overload coverage as the critical path once
+  simple value/render nodes are covered. The next architectural dependency is
+  the `preEval`/`eval` convergence described in
+  [docs/future/pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md):
+  segmented rendering needs a source-order render/eval walk with local
+  materialization, pending slots, and explicit identity/registration prep. That
+  should happen before deeper `Rules` / `Ruleset` / `AtRule` / `Declaration`
+  buffer integration.
 - [ ] Migrate extend collection from AST walk to render-pass side table population
 - [ ] Implement post-step: selector finalization, extend application, reference visibility
 - [ ] Migrate `extend-roots.ts` reachability logic to pure `ExtendRoot × ExtendRoot` predicate
