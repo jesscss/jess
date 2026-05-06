@@ -2153,20 +2153,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const preEvald = node.preEval(context);
         if (isThenable(preEvald)) {
           return (preEvald as Promise<Node>).then((preEvaldNode) => {
-            rules.value[index] = preEvaldNode;
-            (preEvaldNode as Node).index = nodeIndex;
-            // After async prep, check if it still has a static name.
-            if (this._hasStaticName(preEvaldNode)) {
-              this._registerNodeIfEligible(rules, preEvaldNode, context);
-            } else {
-              pendingNodes.push(preEvaldNode);
-            }
+            this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pendingNodes, context);
           });
         }
-        rules.value[index] = preEvald as Node;
-        (preEvald as Node).index = nodeIndex;
-        const nodeToRegister = preEvald as Node;
-        this._registerNodeIfEligible(rules, nodeToRegister, context);
+        this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pendingNodes, context);
       } else {
         pendingNodes.push(node);
       }
@@ -2210,6 +2200,24 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   private _isRegisterableType(node: Node): boolean {
     return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || (node as Node).type === 'StyleImport';
+  }
+
+  private _storePreparedRegistrationNode(
+    rules: Rules,
+    node: Node,
+    index: number,
+    nodeIndex: number | undefined,
+    pendingNodes: Node[],
+    context: Context
+  ): void {
+    rules.value[index] = node;
+    node.index = nodeIndex;
+    // After prep, check if it still has a static name.
+    if (this._hasStaticName(node)) {
+      this._registerNodeIfEligible(rules, node, context);
+      return;
+    }
+    pendingNodes.push(node);
   }
 
   /**

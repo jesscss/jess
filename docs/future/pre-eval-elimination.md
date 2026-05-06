@@ -787,6 +787,8 @@ The first code slice was a no-behavior-change extraction inside
   retries are separated from other unresolved identities at the call site
 - replaced loose `any` saved-context plumbing in `Rules` registration helpers
   with the actual registration context snapshot type
+- extracted the shared `Rules` prepared-node storage path used by sync and
+  async identity prep before registration
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
