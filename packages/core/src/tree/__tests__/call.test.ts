@@ -7,6 +7,7 @@ import { paren } from '../paren.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -87,6 +88,29 @@ describe('Call', () => {
     expect(rule.render(context)).toBe('rgb(100, 100, 100)');
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('writes call render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('requires explicit segment handling for segmented buffers', () => {
+    const buffer = createRenderBuffer('segmented');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(() => rule.render(context, buffer)).toThrow(/segmented rendering/u);
   });
 
   it('streams rendered CSS call arguments without capture scaffolding', () => {

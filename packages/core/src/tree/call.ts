@@ -7,11 +7,16 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { prepareContextPrintState } from './util/print.js';
 import { Paren } from './paren.js';
-import { isThenable } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  writeRenderText
+} from './util/render-buffer.js';
 
 export type CallValue = {
   /**
@@ -194,26 +199,36 @@ export class Call extends Node<CallValue, CallOptions> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      if (bufferOrOptions.kind !== 'flat') {
+        throw new Error('Call segmented rendering needs explicit segment handling.');
+      }
+      const rendered = this.render(context, options);
+      writeRenderText(bufferOrOptions, rendered);
+      return rendered;
+    }
     const canReuseActivePrintState = (
-      options?.context === context
+      bufferOrOptions?.context === context
       && (
-        options.writer !== undefined
-        || options.inFrames !== undefined
-        || options.treeFrames !== undefined
-        || options.lastRenderedFrames !== undefined
-        || options.frameHeaders !== undefined
+        bufferOrOptions.writer !== undefined
+        || bufferOrOptions.inFrames !== undefined
+        || bufferOrOptions.treeFrames !== undefined
+        || bufferOrOptions.lastRenderedFrames !== undefined
+        || bufferOrOptions.frameHeaders !== undefined
       )
     );
     const prepared = canReuseActivePrintState
-      ? getPrintOptions(options)
-      : prepareContextPrintState(context, options);
+      ? getPrintOptions(bufferOrOptions)
+      : prepareContextPrintState(context, bufferOrOptions);
     if (typeof this.value.name === 'string') {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
     const resolved = this.resolve(context);
     if (isThenable(resolved)) {
-      return super.render(context, options);
+      return super.render(context, bufferOrOptions);
     }
     if (!isNode(resolved, N.Call) || !this.isPlainFunctionSurface(resolved.value.name)) {
       return resolved.toTrimmedString(prepared);
