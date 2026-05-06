@@ -63,6 +63,12 @@ function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
 }
 
+function hasFlagMethod(value: unknown): value is { hasFlag(flag: number): boolean } {
+  return typeof value === 'object'
+    && value !== null
+    && typeof Reflect.get(value, 'hasFlag') === 'function';
+}
+
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   const trivia = (options.trivia ?? node.treeContext?.opts?.trivia) as
     | TreeContext['opts']['trivia']
@@ -2232,8 +2238,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Helper to check if a value is static (either a Node with F_STATIC flag or a primitive value)
    */
-  private _isStatic(value: any): boolean {
-    if (value && typeof value.hasFlag === 'function') {
+  private _isStatic(value: unknown): boolean {
+    if (hasFlagMethod(value)) {
       return value.hasFlag(F_STATIC);
     }
     // Primitive values (strings, numbers, etc.) are considered static
