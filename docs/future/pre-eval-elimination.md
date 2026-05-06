@@ -800,6 +800,8 @@ The first code slice was a no-behavior-change extraction inside
   completion step
 - extracted resolved-node recording and application from the `Rules` pending
   registration loop
+- extracted the eval entrypoint's registration-prep bridge into a named
+  `Rules` helper
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

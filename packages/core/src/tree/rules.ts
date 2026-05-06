@@ -3033,16 +3033,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._setupContextForRules(context, this);
-    // Run registration prep first if needed (e.g. when jess compile() calls eval() directly).
-    // This still performs the old recursive prep internally; the call site no
-    // longer depends on the public preEval method as the eval entrypoint.
-    const runRegistrationPrepIfNeeded = (rules: Rules): MaybePromise<Rules> => {
-      if (rules.preEvaluated) {
-        return rules;
-      }
-      const result = rules._prepareRegistrationIfNeeded(context);
-      return isThenable(result) ? (result as Promise<Rules>) : result;
-    };
     const afterRegistrationPrep = (rules: Rules) => {
       this._setupContextForRules(context, rules);
       // When we're the outermost Rules, use the tree we're evaling as root
@@ -3052,11 +3042,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       return this._evalAfterRegistrationPrep(rules, context);
     };
-    const rulesAfterPrep = runRegistrationPrepIfNeeded(this);
+    const rulesAfterPrep = this._ensureRegistrationPrep(context);
     if (isThenable(rulesAfterPrep)) {
       return (rulesAfterPrep as Promise<Rules>).then(afterRegistrationPrep);
     }
     return afterRegistrationPrep(rulesAfterPrep as Rules);
+  }
+
+  private _ensureRegistrationPrep(context: Context): MaybePromise<Rules> {
+    if (this.preEvaluated) {
+      return this;
+    }
+    // Eval owns this bridge now, but the helper still performs the old
+    // recursive prep internally until registration moves fully into eval.
+    const result = this._prepareRegistrationIfNeeded(context);
+    return isThenable(result) ? (result as Promise<Rules>) : result;
   }
 
   override evalNode(context: Context): MaybePromise<this> {
