@@ -19,6 +19,7 @@ export * from './tree/util/print.js';
 export * from './tree/util/trivia.js';
 export * from './tree/util/list-like.js';
 export * from './tree/util/serialize-types.js';
+export * from './tree/util/render-buffer.js';
 export * from './conversions.js';
 export * from './types/index.js';
 export * from './visitor/index.js';

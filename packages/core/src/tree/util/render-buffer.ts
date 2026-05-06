@@ -1,3 +1,15 @@
+import type { Context } from '../../context.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { prepareContextPrintState, type PrintOptions } from './print.js';
+
+export type RenderBufferNode = {
+  resolve(context: Context): MaybePromise<RenderableOutput>;
+};
+
+export type RenderableOutput = {
+  toTrimmedString(options?: PrintOptions): string;
+};
+
 export type SelectorRef = {
   valueOf(): string;
 };
@@ -84,6 +96,14 @@ export function createRenderBufferForFlags(flags: RenderBufferFlags): RenderBuff
   return createRenderBuffer(flags.hasExtends || flags.hasReferenceImports ? 'segmented' : 'flat');
 }
 
+export function isRenderBuffer(value: unknown): value is RenderBuffer {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) {
+    return false;
+  }
+  const { kind } = value as { kind?: unknown };
+  return kind === 'flat' || kind === 'segmented';
+}
+
 export function writeRenderText(buffer: RenderBuffer, text: string): void {
   if (text === '') {
     return;
@@ -93,6 +113,27 @@ export function writeRenderText(buffer: RenderBuffer, text: string): void {
     return;
   }
   buffer.segments.push(text);
+}
+
+export function renderNodeToBuffer(
+  node: RenderBufferNode,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): MaybePromise<string> {
+  if (buffer.kind !== 'flat') {
+    throw new Error('renderNodeToBuffer(...) can only use the default bridge with flat RenderBuffer; segmented rendering needs explicit segment handling.');
+  }
+  const prepared = prepareContextPrintState(context, options);
+  const writeResolved = (resolved: RenderableOutput): string => {
+    const text = resolved.toTrimmedString(prepared);
+    writeRenderText(buffer, text);
+    return text;
+  };
+  const resolved = node.resolve(context);
+  return isThenable(resolved)
+    ? (resolved as Promise<RenderableOutput>).then(writeResolved)
+    : writeResolved(resolved);
 }
 
 export function pushRenderSegment(buffer: SegmentedRenderBuffer, segment: Exclude<Segment, string>): void {

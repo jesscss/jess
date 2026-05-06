@@ -4,6 +4,7 @@ import {
   createRenderBuffer,
   createRenderBufferForFlags,
   finalizeRenderBuffer,
+  isRenderBuffer,
   pushRenderSegment,
   writeRenderText,
   type HoistBlock,
@@ -41,6 +42,13 @@ describe('RenderBuffer', () => {
     expect(createRenderBufferForFlags({ hasExtends: false, hasReferenceImports: false }).kind).toBe('flat');
     expect(createRenderBufferForFlags({ hasExtends: true }).kind).toBe('segmented');
     expect(createRenderBufferForFlags({ hasReferenceImports: true }).kind).toBe('segmented');
+  });
+
+  it('recognizes render buffer objects', () => {
+    expect(isRenderBuffer(createRenderBuffer('flat'))).toBe(true);
+    expect(isRenderBuffer(createRenderBuffer('segmented'))).toBe(true);
+    expect(isRenderBuffer({ kind: 'other' })).toBe(false);
+    expect(isRenderBuffer(null)).toBe(false);
   });
 
   it('stores strings directly inside segmented children', () => {
