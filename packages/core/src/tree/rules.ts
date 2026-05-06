@@ -2304,9 +2304,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (node.preEvaluated) {
         return true;
       }
-      // Check F_STATIC flag for other selector types
-      if (selector && 'hasFlag' in (selector as Node) && typeof (selector as Node).hasFlag === 'function') {
-        return (selector as Node).hasFlag(F_STATIC);
+      // Check F_STATIC flag for other selector types.
+      if (hasFlagMethod(selector)) {
+        return selector.hasFlag(F_STATIC);
       }
       return false;
     }

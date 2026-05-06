@@ -810,6 +810,7 @@ The first code slice was a no-behavior-change extraction inside
   instead of ad hoc string / `any` checks
 - typed the static-identity flag probe as `unknown` while preserving its current
   duck-typed behavior
+- reused that static-identity flag probe for selector identity checks
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
