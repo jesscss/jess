@@ -777,6 +777,8 @@ The first code slice was a no-behavior-change extraction inside
   path-resolution retry surface is explicit
 - removed the unused static registration accumulator in `Rules` and renamed the
   dynamic registration arrays to pending buckets
+- extracted `Rules` registration context restoration so registration prep has a
+  single restore path before it moves closer to eval setup
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

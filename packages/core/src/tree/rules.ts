@@ -2161,14 +2161,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rules.varsByName ??= new Map();
       rules.mixinsByName ??= new Map();
       if (pendingNodes.length === 0) {
-        // Restore context after preEval is complete
-        context.rulesContext = saved.rulesContext;
-        context.treeRoot = saved.treeRoot;
-        // Only restore context.root if saved.root is defined (not the outermost root)
-        // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
-        if (saved.root !== undefined) {
-          context.root = saved.root;
-        }
+        this._restoreRegistrationContext(context, saved);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         return rules as this;
       }
@@ -2291,11 +2284,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const finishResolution = (): this => {
       applyResolvedNodes();
-      context.rulesContext = saved.rulesContext;
-      context.treeRoot = saved.treeRoot;
-      if (saved.root !== undefined) {
-        context.root = saved.root;
-      }
+      this._restoreRegistrationContext(context, saved);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return rules as this;
     };
@@ -2423,6 +2412,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       root: context.root,
       extendRootStackLength: context.extendRoots.extendRootStack.length
     } as const;
+  }
+
+  private _restoreRegistrationContext(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
+    context.rulesContext = saved.rulesContext;
+    context.treeRoot = saved.treeRoot;
+    if (saved.root !== undefined) {
+      context.root = saved.root;
+    }
   }
 
   /** Setup context for evaluating these rules */
