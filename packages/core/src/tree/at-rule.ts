@@ -107,9 +107,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!this.preEvaluated) {
       const prepared = this._prepareNameIdentity(context);
       if (isThenable(prepared)) {
-        return (prepared as Promise<AtRule>).then(node => this._preEvalPrelude(node, context, this));
+        return (prepared as Promise<AtRule>).then(node => this._prepareRegistration(node, context, this));
       }
-      return this._preEvalPrelude(prepared as AtRule, context, this);
+      return this._prepareRegistration(prepared as AtRule, context, this);
     }
     return this;
   }
@@ -140,7 +140,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return node;
   }
 
-  private _preEvalPrelude(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {
+  private _prepareRegistration(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
         node = original.clone(false) as AtRule;
@@ -162,29 +162,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       // Reference branches are traversed for symbol/extend resolution, but plain
       // CSS @import hoisting must remain a visible-output concern only.
-      if (!context.inReferenceImportScope) {
-        const topImports = (context.topImports ??= []);
-        const nodeLoc = node.location?.join(':') ?? '';
-        const nodeSig = `${node.value.name.valueOf?.() ?? node.value.name}:${node.value.prelude?.valueOf?.() ?? ''}`;
-        const alreadyQueued = topImports.some((queuedNode) => {
-          if (!isNode(queuedNode, N.AtRule)) {
-            return false;
-          }
-          const queued = queuedNode as AtRule;
-          return (
-            queued === node
-            || queued.sourceNode === node.sourceNode
-            || queued.sourceNode === node
-            || (
-              (queued.location?.join(':') ?? '') === nodeLoc
-              && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
-            )
-          );
-        });
-        if (!alreadyQueued) {
-          topImports.push(node);
-        }
-      }
+      this._queueTopImport(node, context);
       node.preEvaluated = true;
       return new Nil();
     }
@@ -236,6 +214,33 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
     }
     return finalize();
+  }
+
+  private _queueTopImport(node: AtRule, context: Context): void {
+    if (context.inReferenceImportScope) {
+      return;
+    }
+    const topImports = (context.topImports ??= []);
+    const nodeLoc = node.location?.join(':') ?? '';
+    const nodeSig = `${node.value.name.valueOf?.() ?? node.value.name}:${node.value.prelude?.valueOf?.() ?? ''}`;
+    const alreadyQueued = topImports.some((queuedNode) => {
+      if (!isNode(queuedNode, N.AtRule)) {
+        return false;
+      }
+      const queued = queuedNode as AtRule;
+      return (
+        queued === node
+        || queued.sourceNode === node.sourceNode
+        || queued.sourceNode === node
+        || (
+          (queued.location?.join(':') ?? '') === nodeLoc
+          && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
+        )
+      );
+    });
+    if (!alreadyQueued) {
+      topImports.push(node);
+    }
   }
 
   private _extractAndStoreLayerName(node: AtRule, context: Context): void {
