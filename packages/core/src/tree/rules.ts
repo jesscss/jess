@@ -48,6 +48,7 @@ import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 const { isArray } = Array;
+const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 
 function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -2049,14 +2050,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this.preEvaluated) {
       context.depth++;
       const rules = this;
-      const nestableAtRuleNames = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
-      const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
-      const isNestableAtRuleBody =
-        parentAtRule
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && nestableAtRuleNames.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''));
+      const isNestableAtRuleBody = this._isNestableAtRuleBody();
       rules.preEvaluated = true;
-      // Save current context and set up new context for variable lookups during preEval
+      // Save current context and set up new context for registration lookups.
       const saved = this._snapshotContext(context);
       this._setupContextForRules(context, rules);
 
@@ -2066,12 +2062,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.root = rules;
       }
 
-      // Set context.root if not already set (needed for preEval visitors)
+      // Set context.root if not already set (needed for visitors during registration prep).
       if (!context.root) {
         context.root = rules;
       }
 
-      // Register main root as extend root if this is the root (needed for extends in preEval)
+      // Register main root as extend root if this is the root (needed for extends during registration prep).
       // Check rules === context.root at registration time (not using stale isMainRoot)
       if (rules === context.root && !context.extendRoots.root) {
         context.extendRoots.registerRoot(rules);
@@ -2100,6 +2096,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return mp;
     }
     return this;
+  }
+
+  private _isNestableAtRuleBody(): boolean {
+    const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
+    return Boolean(
+      parentAtRule
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      && NESTABLE_AT_RULE_NAMES.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''))
+    );
   }
 
   /**

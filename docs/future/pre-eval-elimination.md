@@ -779,6 +779,8 @@ The first code slice was a no-behavior-change extraction inside
   dynamic registration arrays to pending buckets
 - extracted `Rules` registration context restoration so registration prep has a
   single restore path before it moves closer to eval setup
+- named the `Rules` nestable-at-rule-body registration check that decides when
+  a body becomes the current extend root during prep
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
