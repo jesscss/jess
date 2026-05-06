@@ -2420,60 +2420,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return resolveOtherOnce();
   }
 
-  /**
-   * Helper method to continue preEval'ing remaining children after an async preEval.
-   */
-  private _preEvalRemainingChildren(rules: Rules, context: Context, startIndex: number, saved?: any): MaybePromise<this> {
-    for (let i = startIndex; i < rules.value.length; i++) {
-      const node = rules.value[i]!;
-
-      // Always call preEval to ensure deep traversal and name resolution
-      const result = node.preEval(context);
-      if (isThenable(result)) {
-        // Handle async preEval by returning a promise that resolves after all children
-        return result.then((resolvedNode) => {
-          // Update the node if preEval returned a different instance
-          if (resolvedNode !== node) {
-            rules.value[i] = resolvedNode;
-            rules.adopt(resolvedNode);
-          }
-
-          // Register the node after preEval (name resolution) if not already registered
-          if (!isNode(node, N.VarDeclaration)) {
-            rules.registerNode(resolvedNode);
-          }
-
-          // Continue with the rest of the children
-          return this._preEvalRemainingChildren(rules, context, i + 1, saved);
-        });
-      }
-
-      // Update the node if preEval returned a different instance
-      if (result !== node) {
-        rules.value[i] = result;
-        rules.adopt(result);
-      }
-
-      // Register the node after preEval (name resolution) if not already registered
-      if (!isNode(node, N.VarDeclaration)) {
-        rules.registerNode(result);
-      }
-    }
-
-    // Restore context after preEval is complete (for async case)
-    if (saved) {
-      context.rulesContext = saved.rulesContext;
-      context.treeRoot = saved.treeRoot;
-      // Only restore context.root if saved.root is defined (not the outermost root)
-      // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
-      if (saved.root !== undefined) {
-        context.root = saved.root;
-      }
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return rules as this;
-  }
-
   /** Save current context roots to restore later */
   private _snapshotContext(context: Context) {
     return {
@@ -2974,11 +2920,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * After preEval: ensure root on extend stack, build eval queue, run evaluation.
-   * Used by evalNode so that when eval() is called without preEval (e.g. jess compile()),
-   * we still have all rulesets registered and root set for extend lookups.
+   * After registration prep: ensure root on extend stack, build eval queue, run evaluation.
    */
-  private _afterPreEvalStep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     const isMainRoot = rules === context.root;
     if (isMainRoot && context.extendRoots.extendRootStack.length === 0) {
       if (!context.extendRoots.root) {
@@ -3030,7 +2974,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (context.rulesEvalStack.length === 1) {
         context.root = rules;
       }
-      return this._afterPreEvalStep(rules, context);
+      return this._evalAfterRegistrationPrep(rules, context);
     };
     const rulesAfterPrep = runRegistrationPrepIfNeeded(this);
     if (isThenable(rulesAfterPrep)) {

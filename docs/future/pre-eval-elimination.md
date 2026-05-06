@@ -775,6 +775,9 @@ registration state by splitting dynamic declaration-name retry into
 `Rules._resolvePendingDeclarationNames()`. That helper still runs under the
 existing `preEval()` call path for now, but the fixed-point declaration-name
 surface is no longer buried inside the generic dynamic-node bucket.
+`Rules.evalNode()` now routes through the internal registration-prep helper
+directly when preparation is needed, and the old unused async child-preEval
+continuation helper has been removed.
 
 The next step is to move that pending declaration-name helper closer to
 `Rules.evalNode()` setup so declaration registration no longer depends on a
