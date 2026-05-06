@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { num, range } from '../index.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -68,5 +69,20 @@ describe('Range', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes range render output into flat buffers', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = range({
+      start: num(1),
+      end: num(3),
+      step: num(2)
+    });
+
+    expect(await node.render(context, buffer)).toBe('1 to 3 step 2');
+    expect(buffer.parts).toEqual(['1 to 3 step 2']);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
   });
 });

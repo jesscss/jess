@@ -8,6 +8,11 @@ import { N } from './node-type.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -63,6 +68,15 @@ export class Operation extends Node<OperationValue> {
       options.suppressBoundaryTrivia = saved;
     }
     return w.getSince(mark);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   private evaluateOperands(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {

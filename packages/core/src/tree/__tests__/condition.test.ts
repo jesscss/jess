@@ -1,5 +1,6 @@
 import { any, bool, condition, dimension, list, num, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -63,6 +64,20 @@ describe('Condition', () => {
       ]);
 
       expect(node.render(context)).toBe('false');
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
+    });
+
+    it('writes evaluated condition render output into flat buffers', async () => {
+      const buffer = createRenderBuffer('flat');
+      const node = condition([
+        bool(true),
+        '=',
+        bool(false)
+      ]);
+
+      expect(await node.render(context, buffer)).toBe('false');
+      expect(buffer.parts).toEqual(['false']);
       expect(node.evaluated).toBe(false);
       expect(node.preEvaluated).toBe(false);
     });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, call, decl, dimension, list, num, op, paren, ref, rules, ruleset, type Rules as RulesClass, vardecl } from '../index.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -52,6 +53,30 @@ describe('Operation', () => {
     const rendered = operationNode.render(context);
 
     expect(rendered).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved operation render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const operationNode = op([
+      num(10),
+      '+',
+      ref({ key: 'rhs' }, { type: 'variable' })
+    ]);
+
+    expect(await operationNode.render(context, buffer)).toBe('30');
+    expect(buffer.parts).toEqual(['30']);
     expect(operationNode.evaluated).toBe(false);
     expect(operationNode.preEvaluated).toBe(false);
   });

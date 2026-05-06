@@ -798,6 +798,8 @@ no AST traversal. Straightforward to test in isolation.
   existing serializer still owns separator, spacing, and trivia behavior.
   Interpolation wrappers `Interpolated`, `InterpolatedSelector`, and
   `SelectorCapture` also use the flat bridge.
+  Value expression nodes `Operation`, `Condition`, `QueryCondition`, and
+  `Range` also accept flat-buffer rendering.
   `Call` also accepts a flat buffer through a deliberately thin bridge around
   its existing call-render path; it does not introduce a second call serializer.
 - [ ] Migrate extend collection from AST walk to render-pass side table population
