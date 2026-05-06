@@ -764,6 +764,8 @@ The first code slice was a no-behavior-change extraction inside
 
 - extracted declaration key prep and assignment normalization from
   `Declaration.preEval()` into named private helpers
+- separated declaration assignment normalization from recursive value prep while
+  keeping the current timing intact
 - extracted mixin callable-name prep from `Mixin.preEval()`
 - extracted ruleset selector identity prep and child-rules registration from
   `Ruleset.preEval()`

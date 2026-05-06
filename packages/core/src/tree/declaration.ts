@@ -282,16 +282,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
           setName(key);
-          return this._normalizeAssignmentValue(node, key, context);
+          this._normalizeAssignmentValue(node, key);
+          return this._prepareValueForRegistration(node, context);
         });
       }
       setName(maybeKey);
-      return this._normalizeAssignmentValue(node, maybeKey, context);
+      this._normalizeAssignmentValue(node, maybeKey);
+      return this._prepareValueForRegistration(node, context);
     }
-    return this._normalizeAssignmentValue(node, name, context);
+    this._normalizeAssignmentValue(node, name);
+    return this._prepareValueForRegistration(node, context);
   }
 
-  private _normalizeAssignmentValue(node: this, key: Any<'property'>, context: Context): MaybePromise<this> {
+  private _normalizeAssignmentValue(node: this, key: Any<'property'>): void {
     let { value } = node.value;
     const setValue = (newValue: Node) => {
       node.set('value', newValue);
@@ -381,6 +384,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       node.options.normalizedFromAssign = normalizedAssign;
     }
+  }
+
+  private _prepareValueForRegistration(node: this, context: Context): MaybePromise<this> {
+    const setValue = (newValue: Node) => {
+      node.set('value', newValue);
+    };
     const out = node.value.value.preEval(context);
     if (isThenable(out)) {
       return out.then((value) => {
