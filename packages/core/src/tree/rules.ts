@@ -2302,15 +2302,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return rules as this;
     };
 
-    const pendingDeclarations: Node[] = [];
-    const pendingOther: Node[] = [];
-    for (const node of pendingNodes) {
-      if (this._isDeclarationRegistrationNode(node)) {
-        pendingDeclarations.push(node);
-      } else {
-        pendingOther.push(node);
-      }
-    }
+    const { pendingDeclarations, pendingOther } = this._partitionPendingRegistration(pendingNodes);
 
     return pipe(
       () => this._resolvePendingDeclarationNames(context, pendingDeclarations, handleResolvedNode),
@@ -2324,6 +2316,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _isDeclarationRegistrationNode(node: Node): boolean {
     return isNode(node, N.VarDeclaration) || isNode(node, N.Declaration);
+  }
+
+  private _partitionPendingRegistration(pendingNodes: Node[]): {
+    pendingDeclarations: Node[];
+    pendingOther: Node[];
+  } {
+    const pendingDeclarations: Node[] = [];
+    const pendingOther: Node[] = [];
+    for (const node of pendingNodes) {
+      if (this._isDeclarationRegistrationNode(node)) {
+        pendingDeclarations.push(node);
+      } else {
+        pendingOther.push(node);
+      }
+    }
+    return { pendingDeclarations, pendingOther };
   }
 
   private _resolvePendingDeclarationNames(
