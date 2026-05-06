@@ -12,6 +12,7 @@ import {
 } from '../index.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -71,6 +72,29 @@ describe('Interpolated', () => {
     const rendered = interpolatedNode.render(context);
 
     expect(rendered).toBe('hello-world');
+    expect(interpolatedNode.evaluated).toBe(false);
+    expect(interpolatedNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved interpolated output into flat buffers', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const interpolatedNode = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+    });
+
+    expect(await interpolatedNode.render(context, buffer)).toBe('hello-world');
+    expect(buffer.parts).toEqual(['hello-world']);
     expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.preEvaluated).toBe(false);
   });

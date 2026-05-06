@@ -3,6 +3,11 @@ import { Node, defineType } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
   eval(context: Context): MaybePromise<Selector>;
@@ -36,6 +41,15 @@ export class SelectorCapture extends Node<Selector> {
 
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderCaptureSyntax(options);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   private requireSelector(value: unknown): Selector {

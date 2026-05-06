@@ -13,6 +13,7 @@ import {
   type Rules as RulesClass,
   vardecl
 } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('InterpolatedSelector', () => {
   let context: Context;
@@ -48,6 +49,29 @@ describe('InterpolatedSelector', () => {
     const rendered = selectorNode.render(context);
 
     expect(rendered).toBe('.foo');
+    expect(selectorNode.evaluated).toBe(false);
+    expect(selectorNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved interpolated selector output into flat buffers', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const selectorNode = interpolatedSelector(interpolated({
+      source: `.${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
+    }));
+
+    expect(await selectorNode.render(context, buffer)).toBe('.foo');
+    expect(buffer.parts).toEqual(['.foo']);
     expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.preEvaluated).toBe(false);
   });

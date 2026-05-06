@@ -796,6 +796,8 @@ no AST traversal. Straightforward to test in isolation.
   also use the flat bridge.
   Simple value containers `List` and `Sequence` also use the flat bridge; their
   existing serializer still owns separator, spacing, and trivia behavior.
+  Interpolation wrappers `Interpolated`, `InterpolatedSelector`, and
+  `SelectorCapture` also use the flat bridge.
   `Call` also accepts a flat buffer through a deliberately thin bridge around
   its existing call-render path; it does not introduce a second call serializer.
 - [ ] Migrate extend collection from AST walk to render-pass side table population

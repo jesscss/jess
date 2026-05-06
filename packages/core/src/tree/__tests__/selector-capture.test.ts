@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, attr, compound, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('SelectorCapture', () => {
   let context: Context;
@@ -28,6 +29,26 @@ describe('SelectorCapture', () => {
     const rendered = captureNode.render(context);
 
     expect(rendered).toBe('.foo');
+    expect(captureNode.evaluated).toBe(false);
+    expect(captureNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved selector capture output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+
+    expect(await captureNode.render(context, buffer)).toBe('.foo');
+    expect(buffer.parts).toEqual(['.foo']);
     expect(captureNode.evaluated).toBe(false);
     expect(captureNode.preEvaluated).toBe(false);
   });
