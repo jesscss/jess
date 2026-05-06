@@ -528,7 +528,7 @@ renderable child nodes or expand segment trees when a string is enough.
 #### Segment types (segmented mode only)
 
 ```ts
-type Segment = string | RulesetBlock | MergeSlot | HoistBlock
+type Segment = string | RulesetBlock | MergeSlot | HoistBlock | PendingRefSlot
 
 interface RulesetBlock {
   selector: SelectorSet   // live reference — not yet stringified
@@ -548,6 +548,11 @@ interface HoistBlock {
 interface MergeSlot {
   property: string        // +: and +_: — collects all same-property decls in scope
   segments: Segment[]
+}
+
+interface PendingRefSlot {
+  key: string             // unresolved lookup key
+  segments: Segment[]     // replacement output after the pending lookup drains
 }
 ```
 

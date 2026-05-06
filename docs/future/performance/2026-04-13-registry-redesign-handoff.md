@@ -659,7 +659,7 @@ delayed.
 #### Buffer segment types
 
 ```ts
-type Segment = string | RulesetBlock | MergeSlot
+type Segment = string | RulesetBlock | HoistBlock | MergeSlot | PendingRefSlot
 
 interface RulesetBlock {
   selector: SelectorSet   // live reference, not yet stringified
@@ -668,8 +668,19 @@ interface RulesetBlock {
   extendRoot: ExtendRoot  // which root this ruleset is reachable from (baked in at push time)
 }
 
+interface HoistBlock {
+  atRule: string
+  selectorContext: SelectorSet | undefined
+  body: Segment[]
+}
+
 interface MergeSlot {
   property: string        // +: and +_: — needs all same-property decls within scope before finalizing
+  segments: Segment[]
+}
+
+interface PendingRefSlot {
+  key: string
   segments: Segment[]
 }
 ```
@@ -754,7 +765,14 @@ no AST traversal. Straightforward to test in isolation.
     segmented mode; the only static optimization available is the transitive flag itself —
     deeper static analysis is not tractable (selector matching is undecidable under
     interpolation); per-file caching requires migrating to `@compose`
-- [ ] Design `Segment` / `RulesetBlock` / `HoistBlock` / `MergeSlot` / `ExtendRecord` types
+- [x] Design `Segment` / `RulesetBlock` / `HoistBlock` / `MergeSlot` / `PendingRefSlot` / `ExtendRecord` types
+  Current status: initial concrete types and tiny finalization helpers live in
+  [packages/core/src/tree/util/render-buffer.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/util/render-buffer.ts).
+  The test coverage in
+  [packages/core/src/tree/util/__tests__/render-buffer.test.ts](/Users/matthew/git/oss/jess/packages/core/src/tree/util/__tests__/render-buffer.test.ts)
+  proves flat mode stays string-only, delayed segment children can still be
+  strings, nested segment bodies recurse only through caller-provided
+  finalizers, and extend records are collected as a side table.
 - [ ] Implement flat-mode `RenderBuffer` (common case: no extends, no reference imports — pure `string[]`, no segment allocation, no post-step)
 - [ ] Implement segmented-mode `RenderBuffer` (has extends or reference imports)
 - [ ] Implement `render(ctx, buf: RenderBuffer)` on each node type; flat mode pushes strings directly
