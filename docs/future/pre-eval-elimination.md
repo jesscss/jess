@@ -785,6 +785,8 @@ The first code slice was a no-behavior-change extraction inside
   is a named surface before eval owns it directly
 - extracted `Rules` pending-registration partitioning so declaration-name
   retries are separated from other unresolved identities at the call site
+- replaced loose `any` saved-context plumbing in `Rules` registration helpers
+  with the actual registration context snapshot type
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

@@ -2122,7 +2122,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * assign source-order indices, stabilize registerable identities, register
    * static names, and leave genuinely blocked names in narrow pending buckets.
    */
-  private _prepareRegistration(rules: Rules, context: Context, saved: any): MaybePromise<this> {
+  private _prepareRegistration(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>
+  ): MaybePromise<this> {
     const pendingNodes: Node[] = [];
 
     // Process each node with a registerable identity, handling both sync and async prep.
@@ -2170,7 +2174,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     const finish = () => {
       // Stamp fast maps so the hot-path (findVarDeclarationFast / findMixinFast) can distinguish
-      // "preEval completed with nothing registerable" from "scope never processed at all".
+      // "registration prep completed with nothing registerable" from "scope never processed at all".
       rules.varsByName ??= new Map();
       rules.mixinsByName ??= new Map();
       if (pendingNodes.length === 0) {
@@ -2264,7 +2268,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _resolvePendingRegistration(rules: Rules, context: Context, saved: any, pendingNodes: Node[]): MaybePromise<this> {
+  private _resolvePendingRegistration(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>,
+    pendingNodes: Node[]
+  ): MaybePromise<this> {
     const resolvedNodes: Node[] = [];
 
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
