@@ -51,7 +51,7 @@ const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
-type PendingRegistrationHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
+type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 
 function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -2150,17 +2150,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MaybePromise<this> {
     const pendingResult = this._scanRegistrationNodes(rules, context);
     if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<PendingRegistration>).then(pending =>
+      return (pendingResult as Promise<PendingPrep>).then(pending =>
         this._finishRegistrationScan(rules, context, saved, pending)
       );
     }
-    return this._finishRegistrationScan(rules, context, saved, pendingResult as PendingRegistration);
+    return this._finishRegistrationScan(rules, context, saved, pendingResult as PendingPrep);
   }
 
-  private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<PendingRegistration> {
-    const pending: PendingRegistration = {
-      declarationNames: [],
-      otherIdentities: []
+  private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<PendingPrep> {
+    const pending: PendingPrep = {
+      declarationNameNodes: [],
+      orderedIdentities: []
     };
 
     // Process each node with a registerable identity, handling both sync and async prep.
@@ -2191,13 +2191,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
-    pending: PendingRegistration
+    pending: PendingPrep
   ): MaybePromise<this> {
     this._stampRegistrationMaps(rules);
-    if (!this._hasPendingRegistration(pending)) {
+    if (!this._hasPendingPrep(pending)) {
       return this._finishRegistrationWithoutPending(rules, context, saved);
     }
-    return this._resolvePendingRegistration(rules, context, saved, pending);
+    return this._resolvePendingPrep(rules, context, saved, pending);
   }
 
   private _finishRegistrationWithoutPending(
@@ -2236,11 +2236,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pending: PendingRegistration,
+    pending: PendingPrep,
     context: Context
   ): MaybePromise<void> {
     if (!this._hasStaticName(node)) {
-      this._addPendingRegistration(pending, node);
+      this._addPendingPrep(pending, node);
       return;
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
@@ -2266,7 +2266,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Check if a node type participates in name-based registration.
-   * Only these node types have names/selectors that _resolvePendingRegistration
+   * Only these node types have names/selectors that _resolvePendingPrep
    * needs to resolve. Everything else (Call, Expression, Comment, etc.)
    * goes straight to the eval queue.
    */
@@ -2279,7 +2279,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pending: PendingRegistration
+    pending: PendingPrep
   ): void {
     rules.value[index] = node;
     node.index = nodeIndex;
@@ -2288,7 +2288,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._registerNodeIfEligible(rules, node);
       return;
     }
-    this._addPendingRegistration(pending, node);
+    this._addPendingPrep(pending, node);
   }
 
   /**
@@ -2346,11 +2346,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _resolvePendingRegistration(
+  private _resolvePendingPrep(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
-    pending: PendingRegistration
+    pending: PendingPrep
   ): MaybePromise<this> {
     const resolvedNodes: Node[] = [];
 
@@ -2360,23 +2360,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     return pipe(
       () => {
-        if (pending.declarationNames.length === 0) {
+        if (pending.declarationNameNodes.length === 0) {
           return;
         }
-        return this._resolvePendingDeclarationNamesFixedPoint(context, pending.declarationNames, handleResolvedNode);
+        return this._resolvePendingDeclarationNamesFixedPoint(context, pending.declarationNameNodes, handleResolvedNode);
       },
       () => {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
-        if (pending.otherIdentities.length === 0) {
+        if (pending.orderedIdentities.length === 0) {
           return;
         }
-        return this._resolveOtherIdentityNodesOnce(context, pending.otherIdentities, handleResolvedNode);
+        return this._resolveOtherIdentityNodesOnce(context, pending.orderedIdentities, handleResolvedNode);
       },
-      () => this._finishPendingRegistration(rules, context, saved, resolvedNodes)
+      () => this._finishPendingPrep(rules, context, saved, resolvedNodes)
     );
   }
 
-  private _finishPendingRegistration(
+  private _finishPendingPrep(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
@@ -2439,19 +2439,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return isNode(node, N.VarDeclaration) || isNode(node, N.Declaration);
   }
 
-  private _addPendingRegistration(pending: PendingRegistration, node: Node): void {
+  private _addPendingPrep(pending: PendingPrep, node: Node): void {
     if (this._isDeclarationRegistrationNode(node)) {
-      pending.declarationNames.push(node);
+      pending.declarationNameNodes.push(node);
       return;
     }
-    pending.otherIdentities.push({
+    pending.orderedIdentities.push({
       kind: this._pendingIdentityKind(node),
       node
     });
   }
 
-  private _hasPendingRegistration(pending: PendingRegistration): boolean {
-    return pending.declarationNames.length > 0 || pending.otherIdentities.length > 0;
+  private _hasPendingPrep(pending: PendingPrep): boolean {
+    return pending.declarationNameNodes.length > 0 || pending.orderedIdentities.length > 0;
   }
 
   private _pendingIdentityKind(node: Node): PendingIdentityKind {
@@ -2470,7 +2470,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _resolvePendingDeclarationNamesFixedPoint(
     context: Context,
     pendingDeclarations: Node[],
-    handleResolvedNode: PendingRegistrationHandler
+    handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
     // Retry because one declaration's name might depend on another's being registered.
     let declRetries = 0;
@@ -2524,7 +2524,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _resolveOtherIdentityNodesOnce(
     context: Context,
     pendingIdentities: PendingIdentity[],
-    handleResolvedNode: PendingRegistrationHandler
+    handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
     // Keep these in source order. Callable names, selector identity, and import
     // paths still share this one-shot path until each surface has ordering tests
@@ -3271,9 +3271,11 @@ export const rules = defineType(Rules, 'Rules');
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 
-type PendingRegistration = {
-  declarationNames: Node[];
-  otherIdentities: PendingIdentity[];
+// Registration prep has two pending lanes: declaration-name nodes run through a
+// local fixed point, while every other unresolved identity stays source-ordered.
+type PendingPrep = {
+  declarationNameNodes: Node[];
+  orderedIdentities: PendingIdentity[];
 };
 
 type PendingIdentityKind = 'callable' | 'selector' | 'import' | 'other';
