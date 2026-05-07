@@ -296,7 +296,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private _finishDeclarationRegistrationPrep(node: this, name: Any<'property'>, context: Context): MaybePromise<this> {
     this._normalizeAssignmentValue(node, name);
-    return this._prepareValueForRegistration(node, context);
+    return this._prepareDeclarationValueForCurrentPrep(node, context);
   }
 
   private _normalizeAssignmentValue(node: this, key: Any<'property'>): void {
@@ -391,7 +391,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  private _prepareValueForRegistration(node: this, context: Context): MaybePromise<this> {
+  private _prepareDeclarationValueForCurrentPrep(node: this, context: Context): MaybePromise<this> {
     const setValue = (newValue: Node) => {
       node.set('value', newValue);
     };

@@ -854,6 +854,8 @@ The first code slice was a no-behavior-change extraction inside
   unresolved declarations
 - extracted declaration name-identity prep from the remaining declaration
   registration prep while keeping assignment/value prep timing unchanged
+- renamed the remaining declaration value prep helper so it does not pretend to
+  be lookup-registration-only work
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
