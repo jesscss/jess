@@ -713,6 +713,39 @@ describe('reference', () => {
       expect(retryCounts.get('provider')).toBe(1);
     });
 
+    it('routes root eval through registration prep without the public preEval hook', async () => {
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'first' }, { type: 'variable' })]
+          }),
+          value: any('final')
+        }),
+        decl({
+          name: any('color'),
+          value: ref({ key: 'second' }, { type: 'variable' })
+        })
+      ]);
+
+      let preEvalCalls = 0;
+      node.preEval = () => {
+        preEvalCalls++;
+        throw new Error('Rules.eval should not call public preEval');
+      };
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        color: final;
+      `);
+      expect(preEvalCalls).toBe(0);
+      expect(evald.evaluated).toBe(true);
+    });
+
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
