@@ -2150,15 +2150,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MaybePromise<this> {
     const pendingResult = this._scanRegistrationNodes(rules, context);
     if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<Node[]>).then(pendingNodes =>
-        this._finishRegistrationScan(rules, context, saved, pendingNodes)
+      return (pendingResult as Promise<PendingRegistration>).then(pending =>
+        this._finishRegistrationScan(rules, context, saved, pending)
       );
     }
-    return this._finishRegistrationScan(rules, context, saved, pendingResult as Node[]);
+    return this._finishRegistrationScan(rules, context, saved, pendingResult as PendingRegistration);
   }
 
-  private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<Node[]> {
-    const pendingNodes: Node[] = [];
+  private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<PendingRegistration> {
+    const pending: PendingRegistration = {
+      declarations: [],
+      other: []
+    };
 
     // Process each node with a registerable identity, handling both sync and async prep.
     // Comment nodes do not participate in numeric rule indexing.
@@ -2175,26 +2178,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       node.index = nodeIndex;
-      return this._prepareRegisterableNode(rules, node, index, nodeIndex, pendingNodes, context);
+      return this._prepareRegisterableNode(rules, node, index, nodeIndex, pending, context);
     });
 
     if (isThenable(processResult)) {
-      return (processResult as Promise<void>).then(() => pendingNodes);
+      return (processResult as Promise<void>).then(() => pending);
     }
-    return pendingNodes;
+    return pending;
   }
 
   private _finishRegistrationScan(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
-    pendingNodes: Node[]
+    pending: PendingRegistration
   ): MaybePromise<this> {
     this._stampRegistrationMaps(rules);
-    if (pendingNodes.length === 0) {
+    if (!this._hasPendingRegistration(pending)) {
       return this._finishRegistrationWithoutPending(rules, context, saved);
     }
-    return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
+    return this._resolvePendingRegistration(rules, context, saved, pending);
   }
 
   private _finishRegistrationWithoutPending(
@@ -2233,21 +2236,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pendingNodes: Node[],
+    pending: PendingRegistration,
     context: Context
   ): MaybePromise<void> {
     if (!this._hasStaticName(node)) {
-      pendingNodes.push(node);
+      this._addPendingRegistration(pending, node);
       return;
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const preEvald = node.preEval(context);
     if (isThenable(preEvald)) {
       return (preEvald as Promise<Node>).then((preEvaldNode) => {
-        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pendingNodes);
+        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pending);
       });
     }
-    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pendingNodes);
+    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pending);
   }
 
   /**
@@ -2276,7 +2279,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pendingNodes: Node[]
+    pending: PendingRegistration
   ): void {
     rules.value[index] = node;
     node.index = nodeIndex;
@@ -2285,7 +2288,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._registerNodeIfEligible(rules, node);
       return;
     }
-    pendingNodes.push(node);
+    this._addPendingRegistration(pending, node);
   }
 
   /**
@@ -2347,7 +2350,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
-    pendingNodes: Node[]
+    pending: PendingRegistration
   ): MaybePromise<this> {
     const resolvedNodes: Node[] = [];
 
@@ -2355,13 +2358,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._recordResolvedRegistrationNode(rules, resolvedNodes, resolvedNode, node, stillUnresolved);
     };
 
-    const { pendingDeclarations, pendingOther } = this._partitionPendingRegistration(pendingNodes);
-
     return pipe(
-      () => this._resolvePendingDeclarationNames(context, pendingDeclarations, handleResolvedNode),
+      () => this._resolvePendingDeclarationNames(context, pending.declarations, handleResolvedNode),
       () => {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
-        return this._resolveOtherDynamicNodesOnce(context, pendingOther, handleResolvedNode);
+        return this._resolveOtherDynamicNodesOnce(context, pending.other, handleResolvedNode);
       },
       () => this._finishPendingRegistration(rules, context, saved, resolvedNodes)
     );
@@ -2424,20 +2425,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return isNode(node, N.VarDeclaration) || isNode(node, N.Declaration);
   }
 
-  private _partitionPendingRegistration(pendingNodes: Node[]): {
-    pendingDeclarations: Node[];
-    pendingOther: Node[];
-  } {
-    const pendingDeclarations: Node[] = [];
-    const pendingOther: Node[] = [];
-    for (const node of pendingNodes) {
-      if (this._isDeclarationRegistrationNode(node)) {
-        pendingDeclarations.push(node);
-      } else {
-        pendingOther.push(node);
-      }
+  private _addPendingRegistration(pending: PendingRegistration, node: Node): void {
+    if (this._isDeclarationRegistrationNode(node)) {
+      pending.declarations.push(node);
+      return;
     }
-    return { pendingDeclarations, pendingOther };
+    pending.other.push(node);
+  }
+
+  private _hasPendingRegistration(pending: PendingRegistration): boolean {
+    return pending.declarations.length > 0 || pending.other.length > 0;
   }
 
   private _resolvePendingDeclarationNames(
@@ -3243,6 +3240,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 export const rules = defineType(Rules, 'Rules');
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
+
+type PendingRegistration = {
+  declarations: Node[];
+  other: Node[];
+};
 
 /**
  * @todo - Will need lots of massaging, to resolve things like
