@@ -3042,11 +3042,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (rules.evaluated) {
       return { rules, rulesToHoist: false };
     }
-    if (rules === context.root) {
-      const map = new WeakMap<Ruleset, number>();
-      context.documentOrderByRuleset = map;
-      this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
-    }
+    this._assignRootDocumentOrder(rules, context);
     const evalQueue = this._buildEvalQueue(rules);
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
     if (isThenable(maybeHoist)) {
@@ -3072,6 +3068,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       context.extendRoots.registerRoot(rules);
     }
     context.extendRoots.pushExtendRoot(rules);
+  }
+
+  private _assignRootDocumentOrder(rules: Rules, context: Context): void {
+    if (rules !== context.root) {
+      return;
+    }
+    const map = new WeakMap<Ruleset, number>();
+    context.documentOrderByRuleset = map;
+    this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
   }
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
