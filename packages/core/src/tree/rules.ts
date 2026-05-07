@@ -3850,6 +3850,37 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
       return candidate;
     };
+    const stringifyCallableKey = (value: unknown): string => {
+      if (Array.isArray(value)) {
+        return value.map(item => stringifyCallableKey(item)).join('');
+      }
+      if (value instanceof Node) {
+        return value.valueOf();
+      }
+      return String(value ?? '');
+    };
+    const getCallKey = (node: Node | undefined): string | undefined => {
+      if (!isNode(node, N.Call)) {
+        return undefined;
+      }
+      const name = node.value.name;
+      if (typeof name === 'string') {
+        return name;
+      }
+      if (isNode(name, N.Reference)) {
+        return stringifyCallableKey(name.value.key);
+      }
+      return name.valueOf();
+    };
+    const rulesContainCallKey = (rules: Rules, key: string): boolean => {
+      for (const child of rules.children(true)) {
+        if (getCallKey(child) === key) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const callerKey = getCallKey(caller);
     const seenCandidateIdentities = new WeakSet<object>();
     evalCandidates = mixinCandidates
       .filter((candidate) => {
@@ -3858,7 +3889,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const blockedByFailedGuardAncestor = isNode(candidate)
           ? hasFailedGuardAncestor(candidate)
           : false;
-        if (inStack || blockedByFailedGuardAncestor) {
+        const rulesetRecursesToCaller = callerKey !== undefined
+          && isNode(candidate, N.Ruleset)
+          && rulesContainCallKey(candidate.value.rules, callerKey);
+        if (inStack || blockedByFailedGuardAncestor || rulesetRecursesToCaller) {
           return false;
         }
         const identity = getCallableCandidateIdentity(candidate);
