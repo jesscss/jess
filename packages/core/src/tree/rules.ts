@@ -50,6 +50,7 @@ import { consumeTriviaText } from './util/trivia.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
+type PendingRegistrationHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 
 function isIndexedRuleChild(node: Node): boolean {
   return !isNode(node, N.Comment);
@@ -2422,7 +2423,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _resolvePendingDeclarationNames(
     context: Context,
     pendingDeclarations: Node[],
-    handleResolvedNode: (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean
+    handleResolvedNode: PendingRegistrationHandler
   ): MaybePromise<void> {
     // Retry because one declaration's name might depend on another's being registered.
     const MAX_DECL_RETRIES = 5;
@@ -2477,7 +2478,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _resolveOtherDynamicNodesOnce(
     context: Context,
     pendingOther: Node[],
-    handleResolvedNode: (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean
+    handleResolvedNode: PendingRegistrationHandler
   ): MaybePromise<void> {
     // Their interpolated names typically depend on declaration VALUES
     // (e.g. @infix from breakpoint-infix()), which aren't evaluated until the

@@ -813,6 +813,8 @@ The first code slice was a no-behavior-change extraction inside
 - reused that static-identity flag probe for selector identity checks
 - moved charset registration-prep detection behind a local type guard
 - extracted fast registration-map stamping from the `Rules` completion step
+- named the pending-registration resolution callback shared by declaration-name
+  retries and other dynamic identity attempts
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
