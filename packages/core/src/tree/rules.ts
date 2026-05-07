@@ -3190,30 +3190,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return rules;
   }
 
+  private _restoreEvalAfterError(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
+    context.rulesContext = saved.rulesContext;
+    if (saved.treeRoot !== undefined) {
+      context.treeRoot = saved.treeRoot;
+    }
+    if (saved.root !== undefined) {
+      context.root = saved.root;
+    }
+    const currentLength = context.extendRoots.extendRootStack.length;
+    if (saved.extendRootStackLength !== undefined && currentLength > saved.extendRootStackLength) {
+      while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+        context.extendRoots.popExtendRoot();
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === (this.sourceNode as Rules)) {
+      context.rulesEvalStack.pop();
+    }
+    context.depth--;
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     context.rulesEvalStack.push(this.sourceNode as Rules);
-    const restoreContextOnError = () => {
-      context.rulesContext = saved.rulesContext;
-      if (saved.treeRoot !== undefined) {
-        context.treeRoot = saved.treeRoot;
-      }
-      if (saved.root !== undefined) {
-        context.root = saved.root;
-      }
-      const currentLength = context.extendRoots.extendRootStack.length;
-      if (saved.extendRootStackLength !== undefined && currentLength > saved.extendRootStackLength) {
-        while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-          context.extendRoots.popExtendRoot();
-        }
-      }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === (this.sourceNode as Rules)) {
-        context.rulesEvalStack.pop();
-      }
-      context.depth--;
-    };
     let pipeResult: MaybePromise<this>;
     try {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3222,12 +3223,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ({ rules }: { rules: Rules; rulesToHoist: boolean }) => this._finishEval(rules, context, saved)
       ) as MaybePromise<this>;
     } catch (error) {
-      restoreContextOnError();
+      this._restoreEvalAfterError(context, saved);
       throw error;
     }
     if (isThenable(pipeResult)) {
       return (pipeResult as Promise<this>).catch((error) => {
-        restoreContextOnError();
+        this._restoreEvalAfterError(context, saved);
         throw error;
       });
     }
