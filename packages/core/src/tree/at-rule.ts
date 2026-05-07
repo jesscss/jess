@@ -44,6 +44,11 @@ export type AtRuleValue = {
   rules?: Rules;
 };
 
+type AtRuleBodyRegistrationContext = {
+  pushedExtendRoot: boolean;
+  savedRulesetFrames: Context['rulesetFrames'] | undefined;
+};
+
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
 export const ROOT_ONLY_AT_RULES = [
   '@charset',
@@ -192,46 +197,59 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
-      // For nestable at-rules we do NOT push the original here. The body's Rules.preEval
-      // pushes the clone (the Rules that ends up in the tree) so rulesets register to it.
-      // Pushing the original would leave the clone's registry empty (extend + collapseNesting bug).
-      let pushedExtendRootForPreEval = false;
-      if (!node.isNestable()) {
-        context.extendRoots.pushExtendRoot(rules);
-        pushedExtendRootForPreEval = true;
-      }
-      // Root-only at-rules (@keyframes, @font-face, etc.): do not let parent ruleset frames
-      // pierce into the body — clear rulesetFrames so 0%/100% etc. are not combined with .parent.
-      const savedRulesetFramesForPreEval = node.isRootOnly() ? context.rulesetFrames : undefined;
-      if (node.isRootOnly()) {
-        context.rulesetFrames = [];
-      }
+      const saved = this._setupAtRuleBodyRegistrationContext(node, rules, context);
       const preEvaldRules = rules.preEval(context);
       if (isThenable(preEvaldRules)) {
         return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
-          if (savedRulesetFramesForPreEval !== undefined) {
-            context.rulesetFrames = savedRulesetFramesForPreEval;
-          }
-          if (pushedExtendRootForPreEval) {
-            context.extendRoots.popExtendRoot();
-          }
+          this._restoreAtRuleBodyRegistrationContext(context, saved);
           if (evaldRules !== rules) {
             ensureDerived().value.rules = evaldRules;
           }
           return finalize();
         });
       }
-      if (savedRulesetFramesForPreEval !== undefined) {
-        context.rulesetFrames = savedRulesetFramesForPreEval;
-      }
-      if (pushedExtendRootForPreEval) {
-        context.extendRoots.popExtendRoot();
-      }
+      this._restoreAtRuleBodyRegistrationContext(context, saved);
       if (preEvaldRules !== rules) {
         ensureDerived().value.rules = preEvaldRules as Rules;
       }
     }
     return finalize();
+  }
+
+  private _setupAtRuleBodyRegistrationContext(
+    node: AtRule,
+    rules: Rules,
+    context: Context
+  ): AtRuleBodyRegistrationContext {
+    // For nestable at-rules we do NOT push the original here. The body's Rules.preEval
+    // pushes the clone (the Rules that ends up in the tree) so rulesets register to it.
+    // Pushing the original would leave the clone's registry empty (extend + collapseNesting bug).
+    const pushedExtendRoot = !node.isNestable();
+    if (pushedExtendRoot) {
+      context.extendRoots.pushExtendRoot(rules);
+    }
+    // Root-only at-rules (@keyframes, @font-face, etc.): do not let parent ruleset frames
+    // pierce into the body — clear rulesetFrames so 0%/100% etc. are not combined with .parent.
+    const savedRulesetFrames = node.isRootOnly() ? context.rulesetFrames : undefined;
+    if (savedRulesetFrames !== undefined) {
+      context.rulesetFrames = [];
+    }
+    return {
+      pushedExtendRoot,
+      savedRulesetFrames
+    };
+  }
+
+  private _restoreAtRuleBodyRegistrationContext(
+    context: Context,
+    saved: AtRuleBodyRegistrationContext
+  ): void {
+    if (saved.savedRulesetFrames !== undefined) {
+      context.rulesetFrames = saved.savedRulesetFrames;
+    }
+    if (saved.pushedExtendRoot) {
+      context.extendRoots.popExtendRoot();
+    }
   }
 
   private _queueTopImport(node: AtRule, context: Context): void {

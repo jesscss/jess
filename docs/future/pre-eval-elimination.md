@@ -882,6 +882,8 @@ The first code slice was a no-behavior-change extraction inside
   instead of generic name / registration wording
 - split at-rule registration prep into import queueing and child body
   registration helpers without moving either behavior
+- extracted at-rule body registration context setup/restore without moving child
+  traversal timing
 - split ruleset registration prep around selector identity and removed stale
   unused parent-selector inheritance calculation
 - added a focused mixin test proving callable identity prep still does not
