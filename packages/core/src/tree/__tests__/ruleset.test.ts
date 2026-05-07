@@ -131,6 +131,54 @@ describe('Rule', () => {
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
+  it('restores eval frames when body eval throws', () => {
+    const savedRulesetFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => {
+      throw new Error('body eval failed');
+    };
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: body
+    });
+    context.rulesetFrames = [savedRulesetFrame];
+    context.frames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
+  it('restores eval frames when body eval rejects', async () => {
+    const savedRulesetFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => Promise.reject(new Error('body eval failed'));
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: body
+    });
+    context.rulesetFrames = [savedRulesetFrame];
+    context.frames = [savedFrame];
+
+    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
   it('resolves a ruleset without touching render state', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),

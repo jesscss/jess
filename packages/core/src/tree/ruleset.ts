@@ -5,7 +5,6 @@ import { Nil } from './nil.js';
 import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
 import { attachSelectorBitLibrary, type Selector } from './selector.js';
-import { atIndex } from './util/collections.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Ampersand } from './ampersand.js';
@@ -1120,6 +1119,16 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       return this;
     }
     let pushedFrames = false;
+    let pushedRulesetFrameCount = 0;
+    let pushedFrameCount = 0;
+    const restorePushedEvalFrames = () => {
+      if (!pushedFrames) {
+        return;
+      }
+      context.rulesetFrames.length = pushedRulesetFrameCount;
+      context.frames.length = pushedFrameCount;
+      pushedFrames = false;
+    };
     /** Should have been maybe cloned in preEval */
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
@@ -1139,13 +1148,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
     return pipe(
       () => {
-        const selectorText = String(this.value.selector?.valueOf?.() ?? '');
-        if (
-          selectorText.includes('.call-lock-mixin')
-          || selectorText.includes('#guarded-caller')
-          || selectorText.includes('#guarded-deeper')
-        ) {
-        }
         let { guard } = this.value;
         // Guard was already set to Nil (failed in a previous eval)
         if (guard instanceof Nil) {
@@ -1157,10 +1159,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return pipe(
             () => guard.eval(context),
             (guardResult) => {
-              const selectorText = String(this.value.selector?.valueOf?.() ?? '');
               const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
-              if (selectorText.includes('#guarded') || selectorText.includes('#top') || selectorText.includes('#deeper')) {
-              }
               if (!guardPasses) {
                 setOnRuleset('guard', new Nil());
                 return new Nil();
@@ -1178,7 +1177,6 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
           return guardResult;
         }
         let { selector } = this.value;
-        const frame = atIndex(context.rulesetFrames, -1);
 
         if (selector instanceof Nil) {
           // If selector evaluates to Nil, return the rules body directly instead of the ruleset
@@ -1200,25 +1198,30 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         if (context.opts.collapseNesting) {
           this.hoistToRoot = true;
         }
+        pushedRulesetFrameCount = context.rulesetFrames.length;
+        pushedFrameCount = context.frames.length;
         context.rulesetFrames.push(this as Ruleset);
         context.frames.push(this);
         pushedFrames = true;
-        return this.value.rules.eval(context);
+        let evaluatedRules: MaybePromise<Rules>;
+        try {
+          evaluatedRules = this.value.rules.eval(context);
+        } catch (error) {
+          restorePushedEvalFrames();
+          throw error;
+        }
+        if (isThenable(evaluatedRules)) {
+          return (evaluatedRules as Promise<Rules>).catch((error) => {
+            restorePushedEvalFrames();
+            throw error;
+          });
+        }
+        return evaluatedRules;
       },
       (evaluatedRules: Rules | Nil) => {
-        if (pushedFrames) {
-          context.rulesetFrames.pop();
-          context.frames.pop();
-        }
+        restorePushedEvalFrames();
         if (evaluatedRules instanceof Nil) {
           return evaluatedRules;
-        }
-        const selectorText = String(this.value.selector?.valueOf?.() ?? '');
-        if (
-          selectorText.includes('.call-lock-mixin')
-          || selectorText.includes('#guarded-caller')
-          || selectorText.includes('#guarded-deeper')
-        ) {
         }
 
         // If selector was Nil, evaluatedRules is already Rules (not wrapped in Ruleset)

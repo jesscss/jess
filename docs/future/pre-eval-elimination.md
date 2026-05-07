@@ -890,6 +890,8 @@ The first code slice was a no-behavior-change extraction inside
   unused parent-selector inheritance calculation
 - restored parent ruleset frames after child registration-prep errors so nested
   ruleset prep cannot leak selector context on throw or rejection
+- restored ruleset eval frames after body evaluation errors and removed adjacent
+  no-op debug scaffolding from the ruleset eval path
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
