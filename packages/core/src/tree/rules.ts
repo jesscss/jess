@@ -2151,10 +2151,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const pendingResult = this._scanRegistrationNodes(rules, context);
     if (isThenable(pendingResult)) {
       return (pendingResult as Promise<Node[]>).then(pendingNodes =>
-        this._finishRegistration(rules, context, saved, pendingNodes)
+        this._finishRegistrationScan(rules, context, saved, pendingNodes)
       );
     }
-    return this._finishRegistration(rules, context, saved, pendingResult as Node[]);
+    return this._finishRegistrationScan(rules, context, saved, pendingResult as Node[]);
   }
 
   private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<Node[]> {
@@ -2184,7 +2184,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return pendingNodes;
   }
 
-  private _finishRegistration(
+  private _finishRegistrationScan(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
