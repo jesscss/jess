@@ -2137,12 +2137,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _isNestableAtRuleBody(): boolean {
-    const parentAtRule = this.parent?.type === 'AtRule' ? this.parent : null;
-    return Boolean(
-      parentAtRule
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      && NESTABLE_AT_RULE_NAMES.has(String((parentAtRule as { value?: { name?: { valueOf?(): string } } }).value?.name?.valueOf?.() ?? ''))
-    );
+    const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent : undefined;
+    return parentAtRule ? NESTABLE_AT_RULE_NAMES.has(parentAtRule.value.name.valueOf()) : false;
   }
 
   /**
