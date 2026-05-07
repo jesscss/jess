@@ -2357,13 +2357,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._recordResolvedRegistrationNode(rules, resolvedNodes, resolvedNode, node, stillUnresolved);
     };
 
-    const finishResolution = (): this => {
-      this._applyResolvedRegistrationNodes(rules, resolvedNodes);
-      this._restoreRegistrationContext(context, saved);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return rules as this;
-    };
-
     const { pendingDeclarations, pendingOther } = this._partitionPendingRegistration(pendingNodes);
 
     return pipe(
@@ -2372,8 +2365,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
         return this._resolveOtherDynamicNodesOnce(context, pendingOther, handleResolvedNode);
       },
-      () => finishResolution()
+      () => this._finishPendingRegistration(rules, context, saved, resolvedNodes)
     );
+  }
+
+  private _finishPendingRegistration(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>,
+    resolvedNodes: Node[]
+  ): this {
+    this._applyResolvedRegistrationNodes(rules, resolvedNodes);
+    this._restoreRegistrationContext(context, saved);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return rules as this;
   }
 
   private _recordResolvedRegistrationNode(
