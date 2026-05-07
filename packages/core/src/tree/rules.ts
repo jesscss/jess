@@ -2367,21 +2367,45 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     return pipe(
-      () => {
-        if (pending.pendingDeclarationNames.length === 0) {
-          return;
-        }
-        return this._resolvePendingDeclarationNamesFixedPoint(context, pending.pendingDeclarationNames, handleResolvedNode);
-      },
-      () => {
-        this._applyResolvedRegistrationNodes(rules, resolvedNodes);
-        if (pending.orderedIdentities.length === 0) {
-          return;
-        }
-        return this._resolveOrderedIdentityPrepOnce(context, pending.orderedIdentities, handleResolvedNode);
-      },
+      () => this._resolvePendingDeclarationNamePrep(rules, context, pending, resolvedNodes, handleResolvedNode),
+      () => this._resolvePendingOrderedIdentityPrep(context, pending, handleResolvedNode),
       () => this._finishPendingPrep(rules, context, saved, resolvedNodes)
     );
+  }
+
+  private _resolvePendingDeclarationNamePrep(
+    rules: Rules,
+    context: Context,
+    pending: PendingPrep,
+    resolvedNodes: Node[],
+    handleResolvedNode: PendingPrepHandler
+  ): MaybePromise<void> {
+    if (pending.pendingDeclarationNames.length === 0) {
+      return;
+    }
+    const result = this._resolvePendingDeclarationNamesFixedPoint(
+      context,
+      pending.pendingDeclarationNames,
+      handleResolvedNode
+    );
+    const applyResolvedDeclarations = () => {
+      this._applyResolvedRegistrationNodes(rules, resolvedNodes);
+    };
+    if (isThenable(result)) {
+      return (result as Promise<void>).then(applyResolvedDeclarations);
+    }
+    applyResolvedDeclarations();
+  }
+
+  private _resolvePendingOrderedIdentityPrep(
+    context: Context,
+    pending: PendingPrep,
+    handleResolvedNode: PendingPrepHandler
+  ): MaybePromise<void> {
+    if (pending.orderedIdentities.length === 0) {
+      return;
+    }
+    return this._resolveOrderedIdentityPrepOnce(context, pending.orderedIdentities, handleResolvedNode);
   }
 
   private _finishPendingPrep(
