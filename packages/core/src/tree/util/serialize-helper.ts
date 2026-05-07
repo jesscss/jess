@@ -145,7 +145,9 @@ function canMergeSameHeaderRuleset(
   const currentSelector = currentOwn ?? currentFrame.value.selector;
   const priorSelector = priorOwn ?? priorFrame.value.selector;
   return (
-    isNode(currentOwn, N.Ampersand)
+    rulesetHasExtendedTopLevelSelector(currentFrame)
+    || rulesetHasExtendedTopLevelSelector(priorFrame)
+    || isNode(currentOwn, N.Ampersand)
     || isNode(priorOwn, N.Ampersand)
     || containsNodeType(currentSelector, 'InterpolatedSelector')
     || containsNodeType(priorSelector, 'InterpolatedSelector')
