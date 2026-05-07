@@ -3781,9 +3781,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (node.type === 'DefaultGuard') {
         return true;
       }
-      if (node.type === 'Call') {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
+      if (isNode(node, N.Call)) {
+        const name = node.value.name;
+        const callName = String(typeof name === 'string' ? name : name.valueOf());
         if (callName === 'default' || callName === '??') {
           return true;
         }
@@ -3816,10 +3816,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return false;
     };
     const hasFailedGuardAncestor = (node: Node): boolean => {
-      let current: any = node.parent;
+      let current = node.parent;
       while (current) {
         if (isNode(current, N.Ruleset)) {
-          const guardNode = (current as Ruleset).value.guard;
+          const guardNode = current.value.guard;
           if (guardNode instanceof Nil) {
             return true;
           }
@@ -3832,7 +3832,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let current = rules;
       const seen = new Set<Rules>();
       while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-        const next = current.sourceNode as Rules;
+        const next = current.sourceNode;
         if (next === current || seen.has(next)) {
           break;
         }
@@ -3853,8 +3853,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const seenCandidateIdentities = new WeakSet<object>();
     evalCandidates = mixinCandidates
       .filter((candidate) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const inStack = thisContext.rulesEvalStack.includes(candidate.value.rules.sourceNode as Rules);
+        const sourceRules = candidate.value.rules.sourceNode;
+        const inStack = thisContext.rulesEvalStack.some(entry => entry === sourceRules);
         const blockedByFailedGuardAncestor = isNode(candidate)
           ? hasFailedGuardAncestor(candidate)
           : false;
@@ -3870,8 +3870,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       })
       .map<MixinEntry>(
         (candidate) => {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(candidate.value.guard as unknown as Node | undefined);
+          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(candidate.value.guard);
           if (hasDefaultGuard) {
             candidate.options ??= {};
             candidate.options.hasDefault = true;
@@ -3922,7 +3921,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (
         isNode(node, N.Rules)
         && (
-          (node.options as { referenceMode?: boolean } | undefined)?.referenceMode === true
+          node.options.referenceMode === true
           || node._hasReferenceImports
         )
       ) {
@@ -3932,13 +3931,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (nestedRules) {
         clearReferenceModeForMixinOutput(nestedRules);
       }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const children = (node as any).value;
-      if (Array.isArray(children)) {
-        for (const child of children) {
+      if (isNode(node, N.Rules)) {
+        for (const child of node.value) {
           if (isNode(child, N.Rules | N.Ruleset | N.AtRule)) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            clearReferenceModeForMixinOutput(child as Node);
+            clearReferenceModeForMixinOutput(child);
           }
         }
       }
@@ -3982,14 +3978,12 @@ export class MixinCollection extends Node<MixinEntry[]> {
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
         markMixinOutputSource(newRules, getRootSourceRules(candidate.value.rules));
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        clearReferenceModeForMixinOutput(newRules as unknown as Node);
+        clearReferenceModeForMixinOutput(newRules);
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
         // This allows other candidates to still match
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        if (error instanceof ReferenceError && (error as any).message?.includes('Recursive mixin call')) {
+        if (error instanceof ReferenceError && error.message.includes('Recursive mixin call')) {
           // Skip this candidate - recursion detected
           return;
         }
@@ -4032,8 +4026,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark output Rules as mixin output - accessible only when lookup has a target
         rules.options.isMixinOutput = restrictMixinOutputLookup;
         rules.options.referenceMode = false;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        clearReferenceModeForMixinOutput(rules as unknown as Node);
+        clearReferenceModeForMixinOutput(rules);
         markMixinOutputSource(rules, sourceRules);
         outputRules.push(rules);
         continue;
@@ -4062,8 +4055,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark as mixin output; caller may override when leakyRules=true
         unlocked.options.isMixinOutput = restrictMixinOutputLookup;
         unlocked.options.referenceMode = false;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        clearReferenceModeForMixinOutput(unlocked as unknown as Node);
+        clearReferenceModeForMixinOutput(unlocked);
         markMixinOutputSource(unlocked, sourceRules);
         unlocked.index = candidate.index;
         // Evaluate immediately while the call-site parent chain is intact.
@@ -4393,8 +4385,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // Ensure single output rule is marked as mixin output
       output.options.isMixinOutput = restrictMixinOutputLookup;
       output.options.referenceMode = false;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      clearReferenceModeForMixinOutput(output as unknown as Node);
+      clearReferenceModeForMixinOutput(output);
     } else {
       /**
        * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
