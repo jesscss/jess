@@ -836,6 +836,7 @@ The first code slice was a no-behavior-change extraction inside
 - indexed resolved pending registration nodes before applying them
 - skipped resolved-node application when no pending registrations resolved
 - removed duplicate ruleset registration from pending identity resolution
+- documented the source-order contract for non-declaration pending identities
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
