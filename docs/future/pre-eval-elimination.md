@@ -816,6 +816,7 @@ The first code slice was a no-behavior-change extraction inside
 - named the pending-registration resolution callback shared by declaration-name
   retries and other dynamic identity attempts
 - named the fixed retry cap for declaration-name registration
+- extracted the no-pending registration completion path
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

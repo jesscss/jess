@@ -2192,11 +2192,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   ): MaybePromise<this> {
     this._stampRegistrationMaps(rules);
     if (pendingNodes.length === 0) {
-      this._restoreRegistrationContext(context, saved);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return rules as this;
+      return this._finishRegistrationWithoutPending(rules, context, saved);
     }
     return this._resolvePendingRegistration(rules, context, saved, pendingNodes);
+  }
+
+  private _finishRegistrationWithoutPending(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>
+  ): this {
+    this._restoreRegistrationContext(context, saved);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return rules as this;
   }
 
   private _stampRegistrationMaps(rules: Rules): void {
