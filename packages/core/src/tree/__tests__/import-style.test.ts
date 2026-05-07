@@ -24,6 +24,7 @@ import {
   pseudo,
   co,
   Interpolated,
+  interpolatedSelector,
   INTERPOLATION_PLACEHOLDER,
   type Rules,
   Node,
@@ -1773,6 +1774,50 @@ describe('Style import', () => {
   });
 
   describe('less import fixture regressions', () => {
+    it('keeps non-declaration pending identity prep source-ordered', async () => {
+      const order: string[] = [];
+      const recordPreEval = (node: Node, label: string): void => {
+        const original = node.preEval.bind(node);
+        node.preEval = (ctx: Context) => {
+          order.push(label);
+          return original(ctx);
+        };
+      };
+
+      const dynamicMixin = mixin({
+        name: new Interpolated({
+          source: '.' + INTERPOLATION_PLACEHOLDER,
+          replacements: [any('pending-mixin')]
+        }, { role: 'name' }),
+        rules: rules([decl({ name: 'color', value: any('orange') })])
+      });
+      const dynamicImport = style({
+        path: quoted(new Interpolated({
+          source: 'missing-' + INTERPOLATION_PLACEHOLDER + '.jess',
+          replacements: [any('optional')]
+        }, { role: 'ident' }))
+      }, { type: 'import', importOptions: { optional: true } });
+      const dynamicRuleset = ruleset({
+        selector: interpolatedSelector(new Interpolated({
+          source: '.' + INTERPOLATION_PLACEHOLDER,
+          replacements: [any('pending-ruleset')]
+        }, { role: 'ident' })),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+
+      recordPreEval(dynamicMixin, 'callable');
+      recordPreEval(dynamicImport, 'import');
+      recordPreEval(dynamicRuleset, 'selector');
+
+      await rules([
+        dynamicMixin,
+        dynamicImport,
+        dynamicRuleset
+      ]).eval(context);
+
+      expect(order.slice(0, 3)).toEqual(['callable', 'import', 'selector']);
+    });
+
     it('import-inline: inline import with media postlude inlines source content', async () => {
       const inlinePath = resolve(process.cwd(), 'inline-source.css');
       const inlineContext = new Context({}, [{
