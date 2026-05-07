@@ -2067,18 +2067,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._prepareRegistrationOnce(context);
   }
 
-  override eval(context: Context): MaybePromise<this> {
-    const result = this.evalNode(context);
-    const markEvaluated = (rules: this): this => {
-      rules.evaluated = true;
-      return rules;
-    };
-    if (isThenable(result)) {
-      return (result as Promise<this>).then(markEvaluated);
-    }
-    return markEvaluated(result as this);
-  }
-
   private _prepareRegistrationOnce(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       context.depth++;

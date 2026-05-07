@@ -841,8 +841,6 @@ The first code slice was a no-behavior-change extraction inside
 - added focused coverage for source-ordered non-declaration identity prep
 - added focused coverage for blocked dynamic declaration-name retry depth
 - named the dynamic declaration-name resolver around its fixed-point behavior
-- routed `Rules.eval()` directly through `Rules.evalNode()` so root eval enters
-  registration prep without using the public `preEval()` hook
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
@@ -855,9 +853,8 @@ registration state for two surfaces:
   callable, selector, or import identity
 
 Both paths still run under the existing registration-prep call path for now.
-`Rules.eval()` now enters `Rules.evalNode()` directly, and `Rules.evalNode()`
-routes through that internal helper when preparation is needed. Declaration
-registration still depends on the preparatory scan.
+`Rules.evalNode()` routes through that internal helper directly when preparation
+is needed, but declaration registration still depends on the preparatory scan.
 The old unused async child-preEval continuation helper has been removed.
 
 The next step is to move declaration-name pending state closer to
