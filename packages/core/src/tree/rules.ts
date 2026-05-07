@@ -3062,6 +3062,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
   }
 
+  private _checkReadonlyImportShadows(rules: Rules): void {
+    // After all evaluation stages, direct variables in the current Rules cannot
+    // shadow readonly variables imported into the same scope.
+    if (rules.rulesSet.length === 0) {
+      return;
+    }
+    const currentRegistry = rules.getRegistry('declaration');
+    currentRegistry.indexPendingItems();
+    for (const entry of rules.rulesSet) {
+      if (!entry.readonly) {
+        continue;
+      }
+      const importedRegistry = entry.node.getRegistry('declaration');
+      importedRegistry.indexPendingItems();
+      for (const [key, declarations] of importedRegistry.index) {
+        for (const decl of declarations) {
+          if (!isNode(decl, N.VarDeclaration)) {
+            continue;
+          }
+          const currentDeclarations = currentRegistry.index.get(key);
+          if (!currentDeclarations) {
+            continue;
+          }
+          for (const currentDecl of currentDeclarations) {
+            if (
+              isNode(currentDecl, N.VarDeclaration)
+              && !currentDecl.options?.setDefined
+              && currentDecl.parent === rules
+            ) {
+              throw new ReferenceError(`"${key}" is readonly`);
+            }
+          }
+        }
+      }
+    }
+  }
+
   private _ensureRootExtendStack(rules: Rules, context: Context): void {
     if (rules !== context.root || context.extendRoots.extendRootStack.length !== 0) {
       return;
@@ -3146,38 +3183,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // during preEval when the imported Rules node is evaluated. The extend search
         // loops through allRoots directly via extend-roots' per-root ruleset sets.
 
-          // After all evaluation stages, check if any variables in the current Rules
-          // shadow readonly variables from imported Rules (compose type) at the same level
-          // Only check direct children of the Rules node, not nested variables (e.g., inside rulesets)
-          if (rules.rulesSet.length > 0) {
-            let currentRegistry = rules.getRegistry('declaration');
-            currentRegistry.indexPendingItems();
-            for (const entry of rules.rulesSet) {
-              if (entry.readonly) {
-                let importedRegistry = entry.node.getRegistry('declaration');
-                importedRegistry.indexPendingItems();
-                for (const [key, declarations] of importedRegistry.index) {
-                  for (const decl of declarations) {
-                    if (isNode(decl, N.VarDeclaration)) {
-                    // Check if a variable with this name exists in the current Rules' registry
-                      let currentDeclarations = currentRegistry.index.get(key);
-                      if (currentDeclarations) {
-                        for (const currentDecl of currentDeclarations) {
-                          if (isNode(currentDecl, N.VarDeclaration) && !currentDecl.options?.setDefined) {
-                          // Only throw if the variable is a direct child of the Rules node (same level)
-                          // Nested variables (e.g., inside rulesets) are allowed to shadow
-                            if (currentDecl.parent === rules) {
-                              throw new ReferenceError(`"${key}" is readonly`);
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+          this._checkReadonlyImportShadows(rules);
 
           // Check if we're at the outermost level BEFORE restoring context
           // Only process extends at the TRUE outermost root (context.root)
