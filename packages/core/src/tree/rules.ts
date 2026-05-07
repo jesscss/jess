@@ -34,6 +34,7 @@ import { processExtends } from './util/extend-roots.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
+import type { Declaration } from './declaration.js';
 import { Any } from './any.js';
 import { List } from './list.js';
 import {
@@ -47,6 +48,8 @@ import { freezeChildren } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
+import type { JsFunction } from './js-function.js';
+import type { Func } from './function.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -80,6 +83,14 @@ function hasFlagMethod(value: unknown): value is { hasFlag(flag: number): boolea
   return typeof value === 'object'
     && value !== null
     && typeof Reflect.get(value, 'hasFlag') === 'function';
+}
+
+function normalizeDeclarationFilter(filterType: string | undefined): 'VarDeclaration' | 'Declaration' | undefined {
+  return filterType === 'VarDeclaration' || filterType === 'Declaration' ? filterType : undefined;
+}
+
+function normalizeMixinFilter(filterType: string | undefined): 'Mixin' | 'Ruleset' | undefined {
+  return filterType === 'Mixin' || filterType === 'Ruleset' ? filterType : undefined;
 }
 
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -380,22 +391,44 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Lazily create registries for types as needed.
    */
+  private _ensureDeclarationRegistry(): Registries.DeclarationRegistry {
+    return (this.declarationRegistry ??= new Registries.DeclarationRegistry(this));
+  }
+
+  private _ensureMixinRegistry(): Registries.MixinRegistry {
+    return (this.mixinRegistry ??= new Registries.MixinRegistry(this));
+  }
+
+  private _ensureFunctionRegistry(): Registries.FunctionRegistry {
+    return (this.functionRegistry ??= new Registries.FunctionRegistry(this));
+  }
+
+  register(type: 'declaration', node: Declaration): void;
+  register(type: 'mixin', node: Mixin | Ruleset): void;
+  register(type: 'function', node: Func | JsFunction): void;
   register(
     type: 'declaration' | 'mixin' | 'function',
-    node: Node
-  ) {
-    let registry = this[`${type}Registry`];
-    if (!registry) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
-      let RegistryClass = Registries[`${className}Registry`];
-      registry = new RegistryClass(this);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      (this as any)[`${type}Registry`] = registry;
+    node: Declaration | Mixin | Ruleset | Func | JsFunction
+  ): void {
+    switch (type) {
+      case 'declaration':
+        if (!isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration)) {
+          throw new TypeError(`Expected declaration registry node, got ${node.type}`);
+        }
+        this._ensureDeclarationRegistry().add(node);
+        return;
+      case 'mixin':
+        if (!isNode(node, N.Mixin) && !isNode(node, N.Ruleset)) {
+          throw new TypeError(`Expected mixin registry node, got ${node.type}`);
+        }
+        this._ensureMixinRegistry().add(node);
+        return;
+      case 'function':
+        if (!isNode(node, N.Func) && !isNode(node, N.JsFunction)) {
+          throw new TypeError(`Expected function registry node, got ${node.type}`);
+        }
+        this._ensureFunctionRegistry().add(node);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const result = (registry as any).add(node);
-    return result;
   }
 
   getRegistry(type: 'declaration'): Registries.DeclarationRegistry;
@@ -403,20 +436,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   getRegistry(type: 'function'): Registries.FunctionRegistry;
   getRegistry(type: 'declaration' | 'mixin' | 'function'): Registries.DeclarationRegistry | Registries.MixinRegistry | Registries.FunctionRegistry;
   getRegistry(type: 'declaration' | 'mixin' | 'function') {
-    let registry = this[`${type}Registry`];
-    if (!registry) {
-      /**
-       * @note - Ideally we wouldn't create a registry object if we didn't have to,
-       * just to find. But the find methods have complex logic for searching parent
-       * and children rules / registries.
-       */
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      let className = `${type.charAt(0).toUpperCase()}${type.slice(1)}` as Capitalize<typeof type>;
-      let RegistryClass = Registries[`${className}Registry`];
-      registry = new RegistryClass(this);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      (this as any)[`${type}Registry`] = registry;
-    }
+    const registry = type === 'declaration'
+      ? this._ensureDeclarationRegistry()
+      : type === 'mixin'
+        ? this._ensureMixinRegistry()
+        : this._ensureFunctionRegistry();
     if (this.rulesIndexed < this.value.length) {
       this._indexRules();
     } else {
@@ -1348,9 +1372,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return fast.length > 0 ? fast : undefined;
       }
     }
-    let registry = this.getRegistry(type);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return (registry as any).find(keys, filterType, options);
+    switch (type) {
+      case 'declaration':
+        if (typeof keys !== 'string') {
+          throw new TypeError('Declaration lookup keys must be a string');
+        }
+        return this.getRegistry('declaration').find(keys, normalizeDeclarationFilter(filterType), options);
+      case 'mixin':
+        return this.getRegistry('mixin').find(keys, normalizeMixinFilter(filterType), options);
+      case 'function':
+        if (typeof keys !== 'string') {
+          throw new TypeError('Function lookup keys must be a string');
+        }
+        return this.getRegistry('function').find(keys, filterType, options);
+    }
   }
 
   override toString(options?: PrintOptions): string {
