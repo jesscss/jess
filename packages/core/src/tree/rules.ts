@@ -49,6 +49,7 @@ import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-fram
 import { consumeTriviaText } from './util/trivia.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
+const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PendingRegistrationHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 
@@ -2426,13 +2427,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     handleResolvedNode: PendingRegistrationHandler
   ): MaybePromise<void> {
     // Retry because one declaration's name might depend on another's being registered.
-    const MAX_DECL_RETRIES = 5;
     let declRetries = 0;
     const unresolvedDecls: Node[] = [...pendingDeclarations];
 
     const resolveDeclarations = (): MaybePromise<void> => {
       declRetries++;
-      if (declRetries > MAX_DECL_RETRIES || unresolvedDecls.length === 0) {
+      if (declRetries > MAX_DECLARATION_NAME_REGISTRATION_RETRIES || unresolvedDecls.length === 0) {
         return;
       }
       const stillUnresolved: Node[] = [];
