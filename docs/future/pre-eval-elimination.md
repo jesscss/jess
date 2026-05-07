@@ -880,6 +880,8 @@ The first code slice was a no-behavior-change extraction inside
   visibility setup without pre-evaluating mixin body rules
 - named at-rule prep helpers around at-rule name identity and registration
   instead of generic name / registration wording
+- split at-rule registration prep into import queueing and child body
+  registration helpers without moving either behavior
 - split ruleset registration prep around selector identity and removed stale
   unused parent-selector inheritance calculation
 - added a focused mixin test proving callable identity prep still does not

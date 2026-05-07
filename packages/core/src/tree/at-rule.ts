@@ -141,6 +141,43 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private _prepareAtRuleRegistration(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {
+    const importResult = this._prepareAtRuleImportQueue(node, context);
+    if (importResult) {
+      return importResult;
+    }
+    const { prelude, rules } = node.value;
+    // Defer prelude evaluation to evalNode so variable lookups happen in the correct
+    // live scope (e.g. mixin parameters referenced from nested @media preludes).
+    if (prelude) {
+      node.value.prelude = prelude;
+    }
+    return this._prepareAtRuleBodyRegistration(node, context, original, rules);
+  }
+
+  private _prepareAtRuleImportQueue(node: AtRule, context: Context): Nil | undefined {
+    const { prelude } = node.value;
+    // Preserve @import prelude as-authored (including comments). Evaluation here can
+    // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
+    const atRuleName = String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim();
+    if (atRuleName !== '@import') {
+      return undefined;
+    }
+    if (prelude) {
+      node.value.prelude = prelude;
+    }
+    // Reference branches are traversed for symbol/extend resolution, but plain
+    // CSS @import hoisting must remain a visible-output concern only.
+    this._queueTopImport(node, context);
+    node.preEvaluated = true;
+    return new Nil();
+  }
+
+  private _prepareAtRuleBodyRegistration(
+    node: AtRule,
+    context: Context,
+    original: AtRule,
+    rules: Rules | undefined
+  ): MaybePromise<AtRule> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
         node = original.clone(false) as AtRule;
@@ -152,25 +189,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       node.preEvaluated = true;
       return node;
     };
-    const { prelude, rules } = node.value;
-    // Preserve @import prelude as-authored (including comments). Evaluation here can
-    // normalize/strip comment tokens inside the prelude, but less.js expects them preserved.
-    const atRuleName = String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim();
-    if (atRuleName === '@import') {
-      if (prelude) {
-        node.value.prelude = prelude;
-      }
-      // Reference branches are traversed for symbol/extend resolution, but plain
-      // CSS @import hoisting must remain a visible-output concern only.
-      this._queueTopImport(node, context);
-      node.preEvaluated = true;
-      return new Nil();
-    }
-    // Defer prelude evaluation to evalNode so variable lookups happen in the correct
-    // live scope (e.g. mixin parameters referenced from nested @media preludes).
-    if (prelude) {
-      node.value.prelude = prelude;
-    }
     // Depth-first: preEval child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
