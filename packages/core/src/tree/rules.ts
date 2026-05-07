@@ -2444,11 +2444,27 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       pending.declarationNames.push(node);
       return;
     }
-    pending.otherIdentities.push(node);
+    pending.otherIdentities.push({
+      kind: this._pendingIdentityKind(node),
+      node
+    });
   }
 
   private _hasPendingRegistration(pending: PendingRegistration): boolean {
     return pending.declarationNames.length > 0 || pending.otherIdentities.length > 0;
+  }
+
+  private _pendingIdentityKind(node: Node): PendingIdentityKind {
+    if (isNode(node, N.Mixin)) {
+      return 'callable';
+    }
+    if (isNode(node, N.Ruleset)) {
+      return 'selector';
+    }
+    if (isStyleImportRegistrationNode(node)) {
+      return 'import';
+    }
+    return 'other';
   }
 
   private _resolvePendingDeclarationNames(
@@ -2507,7 +2523,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _resolveOtherIdentityNodesOnce(
     context: Context,
-    pendingIdentities: Node[],
+    pendingIdentities: PendingIdentity[],
     handleResolvedNode: PendingRegistrationHandler
   ): MaybePromise<void> {
     // Keep these in source order. Callable names, selector identity, and import
@@ -2515,7 +2531,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // proving it can move independently.
     const resolveOtherOnce = (): MaybePromise<void> => {
       for (let i = 0; i < pendingIdentities.length; i++) {
-        const node = pendingIdentities[i]!;
+        const { node } = pendingIdentities[i]!;
         try {
           const result = node.preEval(context);
 
@@ -3257,7 +3273,14 @@ type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 
 type PendingRegistration = {
   declarationNames: Node[];
-  otherIdentities: Node[];
+  otherIdentities: PendingIdentity[];
+};
+
+type PendingIdentityKind = 'callable' | 'selector' | 'import' | 'other';
+
+type PendingIdentity = {
+  kind: PendingIdentityKind;
+  node: Node;
 };
 
 /**
