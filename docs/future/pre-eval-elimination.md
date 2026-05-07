@@ -333,6 +333,13 @@ Current `Declaration.preEval()` is mostly:
 - resolve interpolated property name
 - normalize assignment operators into explicit reference/value structures
 
+The current code now separates declaration name-identity prep from the rest of
+declaration prep, but assignment normalization and recursive value prep still
+run immediately after the name is known. That timing is intentional for now:
+assignment normalization builds references and value containers that later eval
+and merge logic depend on. Moving it into `Declaration.evalNode()` needs focused
+assignment tests, not a mechanical helper shuffle.
+
 That likely wants to become:
 
 - one-time lookup-key preparation for registration
