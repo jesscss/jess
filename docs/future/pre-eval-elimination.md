@@ -852,6 +852,8 @@ The first code slice was a no-behavior-change extraction inside
   test names
 - named the declaration-name fixed-point retry state around attempts and
   unresolved declarations
+- extracted declaration name-identity prep from the remaining declaration
+  registration prep while keeping assignment/value prep timing unchanged
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

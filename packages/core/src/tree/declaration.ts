@@ -267,29 +267,34 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let node = this.clone(false) as this;
     node.preEvaluated = true;
     // Index should already be assigned by parent Rules
-    return this._prepareDeclarationIdentity(node, context);
+    return this._prepareDeclarationRegistration(node, context);
   }
 
-  private _prepareDeclarationIdentity(node: this, context: Context): MaybePromise<this> {
-    let { name } = node.value;
-    const setName = (newName: Any<'property'>) => {
-      node.set('name', newName);
-      name = newName;
-    };
+  private _prepareDeclarationRegistration(node: this, context: Context): MaybePromise<this> {
+    const preparedName = this._prepareDeclarationNameIdentity(node, context);
+    if (isThenable(preparedName)) {
+      return preparedName.then(key => this._finishDeclarationRegistrationPrep(node, key, context));
+    }
+    return this._finishDeclarationRegistrationPrep(node, preparedName, context);
+  }
 
+  private _prepareDeclarationNameIdentity(node: this, context: Context): MaybePromise<Any<'property'>> {
+    const { name } = node.value;
     if (name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          setName(key);
-          this._normalizeAssignmentValue(node, key);
-          return this._prepareValueForRegistration(node, context);
+          node.set('name', key);
+          return key;
         });
       }
-      setName(maybeKey);
-      this._normalizeAssignmentValue(node, maybeKey);
-      return this._prepareValueForRegistration(node, context);
+      node.set('name', maybeKey);
+      return maybeKey;
     }
+    return name;
+  }
+
+  private _finishDeclarationRegistrationPrep(node: this, name: Any<'property'>, context: Context): MaybePromise<this> {
     this._normalizeAssignmentValue(node, name);
     return this._prepareValueForRegistration(node, context);
   }
