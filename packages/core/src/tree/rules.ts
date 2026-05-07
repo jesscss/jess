@@ -2515,7 +2515,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
           handleResolvedNode(result as Node, node, []);
         } catch {
-          // Can't resolve during preEval — leave in place for eval phase
+          // Can't resolve during registration prep — leave in place for eval.
         }
       }
     };
