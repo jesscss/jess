@@ -2370,7 +2370,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (pending.orderedIdentities.length === 0) {
           return;
         }
-        return this._resolveOtherIdentityNodesOnce(context, pending.orderedIdentities, handleResolvedNode);
+        return this._resolveOrderedIdentityPrepOnce(context, pending.orderedIdentities, handleResolvedNode);
       },
       () => this._finishPendingPrep(rules, context, saved, resolvedNodes)
     );
@@ -2521,28 +2521,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return resolveDeclarations();
   }
 
-  private _resolveOtherIdentityNodesOnce(
+  private _resolveOrderedIdentityPrepOnce(
     context: Context,
-    pendingIdentities: PendingIdentity[],
+    orderedIdentities: PendingIdentity[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
     // Keep these in source order. Callable names, selector identity, and import
     // paths still share this one-shot path until each surface has ordering tests
     // proving it can move independently.
-    const resolveOtherOnce = (): MaybePromise<void> => {
-      for (let i = 0; i < pendingIdentities.length; i++) {
-        const { node } = pendingIdentities[i]!;
+    const resolveOrderedOnce = (): MaybePromise<void> => {
+      for (let i = 0; i < orderedIdentities.length; i++) {
+        const { node } = orderedIdentities[i]!;
         try {
           const result = node.preEval(context);
 
           if (isThenable(result)) {
-            const remaining = pendingIdentities.slice(i + 1);
+            const remaining = orderedIdentities.slice(i + 1);
             return (result as Promise<Node>).then((resolvedNode) => {
               handleResolvedNode(resolvedNode, node, []);
               // Continue with remaining nodes
-              pendingIdentities.length = 0;
-              pendingIdentities.push(...remaining);
-              return resolveOtherOnce();
+              orderedIdentities.length = 0;
+              orderedIdentities.push(...remaining);
+              return resolveOrderedOnce();
             });
           }
 
@@ -2553,7 +2553,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     };
 
-    return resolveOtherOnce();
+    return resolveOrderedOnce();
   }
 
   /** Save current context roots to restore later */
