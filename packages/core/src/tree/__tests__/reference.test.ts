@@ -713,6 +713,33 @@ describe('reference', () => {
       expect(retryCounts.get('provider')).toBe(1);
     });
 
+    it('routes direct Rules.evalNode through registration prep', async () => {
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'first' }, { type: 'variable' })]
+          }),
+          value: any('final')
+        }),
+        decl({
+          name: any('color'),
+          value: ref({ key: 'second' }, { type: 'variable' })
+        })
+      ]);
+
+      const evald = await node.evalNode(context);
+
+      expect(`${evald}`).toBeString(`
+        color: final;
+      `);
+      expect(node.preEvaluated).toBe(true);
+    });
+
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];

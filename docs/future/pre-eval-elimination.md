@@ -841,6 +841,8 @@ The first code slice was a no-behavior-change extraction inside
 - added focused coverage for source-ordered non-declaration identity prep
 - added focused coverage for blocked dynamic declaration-name retry depth
 - named the dynamic declaration-name resolver around its fixed-point behavior
+- added focused coverage that direct `Rules.evalNode()` enters registration
+  prep for dynamic declaration names
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
