@@ -1,18 +1,17 @@
 /**
- * ScopeFrame — Slice 6 of the registry redesign.
+ * ScopeFrame.
  *
- * A ScopeFrame is a lightweight runtime object that will eventually replace the
- * generic DeclarationRegistry for variable lookup. For now it is populated in
- * parallel with the existing registry system so we can verify the two produce
- * identical results before switching the hot path.
+ * A ScopeFrame is a lightweight runtime object for lexical variable lookup.
+ * It carries static declaration buckets, live call-time slots, and unresolved
+ * declaration names without cloning node trees or rewriting parent pointers.
  *
  * Relationship to existing infrastructure:
- *   - declarationBucketsByName is built from Rules.varsByName (slice 5).
+ *   - declarationBucketsByName is built from Rules.varsByName.
  *     Only static-key VarDeclarations are stored here; dynamic keys
  *     (Interpolated name nodes) go into pendingDeclarationNames.
- *   - liveSlotsByName mirrors Rules.runtimeVarBindings (mixin params).
+ *   - liveSlotsByName holds mixin params, @arguments, and loop counters.
  *   - The parent frame chain is the call-site lexical chain, not the
- *     node .parent chain.  (Wired up in a later slice.)
+ *     node .parent chain.
  *
  * @see docs/future/performance/2026-04-13-registry-redesign-proposal.md
  */
@@ -96,8 +95,8 @@ export interface ScopeFrame {
 /**
  * Build a ScopeFrame from a Rules node.
  *
- * Slices 6–11: builds declarationBucketsByName from Rules.varsByName and
- * populates liveSlotsByName from the supplied map (mixin params, @arguments).
+ * Builds declarationBucketsByName from Rules.varsByName and populates
+ * liveSlotsByName from the supplied map (mixin params, @arguments, loop vars).
  * Parent frame wiring is handled by getScopeFrame() on Rules, which walks the
  * node parent chain to find the nearest ancestor frame when no explicit parent
  * is supplied.
@@ -144,9 +143,6 @@ export function buildScopeFrame(
  * Look up a variable name in a frame chain.
  * Mirrors the resolveCell algorithm from the design proposal.
  *
- * Slice 6: only checks declarationBucketsByName (contextual path).
- * liveSlotsByName population from runtimeVarBindings is a later slice.
- *
  * Returns the last BindingEntry in the bucket (Less "last definition wins"),
  * or undefined if not found in this frame or any ancestor.
  */
@@ -156,7 +152,7 @@ export function resolveFrameCell(
 ): BindingEntry | undefined {
   let f = frame;
   while (f) {
-    // 1. Live slots (mixin params)
+    // 1. Live slots (mixin params, @arguments, loop vars)
     const live = f.liveSlotsByName.get(name);
     if (live) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -169,9 +165,7 @@ export function resolveFrameCell(
       return bucket[bucket.length - 1];
     }
 
-    // 3. Dynamic decls — later slice
-
-    // 4. Walk parent
+    // 3. Walk parent
     f = f.parent;
   }
   return undefined;

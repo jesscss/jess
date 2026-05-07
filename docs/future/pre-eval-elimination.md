@@ -848,6 +848,8 @@ The first code slice was a no-behavior-change extraction inside
 - renamed the declaration pending lane to `pendingDeclarationNames`
 - aligned the lookup-side `ScopeFrame` pending declaration-name list with the
   same naming
+- removed stale slice-number / runtime-binding wording from ScopeFrame docs and
+  test names
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

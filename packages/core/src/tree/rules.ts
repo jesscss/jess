@@ -243,10 +243,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * full MixinRegistry.
    */
   mixinsByName: Map<string, MixinEntry[]> | undefined;
-  /**
-   * Slice 6: ScopeFrame built alongside the existing registry.
-   * undefined until first accessed via getScopeFrame().
-   */
+  /** ScopeFrame for lexical variable lookup, built lazily by getScopeFrame(). */
   scopeFrame: ScopeFrame | undefined;
   /**
    * Track whether this Rules subtree contains extend instructions.

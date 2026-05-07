@@ -1012,7 +1012,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('ScopeFrame (slice 6): declarationBucketsByName matches registry state after eval', async () => {
+    it('ScopeFrame declarationBucketsByName matches registry state after eval', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1051,7 +1051,7 @@ describe('Mixin', () => {
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
-    it('mixinsByName fast path (slice 7): type=mixin static-name lookup skips MixinRegistry.find', async () => {
+    it('mixinsByName fast path: type=mixin static-name lookup skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1313,7 +1313,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path (slice 15): type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+    it('mixinsByName fast path: type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1639,7 +1639,7 @@ describe('Mixin', () => {
       expect(css).toContain('guarded: with default;');
     });
 
-    it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
+    it('ScopeFrame live slots resolve param and @arguments via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1652,7 +1652,7 @@ describe('Mixin', () => {
         params: list([any('color', { role: 'property' })]),
         rules: rules([
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
-          // @arguments is automatically bound in liveSlotsByName (slice 10)
+          // @arguments is automatically bound in liveSlotsByName.
           decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
         ])
       });
@@ -1683,7 +1683,7 @@ describe('Mixin', () => {
       expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
-    it('frame live slots (slice 9/10): mixin param lookup goes via frame chain; runtimeVarBindings removed', async () => {
+    it('frame live slots resolve mixin params via frame chain after runtimeVarBindings removal', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
