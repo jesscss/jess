@@ -2202,9 +2202,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>
   ): this {
-    this._restoreRegistrationContext(context, saved);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return rules as this;
+    return this._restoreRegistrationAndReturn(rules, context, saved);
   }
 
   private _stampRegistrationMaps(rules: Rules): void {
@@ -2376,6 +2374,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     resolvedNodes: Node[]
   ): this {
     this._applyResolvedRegistrationNodes(rules, resolvedNodes);
+    return this._restoreRegistrationAndReturn(rules, context, saved);
+  }
+
+  private _restoreRegistrationAndReturn(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>
+  ): this {
     this._restoreRegistrationContext(context, saved);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return rules as this;
