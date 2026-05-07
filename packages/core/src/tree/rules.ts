@@ -2665,28 +2665,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // value is a detached ruleset containing mixin definitions). This avoids changing evaluation
       // order for regular detached rulesets like `@ruleset()` used for property blocks.
       if (priority === Priority.None && rules.treeContext?.leakyRules === true && isNode(rule, N.Expression)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const inner = (rule as any).value;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        if (isNode(inner, N.Call) && isNode((inner as any).value?.name, N.Reference)) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const ref = (inner as any).value.name;
-          const refType = String(ref?.options?.type ?? '');
-          if (refType === 'variable') {
-            const raw = ref.value?.key;
-            const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-            // Only if variable exists and its value is a detached ruleset Mixin with nested Mixin definitions.
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-            const decl = rules.find('declaration', keyStr, 'VarDeclaration') as any;
-            const val = decl?.value?.value;
-            const hasNestedMixinDefinitions =
-              isNode(val, N.Mixin)
-              && Array.isArray(val.value?.rules?.value)
-              && val.value.rules.value.some((n: any) => n?.type === 'Mixin');
-            if (hasNestedMixinDefinitions) {
-              priority = Priority.High;
-            }
-          }
+        const key = this._getLeakyVariableCallKey(rule);
+        if (key !== undefined && this._variableCallUnlocksMixinDefinitions(rules, key)) {
+          priority = Priority.High;
         }
       }
       let queue = evalQueue.get(priority) ?? [];
@@ -2694,6 +2675,33 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       evalQueue.set(priority, queue);
     }
     return evalQueue;
+  }
+
+  private _getLeakyVariableCallKey(rule: Node): string | undefined {
+    if (!isNode(rule, N.Expression)) {
+      return undefined;
+    }
+    const inner = rule.value;
+    if (!isNode(inner, N.Call)) {
+      return undefined;
+    }
+    const name = inner.value.name;
+    if (!isNode(name, N.Reference) || name.options?.type !== 'variable') {
+      return undefined;
+    }
+    const raw = name.value.key;
+    return Array.isArray(raw)
+      ? raw.join('')
+      : String(raw?.valueOf?.() ?? raw ?? '');
+  }
+
+  private _variableCallUnlocksMixinDefinitions(rules: Rules, key: string): boolean {
+    const declaration = rules.find('declaration', key, 'VarDeclaration');
+    if (!isNode(declaration, N.VarDeclaration)) {
+      return false;
+    }
+    const value = declaration.value.value;
+    return isNode(value, N.Mixin) && value.value.rules.value.some(node => isNode(node, N.Mixin));
   }
 
   /** Evaluate the built queues in priority order */
