@@ -420,6 +420,12 @@ Keep only the identity-relevant subset.
   known
 - move body traversal into normal eval flow
 
+The current code now names selector identity prep separately, but child `Rules`
+traversal still runs immediately after selector prep. That is intentional until
+there is a replacement for the extend-root registration side effect: nested
+rulesets must still be registered under the correct current extend root before
+root-final `processExtends(context)`.
+
 This is one of the few overrides that probably still needs an explicit
 "prepare identity" concept.
 
