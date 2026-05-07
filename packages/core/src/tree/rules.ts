@@ -2367,8 +2367,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     return pipe(
-      () => this._resolvePendingDeclarationNamePrep(rules, context, pending, resolvedNodes, handleResolvedNode),
-      () => this._resolvePendingOrderedIdentityPrep(context, pending, handleResolvedNode),
+      () => this._resolvePendingDeclarationNamePrep(rules, context, pending.pendingDeclarationNames, resolvedNodes, handleResolvedNode),
+      () => this._resolvePendingOrderedIdentityPrep(context, pending.orderedIdentities, handleResolvedNode),
       () => this._finishPendingPrep(rules, context, saved, resolvedNodes)
     );
   }
@@ -2376,16 +2376,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _resolvePendingDeclarationNamePrep(
     rules: Rules,
     context: Context,
-    pending: PendingPrep,
+    pendingDeclarationNames: Node[],
     resolvedNodes: Node[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
-    if (pending.pendingDeclarationNames.length === 0) {
+    if (pendingDeclarationNames.length === 0) {
       return;
     }
     const result = this._resolvePendingDeclarationNamesFixedPoint(
       context,
-      pending.pendingDeclarationNames,
+      pendingDeclarationNames,
       handleResolvedNode
     );
     const applyResolvedDeclarations = () => {
@@ -2399,13 +2399,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _resolvePendingOrderedIdentityPrep(
     context: Context,
-    pending: PendingPrep,
+    orderedIdentities: PendingIdentity[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
-    if (pending.orderedIdentities.length === 0) {
+    if (orderedIdentities.length === 0) {
       return;
     }
-    return this._resolveOrderedIdentityPrepOnce(context, pending.orderedIdentities, handleResolvedNode);
+    return this._resolveOrderedIdentityPrepOnce(context, orderedIdentities, handleResolvedNode);
   }
 
   private _finishPendingPrep(
