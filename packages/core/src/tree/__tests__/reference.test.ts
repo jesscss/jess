@@ -633,6 +633,38 @@ describe('reference', () => {
       }
     });
 
+    it('resolves dynamic declaration names that depend on earlier dynamic names', async () => {
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'first' }, { type: 'variable' })]
+          }),
+          value: any('final')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'second' }, { type: 'variable' })]
+          }),
+          value: any('red')
+        }),
+        decl({
+          name: any('color'),
+          value: ref({ key: 'final' }, { type: 'variable' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        color: red;
+      `);
+    });
+
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
