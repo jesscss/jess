@@ -2419,9 +2419,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _applyResolvedRegistrationNodes(rules: Rules, resolvedNodes: Node[]): void {
+    const resolvedByIndex = new Map<number | undefined, Node>();
+    for (const resolvedNode of resolvedNodes) {
+      if (!resolvedByIndex.has(resolvedNode.index)) {
+        resolvedByIndex.set(resolvedNode.index, resolvedNode);
+      }
+    }
     for (let i = 0; i < rules.value.length; i++) {
       const node = rules.value[i]!;
-      const resolvedNode = resolvedNodes.find(n => n.index === node.index);
+      const resolvedNode = resolvedByIndex.get(node.index);
       if (resolvedNode && resolvedNode !== node) {
         rules.value[i] = resolvedNode.inherit(node);
         rules.adopt(resolvedNode);
