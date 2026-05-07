@@ -2360,29 +2360,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     saved: ReturnType<Rules['_snapshotContext']>,
     pending: PendingPrep
   ): MaybePromise<this> {
-    const resolvedNodes: Node[] = [];
+    const resolvedOrderedIdentityNodes: Node[] = [];
 
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
-      return this._recordResolvedRegistrationNode(rules, resolvedNodes, resolvedNode, node, stillUnresolved);
+      return this._recordResolvedRegistrationNode(rules, resolvedOrderedIdentityNodes, resolvedNode, node, stillUnresolved);
     };
 
     return pipe(
-      () => this._resolvePendingDeclarationNamePrep(rules, context, pending.pendingDeclarationNames, resolvedNodes, handleResolvedNode),
+      () => this._resolvePendingDeclarationNamePrep(rules, context, pending.pendingDeclarationNames),
       () => this._resolvePendingOrderedIdentityPrep(context, pending.orderedIdentities, handleResolvedNode),
-      () => this._finishPendingPrep(rules, context, saved, resolvedNodes)
+      () => this._finishPendingPrep(rules, context, saved, resolvedOrderedIdentityNodes)
     );
   }
 
   private _resolvePendingDeclarationNamePrep(
     rules: Rules,
     context: Context,
-    pendingDeclarationNames: Node[],
-    resolvedNodes: Node[],
-    handleResolvedNode: PendingPrepHandler
+    pendingDeclarationNames: Node[]
   ): MaybePromise<void> {
     if (pendingDeclarationNames.length === 0) {
       return;
     }
+    const resolvedNodes: Node[] = [];
+    const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
+      return this._recordResolvedRegistrationNode(rules, resolvedNodes, resolvedNode, node, stillUnresolved);
+    };
     const result = this._resolvePendingDeclarationNamesFixedPoint(
       context,
       pendingDeclarationNames,

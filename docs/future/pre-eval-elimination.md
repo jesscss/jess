@@ -898,6 +898,8 @@ The first code slice was a no-behavior-change extraction inside
 - restored compose-import extend roots after imported evaluation errors
 - extracted declaration-name pending prep into its own `Rules` phase before
   source-ordered callable / selector / import identity prep
+- made declaration-name pending prep apply its resolved nodes through a local
+  accumulator instead of sharing the ordered-identity accumulator
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
