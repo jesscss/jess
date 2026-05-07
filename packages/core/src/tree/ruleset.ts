@@ -1064,20 +1064,33 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
     const childRules = node.value.rules;
     if (childRules && !childRules.preEvaluated) {
+      const rulesetFrameCount = context.rulesetFrames.length;
       context.rulesetFrames.push(node as Ruleset);
       if (extendRoot) {
         context.extendRoots.registerRoot(childRules, extendRoot);
       }
-      const preEvaldRules = childRules.preEval(context);
+      let preEvaldRules: MaybePromise<Rules>;
+      try {
+        preEvaldRules = childRules.preEval(context);
+      } catch (error) {
+        context.rulesetFrames.length = rulesetFrameCount;
+        throw error;
+      }
       if (isThenable(preEvaldRules)) {
-        return (preEvaldRules as Promise<Rules>).then((rules) => {
-          context.rulesetFrames.pop();
-          node.value.rules = rules;
-          if (extendRoot && rules !== childRules) {
-            context.extendRoots.registerRoot(rules, extendRoot);
+        return (preEvaldRules as Promise<Rules>).then(
+          (rules) => {
+            context.rulesetFrames.pop();
+            node.value.rules = rules;
+            if (extendRoot && rules !== childRules) {
+              context.extendRoots.registerRoot(rules, extendRoot);
+            }
+            return node;
+          },
+          (error) => {
+            context.rulesetFrames.length = rulesetFrameCount;
+            throw error;
           }
-          return node;
-        });
+        );
       }
       context.rulesetFrames.pop();
       node.value.rules = preEvaldRules as Rules;

@@ -888,6 +888,8 @@ The first code slice was a no-behavior-change extraction inside
   at-rule body prep cannot leak extend roots or ruleset frames
 - split ruleset registration prep around selector identity and removed stale
   unused parent-selector inheritance calculation
+- restored parent ruleset frames after child registration-prep errors so nested
+  ruleset prep cannot leak selector context on throw or rejection
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

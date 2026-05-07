@@ -89,6 +89,48 @@ describe('Rule', () => {
     `);
   });
 
+  it('restores parent ruleset frame when child preEval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const throwingChild = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    throwingChild.preEval = () => {
+      throw new Error('child preEval failed');
+    };
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: rules([throwingChild])
+    });
+    context.rulesetFrames = [savedFrame];
+
+    expect(() => node.preEval(context)).toThrow('child preEval failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+  });
+
+  it('restores parent ruleset frame when child preEval rejects', async () => {
+    const savedFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const throwingChild = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    throwingChild.preEval = () => Promise.reject(new Error('child preEval failed'));
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: rules([throwingChild])
+    });
+    context.rulesetFrames = [savedFrame];
+
+    await expect(node.preEval(context)).rejects.toThrow('child preEval failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+  });
+
   it('resolves a ruleset without touching render state', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
