@@ -125,14 +125,12 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (this.preEvaluated) {
       return this;
     }
-    return this._prepareMixinIdentity(context);
+    return this._prepareMixinRegistration(context);
   }
 
-  private _prepareMixinIdentity(context: Context): MaybePromise<this> {
+  private _prepareMixinRegistration(context: Context): MaybePromise<this> {
     // Mixins should NOT pre-evaluate their rules during initial registration.
     // Rules inside mixins should only be pre-evaluated when the mixin is called.
-    // So we only handle the name (if interpolated) and mark as preEvaluated,
-    // but do NOT call super.preEval() which would pre-evaluate children.
     let node = this;
     let { name, rules } = node.value;
     if (name && name instanceof Interpolated) {
@@ -141,6 +139,11 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       rules = node.value.rules;
     }
     node.preEvaluated = true;
+    this._prepareMixinBodyVisibility(rules, context);
+    return this._prepareMixinNameIdentity(node, name, context);
+  }
+
+  private _prepareMixinBodyVisibility(rules: Rules, context: Context): void {
     if (context.leakyRules) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope
@@ -150,6 +153,13 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       rules.options.rulesVisibility.Mixin = 'private';
       rules.options.rulesVisibility.VarDeclaration = 'private';
     }
+  }
+
+  private _prepareMixinNameIdentity(
+    node: this,
+    name: MixinValue['name'],
+    context: Context
+  ): MaybePromise<this> {
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {

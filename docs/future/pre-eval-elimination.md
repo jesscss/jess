@@ -863,6 +863,8 @@ The first code slice was a no-behavior-change extraction inside
   registration prep while keeping assignment/value prep timing unchanged
 - renamed the remaining declaration value prep helper so it does not pretend to
   be lookup-registration-only work
+- separated mixin registration prep into callable-name identity and body
+  visibility setup without pre-evaluating mixin body rules
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
