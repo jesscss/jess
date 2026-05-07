@@ -174,13 +174,13 @@ function findVarDeclarationFast(
     scope: Rules,
     frame: ScopeFrame
   ): void => {
-    if (frame.pendingDynamicDecls.length === 0) {
+    if (frame.pendingDeclarationNames.length === 0) {
       return;
     }
     const remaining: VarDeclaration[] = [];
     let mutated = false;
 
-    for (const decl of frame.pendingDynamicDecls) {
+    for (const decl of frame.pendingDeclarationNames) {
       if (decl.parent !== scope) {
         remaining.push(decl);
         continue;
@@ -218,7 +218,7 @@ function findVarDeclarationFast(
     }
 
     if (mutated) {
-      frame.pendingDynamicDecls = remaining;
+      frame.pendingDeclarationNames = remaining;
     }
   };
 

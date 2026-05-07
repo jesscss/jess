@@ -350,7 +350,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       targetRules,
       targetRules.scopeFrame?.parent,
       liveSlots,
-      targetRules.scopeFrame?.pendingDynamicDecls
+      targetRules.scopeFrame?.pendingDeclarationNames
     );
   }
 

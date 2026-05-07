@@ -846,6 +846,8 @@ The first code slice was a no-behavior-change extraction inside
 - named pending prep state around declaration-name nodes and ordered identities
 - named the ordered identity prep resolver around its source-order contract
 - renamed the declaration pending lane to `pendingDeclarationNames`
+- aligned the lookup-side `ScopeFrame` pending declaration-name list with the
+  same naming
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

@@ -365,10 +365,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           cursor = cursor.parent;
         }
       }
-      const pendingDynamicDecls = this.value.filter((node): node is VarDeclaration => {
+      const pendingDeclarationNames = this.value.filter((node): node is VarDeclaration => {
         return isNode(node, N.VarDeclaration) && !this._hasStaticName(node);
       });
-      this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent, undefined, pendingDynamicDecls);
+      this.scopeFrame = buildScopeFrame(this.varsByName, this, resolvedParent, undefined, pendingDeclarationNames);
     }
     return this.scopeFrame;
   }
@@ -1974,7 +1974,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (this._hasStaticName(node)) {
           if (this.scopeFrame && !this._indexing) {
             const sourceIdentity = node.sourceNode ?? node;
-            this.scopeFrame.pendingDynamicDecls = this.scopeFrame.pendingDynamicDecls.filter((entry) => {
+            this.scopeFrame.pendingDeclarationNames = this.scopeFrame.pendingDeclarationNames.filter((entry) => {
               const entryIdentity = entry.sourceNode ?? entry;
               return entry !== node
                 && entry !== sourceIdentity
@@ -2006,8 +2006,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             }
           }
         } else if (this.scopeFrame && !this._indexing) {
-          if (!this.scopeFrame.pendingDynamicDecls.includes(node as VarDeclaration)) {
-            this.scopeFrame.pendingDynamicDecls.push(node as VarDeclaration);
+          if (!this.scopeFrame.pendingDeclarationNames.includes(node as VarDeclaration)) {
+            this.scopeFrame.pendingDeclarationNames.push(node as VarDeclaration);
           }
         }
       }

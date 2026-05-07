@@ -9,7 +9,7 @@
  * Relationship to existing infrastructure:
  *   - declarationBucketsByName is built from Rules.varsByName (slice 5).
  *     Only static-key VarDeclarations are stored here; dynamic keys
- *     (Interpolated name nodes) go into pendingDynamicDecls.
+ *     (Interpolated name nodes) go into pendingDeclarationNames.
  *   - liveSlotsByName mirrors Rules.runtimeVarBindings (mixin params).
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.  (Wired up in a later slice.)
@@ -87,7 +87,7 @@ export interface ScopeFrame {
    * time, lookup does not try to resolve it; the surrounding Rules eval queue
    * is responsible for retrying later if/when that declaration settles.
    */
-  pendingDynamicDecls: VarDeclaration[];
+  pendingDeclarationNames: VarDeclaration[];
 
   /** Back-pointer to the Rules node this frame was built from. */
   rulesNode: object;  // typed as object to avoid a circular import; callers cast
@@ -112,7 +112,7 @@ export function buildScopeFrame(
   rulesNode: object,
   parent: ScopeFrame | undefined,
   liveSlots?: Map<string, BindingCell>,
-  pendingDynamicDecls?: VarDeclaration[]
+  pendingDeclarationNames?: VarDeclaration[]
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
 
@@ -135,7 +135,7 @@ export function buildScopeFrame(
     fallbackFrame: undefined,
     liveSlotsByName: liveSlots ?? new Map(),
     declarationBucketsByName,
-    pendingDynamicDecls: pendingDynamicDecls ?? [],
+    pendingDeclarationNames: pendingDeclarationNames ?? [],
     rulesNode
   };
 }

@@ -590,7 +590,7 @@ describe('reference', () => {
       }
     });
 
-    it('prunes stale pendingDynamicDecls entries when a dynamic name resolves after ScopeFrame creation', async () => {
+    it('prunes stale pendingDeclarationNames entries when a dynamic name resolves after ScopeFrame creation', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -620,7 +620,7 @@ describe('reference', () => {
           })
         ]);
 
-        // Force a pre-resolution frame snapshot so pendingDynamicDecls is populated first.
+        // Force a pre-resolution frame snapshot so pendingDeclarationNames is populated first.
         node.getScopeFrame();
 
         node = await node.eval(context);
@@ -773,7 +773,7 @@ describe('reference', () => {
         const resolved = await node.at(1)!.eval(context);
         expect(`${resolved}`).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
-        expect(frame.pendingDynamicDecls).toHaveLength(0);
+        expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
       } finally {
         RulesClass.prototype.find = originalFind;
@@ -814,7 +814,7 @@ describe('reference', () => {
         context.rulesContext = node;
         await expect(async () => await node.at(2)!.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
-        expect(frame.pendingDynamicDecls).toHaveLength(1);
+        expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
         RulesClass.prototype.find = originalFind;
@@ -852,7 +852,7 @@ describe('reference', () => {
         context.rulesContext = node;
         await expect(async () => await node.at(1)!.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
-        expect(frame.pendingDynamicDecls).toHaveLength(1);
+        expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
         RulesClass.prototype.find = originalFind;
