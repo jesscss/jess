@@ -3315,27 +3315,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context.depth--;
   }
 
-  override evalNode(context: Context): MaybePromise<this> {
+  override evalNode(context: Context): MaybePromise<Rules> {
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(sourceRulesOf(this));
-    let pipeResult: MaybePromise<this>;
+    let pipeResult: MaybePromise<Rules>;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       pipeResult = pipe(
         () => this._prepareForEval(context),
         ({ rules }: { rules: Rules; rulesToHoist: boolean }) => this._finishEval(rules, context, saved)
-      ) as MaybePromise<this>;
+      );
     } catch (error) {
       this._restoreEvalAfterError(context, saved);
       throw error;
     }
     if (isThenable(pipeResult)) {
-      return (pipeResult as Promise<this>).catch((error) => {
+      return pipeResult.catch((error) => {
         this._restoreEvalAfterError(context, saved);
         throw error;
       });
     }
-    return pipeResult as MaybePromise<this>;
+    return pipeResult;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
