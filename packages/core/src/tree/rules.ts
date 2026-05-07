@@ -75,6 +75,10 @@ function childRulesOf(node: Node): Rules | undefined {
   return undefined;
 }
 
+function sourceRulesOf(rules: Rules): Rules {
+  return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
+}
+
 function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
 }
@@ -1879,8 +1883,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         }
       }
     };
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    iterateRules(this as unknown as Rules);
+    iterateRules(this);
     return Object.fromEntries(output);
   }
 
@@ -1960,20 +1963,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         // start is only relevant for finding variables before the current node in the same Rules
         opts.start = undefined;
         // node.type is 'VarDeclaration' or 'Declaration', use it directly as filterType
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        let result = this.find('declaration', key, node.type as 'VarDeclaration' | 'Declaration', opts);
+        let result = this.find('declaration', key, normalizeDeclarationFilter(node.type), opts);
         if (result) {
           if (result.options?.readonly || opts.readonly) {
             throw new ReferenceError(`"${key}" is readonly`);
           }
 
           // Find the Rules node that contains the found declaration
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          let foundRules: Rules | undefined = result.parent as Rules;
-
-          if (!foundRules) {
+          if (!isNode(result.parent, N.Rules)) {
             throw new Error(`Could not find parent Rules for declaration '${key}'`);
           }
+          const foundRules = result.parent;
 
           // Create a new declaration with the same name but our value
           const newDeclaration = node.copy();
@@ -3311,8 +3311,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         context.extendRoots.popExtendRoot();
       }
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === (this.sourceNode as Rules)) {
+    if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === sourceRulesOf(this)) {
       context.rulesEvalStack.pop();
     }
     context.depth--;
@@ -3320,8 +3319,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    context.rulesEvalStack.push(this.sourceNode as Rules);
+    context.rulesEvalStack.push(sourceRulesOf(this));
     let pipeResult: MaybePromise<this>;
     try {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3461,6 +3459,10 @@ export function callableRulesEntry(
     parent,
     index
   };
+}
+
+function isCallableEntry(entry: MixinEntry): entry is CallableEntry {
+  return !isNode(entry, N.Ruleset);
 }
 
 function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
@@ -3639,8 +3641,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
         mixinCandidates.push(mixin);
       } else {
         /** The mixin has parameters, so let's check args to see if there's a match */
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const originalParams = (mixin as Mixin).value.params!;
+        if (!isCallableEntry(mixin)) {
+          continue;
+        }
+        const originalParams = mixin.value.params;
+        if (!originalParams) {
+          continue;
+        }
         const bindingRecordsByIndex = new Map<number, RuntimeVarBindingRecord>();
         const signatureNodes: Array<Node | undefined> = new Array(originalParams.length);
         const hasRestParamOriginal = originalParams.value.some(p => p.type === 'Rest');
@@ -3786,8 +3793,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             signatureNodes.filter((node): node is Node => Boolean(node)),
             { sep: ';' }
           );
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          resolvedParamBindings.set(mixin as CallableEntry, {
+          resolvedParamBindings.set(mixin, {
             bindings: [...bindingRecordsByIndex.entries()]
               .sort((a, b) => a[0] - b[0])
               .map(([, binding]) => binding),
