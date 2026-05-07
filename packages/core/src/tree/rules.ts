@@ -2159,7 +2159,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<PendingPrep> {
     const pending: PendingPrep = {
-      declarationNameNodes: [],
+      pendingDeclarationNames: [],
       orderedIdentities: []
     };
 
@@ -2360,10 +2360,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     return pipe(
       () => {
-        if (pending.declarationNameNodes.length === 0) {
+        if (pending.pendingDeclarationNames.length === 0) {
           return;
         }
-        return this._resolvePendingDeclarationNamesFixedPoint(context, pending.declarationNameNodes, handleResolvedNode);
+        return this._resolvePendingDeclarationNamesFixedPoint(context, pending.pendingDeclarationNames, handleResolvedNode);
       },
       () => {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
@@ -2441,7 +2441,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _addPendingPrep(pending: PendingPrep, node: Node): void {
     if (this._isDeclarationRegistrationNode(node)) {
-      pending.declarationNameNodes.push(node);
+      pending.pendingDeclarationNames.push(node);
       return;
     }
     pending.orderedIdentities.push({
@@ -2451,7 +2451,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _hasPendingPrep(pending: PendingPrep): boolean {
-    return pending.declarationNameNodes.length > 0 || pending.orderedIdentities.length > 0;
+    return pending.pendingDeclarationNames.length > 0 || pending.orderedIdentities.length > 0;
   }
 
   private _pendingIdentityKind(node: Node): PendingIdentityKind {
@@ -3274,7 +3274,7 @@ type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 // Registration prep has two pending lanes: declaration-name nodes run through a
 // local fixed point, while every other unresolved identity stays source-ordered.
 type PendingPrep = {
-  declarationNameNodes: Node[];
+  pendingDeclarationNames: Node[];
   orderedIdentities: PendingIdentity[];
 };
 
