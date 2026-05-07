@@ -864,6 +864,13 @@ callable/import/selector identity prep preserves source order; splitting that
 list still needs separate proof that each surface can move independently without
 changing registration or import retry timing.
 
+Do not simply override `Rules.eval()` to skip the public `preEval()` wrapper.
+That changes when registration prep runs relative to `rulesEvalStack` setup and
+can break root-final extend serialization. A concrete guard is
+`src/tree/__tests__/extend-rules.test.ts`'s pseudo-class same-header extend
+case: `.btn:hover` must coalesce declarations when the selector was
+extend-mutated, while plain duplicate sibling selectors must remain separate.
+
 ## Non-Goals
 
 This document does not propose:
