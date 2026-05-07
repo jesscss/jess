@@ -3072,20 +3072,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._setupContextForRules(context, this);
-    const afterRegistrationPrep = (rules: Rules) => {
-      this._setupContextForRules(context, rules);
-      // When we're the outermost Rules, use the tree we're evaling as root
-      // (may differ from context.root set in getTree, or be preEval's clone).
-      if (context.rulesEvalStack.length === 1) {
-        context.root = rules;
-      }
-      return this._evalAfterRegistrationPrep(rules, context);
-    };
     const rulesAfterPrep = this._ensureRegistrationPrep(context);
     if (isThenable(rulesAfterPrep)) {
-      return (rulesAfterPrep as Promise<Rules>).then(afterRegistrationPrep);
+      return (rulesAfterPrep as Promise<Rules>).then(rules =>
+        this._evalPreparedRules(rules, context)
+      );
     }
-    return afterRegistrationPrep(rulesAfterPrep as Rules);
+    return this._evalPreparedRules(rulesAfterPrep as Rules, context);
+  }
+
+  private _evalPreparedRules(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+    this._setupContextForRules(context, rules);
+    // When we're the outermost Rules, use the tree we're evaling as root
+    // (may differ from context.root set in getTree, or be preEval's clone).
+    if (context.rulesEvalStack.length === 1) {
+      context.root = rules;
+    }
+    return this._evalAfterRegistrationPrep(rules, context);
   }
 
   private _ensureRegistrationPrep(context: Context): MaybePromise<Rules> {

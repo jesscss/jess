@@ -822,6 +822,7 @@ The first code slice was a no-behavior-change extraction inside
 - updated stale pending-dynamic wording from `preEval` to registration prep
 - shared the registration context restore / return path across pending and
   no-pending completion
+- extracted the eval entrypoint continuation that runs after registration prep
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
