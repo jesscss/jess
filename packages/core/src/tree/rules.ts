@@ -65,6 +65,13 @@ function isCharsetNode(node: Node): node is Any<'charset'> {
   return node.type === 'Any' && node.options.role === 'charset';
 }
 
+function childRulesOf(node: Node): Rules | undefined {
+  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) {
+    return node.value.rules;
+  }
+  return undefined;
+}
+
 function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, '_isPathResolutionError') === true;
 }
@@ -2637,13 +2644,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     for (const node of value) {
       if (isNode(node, N.Ruleset)) {
-        map.set(node as Ruleset, counter.value);
+        map.set(node, counter.value);
         counter.value++;
       }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const innerRules = (node as Node & { value?: { rules?: unknown } }).value?.rules;
-      if (innerRules && isNode(innerRules, N.Rules)) {
-        this._assignDocumentOrderDepthFirst(innerRules as Rules, map, counter);
+      const innerRules = childRulesOf(node);
+      if (innerRules) {
+        this._assignDocumentOrderDepthFirst(innerRules, map, counter);
       }
     }
   }
@@ -3922,10 +3928,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       ) {
         return;
       }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const nestedRules = (node as any).value?.rules;
-      if (nestedRules && isNode(nestedRules, N.Rules)) {
-        clearReferenceModeForMixinOutput(nestedRules as Node);
+      const nestedRules = childRulesOf(node);
+      if (nestedRules) {
+        clearReferenceModeForMixinOutput(nestedRules);
       }
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const children = (node as any).value;
