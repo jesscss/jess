@@ -365,6 +365,13 @@ The promising direction is:
 - treat child-rule traversal as a consequence of evaluating the at-rule body,
   not as a prerequisite walk
 
+Do not move at-rule child traversal casually. Current pre-eval traversal is
+still what registers nested rulesets against the correct extend root, especially
+inside nestable wrappers and root-only at-rules that temporarily clear selector
+frames. The guard tests live in `src/tree/__tests__/at-rule.test.ts`,
+`src/tree/__tests__/extend-roots.test.ts`, and
+`src/tree/__tests__/extend-eval-integration.test.ts`.
+
 ### `Mixin`
 
 `Mixin.preEval()` mostly resolves name identity and mutates body visibility.
