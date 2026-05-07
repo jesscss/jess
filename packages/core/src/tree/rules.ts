@@ -3038,13 +3038,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * After registration prep: ensure root on extend stack, build eval queue, run evaluation.
    */
   private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
-    const isMainRoot = rules === context.root;
-    if (isMainRoot && context.extendRoots.extendRootStack.length === 0) {
-      if (!context.extendRoots.root) {
-        context.extendRoots.registerRoot(rules);
-      }
-      context.extendRoots.pushExtendRoot(rules);
-    }
+    this._ensureRootExtendStack(rules, context);
     if (rules.evaluated) {
       return { rules, rulesToHoist: false };
     }
@@ -3068,6 +3062,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     this._normalizeCallDeclarationRulesOrder(rules);
     this._coalesceMergedDeclarations(rules);
     return { rules, rulesToHoist: maybeHoist as boolean };
+  }
+
+  private _ensureRootExtendStack(rules: Rules, context: Context): void {
+    if (rules !== context.root || context.extendRoots.extendRootStack.length !== 0) {
+      return;
+    }
+    if (!context.extendRoots.root) {
+      context.extendRoots.registerRoot(rules);
+    }
+    context.extendRoots.pushExtendRoot(rules);
   }
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {

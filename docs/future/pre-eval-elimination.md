@@ -823,6 +823,7 @@ The first code slice was a no-behavior-change extraction inside
 - shared the registration context restore / return path across pending and
   no-pending completion
 - extracted the eval entrypoint continuation that runs after registration prep
+- extracted root extend-stack setup from the post-registration eval bridge
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
