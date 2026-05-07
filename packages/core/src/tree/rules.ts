@@ -3046,18 +3046,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const evalQueue = this._buildEvalQueue(rules);
     const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
     if (isThenable(maybeHoist)) {
-      return (maybeHoist as Promise<boolean>).then((rulesToHoist) => {
-        this._normalizeCallDeclarationRulesOrder(rules);
-        this._coalesceMergedDeclarations(rules);
-        return {
-          rules,
-          rulesToHoist
-        };
-      });
+      return (maybeHoist as Promise<boolean>).then(rulesToHoist =>
+        this._finishQueueEvaluation(rules, rulesToHoist)
+      );
     }
+    return this._finishQueueEvaluation(rules, maybeHoist as boolean);
+  }
+
+  private _finishQueueEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
     this._normalizeCallDeclarationRulesOrder(rules);
     this._coalesceMergedDeclarations(rules);
-    return { rules, rulesToHoist: maybeHoist as boolean };
+    return {
+      rules,
+      rulesToHoist
+    };
   }
 
   private _ensureRootExtendStack(rules: Rules, context: Context): void {

@@ -825,6 +825,7 @@ The first code slice was a no-behavior-change extraction inside
 - extracted the eval entrypoint continuation that runs after registration prep
 - extracted root extend-stack setup from the post-registration eval bridge
 - extracted root document-order assignment from the post-registration eval bridge
+- extracted post-queue evaluation cleanup from the post-registration eval bridge
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
