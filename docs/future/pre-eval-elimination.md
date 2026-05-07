@@ -884,6 +884,8 @@ The first code slice was a no-behavior-change extraction inside
   registration helpers without moving either behavior
 - extracted at-rule body registration context setup/restore without moving child
   traversal timing
+- restored Rules registration context after child registration-prep errors so
+  at-rule body prep cannot leak extend roots or ruleset frames
 - split ruleset registration prep around selector identity and removed stale
   unused parent-selector inheritance calculation
 - added a focused mixin test proving callable identity prep still does not

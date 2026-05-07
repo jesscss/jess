@@ -90,6 +90,30 @@ describe('AtRule', () => {
     expect(preEvald.value.name.valueOf()).toBe('@media');
   });
 
+  it('restores at-rule body registration context when child preEval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    const throwingChild = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    throwingChild.preEval = () => {
+      throw new Error('child preEval failed');
+    };
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      rules: rules([throwingChild])
+    });
+    context.rulesetFrames = [savedFrame];
+    const extendRootStackLength = context.extendRoots.extendRootStack.length;
+
+    expect(() => node.preEval(context)).toThrow('child preEval failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+    expect(context.extendRoots.extendRootStack).toHaveLength(extendRootStackLength);
+  });
+
   it('renders resolved at-rules through render(context)', async () => {
     const root = rules([
       vardecl({

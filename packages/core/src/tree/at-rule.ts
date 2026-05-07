@@ -198,15 +198,26 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
       const saved = this._setupAtRuleBodyRegistrationContext(node, rules, context);
-      const preEvaldRules = rules.preEval(context);
+      let preEvaldRules: MaybePromise<Rules>;
+      try {
+        preEvaldRules = rules.preEval(context);
+      } catch (error) {
+        this._restoreAtRuleBodyRegistrationContext(context, saved);
+        throw error;
+      }
       if (isThenable(preEvaldRules)) {
-        return (preEvaldRules as Promise<Rules>).then((evaldRules) => {
-          this._restoreAtRuleBodyRegistrationContext(context, saved);
-          if (evaldRules !== rules) {
-            ensureDerived().value.rules = evaldRules;
-          }
-          return finalize();
-        });
+        return (preEvaldRules as Promise<Rules>)
+          .then((evaldRules) => {
+            this._restoreAtRuleBodyRegistrationContext(context, saved);
+            if (evaldRules !== rules) {
+              ensureDerived().value.rules = evaldRules;
+            }
+            return finalize();
+          })
+          .catch((error) => {
+            this._restoreAtRuleBodyRegistrationContext(context, saved);
+            throw error;
+          });
       }
       this._restoreAtRuleBodyRegistrationContext(context, saved);
       if (preEvaldRules !== rules) {

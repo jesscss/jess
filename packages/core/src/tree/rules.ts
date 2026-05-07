@@ -2071,17 +2071,28 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       rules.preEvaluated = true;
       const { saved, isNestableAtRuleBody } = this._setupRegistrationContext(context, rules);
 
-      const mp = this._prepareRegistration(rules, context, saved);
+      let mp: MaybePromise<this>;
+      try {
+        mp = this._prepareRegistration(rules, context, saved);
+      } catch (error) {
+        this._restoreRegistrationAfterError(context, saved);
+        throw error;
+      }
       const popNestableBody = () => {
         if (isNestableAtRuleBody) {
           context.extendRoots.popExtendRoot();
         }
       };
       if (isThenable(mp)) {
-        return (mp as Promise<this>).then((result) => {
-          popNestableBody();
-          return result;
-        });
+        return (mp as Promise<this>)
+          .then((result) => {
+            popNestableBody();
+            return result;
+          })
+          .catch((error) => {
+            this._restoreRegistrationAfterError(context, saved);
+            throw error;
+          });
       }
       popNestableBody();
       return mp;
@@ -2569,6 +2580,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     context.treeRoot = saved.treeRoot;
     if (saved.root !== undefined) {
       context.root = saved.root;
+    }
+  }
+
+  private _restoreRegistrationAfterError(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
+    this._restoreRegistrationContext(context, saved);
+    while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+      context.extendRoots.popExtendRoot();
     }
   }
 
