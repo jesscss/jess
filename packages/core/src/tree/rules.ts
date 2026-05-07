@@ -2470,31 +2470,31 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
     // Retry because one declaration's name might depend on another's being registered.
-    let declRetries = 0;
-    const unresolvedDecls: Node[] = [...pendingDeclarations];
+    let attempts = 0;
+    const unresolvedDeclarations: Node[] = [...pendingDeclarations];
 
     const resolveDeclarations = (): MaybePromise<void> => {
-      declRetries++;
-      if (declRetries > MAX_DECLARATION_NAME_REGISTRATION_RETRIES || unresolvedDecls.length === 0) {
+      attempts++;
+      if (attempts > MAX_DECLARATION_NAME_REGISTRATION_RETRIES || unresolvedDeclarations.length === 0) {
         return;
       }
       const stillUnresolved: Node[] = [];
       let madeProgress = false;
 
-      for (let i = 0; i < unresolvedDecls.length; i++) {
-        const node = unresolvedDecls[i]!;
+      for (let i = 0; i < unresolvedDeclarations.length; i++) {
+        const node = unresolvedDeclarations[i]!;
         try {
           const result = node.preEval(context);
 
           if (isThenable(result)) {
-            const remaining = unresolvedDecls.slice(i + 1);
+            const remaining = unresolvedDeclarations.slice(i + 1);
             return (result as Promise<Node>).then((resolvedNode) => {
               if (handleResolvedNode(resolvedNode, node, stillUnresolved)) {
                 madeProgress = true;
               }
-              unresolvedDecls.length = 0;
-              unresolvedDecls.push(...stillUnresolved, ...remaining);
-              if (madeProgress && unresolvedDecls.length > 0) {
+              unresolvedDeclarations.length = 0;
+              unresolvedDeclarations.push(...stillUnresolved, ...remaining);
+              if (madeProgress && unresolvedDeclarations.length > 0) {
                 return resolveDeclarations();
               }
             });
@@ -2509,8 +2509,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
 
       if (madeProgress && stillUnresolved.length > 0) {
-        unresolvedDecls.length = 0;
-        unresolvedDecls.push(...stillUnresolved);
+        unresolvedDeclarations.length = 0;
+        unresolvedDeclarations.push(...stillUnresolved);
         return resolveDeclarations();
       }
     };

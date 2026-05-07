@@ -850,6 +850,8 @@ The first code slice was a no-behavior-change extraction inside
   same naming
 - removed stale slice-number / runtime-binding wording from ScopeFrame docs and
   test names
+- named the declaration-name fixed-point retry state around attempts and
+  unresolved declarations
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
