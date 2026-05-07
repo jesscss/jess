@@ -984,12 +984,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     // Just evaluate the selector
     return pipe(
       () => this._prepareRulesetSelectorIdentity(selector, context),
-      sel => this._finishRulesetSelectorPrep(node, sel as Selector | Nil, context)
+      sel => this._finishRulesetSelectorPrep(node, sel, context)
     );
   }
 
   private _prepareRulesetSelectorIdentity(selector: Selector | Nil, context: Context): MaybePromise<Selector | Nil> {
-    return selector.eval(context) as MaybePromise<Selector | Nil>;
+    return selector.eval(context);
   }
 
   private _prepareRulesVisibility(node: this, context: Context): void {
