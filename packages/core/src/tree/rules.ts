@@ -2406,9 +2406,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (resolvedNode.index === undefined) {
       resolvedNode.index = node.index;
     }
-    if (resolvedNode.type === 'Ruleset') {
-      rules.registerNode(resolvedNode);
-    }
     if (isNode(resolvedNode, N.Nil) || this._hasStaticName(resolvedNode)) {
       resolvedNodes.push(resolvedNode);
       this._registerNodeIfEligible(rules, resolvedNode);
