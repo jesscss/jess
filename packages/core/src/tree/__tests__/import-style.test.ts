@@ -167,6 +167,28 @@ describe('Style import', () => {
       expect(`${resolved}`).toBe('color: blue');
     });
 
+    it('restores compose extend root when imported rules eval throws', async () => {
+      const composedPath = resolve(process.cwd(), 'compose-throws.jess');
+      const composedRules = rules([]);
+      composedRules.eval = () => {
+        throw new Error('compose eval failed');
+      };
+      context.sourceTrees.set(composedPath, composedRules);
+      const parentRoot = rules([]);
+      context.extendRoots.registerRoot(parentRoot);
+      context.extendRoots.pushExtendRoot(parentRoot);
+      const extendRootStackLength = context.extendRoots.extendRootStack.length;
+      const node = style({
+        path: quoted(any('compose-throws.jess'))
+      }, {
+        type: 'compose',
+        namespace: '*'
+      });
+
+      await expect(node.eval(context)).rejects.toThrow('compose eval failed');
+      expect(context.extendRoots.extendRootStack).toHaveLength(extendRootStackLength);
+    });
+
     it('tracks non-classic import boundaries on Rules options, not source provenance', async () => {
       const composedPath = resolve(process.cwd(), 'composed-boundary.jess');
       context.sourceTrees.set(composedPath, rules([

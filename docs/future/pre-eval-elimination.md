@@ -895,6 +895,7 @@ The first code slice was a no-behavior-change extraction inside
 - restored at-rule prelude evaluation rules context when prelude eval throws
 - restored at-rule body evaluation context after body eval/prep errors so frames,
   cleared ruleset frames, and pushed extend roots do not leak
+- restored compose-import extend roots after imported evaluation errors
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

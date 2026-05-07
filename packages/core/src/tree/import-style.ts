@@ -668,79 +668,80 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           pushedExtendRoot = true;
         }
 
-        /** Freshly evaluate the rules in these circumstances
-       * - `with` (or `set`) values are present
-       * - the rules have not been evaluated yet
-       * - the import type is `import`
-      */
-        if (withValues || !evaldRules || type === 'import') {
-          let pushedImplicitReferenceEvalScope = false;
-          const isImplicitReferenceModeForEval = (
-            type === 'import'
-            && importOptions!.reference !== true
-            && importOptions!._dedupe === true
-            && !importOptions!.multiple
-          );
-          if (isImplicitReferenceModeForEval) {
-            // Dedupe re-imports behave like an implicit reference traversal:
-            // evaluate for symbol availability, but avoid outward extend side effects.
-            context.pushImportScope({ reference: true });
-            pushedImplicitReferenceEvalScope = true;
-          }
-
-          // For protected imports (mutable: false), push the rules to extend root stack
-          // so rulesets register in the import's registry, not the parent's
-          const isImportProtected = type === 'import' && importOptions!.mutable === false;
-          const shouldUseLocalExtendRoot = isImportProtected || isImplicitReferenceModeForEval;
-          if (isImplicitReferenceModeForEval) {
-            // Link local in-eval root so external extends can still target deduped imports.
-            context.extendRoots.registerRoot(rules, parentExtendRoot, {
-              isProtected: isImportProtected,
-              namespace: node.options.namespace
-            });
-          }
-          if (shouldUseLocalExtendRoot) {
-            context.extendRoots.pushExtendRoot(rules);
-          }
-
-          try {
-            // Call preEval first to get the cloned Rules (if cloning occurs)
-            // sourceNode is already set above, so the cloned Rules will have it
-            rules = await rules.preEval(context);
-            if (type === 'import') {
-            /** Needed at evaluation time for older import type */
-              node.adopt(rules);
+        try {
+          /** Freshly evaluate the rules in these circumstances
+         * - `with` (or `set`) values are present
+         * - the rules have not been evaluated yet
+         * - the import type is `import`
+        */
+          if (withValues || !evaldRules || type === 'import') {
+            let pushedImplicitReferenceEvalScope = false;
+            const isImplicitReferenceModeForEval = (
+              type === 'import'
+              && importOptions!.reference !== true
+              && importOptions!._dedupe === true
+              && !importOptions!.multiple
+            );
+            if (isImplicitReferenceModeForEval) {
+              // Dedupe re-imports behave like an implicit reference traversal:
+              // evaluate for symbol availability, but avoid outward extend side effects.
+              context.pushImportScope({ reference: true });
+              pushedImplicitReferenceEvalScope = true;
             }
-            rules = await rules.eval(context);
-          } finally {
-            if (pushedImplicitReferenceEvalScope) {
-              context.popImportScope();
+
+            // For protected imports (mutable: false), push the rules to extend root stack
+            // so rulesets register in the import's registry, not the parent's
+            const isImportProtected = type === 'import' && importOptions!.mutable === false;
+            const shouldUseLocalExtendRoot = isImportProtected || isImplicitReferenceModeForEval;
+            if (isImplicitReferenceModeForEval) {
+              // Link local in-eval root so external extends can still target deduped imports.
+              context.extendRoots.registerRoot(rules, parentExtendRoot, {
+                isProtected: isImportProtected,
+                namespace: node.options.namespace
+              });
             }
             if (shouldUseLocalExtendRoot) {
-              context.extendRoots.popExtendRoot();
+              context.extendRoots.pushExtendRoot(rules);
             }
-          }
 
-          // Cache compose modules (and configured modules) after first evaluation.
-          if (
-            type === 'compose'
-            || withValues?.type === 'set'
-            || (type === 'import' && importOptions!.once !== false)
-          ) {
-            context.evaldTrees.set(resolvedPath, rules);
-          }
-        } else {
-          // Compose cache hit: `rules` is already the cached canonical/session
-          // result from `context.evaldTrees` (assigned at line 353). No clone
-          // and no re-eval is needed — shape differences per compose scope are
-          // handled by the shallow wrapper built in `getFinalRules` below,
-          // which applies per-scope visibility/reference options without
-          // mutating the shared cached tree.
-        }
+            try {
+              // Call preEval first to get the cloned Rules (if cloning occurs)
+              // sourceNode is already set above, so the cloned Rules will have it
+              rules = await rules.preEval(context);
+              if (type === 'import') {
+                /** Needed at evaluation time for older import type */
+                node.adopt(rules);
+              }
+              rules = await rules.eval(context);
+            } finally {
+              if (pushedImplicitReferenceEvalScope) {
+                context.popImportScope();
+              }
+              if (shouldUseLocalExtendRoot) {
+                context.extendRoots.popExtendRoot();
+              }
+            }
 
-        // Pop extend root if we pushed one
-        if (pushedExtendRoot) {
-          context.extendRoots.popExtendRoot();
+            // Cache compose modules (and configured modules) after first evaluation.
+            if (
+              type === 'compose'
+              || withValues?.type === 'set'
+              || (type === 'import' && importOptions!.once !== false)
+            ) {
+              context.evaldTrees.set(resolvedPath, rules);
+            }
+          } else {
+            // Compose cache hit: `rules` is already the cached canonical/session
+            // result from `context.evaldTrees` (assigned at line 353). No clone
+            // and no re-eval is needed — shape differences per compose scope are
+            // handled by the shallow wrapper built in `getFinalRules` below,
+            // which applies per-scope visibility/reference options without
+            // mutating the shared cached tree.
+          }
+        } finally {
+          if (pushedExtendRoot) {
+            context.extendRoots.popExtendRoot();
+          }
         }
 
         // NB: previously this block cleared `referenceMode` on both `rules`
