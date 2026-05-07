@@ -105,16 +105,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
-      const prepared = this._prepareNameIdentity(context);
+      const prepared = this._prepareAtRuleNameIdentity(context);
       if (isThenable(prepared)) {
-        return (prepared as Promise<AtRule>).then(node => this._prepareRegistration(node, context, this));
+        return (prepared as Promise<AtRule>).then(node => this._prepareAtRuleRegistration(node, context, this));
       }
-      return this._prepareRegistration(prepared as AtRule, context, this);
+      return this._prepareAtRuleRegistration(prepared as AtRule, context, this);
     }
     return this;
   }
 
-  private _prepareNameIdentity(context: Context): MaybePromise<AtRule> {
+  private _prepareAtRuleNameIdentity(context: Context): MaybePromise<AtRule> {
     if (!(this.value.name instanceof Interpolated)) {
       return this;
     }
@@ -140,7 +140,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return node;
   }
 
-  private _prepareRegistration(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {
+  private _prepareAtRuleRegistration(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule | Nil> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
         node = original.clone(false) as AtRule;

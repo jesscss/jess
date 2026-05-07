@@ -865,6 +865,8 @@ The first code slice was a no-behavior-change extraction inside
   be lookup-registration-only work
 - separated mixin registration prep into callable-name identity and body
   visibility setup without pre-evaluating mixin body rules
+- named at-rule prep helpers around at-rule name identity and registration
+  instead of generic name / registration wording
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
