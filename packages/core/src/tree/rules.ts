@@ -2359,9 +2359,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     };
 
     return pipe(
-      () => this._resolvePendingDeclarationNames(context, pending.declarations, handleResolvedNode),
+      () => {
+        if (pending.declarations.length === 0) {
+          return;
+        }
+        return this._resolvePendingDeclarationNames(context, pending.declarations, handleResolvedNode);
+      },
       () => {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
+        if (pending.other.length === 0) {
+          return;
+        }
         return this._resolveOtherDynamicNodesOnce(context, pending.other, handleResolvedNode);
       },
       () => this._finishPendingRegistration(rules, context, saved, resolvedNodes)

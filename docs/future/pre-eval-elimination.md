@@ -830,6 +830,7 @@ The first code slice was a no-behavior-change extraction inside
 - extracted eval finalization and context restore from the eval continuation
 - extracted eval error context restore from the eval entrypoint
 - classified pending registration into declaration and other buckets during scan
+- skipped empty pending registration buckets during resolution
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
