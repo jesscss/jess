@@ -2159,8 +2159,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<PendingRegistration> {
     const pending: PendingRegistration = {
-      declarations: [],
-      other: []
+      declarationNames: [],
+      otherIdentities: []
     };
 
     // Process each node with a registerable identity, handling both sync and async prep.
@@ -2360,17 +2360,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
     return pipe(
       () => {
-        if (pending.declarations.length === 0) {
+        if (pending.declarationNames.length === 0) {
           return;
         }
-        return this._resolvePendingDeclarationNames(context, pending.declarations, handleResolvedNode);
+        return this._resolvePendingDeclarationNames(context, pending.declarationNames, handleResolvedNode);
       },
       () => {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
-        if (pending.other.length === 0) {
+        if (pending.otherIdentities.length === 0) {
           return;
         }
-        return this._resolveOtherDynamicNodesOnce(context, pending.other, handleResolvedNode);
+        return this._resolveOtherDynamicNodesOnce(context, pending.otherIdentities, handleResolvedNode);
       },
       () => this._finishPendingRegistration(rules, context, saved, resolvedNodes)
     );
@@ -2435,14 +2435,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _addPendingRegistration(pending: PendingRegistration, node: Node): void {
     if (this._isDeclarationRegistrationNode(node)) {
-      pending.declarations.push(node);
+      pending.declarationNames.push(node);
       return;
     }
-    pending.other.push(node);
+    pending.otherIdentities.push(node);
   }
 
   private _hasPendingRegistration(pending: PendingRegistration): boolean {
-    return pending.declarations.length > 0 || pending.other.length > 0;
+    return pending.declarationNames.length > 0 || pending.otherIdentities.length > 0;
   }
 
   private _resolvePendingDeclarationNames(
@@ -3250,8 +3250,8 @@ export const rules = defineType(Rules, 'Rules');
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 
 type PendingRegistration = {
-  declarations: Node[];
-  other: Node[];
+  declarationNames: Node[];
+  otherIdentities: Node[];
 };
 
 /**
