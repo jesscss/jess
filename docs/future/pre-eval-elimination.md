@@ -841,20 +841,24 @@ The first code slice was a no-behavior-change extraction inside
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
-The current implementation slice has started introducing `Rules`-owned pending
-registration state by splitting dynamic declaration-name retry into
-`Rules._resolvePendingDeclarationNames()`. That helper still runs under the
-existing `preEval()` call path for now, but the fixed-point declaration-name
-surface is no longer buried inside the generic dynamic-node bucket.
-`Rules.evalNode()` now routes through the internal registration-prep helper
-directly when preparation is needed, and the old unused async child-preEval
-continuation helper has been removed.
+The current implementation slice has introduced `Rules`-owned pending
+registration state for two surfaces:
 
-The next step is to move that pending declaration-name helper closer to
-`Rules.evalNode()` setup so declaration registration no longer depends on a
-completed tree-wide preparatory pass. Dynamic declaration names remain the right
-first surface because they already have a local fixed-point shape and do not
-require solving extend finalization or import rendering in the same patch.
+- dynamic declaration names live in the fixed-point
+  `Rules._resolvePendingDeclarationNames()` bucket
+- other identity work stays in one source-ordered list, with entries tagged as
+  callable, selector, or import identity
+
+Both paths still run under the existing registration-prep call path for now.
+`Rules.evalNode()` routes through that internal helper directly when preparation
+is needed, but declaration registration still depends on the preparatory scan.
+The old unused async child-preEval continuation helper has been removed.
+
+The next step is to move declaration-name pending state closer to
+`Rules.evalNode()` setup. Do not split the ordered non-declaration identity list
+into separate schedulers until callable-name, selector-identity, and import-path
+ordering has focused test coverage; today that list preserves source order on
+purpose.
 
 ## Non-Goals
 
