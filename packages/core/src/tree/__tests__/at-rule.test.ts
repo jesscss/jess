@@ -138,6 +138,42 @@ describe('AtRule', () => {
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
+  it('restores at-rule frame when body eval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => {
+      throw new Error('body eval failed');
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context.frames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
+  it('restores at-rule frame when body eval rejects', async () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => Promise.reject(new Error('body eval failed'));
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context.frames = [savedFrame];
+
+    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
   it('renders resolved at-rules through render(context)', async () => {
     const root = rules([
       vardecl({

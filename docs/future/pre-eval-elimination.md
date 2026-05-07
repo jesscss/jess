@@ -893,6 +893,8 @@ The first code slice was a no-behavior-change extraction inside
 - restored ruleset eval frames after body evaluation errors and removed adjacent
   no-op debug scaffolding from the ruleset eval path
 - restored at-rule prelude evaluation rules context when prelude eval throws
+- restored at-rule body evaluation context after body eval/prep errors so frames,
+  cleared ruleset frames, and pushed extend roots do not leak
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

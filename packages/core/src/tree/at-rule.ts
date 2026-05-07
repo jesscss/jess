@@ -487,6 +487,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (context.opts.collapseNesting && node.isNestable()) {
             node.hoistToRoot = true;
           }
+          const frameCount = context.frames.length;
+          const extendRootStackLength = context.extendRoots.extendRootStack.length;
+          let savedRulesetFrames: Context['rulesetFrames'] | undefined;
+          const restoreBodyEvalContext = () => {
+            context.frames.length = frameCount;
+            if (savedRulesetFrames !== undefined) {
+              context.rulesetFrames = savedRulesetFrames;
+            }
+            while (context.extendRoots.extendRootStack.length > extendRootStackLength) {
+              context.extendRoots.popExtendRoot();
+            }
+          };
           // Push to frames before evaluating rules so we can use context.frames to find parent layers
           // This allows nested layers to find their parent layer names
           // NOTE: We do NOT pop here - the frame must remain accessible during rules evaluation
@@ -506,18 +518,30 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           let bodyToEval: Rules = rules;
           if (node.isNestable()) {
             parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
-            const preEvalResult = rules.preEval(context);
+            let preEvalResult: MaybePromise<Rules>;
+            try {
+              preEvalResult = rules.preEval(context);
+            } catch (error) {
+              restoreBodyEvalContext();
+              throw error;
+            }
             if (isThenable(preEvalResult)) {
               return (preEvalResult as Promise<Rules>).then((resolved) => {
                 bodyToEval = resolved;
                 context.extendRoots.pushExtendRoot(bodyToEval);
                 pushedExtendRoot = true;
-                const savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
+                savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
                 if (shouldClearRulesetFrames) {
                   context.rulesetFrames = [];
                 }
                 const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
-                const evalOut = bodyToEval.eval(context);
+                let evalOut: MaybePromise<Rules>;
+                try {
+                  evalOut = bodyToEval.eval(context);
+                } catch (error) {
+                  restoreBodyEvalContext();
+                  throw error;
+                }
                 const doRegister = (r: Rules) => {
                   if (savedRulesetFrames !== undefined) {
                     context.rulesetFrames = savedRulesetFrames;
@@ -541,9 +565,15 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   return node;
                 };
                 if (isThenable(evalOut)) {
-                  return (evalOut as Promise<Rules>).then(doRegister);
+                  return (evalOut as Promise<Rules>).then(doRegister, (error) => {
+                    restoreBodyEvalContext();
+                    throw error;
+                  });
                 }
                 return doRegister(evalOut as Rules);
+              }, (error) => {
+                restoreBodyEvalContext();
+                throw error;
               });
             }
             bodyToEval = preEvalResult as Rules;
@@ -555,12 +585,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // For root-only at-rules that are hoisted, clear rulesetFrames
           // so internal rulesets don't inherit parent selectors
-          const savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
+          savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
           if (shouldClearRulesetFrames) {
             context.rulesetFrames = [];
           }
 
-          let out = bodyToEval.eval(context);
+          let out: MaybePromise<Rules>;
+          try {
+            out = bodyToEval.eval(context);
+          } catch (error) {
+            restoreBodyEvalContext();
+            throw error;
+          }
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
               // Restore rulesetFrames
@@ -588,6 +624,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               }
 
               return node;
+            }, (error) => {
+              restoreBodyEvalContext();
+              throw error;
             });
           }
           // Restore rulesetFrames (sync path)
