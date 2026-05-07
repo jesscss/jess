@@ -3835,9 +3835,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return false;
       }
       if (value && typeof value === 'object') {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const record = value as Record<string, unknown>;
-        for (const item of Object.values(record)) {
+        for (const item of Object.values(value)) {
           if (isNode(item) && guardContainsDefault(item)) {
             return true;
           }
