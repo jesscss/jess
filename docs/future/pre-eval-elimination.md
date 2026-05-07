@@ -892,6 +892,7 @@ The first code slice was a no-behavior-change extraction inside
   ruleset prep cannot leak selector context on throw or rejection
 - restored ruleset eval frames after body evaluation errors and removed adjacent
   no-op debug scaffolding from the ruleset eval path
+- restored at-rule prelude evaluation rules context when prelude eval throws
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

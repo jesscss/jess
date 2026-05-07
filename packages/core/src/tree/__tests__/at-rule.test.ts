@@ -114,6 +114,30 @@ describe('AtRule', () => {
     expect(context.extendRoots.extendRootStack).toHaveLength(extendRootStackLength);
   });
 
+  it('restores rules context when at-rule prelude eval throws', () => {
+    const savedRulesContext = rules([]);
+    const parentAtRule = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: savedRulesContext
+    });
+    const outerRulesContext = rules([parentAtRule]);
+    const prelude = any('screen');
+    prelude.eval = () => {
+      throw new Error('prelude eval failed');
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude,
+      rules: rules([])
+    });
+    expect(savedRulesContext.parent).toBe(parentAtRule);
+    expect(parentAtRule.parent).toBe(outerRulesContext);
+    context.rulesContext = savedRulesContext;
+
+    expect(() => node.eval(context)).toThrow('prelude eval failed');
+    expect(context.rulesContext).toBe(savedRulesContext);
+  });
+
   it('renders resolved at-rules through render(context)', async () => {
     const root = rules([
       vardecl({

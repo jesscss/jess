@@ -466,8 +466,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             liftedRulesContext = cursor;
           }
           context.rulesContext = liftedRulesContext;
-          const out = prelude.eval(context);
-          context.rulesContext = savedRulesContext;
+          let out: MaybePromise<Node>;
+          try {
+            out = prelude.eval(context);
+          } finally {
+            context.rulesContext = savedRulesContext;
+          }
           if (isThenable(out)) {
             return (out as Promise<Node>).then((n) => {
               node.value.prelude = n;
