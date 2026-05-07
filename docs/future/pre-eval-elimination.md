@@ -834,6 +834,7 @@ The first code slice was a no-behavior-change extraction inside
 - added a focused fixed-point test for dependent dynamic declaration names
 - named pending registration buckets around declaration names and other identity surfaces
 - indexed resolved pending registration nodes before applying them
+- skipped resolved-node application when no pending registrations resolved
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 

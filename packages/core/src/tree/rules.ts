@@ -2419,6 +2419,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _applyResolvedRegistrationNodes(rules: Rules, resolvedNodes: Node[]): void {
+    if (resolvedNodes.length === 0) {
+      return;
+    }
     const resolvedByIndex = new Map<number | undefined, Node>();
     for (const resolvedNode of resolvedNodes) {
       if (!resolvedByIndex.has(resolvedNode.index)) {
