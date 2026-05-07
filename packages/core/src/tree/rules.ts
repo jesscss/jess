@@ -1548,17 +1548,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
 
     const isInlineSourceRules = (node: Node): boolean => {
-      if (node.type !== 'Rules') {
+      if (!isNode(node, N.Rules)) {
         return false;
       }
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const rulesNode = node as Rules;
-      if (rulesNode.value.length !== 1) {
+      if (node.value.length !== 1) {
         return false;
       }
-      const only = rulesNode.value[0]!;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return only.type === 'Any' && (only.options as any)?.role === 'any';
+      const only = node.value[0]!;
+      return isNode(only, N.Any) && only.options.role === 'any';
+    };
+    const isBlockContainer = (node: Node): node is Ruleset | AtRule => {
+      return isNode(node, N.Ruleset) || (isNode(node, N.AtRule) && Boolean(node.value.rules));
     };
 
     let emittedCount = 0;
@@ -1657,10 +1657,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       if (referenceMode && !referenceRenderEnabled && !isContainer) {
         continue;
       }
-      const isChildRules = n.type === 'Rules';
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const isLeafAtRule = n.type === 'AtRule' && !(n as AtRule).value.rules;
-      const isRulesetOrAtRule = n.type === 'Ruleset' || (n.type === 'AtRule' && !isLeafAtRule);
+      const isChildRules = isNode(n, N.Rules);
+      const isRulesetOrAtRule = isBlockContainer(n);
       // Add indentation only for simple nodes (declarations, etc.)
       // Ruleset and AtRule nodes indent themselves in renderOpening
       // Emit directly to preserve source map segments
@@ -1680,10 +1678,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ) {
           continue;
         }
-        const ownReferenceMode = (
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          (n.options as any)?.referenceMode === true
-        );
+        const ownReferenceMode = n.options.referenceMode === true;
         const childReferenceMode = referenceMode || ownReferenceMode;
         const enteringReferenceMode = !referenceMode && ownReferenceMode;
         const childReferenceRenderEnabled = childReferenceMode
@@ -1739,8 +1734,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.depth = depth;
         options.referenceMode = referenceMode;
         options.referenceRenderEnabled = referenceRenderEnabled;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const rule = serializeRulesContainerInline(n as Ruleset | AtRule, getPrintOptions(options));
+        const rule = serializeRulesContainerInline(n, getPrintOptions(options));
         if (!w.hasContentSince(mark) && rule) {
           w.add(rule, n);
         }
