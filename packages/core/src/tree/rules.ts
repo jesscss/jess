@@ -2363,7 +2363,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (pending.declarationNames.length === 0) {
           return;
         }
-        return this._resolvePendingDeclarationNames(context, pending.declarationNames, handleResolvedNode);
+        return this._resolvePendingDeclarationNamesFixedPoint(context, pending.declarationNames, handleResolvedNode);
       },
       () => {
         this._applyResolvedRegistrationNodes(rules, resolvedNodes);
@@ -2467,7 +2467,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return 'other';
   }
 
-  private _resolvePendingDeclarationNames(
+  private _resolvePendingDeclarationNamesFixedPoint(
     context: Context,
     pendingDeclarations: Node[],
     handleResolvedNode: PendingRegistrationHandler

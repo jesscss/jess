@@ -840,6 +840,7 @@ The first code slice was a no-behavior-change extraction inside
 - tagged ordered pending identity entries by callable / selector / import kind
 - added focused coverage for source-ordered non-declaration identity prep
 - added focused coverage for blocked dynamic declaration-name retry depth
+- named the dynamic declaration-name resolver around its fixed-point behavior
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
@@ -847,7 +848,7 @@ The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
 
 - dynamic declaration names live in the fixed-point
-  `Rules._resolvePendingDeclarationNames()` bucket
+  `Rules._resolvePendingDeclarationNamesFixedPoint()` bucket
 - other identity work stays in one source-ordered list, with entries tagged as
   callable, selector, or import identity
 
