@@ -857,9 +857,10 @@ The old unused async child-preEval continuation helper has been removed.
 
 The next step is to move declaration-name pending state closer to
 `Rules.evalNode()` setup. Do not split the ordered non-declaration identity list
-into separate schedulers until callable-name, selector-identity, and import-path
-ordering has focused test coverage; today that list preserves source order on
-purpose.
+into separate schedulers yet. There is now focused coverage that mixed
+callable/import/selector identity prep preserves source order; splitting that
+list still needs separate proof that each surface can move independently without
+changing registration or import retry timing.
 
 ## Non-Goals
 
