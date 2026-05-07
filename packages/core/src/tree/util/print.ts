@@ -83,6 +83,7 @@ export interface OutputWriter {
   mark(): number;
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
+  preview(fn: () => string | void): string;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -399,6 +400,14 @@ export class OutputWriter implements OutputWriter {
       }
     }
     return false;
+  }
+
+  preview(fn: () => string | void): string {
+    const mark = this.mark();
+    const out = fn();
+    const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
+    this.restore(mark);
+    return text;
   }
 
   endsWith(suffix: string): boolean {

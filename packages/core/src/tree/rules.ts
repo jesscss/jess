@@ -1636,11 +1636,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     };
     const renderText = (fn: () => void): string => {
-      const mark = w.mark();
-      fn();
-      const out = w.getSince(mark);
-      w.restore(mark);
-      return out;
+      return w.preview(fn);
     };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
       emitBoundaryIfNeeded(n);

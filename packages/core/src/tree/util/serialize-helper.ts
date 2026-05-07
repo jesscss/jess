@@ -68,12 +68,7 @@ function captureNodeTrivia(
 }
 
 function renderNodeText(node: Node, options: FinalPrintOptions): string {
-  const writer = options.writer;
-  const mark = writer.mark();
-  const out = node.toTrimmedString(options);
-  const text = writer.getSince(mark) || out;
-  writer.restore(mark);
-  return text;
+  return options.writer.preview(() => node.toTrimmedString(options));
 }
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {

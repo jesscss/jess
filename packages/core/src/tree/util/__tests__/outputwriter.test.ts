@@ -122,6 +122,30 @@ describe('OutputWriter', () => {
     });
   });
 
+  describe('preview behavior', () => {
+    it('previews content without advancing output or storing captured segments', () => {
+      const w = new OutputWriter();
+
+      w.add('start');
+      const previewed = w.preview(() => {
+        w.add('middle');
+      });
+      w.add('end');
+
+      expect(previewed).toBe('middle');
+      expect(w.toString()).toBe('startend');
+    });
+
+    it('uses the callback return value when the callback writes elsewhere', () => {
+      const w = new OutputWriter();
+
+      const previewed = w.preview(() => 'returned');
+
+      expect(previewed).toBe('returned');
+      expect(w.toString()).toBe('');
+    });
+  });
+
   describe('mark and restore', () => {
     it('mark returns current chunk count', () => {
       const w = new OutputWriter();
