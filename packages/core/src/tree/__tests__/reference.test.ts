@@ -665,6 +665,54 @@ describe('reference', () => {
       `);
     });
 
+    it('retries blocked dynamic declaration names after later dynamic names resolve', async () => {
+      const retryCounts = new Map<string, number>();
+      const recordPreEval = (node: Node, label: string): void => {
+        const original = node.preEval.bind(node);
+        node.preEval = (ctx: Context) => {
+          retryCounts.set(label, (retryCounts.get(label) ?? 0) + 1);
+          return original(ctx);
+        };
+      };
+
+      const dependent = vardecl({
+        name: interpolated({
+          source: INTERPOLATION_PLACEHOLDER,
+          replacements: [ref({ key: 'second' }, { type: 'variable' })]
+        }),
+        value: any('red')
+      });
+      const provider = vardecl({
+        name: interpolated({
+          source: INTERPOLATION_PLACEHOLDER,
+          replacements: [ref({ key: 'first' }, { type: 'variable' })]
+        }),
+        value: any('final')
+      });
+      recordPreEval(dependent, 'dependent');
+      recordPreEval(provider, 'provider');
+
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        dependent,
+        provider,
+        decl({
+          name: any('color'),
+          value: ref({ key: 'final' }, { type: 'variable' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(`${evald}`).toBeString(`
+        color: red;
+      `);
+      expect(retryCounts.get('dependent')).toBe(2);
+      expect(retryCounts.get('provider')).toBe(1);
+    });
+
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];

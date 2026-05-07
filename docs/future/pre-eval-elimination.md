@@ -839,6 +839,7 @@ The first code slice was a no-behavior-change extraction inside
 - documented the source-order contract for non-declaration pending identities
 - tagged ordered pending identity entries by callable / selector / import kind
 - added focused coverage for source-ordered non-declaration identity prep
+- added focused coverage for blocked dynamic declaration-name retry depth
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
 
