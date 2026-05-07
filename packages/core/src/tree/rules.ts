@@ -3149,6 +3149,47 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return isThenable(result) ? (result as Promise<Rules>) : result;
   }
 
+  private _finishEval(
+    rules: Rules,
+    context: Context,
+    saved: ReturnType<Rules['_snapshotContext']>
+  ): Rules {
+    // Rulesets from imported Rules are already registered to their own treeRoot
+    // during registration prep. The extend search loops through allRoots
+    // directly via extend-roots' per-root ruleset sets.
+    this._checkReadonlyImportShadows(rules);
+
+    // Extends run once the true outermost root has finished evaluating.
+    const isOutermost = rules === context.root;
+    if (isOutermost) {
+      processExtends(context);
+    }
+
+    context.rulesContext = saved.rulesContext;
+    // Keep outermost roots in context so extends evaluated during selector
+    // evaluation can still access the correct treeRoot/root.
+    if (saved.treeRoot !== undefined && !isOutermost) {
+      context.treeRoot = saved.treeRoot;
+    }
+    if (saved.root !== undefined && !isOutermost) {
+      context.root = saved.root;
+    }
+    if (!isOutermost && saved.extendRootStackLength !== undefined) {
+      const currentLength = context.extendRoots.extendRootStack.length;
+      if (currentLength > saved.extendRootStackLength) {
+        while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+          context.extendRoots.popExtendRoot();
+        }
+      }
+    }
+    if (rules === context.root) {
+      context.extendRoots.popExtendRoot();
+    }
+    context.rulesEvalStack.pop();
+    context.depth--;
+    return rules;
+  }
+
   override evalNode(context: Context): MaybePromise<this> {
     const saved = this._snapshotContext(context);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3178,55 +3219,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       pipeResult = pipe(
         () => this._prepareForEval(context),
-        ({ rules }: { rules: Rules; rulesToHoist: boolean }) => {
-        // Note: Rulesets from imported Rules are already registered to their own treeRoot
-        // during preEval when the imported Rules node is evaluated. The extend search
-        // loops through allRoots directly via extend-roots' per-root ruleset sets.
-
-          this._checkReadonlyImportShadows(rules);
-
-          // Check if we're at the outermost level BEFORE restoring context
-          // Only process extends at the TRUE outermost root (context.root)
-          // This ensures extends are processed AFTER all evaluation completes,
-          // including imports and nested Rules
-          const isOutermost = rules === context.root;
-
-          if (isOutermost) {
-            // Process all registered extends using the extend roots registry system
-            processExtends(context);
-          }
-          /** Restore contexts */
-          context.rulesContext = saved.rulesContext;
-          // Only restore context.treeRoot if saved.treeRoot is defined and we're not at the outermost level
-          // If saved.treeRoot is undefined, it means we're at the outermost level, so keep context.treeRoot as is
-          // This ensures extends evaluated during selector evaluation can still access the correct treeRoot
-          if (saved.treeRoot !== undefined && !isOutermost) {
-            context.treeRoot = saved.treeRoot;
-          }
-          // Only restore context.root if we're not at the outermost level (where it was originally set)
-          // If saved.root is undefined, it means we're at the outermost level, so keep context.root as is
-          if (saved.root !== undefined && !isOutermost) {
-            context.root = saved.root;
-          }
-          // Restore extend root stack to its original length (if we're not the main root)
-          // The main root manages its own push/pop, but nested Rules should restore the stack
-          if (!isOutermost && saved.extendRootStackLength !== undefined) {
-            const currentLength = context.extendRoots.extendRootStack.length;
-            if (currentLength > saved.extendRootStackLength) {
-            // Pop any extend roots that were pushed during this Rules evaluation
-              while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-                context.extendRoots.popExtendRoot();
-              }
-            }
-          }
-          // Pop extend root if we pushed it (check if this is still the root)
-          if (rules === context.root) {
-            context.extendRoots.popExtendRoot();
-          }
-          context.rulesEvalStack.pop();
-          context.depth--;
-          return rules;
-        }
+        ({ rules }: { rules: Rules; rulesToHoist: boolean }) => this._finishEval(rules, context, saved)
       ) as MaybePromise<this>;
     } catch (error) {
       restoreContextOnError();
