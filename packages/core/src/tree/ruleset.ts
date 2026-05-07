@@ -962,44 +962,34 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   override preEval(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
-      const node = this.clone(false) as this;
-      node._selectorCacheOwner = this;
-      node.preEvaluated = true;
-      let { selector, rules, guard } = node.value;
-      const { selectorBits } = context;
-      this._prepareRulesVisibility(node, context);
-      // Check if there's a root-only at-rule between us and the parent ruleset
-      // If so, don't inherit the parent selector (root-only at-rules like @keyframes
-      // don't propagate parent selectors to their children)
-      let shouldInheritSelector = true;
-      const parentRuleset = context.rulesetFrames.at(-1);
-      const parentRulesetIndex = parentRuleset ? context.frames.lastIndexOf(parentRuleset) : -1;
-      if (parentRulesetIndex >= 0) {
-        // Check frames after the parent ruleset for any root-only at-rules
-        for (let i = parentRulesetIndex + 1; i < context.frames.length; i++) {
-          const frame = context.frames[i];
-          if (isNode(frame, N.AtRule) && (frame as AtRule).isRootOnly()) {
-            shouldInheritSelector = false;
-            break;
-          }
-        }
-      }
-
-      const parentSelector = parentRuleset?.selector;
-      this._storeOwnSelector(node, selector, selectorBits);
-      /* getImplicitSelector removed — selector stays as-authored.
-       * Composed form (with parent context) computed on-demand during:
-       * - serialization (composedSelectorStack in PrintOptions)
-       * - extend matching (parent context parameter)
-       */
-      // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
-      // Just evaluate the selector
-      return pipe(
-        () => selector.eval(context),
-        sel => this._storeEvaluatedSelector(node, sel as Selector | Nil, context)
-      );
+      return this._prepareRulesetRegistration(context);
     }
     return this;
+  }
+
+  private _prepareRulesetRegistration(context: Context): MaybePromise<this> {
+    const node = this.clone(false) as this;
+    node._selectorCacheOwner = this;
+    node.preEvaluated = true;
+    const { selector } = node.value;
+    const { selectorBits } = context;
+    this._prepareRulesVisibility(node, context);
+    this._storeOwnSelector(node, selector, selectorBits);
+    /* getImplicitSelector removed — selector stays as-authored.
+     * Composed form (with parent context) computed on-demand during:
+     * - serialization (composedSelectorStack in PrintOptions)
+     * - extend matching (parent context parameter)
+     */
+    // DO NOT evaluate guard here - guards are evaluated at call time in getFunctionFromMixins
+    // Just evaluate the selector
+    return pipe(
+      () => this._prepareRulesetSelectorIdentity(selector, context),
+      sel => this._finishRulesetSelectorPrep(node, sel as Selector | Nil, context)
+    );
+  }
+
+  private _prepareRulesetSelectorIdentity(selector: Selector | Nil, context: Context): MaybePromise<Selector | Nil> {
+    return selector.eval(context) as MaybePromise<Selector | Nil>;
   }
 
   private _prepareRulesVisibility(node: this, context: Context): void {
@@ -1037,7 +1027,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     }
   }
 
-  private _storeEvaluatedSelector(
+  private _finishRulesetSelectorPrep(
     node: this,
     sel: Selector | Nil,
     context: Context
