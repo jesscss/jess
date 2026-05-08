@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -304,6 +304,39 @@ describe('reference', () => {
         background-color: red, foo;
         background: red, foo;
       `);
+    });
+
+    it('flattens merged declaration references without recopying copied leaves', async () => {
+      const node = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const originalCopy = Any.prototype.copy;
+      let valueCopyCount = 0;
+      Any.prototype.copy = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
+        if (this.value === 'red' || this.value === 'foo') {
+          valueCopyCount++;
+        }
+        return originalCopy.call(this, deep, cloneFn);
+      };
+      try {
+        const resolved = await ref({ key: 'background-color' }, { type: 'declaration' }).resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(valueCopyCount).toBe(4);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
     });
 
     it('should treat keyword index as variable lookup', async () => {

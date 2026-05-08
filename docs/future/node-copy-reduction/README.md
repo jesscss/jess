@@ -27,6 +27,8 @@ The remaining work is production conversion, not old model preservation.
 - `packages/core/src/tree/reference.ts`
   - `preserveRulesLike` variable references now keep a shallow owned wrapper
     instead of deep-copying the referenced rules-like body
+  - merged declaration reference flattening now reuses the already-copied
+    leaves instead of copying them again
   - ordinary reference result and declaration value evaluation still use
     defensive deep copies
 - `packages/core/src/tree/call.ts`

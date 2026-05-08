@@ -1663,7 +1663,7 @@ function normalizeMergedAssignReferenceResult(
       || String(child.valueOf?.() ?? '') === ''
     );
     if (!isEmptyPlaceholder) {
-      mergedItems.push(child.copy(true, freezeChildren));
+      mergedItems.push(child);
     }
   };
   collect(node);

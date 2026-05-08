@@ -35,8 +35,10 @@ there when replacing them with an explicit ownership surface. Otherwise, target
 frozen-copy binding paths only where a focused proof shows the ownership
 problem. In `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
-reintroduce a deep copy there. The `Call.evalNode` `sourceNode.parent` repair is
-still active because the detached-ruleset non-leaky scope test fails without it.
+reintroduce a deep copy there. Merged declaration reference flattening also
+reuses the copied value leaves it is handed instead of copying them again. The
+`Call.evalNode` `sourceNode.parent` repair is still active because the
+detached-ruleset non-leaky scope test fails without it.
 
 ## Work Loop
 
