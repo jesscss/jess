@@ -2242,7 +2242,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this._hasPendingPrep(prepState)) {
       return this._finishRegistrationWithoutPending(rules, context, saved);
     }
-    return this._resolvePendingPrep(rules, context, saved, prepState);
+    const declarationResult = this._resolvePendingDeclarationNamePrep(rules, context, prepState.declarationNames);
+    const finishAfterDeclarations = () => this._finishRegistrationAfterDeclarationNames(rules, context, saved, prepState);
+    if (isThenable(declarationResult)) {
+      return (declarationResult as Promise<void>).then(finishAfterDeclarations);
+    }
+    return finishAfterDeclarations();
   }
 
   private _finishRegistrationWithoutPending(
@@ -2391,7 +2396,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _resolvePendingPrep(
+  private _finishRegistrationAfterDeclarationNames(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
@@ -2407,11 +2412,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       );
     };
 
-    return pipe(
-      () => this._resolvePendingDeclarationNamePrep(rules, context, prepState.declarationNames),
-      () => this._resolvePendingOrderedIdentityPrep(context, prepState.orderedIdentity.nodes, handleResolvedNode),
-      () => this._finishPendingPrep(rules, context, saved, prepState.orderedIdentity.resolvedNodes)
-    );
+    const orderedResult = this._resolvePendingOrderedIdentityPrep(context, prepState.orderedIdentity.nodes, handleResolvedNode);
+    const finish = () => this._finishPendingPrep(rules, context, saved, prepState.orderedIdentity.resolvedNodes);
+    if (isThenable(orderedResult)) {
+      return (orderedResult as Promise<void>).then(finish);
+    }
+    return finish();
   }
 
   private _resolvePendingDeclarationNamePrep(

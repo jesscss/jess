@@ -935,6 +935,8 @@ The first code slice was a no-behavior-change extraction inside
   `prepareRegistration()`
 - made `Rules` registration prep state internal to the one-time registration
   helper
+- split `Rules` registration finalization so declaration-name fixed-point prep
+  runs before the ordered callable/import/selector identity lane
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
