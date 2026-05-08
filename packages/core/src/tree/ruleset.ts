@@ -965,6 +965,10 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   override preEval(context: Context): MaybePromise<this> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       return this._prepareRulesetRegistration(context);
     }
@@ -1071,11 +1075,11 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
     if (extendRoot) {
       registerRulesetWithRoot(extendRoot, rulesetNode);
     }
-    return this._preEvalChildRules(node, context, extendRoot);
+    return this._prepareChildRulesRegistration(node, context, extendRoot);
   }
 
-  private _preEvalChildRules(node: this, context: Context, extendRoot: Rules | undefined): MaybePromise<this> {
-    // Depth-first: preEval child rules immediately so all nested rulesets/extends
+  private _prepareChildRulesRegistration(node: this, context: Context, extendRoot: Rules | undefined): MaybePromise<this> {
+    // Depth-first: prepare child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     // Push this ruleset to the frame so nested rulesets get the correct parent selector
     // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
@@ -1087,17 +1091,20 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       if (extendRoot) {
         context.extendRoots.registerRoot(childRules, extendRoot);
       }
-      let preEvaldRules: MaybePromise<Rules>;
+      let preparedRules: MaybePromise<Node>;
       try {
-        preEvaldRules = childRules.preEval(context);
+        preparedRules = childRules.prepareRegistration(context);
       } catch (error) {
         context.rulesetFrames.length = rulesetFrameCount;
         throw error;
       }
-      if (isThenable(preEvaldRules)) {
-        return (preEvaldRules as Promise<Rules>).then(
+      if (isThenable(preparedRules)) {
+        return preparedRules.then(
           (rules) => {
             context.rulesetFrames.pop();
+            if (!(rules instanceof Rules)) {
+              throw new TypeError('Expected child rules registration prep to return Rules');
+            }
             node.value.rules = rules;
             if (extendRoot && rules !== childRules) {
               context.extendRoots.registerRoot(rules, extendRoot);
@@ -1111,9 +1118,12 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
         );
       }
       context.rulesetFrames.pop();
-      node.value.rules = preEvaldRules as Rules;
-      if (extendRoot && preEvaldRules !== childRules) {
-        context.extendRoots.registerRoot(preEvaldRules as Rules, extendRoot);
+      if (!(preparedRules instanceof Rules)) {
+        throw new TypeError('Expected child rules registration prep to return Rules');
+      }
+      node.value.rules = preparedRules;
+      if (extendRoot && preparedRules !== childRules) {
+        context.extendRoots.registerRoot(preparedRules as Rules, extendRoot);
       }
     }
     return node;

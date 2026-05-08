@@ -913,6 +913,9 @@ The first code slice was a no-behavior-change extraction inside
   compatibility delegate
 - moved `Declaration` key / assignment / value registration prep onto
   `prepareRegistration()` while keeping current timing unchanged
+- moved `Ruleset` selector identity and child-rules registration prep onto
+  `prepareRegistration()` while keeping its depth-first child registration
+  timing unchanged
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

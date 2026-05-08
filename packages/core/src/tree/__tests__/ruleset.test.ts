@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC } from '../index.js';
 import { Context } from '../../context.js';
 import { F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -89,7 +89,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('restores parent ruleset frame when child preEval throws', () => {
+  it('restores parent ruleset frame when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.saved'),
       rules: rules([])
@@ -98,8 +98,8 @@ describe('Rule', () => {
       selector: el('.child'),
       rules: rules([])
     });
-    throwingChild.preEval = () => {
-      throw new Error('child preEval failed');
+    throwingChild.prepareRegistration = () => {
+      throw new Error('child registration prep failed');
     };
     const node = ruleset({
       selector: el('.parent'),
@@ -107,11 +107,11 @@ describe('Rule', () => {
     });
     context.rulesetFrames = [savedFrame];
 
-    expect(() => node.preEval(context)).toThrow('child preEval failed');
+    expect(() => node.prepareRegistration(context)).toThrow('child registration prep failed');
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
-  it('restores parent ruleset frame when child preEval rejects', async () => {
+  it('restores parent ruleset frame when child registration prep rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.saved'),
       rules: rules([])
@@ -120,14 +120,14 @@ describe('Rule', () => {
       selector: el('.child'),
       rules: rules([])
     });
-    throwingChild.preEval = () => Promise.reject(new Error('child preEval failed'));
+    throwingChild.prepareRegistration = () => Promise.reject(new Error('child registration prep failed'));
     const node = ruleset({
       selector: el('.parent'),
       rules: rules([throwingChild])
     });
     context.rulesetFrames = [savedFrame];
 
-    await expect(node.preEval(context)).rejects.toThrow('child preEval failed');
+    await expect(node.prepareRegistration(context)).rejects.toThrow('child registration prep failed');
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
@@ -167,6 +167,7 @@ describe('Rule', () => {
     });
     const body = rules([]);
     body.eval = () => Promise.reject(new Error('body eval failed'));
+    body.addFlag(F_MAY_ASYNC);
     const node = ruleset({
       selector: el('.parent'),
       rules: body
