@@ -957,6 +957,18 @@ export abstract class Node<
   }
 
   /**
+   * Internal eval-time preparation hook.
+   *
+   * The default still delegates to public `preEval()` while the migration is in
+   * progress. Nodes that have split their setup into narrower eval-owned work
+   * should override this instead of making eval depend on the public preEval
+   * phase name.
+   */
+  protected prepareEval(context: Context): MaybePromise<Node> {
+    return this.preEval(context);
+  }
+
+  /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
    *
@@ -998,7 +1010,7 @@ export abstract class Node<
     return pipe(
       () => {
         if (!node.preEvaluated || needsReeval) {
-          return node.preEval(context);
+          return node.prepareEval(context);
         }
         return node;
       },
@@ -1027,7 +1039,7 @@ export abstract class Node<
     let preEvaluatedNode: Node;
 
     if (!node.preEvaluated || needsReeval) {
-      preEvaluatedNode = mustBeNode(node.preEval(context));
+      preEvaluatedNode = mustBeNode(node.prepareEval(context));
     } else {
       preEvaluatedNode = node;
     }

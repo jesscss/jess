@@ -2096,6 +2096,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._prepareRegistrationOnce(context, this._createRegistrationPrepState());
   }
 
+  protected override prepareEval(context: Context): MaybePromise<this> {
+    return this._prepareRegistrationOnce(context, this._createRegistrationPrepState());
+  }
+
   private _prepareRegistrationOnce(
     context: Context,
     prepState: RegistrationPrepState

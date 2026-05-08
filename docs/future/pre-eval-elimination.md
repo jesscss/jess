@@ -904,6 +904,8 @@ The first code slice was a no-behavior-change extraction inside
   pre-evaluate the mixin body
 - moved registration prep state creation to the eval / preEval bridge and split
   the declaration-name fixed-point state from the source-ordered identity state
+- added an internal `Node.prepareEval()` hook so `Rules.eval()` can route to
+  registration prep without depending on the public `preEval()` phase name
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
@@ -915,11 +917,13 @@ registration state for two surfaces:
 
 Both paths still run under the existing registration-prep call path for now.
 `Rules.evalNode()` routes through that internal helper directly when preparation
-is needed, but declaration registration still depends on the preparatory scan.
-The old unused async child-preEval continuation helper has been removed.
+is needed, and ordinary `Rules.eval()` now reaches the same path through
+`prepareEval()` instead of the public `preEval()` phase name. Declaration
+registration still depends on the preparatory scan. The old unused async
+child-preEval continuation helper has been removed.
 
 The next step is to make `Rules.evalNode()` own more of the declaration-name
-prep timing directly instead of reaching it through the public `preEval()` shape.
+prep timing directly instead of reaching it through the shared registration scan.
 Do not split the ordered non-declaration identity list into separate schedulers
 yet. There is now focused coverage that mixed callable/import/selector identity
 prep preserves source order; splitting that list still needs separate proof that
