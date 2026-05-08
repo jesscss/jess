@@ -1,70 +1,41 @@
 # Node Copy Reduction
 
-## Target
+This folder is the active handoff for reducing routine node copying during eval.
+It should stay small enough to read at startup.
 
-The target model is:
+## Direction
 
-- one canonical AST
-- canonical nodes own canonical edges
-- canonical nodes may also own alternate edges keyed by render key
-- canonical child fields stay the real canonical value
-- alternate child edges are field-aligned (`fooEdge` / `fooEdges`)
-- `RenderKey` is only the path-selection key
-- canonical static-field mutation must produce a derived non-canonical
-  replacement instead of mutating the canonical node in place
-- non-canonical nodes are ephemeral placements: they may be mutated or replaced
-  directly without preserving the previous derived node
-- traversal is done through a cursor: `{ node, renderKey }`
-- shallow `Rules` wrappers own local declaration/mixin/ruleset registries and
-  may share canonical child arrays until they structurally diverge
+- Keep one canonical source tree as the default model.
+- Prefer lazy per-placement runtime state over routine cloned trees.
+- Use shallow wrapper owners only when they carry real local scope, registry, or
+  output ownership.
+- Treat deep clone, materialization, and broad wrapper growth as debt unless a
+  focused proof shows they are still required.
+- Fix structural ownership bugs where they are created, not by filtering output
+  later.
 
-See [eval-state-sketch.md](./eval-state-sketch.md) for the actual shape.
+## Current Frontier
 
-## Current Runtime
+The remaining work is production conversion, not old model preservation.
 
-The runtime still uses `EvalState` / `NodeState`.
+- `packages/core/src/tree/rules.ts`
+  - guarded mixin dispatch still has direct candidate field reads and ambient
+    scope plumbing
+  - param/rest/`@arguments` binding still uses frozen deep copies in places
+- `packages/core/src/tree/reference.ts`
+  - reference result and declaration value evaluation still use defensive deep
+    copies
+- `packages/core/src/tree/call.ts`
+  - `Call.resolve()` still deep-clones before eval
+  - JS function argument isolation still uses frozen deep copies
+- `packages/core/src/tree/util/serialize-helper.ts`
+  - serialization still has text-preview and frame-stack coupling that should
+    eventually move to explicit node/output ownership decisions
 
-Treat that as transitional implementation baggage, not the target architecture.
+## Working Rule
 
-Core tests have already been stripped of direct `activeState` / `EvalState` /
-`setField` / `getField` usage. New work should stay on production conversion
-surfaces and narrow proof tests.
+Pick one narrow production seam, prove it with the closest focused test, then
+run the smallest broader verification that covers the affected behavior. Do not
+add architecture or status documents that mostly describe absent machinery.
 
-## Read Order
-
-1. [eval-state-sketch.md](./eval-state-sketch.md) — target cursor/edge model
-2. [node-update-status.md](./node-update-status.md) — current migration targets
-3. [HANDOFF.md](./HANDOFF.md) — short working rules for the next agent
-4. [STAGES.md](./STAGES.md) — optional branch sequencing notes
-
-## Hard Rules
-
-- no field-patch architecture
-- no render-root-owned patch tables
-- no generic `childEdges` map as the target shape
-- no routine deep cloning for eval isolation
-- no internal materialization except at explicit downstream boundaries
-- no hidden ambient state deciding which parent path a shared node uses
-- no passing full `Context` to edge/path lookups when `renderKey` or cursor is
-  enough
-
-## Practical Rule
-
-If one canonical node can be reached from multiple live placements, then:
-
-- a naked `Node` is not enough for traversal
-- code must carry a cursor
-- parent-aware traversal must use `{ node, renderKey }`
-
-If a read only needs path selection, then:
-
-- pass `renderKey`, not full `Context`
-- use full `Context` only when the read truly also depends on eval-state
-  machinery
-
-## Success Criteria
-
-- repeated mixin/import reuse works without clone pressure
-- returned output has clear ownership during serialization
-- parent/child traversal is explainable in terms of canonical edges + alternate edges + cursor
-- old EvalState-only assumptions stop spreading into new code
+Use [HANDOFF.md](./HANDOFF.md) for the current execution checklist.
