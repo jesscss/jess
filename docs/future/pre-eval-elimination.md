@@ -906,6 +906,8 @@ The first code slice was a no-behavior-change extraction inside
   the declaration-name fixed-point state from the source-ordered identity state
 - added an internal `Node.prepareEval()` hook so `Rules.eval()` can route to
   registration prep without depending on the public `preEval()` phase name
+- added a public `Node.prepareRegistration()` bridge for lookup-identity prep
+  call sites that still delegate to `preEval()` internally during migration
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
@@ -919,8 +921,10 @@ Both paths still run under the existing registration-prep call path for now.
 `Rules.evalNode()` routes through that internal helper directly when preparation
 is needed, and ordinary `Rules.eval()` now reaches the same path through
 `prepareEval()` instead of the public `preEval()` phase name. Declaration
-registration still depends on the preparatory scan. The old unused async
-child-preEval continuation helper has been removed.
+registration still depends on the preparatory scan, but the scan now calls
+`prepareRegistration()` for identity prep rather than naming the public preEval
+phase directly. The old unused async child-preEval continuation helper has been
+removed.
 
 The next step is to make `Rules.evalNode()` own more of the declaration-name
 prep timing directly instead of reaching it through the shared registration scan.

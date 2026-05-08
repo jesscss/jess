@@ -969,6 +969,17 @@ export abstract class Node<
   }
 
   /**
+   * Registration-time identity preparation.
+   *
+   * This is intentionally still a bridge to `preEval()` while nodes are being
+   * split apart. Callers that only need lookup identity should use this name so
+   * the remaining public preEval phase dependencies stay visible.
+   */
+  prepareRegistration(context: Context): MaybePromise<Node> {
+    return this.preEval(context);
+  }
+
+  /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
    *

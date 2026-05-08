@@ -2269,7 +2269,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return false;
     }
     // Charset is root output-order bookkeeping, not name registration.
-    rules.value[index] = node.preEval(context);
+    rules.value[index] = node.prepareRegistration(context);
     rules.value[index]!.index = nodeIndex;
     return true;
   }
@@ -2287,7 +2287,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
-    const preEvald = node.preEval(context);
+    const preEvald = node.prepareRegistration(context);
     if (isThenable(preEvald)) {
       return (preEvald as Promise<Node>).then((preEvaldNode) => {
         this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, prepState);
@@ -2563,7 +2563,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let i = 0; i < unresolvedDeclarations.length; i++) {
         const node = unresolvedDeclarations[i]!;
         try {
-          const result = node.preEval(context);
+          const result = node.prepareRegistration(context);
 
           if (isThenable(result)) {
             const remaining = unresolvedDeclarations.slice(i + 1);
@@ -2609,7 +2609,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       for (let i = 0; i < orderedIdentities.length; i++) {
         const { node } = orderedIdentities[i]!;
         try {
-          const result = node.preEval(context);
+          const result = node.prepareRegistration(context);
 
           if (isThenable(result)) {
             const remaining = orderedIdentities.slice(i + 1);
