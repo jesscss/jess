@@ -939,6 +939,9 @@ The first code slice was a no-behavior-change extraction inside
   runs before the ordered callable/import/selector identity lane
 - made the declaration-name registration phase apply its resolved nodes from
   the registration finalization path
+- gave the declaration-name and ordered-identity registration phases separate
+  finish helpers, keeping the existing ordering but making the eval-owned
+  declaration-name boundary explicit
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

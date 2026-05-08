@@ -2197,10 +2197,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
     if (isThenable(pendingResult)) {
       return (pendingResult as Promise<RegistrationPrepState>).then(scanState =>
-        this._finishRegistrationScan(rules, context, saved, scanState)
+        this._finishRegistrationPrep(rules, context, saved, scanState)
       );
     }
-    return this._finishRegistrationScan(rules, context, saved, pendingResult as RegistrationPrepState);
+    return this._finishRegistrationPrep(rules, context, saved, pendingResult as RegistrationPrepState);
   }
 
   private _scanRegistrationNodes(
@@ -2232,7 +2232,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return prepState;
   }
 
-  private _finishRegistrationScan(
+  private _finishRegistrationPrep(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
@@ -2242,10 +2242,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (!this._hasPendingPrep(prepState)) {
       return this._finishRegistrationWithoutPending(rules, context, saved);
     }
-    const declarationResult = this._resolvePendingDeclarationNamePrep(rules, context, prepState.declarationNames);
+    const declarationResult = this._finishDeclarationNameRegistrationPrep(rules, context, prepState.declarationNames);
     const finishAfterDeclarations = () => {
-      this._applyResolvedRegistrationNodes(rules, prepState.declarationNames.resolvedNodes);
-      return this._finishRegistrationAfterDeclarationNames(rules, context, saved, prepState);
+      return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
     if (isThenable(declarationResult)) {
       return (declarationResult as Promise<void>).then(finishAfterDeclarations);
@@ -2399,7 +2398,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _finishRegistrationAfterDeclarationNames(
+  private _finishDeclarationNameRegistrationPrep(
+    rules: Rules,
+    context: Context,
+    pendingDeclarationNames: PendingDeclarationNamePrepState
+  ): MaybePromise<void> {
+    const result = this._resolvePendingDeclarationNamePrep(rules, context, pendingDeclarationNames);
+    const finish = () => {
+      this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
+    };
+    if (isThenable(result)) {
+      return (result as Promise<void>).then(finish);
+    }
+    return finish();
+  }
+
+  private _finishOrderedIdentityRegistrationPrep(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
@@ -3406,8 +3420,8 @@ type PendingIdentity = {
  * mixins which rely on variables which have interpolated names,
  * and variables with interpolated names that rely on mixins.
  *
- * @note - Registration of declaration names and mixins / selectors
- * should have already happened in pre-eval.
+ * @note - Registration prep should have registered stable declaration names,
+ * mixins, and selectors before the eval queue reaches executable rules.
  */
 const NodeTypeToPriority = new Map([
   /** First, resolve imports */
