@@ -969,10 +969,9 @@ export abstract class Node<
   /**
    * Internal eval-time preparation hook.
    *
-   * The default still delegates to public `preEval()` while the migration is in
-   * progress. Nodes that have split their setup into narrower eval-owned work
-   * should override this instead of making eval depend on the public preEval
-   * phase name.
+   * The default uses registration prep until eval owns narrower setup directly.
+   * Nodes that have split their setup into narrower eval-owned work should
+   * override this instead of making eval depend on the public preEval phase name.
    */
   protected prepareEval(context: Context): MaybePromise<Node> {
     return this.prepareRegistration(context);

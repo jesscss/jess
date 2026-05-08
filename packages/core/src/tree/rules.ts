@@ -2319,9 +2319,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   /**
    * Check if a node type participates in name-based registration.
-   * Only these node types have names/selectors that _resolvePendingPrep
-   * needs to resolve. Everything else (Call, Expression, Comment, etc.)
-   * goes straight to the eval queue.
+   * Only these node types have names/selectors that registration finalization
+   * needs to resolve. Everything else (Call, Expression, Comment, etc.) goes
+   * straight to the eval queue.
    */
   private _isRegisterableType(node: Node): boolean {
     return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || isStyleImportRegistrationNode(node);
