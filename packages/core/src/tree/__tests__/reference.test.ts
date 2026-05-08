@@ -124,6 +124,36 @@ describe('reference', () => {
       expect(refNode.toTrimmedString()).toBe('$source');
     });
 
+    it('preserves rules-like variable references as shallow owned surfaces', async () => {
+      const sourceDecl = decl({ name: 'color', value: any('blue') });
+      const sourceValue = rules([sourceDecl]);
+      const sourceBinding = vardecl({
+        name: any('block'),
+        value: sourceValue
+      });
+      const node = rules([
+        sourceBinding
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const refNode = ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true });
+      const resolved = await refNode.eval(context);
+
+      expect(resolved).toBeInstanceOf(RulesClass);
+      if (!(resolved instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(resolved).not.toBe(resolved.sourceNode);
+      const resolvedSource = resolved.sourceNode;
+      expect(resolvedSource).toBeInstanceOf(RulesClass);
+      if (!(resolvedSource instanceof RulesClass)) {
+        throw new Error('Expected Rules source');
+      }
+      expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+    });
+
     it('keeps fallback value containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({

@@ -25,8 +25,10 @@ The remaining work is production conversion, not old model preservation.
   - guarded mixin dispatch still has ambient scope plumbing
   - param/rest/`@arguments` binding still uses frozen deep copies in places
 - `packages/core/src/tree/reference.ts`
-  - reference result and declaration value evaluation still use defensive deep
-    copies
+  - `preserveRulesLike` variable references now keep a shallow owned wrapper
+    instead of deep-copying the referenced rules-like body
+  - ordinary reference result and declaration value evaluation still use
+    defensive deep copies
 - `packages/core/src/tree/call.ts`
   - `Call.resolve()` still deep-clones before eval
   - JS function argument isolation still uses frozen deep copies

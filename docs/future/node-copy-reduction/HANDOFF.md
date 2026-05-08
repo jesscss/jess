@@ -33,7 +33,10 @@ guarded mixin dispatch and param/rest binding. Candidate field reads in
 `MixinCollection.evalCall(...)` are centralized behind local helpers now; start
 there when replacing them with an explicit ownership surface. Otherwise, target
 frozen-copy binding paths only where a focused proof shows the ownership
-problem.
+problem. In `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
+references now return the shallow owned rules-like wrapper directly; do not
+reintroduce a deep copy there. The `Call.evalNode` `sourceNode.parent` repair is
+still active because the detached-ruleset non-leaky scope test fails without it.
 
 ## Work Loop
 

@@ -1399,6 +1399,13 @@ function finalizeRuntimeVarBindingResult(
     if (bindingSource) {
       context.searchScope.delete(bindingSource);
     }
+    if (
+      referenceNode.options?.preserveRulesLike === true
+      && isNode(evald, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+    ) {
+      evald.frozen = true;
+      return evald;
+    }
     return cloneReferenceResultNode(referenceNode, evald);
   };
   const evaluatedBinding = (() => {
