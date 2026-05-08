@@ -273,6 +273,34 @@ describe('Call', () => {
     expect(result.options.callDeclarationOutput).toBe(true);
   });
 
+  it('does not copy empty positional JS function args', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'empty',
+      fn: () => any('ok')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalCopy = List.prototype.copy;
+    let copiedLists = 0;
+    List.prototype.copy = function copyForCounting(this: List, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+      copiedLists++;
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      const result = await call({
+        name: ref({ key: 'empty' }, { type: 'function' }),
+        args: list([])
+      }).eval(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(copiedLists).toBe(0);
+    } finally {
+      List.prototype.copy = originalCopy;
+    }
+  });
+
   it('does not let detached ruleset calls read caller scope in non-leaky mode', async () => {
     context = new Context({ leakyRules: false });
     const root = rules([

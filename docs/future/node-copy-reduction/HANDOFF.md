@@ -43,6 +43,9 @@ coalescing in `packages/core/src/tree/rules.ts` now keeps accumulated values
 read-only and lets merge composition own the copy boundary instead of recopying
 stored/list-flattened leaves. The `Call.evalNode` `sourceNode.parent` repair is
 still active because the detached-ruleset non-leaky scope test fails without it.
+In `packages/core/src/tree/call.ts`, ordinary JS functions with explicit empty
+positional arg lists no longer copy the empty `List`; callbacks that receive the
+arg `List` itself still keep the defensive copy.
 
 ## Work Loop
 

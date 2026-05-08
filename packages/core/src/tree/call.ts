@@ -428,8 +428,9 @@ export class Call extends Node<CallValue, CallOptions> {
       context.caller = this;
       let didPopCallStack = false;
       try {
+        const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
         /** Freeze args */
-        if (args) {
+        if (args && (args.value.length > 0 || shouldPassListArgs)) {
           const copiedArgs = args.copy(true, freezeChildren);
           for (const copied of copiedArgs.value) {
             // Anchor copied references to this Call so nested property refs
@@ -440,7 +441,6 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           args = copiedArgs;
         }
-        const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
         const result = await (
           args
             ? (

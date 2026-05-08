@@ -38,7 +38,9 @@ The remaining work is production conversion, not old model preservation.
     defensive deep copies
 - `packages/core/src/tree/call.ts`
   - `Call.resolve()` still deep-clones before eval
-  - JS function argument isolation still uses frozen deep copies
+  - JS function argument isolation still uses frozen deep copies for non-empty
+    positional args and callbacks that receive the arg `List`; ordinary empty
+    positional JS calls skip the arg-list copy
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
