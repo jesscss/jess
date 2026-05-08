@@ -94,7 +94,7 @@ describe('Mixin', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('pre-evaluates mixin identity without pre-evaluating the body', async () => {
+  it('prepares mixin identity without pre-evaluating the body', async () => {
     const bodyDecl = decl({ name: 'color', value: any('red') });
     const body = rules([bodyDecl]);
     const node = mixin({
@@ -102,7 +102,7 @@ describe('Mixin', () => {
       rules: body
     });
 
-    const prepared = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
     expect(prepared.preEvaluated).toBe(true);
     expect(body.preEvaluated).toBe(false);
@@ -3049,7 +3049,7 @@ describe('Mixin', () => {
       expect(css).not.toContain('.two {\n  prop-foo: ok;');
     });
 
-    it('keeps interpolated mixin preEval wrappers self-owned instead of back-pointing to the canonical mixin', async () => {
+    it('keeps interpolated mixin registration prep wrappers self-owned instead of back-pointing to the canonical mixin', async () => {
       const dynamicMixinName = interpolated({
         source: '.inner-' + INTERPOLATION_PLACEHOLDER,
         replacements: [any('foo')]
@@ -3061,11 +3061,11 @@ describe('Mixin', () => {
         ])
       });
 
-      const preEvald = await node.preEval(context);
+      const prepared = await node.prepareRegistration(context);
 
-      expect(preEvald).not.toBe(node);
-      expect(preEvald.sourceNode).toBe(preEvald);
-      expect(preEvald.value.name.valueOf()).toBe('.inner-foo');
+      expect(prepared).not.toBe(node);
+      expect(prepared.sourceNode).toBe(prepared);
+      expect(prepared.value.name.valueOf()).toBe('.inner-foo');
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
