@@ -925,6 +925,8 @@ The first code slice was a no-behavior-change extraction inside
 - made `Rules` expose its registration-prep implementation directly through
   `prepareRegistration()`, with public `preEval()` left as a compatibility
   delegate
+- made `Collection` and `$for` expose their mark-only registration prep through
+  `prepareRegistration()`
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
