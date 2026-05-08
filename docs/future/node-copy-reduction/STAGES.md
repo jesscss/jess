@@ -1,5 +1,13 @@
 # Node Copy Reduction — Stage Tracking
 
+> Historical note:
+> this file describes the older EvalState/NodeState stage plan from March 2026.
+> It is kept only as background. The active plan is the cursor/edge direction in
+> [HANDOFF.md](./HANDOFF.md) and
+> [node-update-status.md](./node-update-status.md).
+>
+> Do not use the sections below as the current task list.
+
 ## Architecture
 
 `EvalState extends Map<Node, NodeState>` — sparse overlay on canonical AST.

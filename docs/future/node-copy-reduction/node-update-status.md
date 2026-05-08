@@ -2,6 +2,11 @@
 
 This file tracks only edge + cursor migration work.
 
+Current production has no concrete `RenderKey`, `parentEdges`, `valueEdges`, or
+shared cursor primitive. Those names describe the target shape. Treat all
+current work as pre-primitive cleanup unless a patch actually introduces one of
+those APIs.
+
 If an item does not directly move the runtime toward:
 
 - field-aligned edges
@@ -36,6 +41,16 @@ The target runtime shape is:
   displaced derived node unless an edge still references it
 - path selection uses `RenderKey`
 - traversal uses a cursor: `{ node, renderKey }`
+
+Current implementation reality:
+
+- `parentEdges` and a shared cursor helper are target vocabulary, not a complete
+  production API in `node-base.ts` yet
+- current production scope still flows through direct `.parent`, typed field
+  getters, `Context.rulesContext`, and `ScopeFrame` wiring
+- when this document mentions `parentEdges` / `CALLER`, read that as the
+  intended replacement for today’s caller fallback side channels, not as proof
+  that the primitive already exists
 
 The target model is not:
 
@@ -108,7 +123,7 @@ Goal:
 Primary files:
 
 - `packages/core/src/tree/node-base.ts`
-- `packages/core/src/tree/util/cursor.ts`
+- future cursor helper TBD
 
 ### 2. Field-Aligned Edge Storage
 
@@ -125,7 +140,7 @@ Goal:
 Primary files:
 
 - `packages/core/src/tree/node-base.ts`
-- `packages/core/src/tree/util/cursor.ts`
+- future cursor helper TBD
 
 ### 3. Cursor Parent/Child Traversal
 
@@ -138,8 +153,8 @@ Goal:
 
 Primary files:
 
-- `packages/core/src/tree/util/cursor.ts`
-- `packages/core/src/tree/util/field-helpers.ts`
+- future cursor helper TBD
+- `packages/core/src/tree/node-base.ts`
 - `packages/core/src/tree/util/serialize-helper.ts`
 
 ### 4. No-Context Render Walks
@@ -174,29 +189,22 @@ Current warning:
 This section tracks only edge/cursor conversion status.
 
 
-| Node                   | Status          | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Expression`           | `converted`     | Direct canonical field kept; render-key child selection characterized.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Block`                | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Negative`             | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Paren`                | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Quoted`               | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `SelectorCapture`      | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `SelectorInterpolated` | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Url`                  | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `List`                 | `converted`     | Canonical container stays in place for same-length render-path child replacement; `valueEdges` now carry indexed alternates and local shape changes return a different node.                                                                                                                                                                                                                                                                                                                                                                      |
-| `Rest`                 | `converted`     | Simple child surface converted to direct field + render-key read path.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Sequence`             | `converted`     | Canonical container stays in place for same-length render-path child replacement; `valueEdges` carry indexed alternates and only shape changes return a different node.                                                                                                                                                                                                                                                                                                                                                                           |
-| `Rules`                | `in_progress`   | Major render-key entry/exit owner. Wrapper registry seeding indexes direct render-visible children, render-visible reads no longer clone container nodes on read, and render-key child mutation updates/removes `parentEdges` directly on wrapper-owned paths. Main blocker now is scope ownership still leaking through `renderParent` instead of a pure parent-edge / cursor model.                                                                                                                                                             |
-| `Ruleset`              | `in_progress`   | Direct field getters are field-aligned (`getSelector(renderKey?)`, `getRules(renderKey?)`, `getGuard(renderKey?)`, etc.), and `.maybeClone(...)` is gone in favor of explicit `.clone()`. Import-style is green again after placement-owned top-level import wrappers and render-key-aware `enterRules()` body ownership fixes, and `Reference` no longer re-identifies resolved definition-like nodes through generic eval inheritance. The parser-generated `tests-unit/import/import-reference.less` activation / ancestry seam is now fixed too: multi-candidate mixin output assembly rebinds candidate wrapper ancestry onto the caller-owned path without flattening away candidate wrappers or rebasing their state lanes. The formerly-live parser-backed `extend.less` seam is also fixed again: exact local-child extend can now fall back to the live own-selector surface after earlier local `all` extension, but only under a single-parent-selector parent and only when the active parent selector does not already contain the extender. Remaining blockers are now mostly selector/output-shape parity seams. |
-| `AtRule`               | `in_progress`   | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. The remaining live issue is not raw `AtRule` field access; it is the parser-generated reference-import activation / ancestry path that still fails in real Less integration.                                                            |
-| `Reference`            | `in_progress`   | Lookup-parent walk still depends on `context.rulesContext` and `Rules.renderParent` as side channels, but `Reference` no longer re-identifies resolved definition-like nodes through generic eval inheritance. That guard now protects mixin/ruleset/function lookups from being re-registered as bogus `EVAL` definitions. Remaining work is to make reference-import activation and ruleset-as-mixin ancestry use the render-owned path directly instead of the side channels.                                                                                                                                       |
-| `Call`                 | `in_progress`   | Direct dispatch and render-key-owned result shaping are in place. The remaining production seam is narrower: function/mixin live-result processing still has a few ownership-sensitive branches, but the old “not converted” wrapper model is gone.                                                                                                                                                                                                                                                                                                                                          |
-| `Mixin`                | `in_progress`   | Direct mixin invocation primitives and render-key scopes are in place. A real child-edge bug was fixed here: `Mixin.preEval()` now reattaches `rules` / `params` / `guard` children on the active render-key path, and guarded dispatch now reads the current guard surface instead of a canonical `candidate.get('guard')` read. That removed the old emitted-nested-mixin closure failure in `mixins-guards.less`. Multi-candidate output assembly is also narrower now: `assembleMixinInvocationOutput(...)` no longer canonically nests caller-owned candidate wrappers for reference-import activation, and parser-backed `import-reference.less` is green again. `mixins-guards-default-func.less` is green again too; the remaining mixin-related reds are selector-shape or formatting parity, not output assembly/runtime lookup failures. |
-| `Control`              | `in_progress`   | Runtime-generated numeric render keys landed for loop placements, and narrow loop proofs now exist. The remaining work is final production conversion of loop/output ownership, not more test-side patching.                                                                                                                                                                                                                                                                                                                                      |
+| Node / Surface         | Status          | Notes                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Simple value nodes     | `pre-primitive` | Many simple nodes now rely on direct canonical fields and no longer need old EvalState-style test shims, but production does not yet expose render-key field edges for them.                                                                                                                                                                                       |
+| `List` / `Sequence`    | `pre-primitive` | Container handling is simpler than the old clone-heavy path, but there is no `valueEdges` production API in this checkout. Any future same-length alternate child work must introduce or reuse a real field-aligned edge primitive first.                                                                                                                          |
+| `Rules`                | `in_progress`   | Wrapper registry seeding indexes direct render-visible children, and render-visible reads no longer clone container nodes on read. The live blocker is still ambient scope ownership through `Context.rulesContext` / `ScopeFrame.fallbackFrame` instead of an explicit cursor or caller-fallback lane.                                                            |
+| `Ruleset`              | `in_progress`   | `.maybeClone(...)` is gone in favor of explicit `.clone()`. Import-style and reference-import activation seams are green again, and the former parser-backed `extend.less` seam is fixed. Remaining work should be tied to fresh selector/output-shape or ownership proofs, not assumed field-edge getters.                                                         |
+| `AtRule`               | `in_progress`   | Major helper cleanup landed: no `AtRule` `activeState` writes, no generic `get('name', context)` / `get('selector', context)` hot-path reads, and hoisted wrapper selector composition now uses explicit cloned child `Ruleset`s. Remaining AtRule work should be tied to a fresh failing proof before adding more ancestry plumbing.                                |
+| `Reference`            | `in_progress`   | Lookup-parent walk still depends on `context.rulesContext` and `ScopeFrame.fallbackFrame` as side channels, but `Reference` no longer re-identifies resolved definition-like nodes through generic eval inheritance. Remaining work is to make reference-import activation and ruleset-as-mixin ancestry use an explicit render-owned path instead of ambient context. |
+| `Call`                 | `in_progress`   | Direct dispatch and result shaping are narrower, but `Call.resolve()` still deep-clones the call before eval and JS-function arg isolation still uses `copy(true, freezeChildren)`.                                                                                                                                                                               |
+| `Mixin`                | `in_progress`   | The old emitted-nested-mixin closure failure is fixed in focused proofs, but guarded dispatch still has direct `candidate.value.*` reads and clone-based param/rest binding paths.                                                                                                                                                                                |
+| `Control`              | `in_progress`   | Loop variable lookup uses `ScopeFrame` live slots and focused loop proofs exist. Final conversion still needs explicit placement/cursor ownership rather than broader scoped-body wrapper ownership.                                                                                                                                                              |
 
 
-Only the `converted` rows are valid hard-gate targets for focused edge/cursor tests.
+The table below is intentionally conservative: no row is marked `converted`
+until the production code has the concrete edge/cursor primitive that row
+claims.
 
 ## Immediate Next Work
 
@@ -212,9 +220,10 @@ Only listed here when it directly blocks edge/cursor work:
 - generic child-edge scaffolding
 - hidden no-context fallbacks that still depend on old state overlay
 - clone/materialize behavior used in place of edge/cursor ownership
-- `packages/core/src/tree/util/field-helpers.ts` as the activeState compatibility sewer
-- `packages/core/src/tree/util/legacy-node-ops.ts` as quarantined returned-result shaping
-- `Rules.renderParent` as an undocumented scope-parent side channel
+- ambient `Context.rulesContext` reads/writes where the current placement should
+  be explicit
+- `ScopeFrame.fallbackFrame` where it is standing in for a future explicit
+  caller-fallback lane
 
 ## Future Runtime Overhead
 
@@ -237,12 +246,9 @@ follow-on runtime cleanup once the active correctness bugs are stable.
 
 Recent proof milestone:
 
-- `packages/core/src/tree/__tests__/node-graph.test.ts` now provides direct
-  graph-level coverage for canonical parent walks, render-key wrapper parent
-  walks, detached unlock wrappers, `CALLER` as a secondary lane, and the
-  core child-edge helper behavior. Treat that suite as the baseline proof that
-  parent/cursor primitives themselves are working before debugging higher-level
-  mixin/import behavior.
+- `packages/core/src/tree/__tests__/mixin.test.ts` now has focused coverage for
+  the `.Person(person, "Male"); .person.sayGender();` closure shape, including
+  the parser-backed collapsed serialization case.
 
 - `tests-unit/property-accessors/property-accessors.less`
   Fixed.
@@ -272,26 +278,9 @@ Recent proof milestone:
 
 - `packages/jess/test/less/all-less.test.ts`
   Current focused Less fixture state:
-  - `tests-unit/extend-nest/extend-nest.less`
-    accepted fixture update in the Less worktree
-  - `tests-unit/rulesets/rulesets.less`
-    still a live regression
-  Future follow-up for `extend-nest.less` only if it stays narrow:
-  detect a generated grouped selector like `:is(.button, .submit):hover` as a
-  no-value extend target when adding the redundant `.submit:hover` alternate,
-  without introducing broad selector-subsumption logic.
-  Current `rulesets.less` diagnosis:
-  Jess is spreading the current selector list `#fourth, #five, #six` into
-  full-path alternatives after parent composition, where the canonical model
-  should preserve that current selector as a grouped fragment under the
-  already-composed parent before child routes are applied.
-  Formatting parity is restored for:
-  - `tests-unit/css-3/css-3.less`
-  - `tests-unit/css-grid/css-grid.less`
-  - `tests-unit/whitespace/whitespace.less`
-  with the durable fixes living in:
-  - `packages/core/src/tree/list.ts`
-  - `packages/core/src/tree/declaration.ts`
+  Jess Less parity was green at the last full push baseline after the accepted
+  fixture updates for `extend-nest.less` and `rulesets.less`.
+
   Core baseline is green again after:
   - `packages/core/src/tree/rules.ts`
     narrowed `Rules.flatRules(...)` ordering so late mixin-produced `Rules`
@@ -302,33 +291,24 @@ Recent proof milestone:
   - `packages/core/src/tree/__tests__/extend-import-style.test.ts`
     refreshing collapse-mode snapshots to the simpler semantically-equivalent
     descendant selector shapes now emitted by Jess
-  Current narrowing:
-  a parser-accurate core repro now exists in
-  `packages/core/src/tree/__tests__/mixin.test.ts` for the final
-  `.Person(person, "Male"); .person.sayGender();` case.
-  The repro fails with the same real runtime error:
-  `ReferenceError: 'gender_' is not defined`.
-  Important findings from this pass:
+
+  The earlier parser-accurate core repro for
+  `.Person(person, "Male"); .person.sayGender();` is now green in
+  `packages/core/src/tree/__tests__/mixin.test.ts`. Keep the durable findings:
   - the Less parser shape matters here:
     - `.@{name}` parses as `InterpolatedSelector(Interpolated source: '.%%')`
     - `.person.sayGender()` parses as a single compound `mixin-ruleset`
       reference path, not as nested target/key references
-  - selector/mixin registry reads now use context-aware selector access in
-    `registry-utils.ts`; that did not fix the closure failure by itself
-  - caller-scope lookup in `reference.ts` now treats a `CALLER` edge that
-    already points at `Rules` as the rules scope directly; that also was not
-    sufficient by itself
-  - keep the lookup model disciplined while debugging this:
+  - keep the lookup model disciplined for future regressions:
     - `.parent` is the current primary lookup path
     - `sourceParent` is stable definition provenance only
-    - caller fallback is additive on `parentEdges.get(CALLER)`
+    - caller fallback should become an explicit additive lane instead of being
+      smuggled through `sourceParent`
     - canonical reads should use direct fields, while placement-sensitive reads
       must stay on edge-aware accessors
-  The live seam is narrower now:
-  invocation-time scope/parent propagation inside
-  `util/mixin-instance-primitives.ts` is still letting the emitted nested
-  `.person` subtree lose access to the outer mixin param scope while the outer
-  mixin body is being evaluated.
+
+  Verified focused proof:
+  `pnpm --filter ./packages/core test -- --run src/tree/__tests__/mixin.test.ts -t "keeps param vars preferred|empty interpolated selector|sibling collapsed"`
 
 - `tests-unit/mixins-guards/mixins-guards.less`
   Current narrowing:
@@ -365,10 +345,12 @@ deleted, not normalized.
 ### Active Deep-Clone Seams
 
 
-| Seam                                                                                                             | Why It Exists Today                                                                                              | Blocker To Delete                                                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/core/src/tree/util/mixin-instance-primitives.ts` `freezeChildren` / `copy(true, freezeChildren)` paths | Param binding and rest/arguments normalization still assume detached copied values in some mixin argument flows. | Finish converting arg binding/rest aggregation to wrapper + edge ownership and remove frozen-copy fallback.                                                         |
-| `packages/core/src/tree/interpolated.ts` deep clone of replacements                                              | Deep clone support still exists in generic clone implementation for interpolated replacement trees.              | Once runtime callsites stop depending on deep clone semantics, collapse `Interpolated.clone(deep)` to shallow/container-only behavior or delete deep mode entirely. |
+| Seam                                                                                          | Why It Exists Today                                                                                                                | Blocker To Delete                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/core/src/tree/call.ts` JS-function arg `copy(true, freezeChildren)` path             | External JS functions can retain and inspect argument nodes, so the current call path still isolates args with frozen deep copies. | Introduce an explicit immutable/view argument model for JS-function calls, then pass that surface instead of detached node copies.                                     |
+| `packages/core/src/tree/rules.ts` param binding / rest / `@arguments` `copy(true, freezeChildren)` paths | Param matching and rest/arguments normalization still assume detached copied values in some mixin argument flows.                  | Finish converting arg binding/rest aggregation to wrapper + edge ownership and remove frozen-copy fallback.                                                           |
+| `packages/core/src/tree/reference.ts` reference-result / declaration-value `copy(true, freezeChildren)` paths     | Reference results and declaration value evaluation still use defensive frozen copies to avoid mutating canonical values.           | Split value evaluation into explicit derived-value/result surfaces so references can resolve without deep-copying the source node tree.                                |
+| `packages/core/src/tree/interpolated.ts` deep clone of replacements                            | Deep clone support still exists in generic clone implementation for interpolated replacement trees.                                | Once runtime callsites stop depending on deep clone semantics, collapse `Interpolated.clone(deep)` to shallow/container-only behavior or delete deep mode entirely.   |
 
 
 ### Suspicious Shallow-Clone / Materialize Seams
@@ -394,12 +376,12 @@ When a clone/materialize seam is removed:
 2. note the focused proof file that now protects the replacement model
 3. do not replace it with a differently named clone/materialize helper
 
-Recent removal:
+Recent cleanup:
 
-- `packages/core/src/tree/call.ts` fallback-call arg deep clone was deleted.
-  Proof: `packages/core/src/tree/__tests__/call.test.ts`
-- `packages/core/src/tree/call.ts` JS-function arg deep clone was deleted.
-  Proof: `packages/core/src/tree/__tests__/call.test.ts`
+- `packages/core/src/tree/call.ts` fallback-call result handling was narrowed,
+  but the JS-function argument isolation path still has a live
+  `copy(true, freezeChildren)` seam and is tracked above.
+  Proof area: `packages/core/src/tree/__tests__/call.test.ts`
 - `packages/core/src/tree/function.ts` no longer routes stylesheet-defined
   functions through temporary mixins or `freezeChildren()`.
   Proof: `packages/core/src/tree/__tests__/func.test.ts`

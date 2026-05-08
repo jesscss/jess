@@ -30,6 +30,13 @@ The branch should move away from:
 - render-root-owned patch tables
 - clone/materialize escape hatches for ordinary eval flow
 
+Implementation reality:
+
+`parentEdges` / `CALLER` is target vocabulary, not a complete production API
+today. Current production still uses direct `.parent`, typed field getters,
+`Context.rulesContext`, and `ScopeFrame` wiring. Do not describe a seam as fixed
+by `parentEdges` unless the code actually has that edge primitive.
+
 Core tests no longer need to preserve old-model mutation APIs. Do not add new
 `activeState` / `setField` / `getField` test setup back into
 `packages/core/src/tree/__tests__` or `packages/core/src/tree/util/__tests__`.

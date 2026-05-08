@@ -1,6 +1,9 @@
 # Node Copy Reduction — Progress
 
-See [STAGES.md](./STAGES.md) for detailed current state.
+See [HANDOFF.md](./HANDOFF.md) and
+[node-update-status.md](./node-update-status.md) for the current working state.
+`STAGES.md` is historical background from the older EvalState attempt, not the
+active migration plan.
 
 ## Summary (2026-03-31)
 
@@ -17,5 +20,8 @@ The branch has been reset around the cursor/edge target model again.
 ## Branch Status
 
 **Not merge-ready.** Remaining work is production conversion: scope ownership,
-returned-result ownership, and old helper/runtime seams such as
-`field-helpers.ts`, `legacy-node-ops.ts`, and `Rules.renderParent`.
+returned-result ownership, and clone/materialize seams. The older
+`field-helpers.ts`, `legacy-node-ops.ts`, and `Rules.renderParent` helper files
+or properties are gone; the live debt is now in ordinary production paths such
+as `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and remaining deep-copy
+call sites.
