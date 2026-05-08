@@ -109,6 +109,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * Prelude evaluation stays in evalNode so live-scope lookups stay correct.
    */
   override preEval(context: Context): MaybePromise<AtRule | Nil> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
       const prepared = this._prepareAtRuleNameIdentity(context);
       if (isThenable(prepared)) {
@@ -194,34 +198,41 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       node.preEvaluated = true;
       return node;
     };
-    // Depth-first: preEval child rules immediately so all nested rulesets/extends
+    // Depth-first: prepare child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     if (rules && !rules.preEvaluated) {
       const saved = this._setupAtRuleBodyRegistrationContext(node, rules, context);
-      let preEvaldRules: MaybePromise<Rules>;
+      let preparedRules: MaybePromise<Node>;
       try {
-        preEvaldRules = rules.preEval(context);
+        preparedRules = rules.prepareRegistration(context);
       } catch (error) {
         this._restoreAtRuleBodyRegistrationContext(context, saved);
         throw error;
       }
-      if (isThenable(preEvaldRules)) {
-        return (preEvaldRules as Promise<Rules>)
-          .then((evaldRules) => {
+      if (isThenable(preparedRules)) {
+        return preparedRules.then(
+          (resolvedRules) => {
             this._restoreAtRuleBodyRegistrationContext(context, saved);
-            if (evaldRules !== rules) {
-              ensureDerived().value.rules = evaldRules;
+            if (!(resolvedRules instanceof Rules)) {
+              throw new TypeError('Expected at-rule body registration prep to return Rules');
+            }
+            if (resolvedRules !== rules) {
+              ensureDerived().value.rules = resolvedRules;
             }
             return finalize();
-          })
-          .catch((error) => {
+          },
+          (error) => {
             this._restoreAtRuleBodyRegistrationContext(context, saved);
             throw error;
-          });
+          }
+        );
       }
       this._restoreAtRuleBodyRegistrationContext(context, saved);
-      if (preEvaldRules !== rules) {
-        ensureDerived().value.rules = preEvaldRules as Rules;
+      if (!(preparedRules instanceof Rules)) {
+        throw new TypeError('Expected at-rule body registration prep to return Rules');
+      }
+      if (preparedRules !== rules) {
+        ensureDerived().value.rules = preparedRules;
       }
     }
     return finalize();
@@ -232,7 +243,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     rules: Rules,
     context: Context
   ): AtRuleBodyRegistrationContext {
-    // For nestable at-rules we do NOT push the original here. The body's Rules.preEval
+    // For nestable at-rules we do NOT push the original here. The body's Rules registration prep
     // pushes the clone (the Rules that ends up in the tree) so rulesets register to it.
     // Pushing the original would leave the clone's registry empty (extend + collapseNesting bug).
     const pushedExtendRoot = !node.isNestable();
@@ -518,15 +529,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           let bodyToEval: Rules = rules;
           if (node.isNestable()) {
             parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
-            let preEvalResult: MaybePromise<Rules>;
+            let preparedRules: MaybePromise<Node>;
             try {
-              preEvalResult = rules.preEval(context);
+              preparedRules = rules.prepareRegistration(context);
             } catch (error) {
               restoreBodyEvalContext();
               throw error;
             }
-            if (isThenable(preEvalResult)) {
-              return (preEvalResult as Promise<Rules>).then((resolved) => {
+            if (isThenable(preparedRules)) {
+              return preparedRules.then((resolved) => {
+                if (!(resolved instanceof Rules)) {
+                  restoreBodyEvalContext();
+                  throw new TypeError('Expected at-rule body registration prep to return Rules');
+                }
                 bodyToEval = resolved;
                 context.extendRoots.pushExtendRoot(bodyToEval);
                 pushedExtendRoot = true;
@@ -576,7 +591,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 throw error;
               });
             }
-            bodyToEval = preEvalResult as Rules;
+            if (!(preparedRules instanceof Rules)) {
+              restoreBodyEvalContext();
+              throw new TypeError('Expected at-rule body registration prep to return Rules');
+            }
+            bodyToEval = preparedRules;
             context.extendRoots.pushExtendRoot(bodyToEval);
             pushedExtendRoot = true;
           }

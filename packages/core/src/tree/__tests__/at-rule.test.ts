@@ -1,7 +1,7 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp,
+  num, dimension, amp, F_MAY_ASYNC,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
 import type { IToken } from 'chevrotain';
@@ -43,18 +43,18 @@ describe('AtRule', () => {
     context = new Context();
   });
 
-  it('keeps static leaf at-rules canonical in preEval', async () => {
+  it('keeps static leaf at-rules canonical in registration prep', async () => {
     const node = atrule({
       name: any('@namespace', { role: 'atkeyword' }),
       prelude: seq([any('svg')])
     });
 
-    const preEvald = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
-    expect(preEvald).toBe(node);
+    expect(prepared).toBe(node);
   });
 
-  it('keeps static at-rules canonical in preEval when child rules are already preEvaluated', async () => {
+  it('keeps static at-rules canonical in registration prep when child rules are already preEvaluated', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -65,12 +65,12 @@ describe('AtRule', () => {
       rules: body
     });
 
-    const preEvald = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
-    expect(preEvald).toBe(node);
+    expect(prepared).toBe(node);
   });
 
-  it('keeps interpolated at-rule preEval wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
+  it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
     const node = atrule({
       name: interpolated({
         source: '@media',
@@ -79,18 +79,18 @@ describe('AtRule', () => {
       prelude: seq([any('screen', { role: 'keyword' })])
     });
 
-    const preEvald = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
-    expect(preEvald).not.toBe(node);
-    expect(preEvald).toBeInstanceOf(AtRule);
-    expect(preEvald.sourceNode).toBe(preEvald);
-    if (!(preEvald instanceof AtRule)) {
+    expect(prepared).not.toBe(node);
+    expect(prepared).toBeInstanceOf(AtRule);
+    expect(prepared.sourceNode).toBe(prepared);
+    if (!(prepared instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
-    expect(preEvald.value.name.valueOf()).toBe('@media');
+    expect(prepared.value.name.valueOf()).toBe('@media');
   });
 
-  it('restores at-rule body registration context when child preEval throws', () => {
+  it('restores at-rule body registration context when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -99,8 +99,8 @@ describe('AtRule', () => {
       selector: el('.child'),
       rules: rules([])
     });
-    throwingChild.preEval = () => {
-      throw new Error('child preEval failed');
+    throwingChild.prepareRegistration = () => {
+      throw new Error('child registration prep failed');
     };
     const node = atrule({
       name: any('@keyframes', { role: 'atkeyword' }),
@@ -109,7 +109,7 @@ describe('AtRule', () => {
     context.rulesetFrames = [savedFrame];
     const extendRootStackLength = context.extendRoots.extendRootStack.length;
 
-    expect(() => node.preEval(context)).toThrow('child preEval failed');
+    expect(() => node.prepareRegistration(context)).toThrow('child registration prep failed');
     expect(context.rulesetFrames).toEqual([savedFrame]);
     expect(context.extendRoots.extendRootStack).toHaveLength(extendRootStackLength);
   });
@@ -164,6 +164,7 @@ describe('AtRule', () => {
     });
     const body = rules([]);
     body.eval = () => Promise.reject(new Error('body eval failed'));
+    body.addFlag(F_MAY_ASYNC);
     const node = atrule({
       name: any('@font-face', { role: 'atkeyword' }),
       rules: body

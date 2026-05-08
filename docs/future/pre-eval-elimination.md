@@ -916,6 +916,8 @@ The first code slice was a no-behavior-change extraction inside
 - moved `Ruleset` selector identity and child-rules registration prep onto
   `prepareRegistration()` while keeping its depth-first child registration
   timing unchanged
+- moved `AtRule` name identity, import queueing, and body registration prep onto
+  `prepareRegistration()` while keeping prelude evaluation in `evalNode()`
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

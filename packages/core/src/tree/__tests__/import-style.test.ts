@@ -1798,9 +1798,9 @@ describe('Style import', () => {
   describe('less import fixture regressions', () => {
     it('keeps non-declaration pending identity prep source-ordered', async () => {
       const order: string[] = [];
-      const recordPreEval = (node: Node, label: string): void => {
-        const original = node.preEval.bind(node);
-        node.preEval = (ctx: Context) => {
+      const recordRegistrationPrep = (node: Node, label: string): void => {
+        const original = node.prepareRegistration.bind(node);
+        node.prepareRegistration = (ctx: Context) => {
           order.push(label);
           return original(ctx);
         };
@@ -1827,9 +1827,9 @@ describe('Style import', () => {
         rules: rules([decl({ name: 'color', value: any('red') })])
       });
 
-      recordPreEval(dynamicMixin, 'callable');
-      recordPreEval(dynamicImport, 'import');
-      recordPreEval(dynamicRuleset, 'selector');
+      recordRegistrationPrep(dynamicMixin, 'callable');
+      recordRegistrationPrep(dynamicImport, 'import');
+      recordRegistrationPrep(dynamicRuleset, 'selector');
 
       await rules([
         dynamicMixin,
