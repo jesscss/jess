@@ -13,6 +13,14 @@ import {
   renderNodeToBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
+
+type CallLikeValue = {
+  name?: {
+    type?: string;
+    value?: { key?: unknown };
+    valueOf?: () => unknown;
+  } | string;
+};
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -41,10 +49,10 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
   if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
     return;
   }
-  const rawName = rawValue.name;
+  const rawName = (rawValue as CallLikeValue).name;
   const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-  const refKey = rawName?.type === 'Reference'
-    ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
+  const refKey = typeof rawName === 'object' && rawName?.type === 'Reference'
+    ? String(rawName.value?.key?.valueOf?.() ?? rawName.value?.key ?? '')
     : '';
   if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
     return new Bool(Boolean(context.isDefault));
@@ -86,8 +94,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
     const mark = w.mark();
     const escapeChar = this._options?.escaped ? '~' : '';
     if (escapeChar) {
@@ -97,7 +105,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     let value = this.value;
     if (value) {
       if (value instanceof Node) {
-        emitParenValue(value, options);
+        emitParenValue(value, printOptions);
       } else {
         w.add(String(value), this);
       }

@@ -279,10 +279,10 @@ export abstract class Registry<
               // Add to candidates and stop searching this rule
               if (isArray(result)) {
                 for (const node of result) {
-                  candidates.add(node);
+                  candidates.add(node as unknown as Type);
                 }
               } else {
-                candidates.add(result);
+                candidates.add(result as Type);
               }
               break; // Stop searching this rule
             }
@@ -294,9 +294,9 @@ export abstract class Registry<
             if (isArray(result)) {
               for (const node of result) {
                 if (isOptional && optionalCandidates) {
-                  optionalCandidates.add(node);
+                  optionalCandidates.add(node as Node);
                 } else {
-                  candidates.add(node);
+                  candidates.add(node as unknown as Type);
                 }
               }
             } else {

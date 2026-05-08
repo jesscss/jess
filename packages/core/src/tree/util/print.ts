@@ -194,7 +194,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
-  state.trivia = seed?.trivia ?? context.opts.trivia;
+  state.trivia = seed?.trivia ?? (context.opts as { trivia?: TriviaMap }).trivia;
   state.emittedTrivia = new Set();
 
   if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
@@ -205,10 +205,10 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   return state;
 }
 
-export type SavedPrintState = Array<[RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]]>;
+export type SavedPrintState = Array<[RestorablePrintStateKey, unknown]>;
 
 export function savePrintState(
-  options: FinalPrintOptions,
+  options: PrintOptions,
   keys: readonly RestorablePrintStateKey[]
 ): SavedPrintState {
   const saved: SavedPrintState = [];
@@ -219,12 +219,12 @@ export function savePrintState(
 }
 
 export function restorePrintState(
-  options: FinalPrintOptions,
+  options: PrintOptions,
   saved: SavedPrintState
 ): void {
   for (let i = 0; i < saved.length; i++) {
     const [key, value] = saved[i]!;
-    options[key] = value;
+    (options as Record<string, unknown>)[key] = value;
   }
 }
 

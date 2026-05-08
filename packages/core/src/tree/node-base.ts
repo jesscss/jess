@@ -82,7 +82,7 @@ export type LocationInfo = [
 ];
 
 function createNodeOptions<O extends NodeOptions>(): O & AllNodeOptions {
-  return {};
+  return {} as O & AllNodeOptions;
 }
 
 function isPrimitiveValue(value: unknown): value is Primitive {
@@ -534,7 +534,7 @@ export abstract class Node<
     treeContext?: ConstructorParameters<T>[3]
   ): InstanceType<T> {
     // Create the instance with the same signature as constructor
-    const instance: InstanceType<T> = new this(value, options, location, treeContext);
+    const instance = new this(value, options, location, treeContext) as InstanceType<T>;
 
     // Mark as generated if the value is an object that can be marked
     if (instance instanceof Node) {
@@ -770,19 +770,17 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  cloneValue(value: Data): Data;
-  cloneValue(value: NodeValue): NodeValue;
-  cloneValue(value: Data | NodeValue): Data | NodeValue {
+  cloneValue<T>(value: T): T {
     if (isArray(value)) {
-      return [...value];
+      return [...value] as T;
     } else if (isPlainObject(value)) {
       const clonedValue: Record<string, unknown> = {};
       for (const k in value) {
         if (Object.hasOwn(value, k)) {
-          clonedValue[k] = this.cloneValue(value[k]);
+          clonedValue[k] = this.cloneValue((value as Record<string, unknown>)[k]);
         }
       }
-      return clonedValue;
+      return clonedValue as T;
     }
     return value;
   }
@@ -805,7 +803,7 @@ export abstract class Node<
     if (deep) {
       cloneFn ??= n => n.clone(deep);
       if (cloned instanceof Node) {
-        cloned = cloneFn(cloned);
+        cloned = cloneFn(cloned) as Data;
       } else {
         this._deepCloneChildren(cloned, cloneFn);
       }

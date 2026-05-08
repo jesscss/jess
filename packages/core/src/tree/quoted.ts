@@ -1,4 +1,4 @@
-import { type Interpolated } from './interpolated.js';
+import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
@@ -16,7 +16,7 @@ export type QuotedOptions = {
 };
 
 export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
-  eval(context: Context): Promise<Quoted | Any | Interpolated>;
+  eval(context: Context): Promise<Quoted | Node>;
 }
 
 /**
@@ -26,7 +26,7 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   private withValue(value: string | Any | Interpolated): this {
     const node = this.clone(false) as this;
-    node.value = value;
+    node.set(null, value);
     return node;
   }
 
@@ -90,8 +90,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
   }
 
-  override evalNode(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    const cont = (value: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
+  override evalNode(context: Context): MaybePromise<Quoted | Node> {
+    const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
       if (this._options?.escaped) {
         if (value instanceof Node) {
           return value;
@@ -100,6 +100,9 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       }
       if (value === this.value) {
         return this;
+      }
+      if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
+        return value;
       }
       return this.withValue(value);
     };
@@ -114,8 +117,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return cont(value);
   }
 
-  override resolve(context: Context): MaybePromise<Quoted | Any | Interpolated> {
-    const cont = (value: string | Any | Interpolated | Node): Quoted | Any | Interpolated => {
+  override resolve(context: Context): MaybePromise<Quoted | Node> {
+    const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
       if (this._options?.escaped) {
         if (value instanceof Node) {
           return value;
@@ -124,6 +127,9 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       }
       if (value === this.value) {
         return this;
+      }
+      if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
+        return value;
       }
       return this.withValue(value);
     };

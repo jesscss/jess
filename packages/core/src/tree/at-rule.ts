@@ -100,8 +100,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    return serializeRulesContainer(this, options);
+    const printOptions = getPrintOptions(options);
+    return serializeRulesContainer(this, printOptions);
   }
 
   /**

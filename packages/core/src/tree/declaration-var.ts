@@ -77,9 +77,14 @@ export const vardecl = (
   treeContext?: TreeContext
 ) => {
   const { name } = value;
+  const nameNode: DeclarationValue['name'] = typeof name === 'string'
+    ? new Any(name, { role: 'property' })
+    : name instanceof Any
+      ? new Any(name.value, { role: 'property' })
+      : name as DeclarationValue['name'];
   const declarationValue: DeclarationValue = {
     ...value,
-    name: typeof name === 'string' ? new Any(name, { role: 'property' }) : name
+    name: nameNode
   };
   return new VarDeclaration(declarationValue, options, location, treeContext);
 };

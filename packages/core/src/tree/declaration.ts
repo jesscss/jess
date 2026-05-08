@@ -14,6 +14,7 @@ import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
+import type { Call } from './call.js';
 import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -91,7 +92,13 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   return false;
 };
 
-const isLessFunctionFallbackCall = (node: Node): boolean => (
+type LessFunctionFallbackCall = Call & {
+  value: Call['value'] & {
+    name: Reference;
+  };
+};
+
+const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCall => (
   isNode(node, N.Call)
   && isNode(node.value.name, N.Reference)
   && node.value.name.options?.type === 'function'

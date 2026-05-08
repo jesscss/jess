@@ -18,6 +18,13 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 
+function stringifyValueOf(value: unknown): string {
+  if (value && typeof value === 'object' && 'valueOf' in value) {
+    return String((value as { valueOf(): unknown }).valueOf());
+  }
+  return String(value);
+}
+
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
@@ -236,8 +243,8 @@ export class Call extends Node<CallValue, CallOptions> {
     return this.renderPlainFunctionCall(resolved, context, prepared);
   }
 
-  override async resolve(context: Context): Promise<Node> {
-    return await this.clone(true).eval(context);
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.clone(true).eval(context) as MaybePromise<Node>;
   }
 
   /** Recursively makes declarations important */
@@ -298,7 +305,7 @@ export class Call extends Node<CallValue, CallOptions> {
     context.callStack.push(this);
     context.parenFrames.push(false);
 
-    let n: string | Node | unknown;
+    let n: string | Node | MixinCollection | unknown;
     if (typeof name === 'string') {
       n = name;
     } else if (preservesRulesLikeVariableTarget) {
@@ -342,11 +349,11 @@ export class Call extends Node<CallValue, CallOptions> {
       context.callStack.pop();
       context.parenFrames.pop();
       return result;
-    } else if (isNode(n, N.Rules | N.Collection)) {
+    } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
       if (preservesRulesLikeVariableTarget) {
         const sourceParent = n.sourceNode?.parent;
         if (sourceParent) {
-          n.parent = sourceParent;
+          Reflect.set(n, 'parent', sourceParent);
         }
       }
       // Detached rulesets/collections share the same callable-body path as
@@ -390,7 +397,7 @@ export class Call extends Node<CallValue, CallOptions> {
         context.parenFrames.pop();
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (this.parent?.type === 'SelectorCapture') {
-            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+            return adoptCallWhitespace(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
@@ -404,7 +411,7 @@ export class Call extends Node<CallValue, CallOptions> {
         newCall.options.silentFail = false;
         newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
-          : String(n.valueOf());
+          : stringifyValueOf(n);
         newCall.value.args = await evalArgNodes(args);
         return adoptCallWhitespace(newCall);
       }
@@ -412,6 +419,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
     let fn = isNode(n, N.JsFunction) ? n.value : n;
     if (typeof fn === 'function') {
+      const callable = fn as ExtendedFn;
       const originalCaller = context.caller;
       context.caller = this;
       let didPopCallStack = false;
@@ -428,15 +436,15 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           args = copiedArgs;
         }
-        const shouldPassListArgs = Boolean(fn._internal || fn.options?.params);
+        const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
         const result = await (
           args
             ? (
                 shouldPassListArgs
-                  ? callWithContext(context, fn, args)
-                  : callWithContext(context, fn, ...args.value)
+                  ? callWithContext(context, callable, args)
+                  : callWithContext(context, callable, ...args.value)
               )
-            : callWithContext(context, fn)
+            : callWithContext(context, callable)
         );
         context.caller = originalCaller;
         context.callStack.pop();
@@ -465,7 +473,7 @@ export class Call extends Node<CallValue, CallOptions> {
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (this.parent?.type === 'SelectorCapture') {
-            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+            return adoptCallWhitespace(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
@@ -480,7 +488,7 @@ export class Call extends Node<CallValue, CallOptions> {
         newCall.options.silentFail = false;
         newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
-          : String(n.valueOf());
+          : stringifyValueOf(n);
         newCall.value.args = await evalArgNodes(args);
         return adoptCallWhitespace(newCall);
       } finally {
@@ -512,7 +520,7 @@ export class Call extends Node<CallValue, CallOptions> {
           return new Paren(evaluatedArgs.value[0]!);
         }
       }
-      node.value.name = n;
+      node.value.name = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
       node.value.args = evaluatedArgs;
       return adoptCallWhitespace(node);
     };

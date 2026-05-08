@@ -59,8 +59,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private renderListSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
     const sep = this._options?.sep ?? ',';
     let { value } = this;
     let length = value.length;
@@ -69,13 +69,13 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return '';
     }
     let item = value[0]!;
-    emitListItem(item, options);
+    emitListItem(item, printOptions);
     for (let i = 1; i < length; i++) {
       const prev = item;
       item = value[i]!;
-      emitCommentTriviaBetweenNodes(prev, item, options);
-      const leadingTrivia = options.trivia
-        ? consumeTrivia(options.trivia, item.location[0], 'before', options)
+      emitCommentTriviaBetweenNodes(prev, item, printOptions);
+      const leadingTrivia = printOptions.trivia
+        ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
         : undefined;
       const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
         ? leadingTrivia[0].image
@@ -89,11 +89,11 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       if (leadingTrivia) {
         emitTriviaTokens(
           leadingTrivia,
-          options,
+          printOptions,
           { skipLeadingWhitespace: !preserveLeadingWhitespace }
         );
       }
-      emitListItem(item, options, true);
+      emitListItem(item, printOptions, true);
     }
     return w.getSince(mark);
   }

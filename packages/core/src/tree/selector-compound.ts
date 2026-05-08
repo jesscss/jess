@@ -43,23 +43,21 @@ function emitCompoundPart(
 export class CompoundSelector extends Selector<SimpleSelector[]> {
   private withComponents(value: Selector[]): this {
     const node = this.clone();
-    // @ts-expect-error compound normalization can temporarily carry selector-like
-    // children produced by ampersand flattening before later collapse steps.
     node.set(null, value);
     return node;
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+    const printOptions = getPrintOptions(options);
     const value = this.value;
-    const w = options.writer!;
+    const w = printOptions.writer;
     const mark = w.mark();
-    const saved = savePrintState(options, ['ampersandFirst']);
+    const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
-      options.ampersandFirst = (i === 0);
-      emitCompoundPart(value[i]!, options, i > 0);
+      printOptions.ampersandFirst = (i === 0);
+      emitCompoundPart(value[i]!, printOptions, i > 0);
     }
-    restorePrintState(options, saved);
+    restorePrintState(printOptions, saved);
     return w.getSince(mark);
   }
 

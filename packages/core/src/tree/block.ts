@@ -24,7 +24,7 @@ export interface Block extends Node<Node, BlockOptions> {
 export class Block extends Node<Node, BlockOptions> {
   private withValue(value: Node): this {
     const node = this.clone(false) as this;
-    node.value = value;
+    node.set(null, value);
     return node;
   }
 

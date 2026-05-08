@@ -64,6 +64,10 @@ export class Dimension extends Node<DimensionValue> {
     return unitToGroup;
   }
 
+  private isConversionUnit(unit: string): unit is ConversionUnit {
+    return this.unitToGroup.has(unit);
+  }
+
   override valueOf() {
     let { number, unit } = this.value;
     return unit ? `${number}${unit}` : number;
@@ -155,6 +159,9 @@ export class Dimension extends Node<DimensionValue> {
       return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
     }
 
+    if (!this.isConversionUnit(aUnit) || !this.isConversionUnit(bUnit)) {
+      throw new TypeError('Incompatible units. Change the units or use the unit function');
+    }
     const group = conversions[bGroup];
     const atomicUnit = group[aUnit];
     const targetUnit = group[bUnit];
@@ -240,6 +247,9 @@ export class Dimension extends Node<DimensionValue> {
           /** Units don't match, and can't be converted */
           throw new TypeError('Incompatible units. Change the units or use the unit function');
         }
+        return undefined;
+      }
+      if (!this.isConversionUnit(aUnit) || !this.isConversionUnit(bUnit)) {
         return undefined;
       }
       const group = conversions[bGroup];

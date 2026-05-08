@@ -28,13 +28,13 @@ export type AttributeSelectorValue = {
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   private withResolvedParts(name: string | Node, value: Node | undefined): this {
     const node = this.clone(false) as this;
-    node.value = { ...this.value, name, value };
+    node.set(null, { ...this.value, name, value });
     return node;
   }
 
   private createResolvedValueNode(value: Node): this {
     const node = this.clone();
-    node.value.value = quoted(String(value.valueOf()));
+    node.set('value', quoted(String(value.valueOf())));
     return node;
   }
 

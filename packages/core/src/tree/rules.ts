@@ -566,6 +566,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       local?: boolean;
       includeRulesets?: boolean;
       searchParents?: boolean;
+      context?: Context;
     }
   ): MixinEntry[] {
     const findWithinScopeSurface = (
@@ -654,6 +655,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       hasTarget?: boolean;
       local?: boolean;
       searchParents?: boolean;
+      context?: Context;
     }
   ): boolean {
     const searchSurface = (
@@ -756,6 +758,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       hasTarget?: boolean;
       local?: boolean;
       searchParents?: boolean;
+      context?: Context;
     }
   ): boolean {
     const searchSurface = (
@@ -1293,15 +1296,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * just to search it.
    */
   find(type: 'declaration', keys: string, filterType?: string, options?: Registries.DeclarationFindOptions): ReturnType<Registries.DeclarationRegistry['find']> | undefined;
-  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.MixinRegistry['find']> | undefined;
+  find(type: 'mixin', keys: string | string[], filterType?: string, options?: Registries.FindOptions): MixinEntry[] | undefined;
   find(type: 'function', keys: string, filterType?: string, options?: Registries.FindOptions): ReturnType<Registries.FunctionRegistry['find']> | undefined;
-  find(type: 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined;
+  find(type: 'declaration' | 'mixin' | 'function', key: string, filterType: string, options?: Registries.FindOptions): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined;
   find(
     type: 'declaration' | 'mixin' | 'function',
     keys: string | string[],
     filterType?: string,
     options: Registries.FindOptions = {}
-  ): ReturnType<Registries.DeclarationRegistry['find']> | ReturnType<Registries.MixinRegistry['find']> | ReturnType<Registries.FunctionRegistry['find']> | undefined {
+  ): ReturnType<Registries.DeclarationRegistry['find']> | MixinEntry[] | ReturnType<Registries.FunctionRegistry['find']> | undefined {
     if (type === 'mixin' && typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin';
       const fast = this.findMixinsFast(keys, {
@@ -1727,10 +1730,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           ? (enteringReferenceMode ? false : referenceRenderEnabled)
           : true;
         const previewSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-        const previewInFramesLength = options.inFrames.length;
-        const previewTreeFramesLength = options.treeFrames.length;
-        const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
-        const previewFrameHeadersLength = options.frameHeaders.length;
+        const previewInFramesLength = options.inFrames!.length;
+        const previewTreeFramesLength = options.treeFrames!.length;
+        const previewLastRenderedFramesLength = options.lastRenderedFrames!.length;
+        const previewFrameHeadersLength = options.frameHeaders!.length;
         const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
         const previewEmittedTrivia = saveSetState(options.emittedTrivia);
         options.depth = depth;
@@ -1738,10 +1741,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const previewOut = renderText(() => n.toTrimmedString(getPrintOptions(options)));
         restoreSetState(options.emittedTrivia, previewEmittedTrivia);
-        options.inFrames.length = previewInFramesLength;
-        options.treeFrames.length = previewTreeFramesLength;
-        options.lastRenderedFrames.length = previewLastRenderedFramesLength;
-        options.frameHeaders.length = previewFrameHeadersLength;
+        options.inFrames!.length = previewInFramesLength;
+        options.treeFrames!.length = previewTreeFramesLength;
+        options.lastRenderedFrames!.length = previewLastRenderedFramesLength;
+        options.frameHeaders!.length = previewFrameHeadersLength;
         if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
           options.composedSelectorStack.length = previewComposedSelectorStackLength;
         }
@@ -2221,10 +2224,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       // Nodes that don't register by name (Call, Expression, etc.) skip
       // registration prep and dynamic resolution — they're handled by the eval queue.
       if (!this._isRegisterableType(node)) {
-        node.index = nodeIndex;
+        Reflect.set(node, 'index', nodeIndex);
         return;
       }
-      node.index = nodeIndex;
+      Reflect.set(node, 'index', nodeIndex);
       return this._prepareRegisterableNode(rules, node, index, nodeIndex, prepState, context);
     });
 
@@ -2281,7 +2284,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Charset is root output-order bookkeeping, not name registration.
     rules.value[index] = node.prepareRegistration(context);
-    rules.value[index]!.index = nodeIndex;
+    Reflect.set(rules.value[index]!, 'index', nodeIndex);
     return true;
   }
 
@@ -2336,7 +2339,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     prepState: RegistrationPrepState
   ): void {
     rules.value[index] = node;
-    node.index = nodeIndex;
+    Reflect.set(node, 'index', nodeIndex);
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
       this._registerNodeIfEligible(rules, node);
@@ -2369,7 +2372,12 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const selector = node.value.selector;
       // BasicSelector, CompoundSelector, ComplexSelector etc. are always static
       // Only Interpolated selectors need resolution
-      if (isNode(selector, N.BasicSelector | N.CompoundSelector | N.ComplexSelector | N.SelectorList)) {
+      if (
+        isNode(selector, N.BasicSelector)
+        || isNode(selector, N.CompoundSelector)
+        || isNode(selector, N.ComplexSelector)
+        || isNode(selector, N.SelectorList)
+      ) {
         return true;
       }
       // After identity prep, the selector should be resolved to static identifiers.
@@ -3640,7 +3648,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
     ): Rules {
       const output = sourceRules.clone(false);
-      output.value = [];
+      output.set(null, []);
       output.scopeFrame = undefined;
       if (options?.rulesOptions || options?.markMixinOutput) {
         output.options = {
@@ -3685,8 +3693,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     let emptyOutputSourceRules: Rules | undefined;
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
-      let isPlainRule = isNode(mixin, N.Rules);
-      let paramLength = isPlainRule ? 0 : mixin.value.params?.length ?? 0;
+      let paramLength = isCallableEntry(mixin) ? mixin.value.params?.length ?? 0 : 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
         if (nodeArgs.length) {
@@ -3944,7 +3951,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return value.map(item => stringifyCallableKey(item)).join('');
       }
       if (value instanceof Node) {
-        return value.valueOf();
+        return String(value.valueOf());
       }
       return String(value ?? '');
     };
@@ -3959,7 +3966,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (isNode(name, N.Reference)) {
         return stringifyCallableKey(name.value.key);
       }
-      return name.valueOf();
+      return String(name.valueOf());
     };
     const rulesContainCallKey = (rules: Rules, key: string): boolean => {
       for (const child of rules.children(true)) {
@@ -4092,7 +4099,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const newRules = await rules.eval(thisContext);
         candidate.parent!.adopt(newRules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
-        newRules.index = candidate.index;
+        Reflect.set(newRules, 'index', candidate.index);
 
         // Visibility should be preserved by Rules.eval - no need to set it explicitly here
         // The eval'd rules should already have their nodes registered
@@ -4180,7 +4187,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         unlocked.options.referenceMode = false;
         clearReferenceModeForMixinOutput(unlocked);
         markMixinOutputSource(unlocked, sourceRules);
-        unlocked.index = candidate.index;
+        Reflect.set(unlocked, 'index', candidate.index);
         // Evaluate immediately while the call-site parent chain is intact.
         // Variables in the enclosing scope (e.g. @hover-background declared before the
         // detached-ruleset call) are reachable now via unlocked.parent → cbody.
@@ -4196,7 +4203,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
       if (isNode(candidate, N.Mixin)) {
-        rules.parent = candidate.value.rules.parent;
+        Reflect.set(rules, 'parent', candidate.value.rules.parent);
       }
       // Mixin body vars should follow the same leaky/non-leaky visibility model as
       // rulesets: visible outside only in Less/leaky mode, while remaining available
@@ -4220,7 +4227,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (syncScopeFrame && rules.scopeFrame) {
           outerRules.scopeFrame = rules.scopeFrame;
         }
-        outerRules.index = candidate.index;
+        Reflect.set(outerRules, 'index', candidate.index);
         parent.adopt(outerRules);
         return outerRules;
       };
@@ -4344,7 +4351,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       ) {
         ensureOuterRules(thisContext.rulesContext ?? candidate.parent!, undefined, false);
         if (parentFrame) {
-          outerRules.scopeFrame = rules.getScopeFrame();
+          outerRules!.scopeFrame = rules.getScopeFrame();
         }
       }
       let passes = true;
@@ -4527,7 +4534,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         let rule = outputRules[i]!;
         rule.frozen = true;
         /** Set a sequential index for lookup sorting */
-        rule.index = isIndexedRuleChild(rule) ? outputRuleIndex++ : undefined;
+        Reflect.set(rule, 'index', isIndexedRuleChild(rule) ? outputRuleIndex++ : undefined);
         output.push(rule);
       }
     }

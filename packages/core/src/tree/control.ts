@@ -92,12 +92,21 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     }
     return;
   }
-  if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
-    const rules = isNode(input, N.Rules)
-      ? input.value
-      : isNode(input, N.Ruleset)
-        ? (input.value.rules?.value ?? [])
-        : input.value.rules?.value ?? [];
+  if (isNode(input, N.Rules)) {
+    const rules = input.value;
+    for (const rule of rules) {
+      if (!rule || isNode(rule, N.Comment)) {
+        continue;
+      }
+      if (!isNode(rule, N.Declaration)) {
+        continue;
+      }
+      yield [rule.value.value, rule.value.name];
+    }
+    return;
+  }
+  if (isNode(input, N.Ruleset) || isNode(input, N.Mixin)) {
+    const rules = input.value.rules?.value ?? [];
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -213,7 +222,7 @@ export class For extends Node<StructuredLoopValue> {
 
   private createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
     const output = sourceRules.clone(false) as Rules;
-    output.value = [];
+    output.set(null, []);
     output.scopeFrame = undefined;
     if (childNodes) {
       for (const childNode of childNodes) {

@@ -40,7 +40,7 @@ function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['tri
 export class Sequence extends Node<Node[], SequenceOptions> {
   private withValue(value: Node[]): this {
     const node = this.clone(false) as this;
-    node.value = value;
+    node.set(null, value);
     return node;
   }
 
@@ -89,11 +89,11 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    if (options?.inCustom) {
-      return super.toTrimmedString(options);
+    const printOptions = getPrintOptions(options);
+    if (printOptions.inCustom) {
+      return super.toTrimmedString(printOptions);
     }
-    const w = options.writer!;
+    const w = printOptions.writer;
     const mark = w.mark();
     const { value } = this;
     const length = value.length;
@@ -102,7 +102,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return '';
     }
 
-    value[0]!.toString(options);
+    value[0]!.toString(printOptions);
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
@@ -112,15 +112,16 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       const prevEndsWithSpace = prevLastChar === ' ';
 
       const sourceTrivia = (
-        options.trivia
-        && prev.treeContext?.opts?.trivia === options.trivia
-        && node.treeContext?.opts?.trivia === options.trivia
+        printOptions.trivia
+        && prev.treeContext?.opts?.trivia === printOptions.trivia
+        && node.treeContext?.opts?.trivia === printOptions.trivia
       );
+      const trivia = sourceTrivia ? printOptions.trivia : undefined;
       const hasTrivia = Boolean(
-        sourceTrivia
+        trivia
         && (
-          hasNonWhitespaceTrivia(options.trivia.lookup(prev.location[3], 'after'))
-          || hasNonWhitespaceTrivia(options.trivia.lookup(node.location[0], 'before'))
+          hasNonWhitespaceTrivia(trivia.lookup(prev.location[3], 'after'))
+          || hasNonWhitespaceTrivia(trivia.lookup(node.location[0], 'before'))
         )
       );
       const prevEnd = prev.location[3];
@@ -142,7 +143,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
           ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
           : undefined);
       }
-      node.toString(options);
+      node.toString(printOptions);
     }
 
     return w.getSince(mark);

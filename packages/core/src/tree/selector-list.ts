@@ -41,9 +41,9 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   private renderSelectorListSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    let depth = options.depth!;
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    let depth = printOptions.depth;
     let space = ''.padStart(depth * 2);
     const value: Selector[] = [];
     for (const item of this.value) {
@@ -77,9 +77,9 @@ export class SelectorList extends Selector<Selector[]> {
       value.push(item);
     }
     if (
-      options.referenceMode === true
-      && options.referenceRenderEnabled === true
-      && options.referenceFilterTargets === true
+      printOptions.referenceMode === true
+      && printOptions.referenceRenderEnabled === true
+      && printOptions.referenceFilterTargets === true
     ) {
       const extendedOnly = value.filter(item =>
         item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
@@ -95,21 +95,21 @@ export class SelectorList extends Selector<Selector[]> {
     const mark = w.mark();
     let item = value[0]!;
 
-    emitSelectorListItem(item, options);
+    emitSelectorListItem(item, printOptions);
 
     for (let i = 1; i < length; i++) {
       const prevItem = item;
       item = value[i]!;
-      emitCommentTriviaBeforeDelimiter(prevItem, item, options);
+      emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
       w.add(`,\n${space}`);
-      if (options.trivia) {
+      if (printOptions.trivia) {
         emitTriviaTokens(
-          consumeTrivia(options.trivia, item.location[0], 'before', options),
-          options,
+          consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions),
+          printOptions,
           { skipLeadingWhitespace: true }
         );
       }
-      emitSelectorListItem(item, options, true);
+      emitSelectorListItem(item, printOptions, true);
     }
     return w.getSince(mark);
   }

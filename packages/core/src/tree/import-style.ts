@@ -162,8 +162,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       resetScopeFrame?: boolean;
     }
   ): Rules {
+    const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
     const wrapped = childNodes !== undefined
-      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, anchorRules.location, anchorRules.treeContext).inherit(anchorRules)
+      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules.treeContext).inherit(anchorRules)
       : anchorRules.clone(false) as Rules;
     if (options?.resetScopeFrame) {
       wrapped.scopeFrame = undefined;
@@ -172,7 +173,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       wrapped.sourceNode = anchorRules.sourceNode ?? anchorRules;
     }
     if (childNodes) {
-      wrapped.value = [];
+      wrapped.set(null, []);
       for (const childNode of childNodes) {
         wrapped.adopt(childNode);
         wrapped.value.push(childNode);
@@ -275,7 +276,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return importedRules;
     }
 
-    importedRules.value = [];
+    importedRules.set(null, []);
     for (let index = 0; index < sourceRules.value.length; index++) {
       const originalNode = sourceRules.value[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;

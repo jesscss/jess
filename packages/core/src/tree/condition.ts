@@ -9,6 +9,14 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
+type CallLikeValue = {
+  name?: {
+    type?: string;
+    value?: { key?: unknown };
+    valueOf?: () => unknown;
+  } | string;
+};
+
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
 
@@ -115,10 +123,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
         return node;
       }
-      const rawName = rawValue.name;
+      const rawName = (rawValue as CallLikeValue).name;
       const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-      const refKey = rawName?.type === 'Reference'
-        ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
+      const refKey = typeof rawName === 'object' && rawName?.type === 'Reference'
+        ? String(rawName.value?.key?.valueOf?.() ?? rawName.value?.key ?? '')
         : '';
       if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
         return new Bool(Boolean(context.isDefault));

@@ -54,8 +54,6 @@ type RulesetOptions = NodeOptions & {
   ownSelector?: Selector | Nil;
 };
 
-/** @todo - Fix typing */
-type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
 /**
  * A qualified rule. This is historically called a "Ruleset"
  * by older CSS documentation and by Less.
@@ -67,7 +65,7 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
  *   color: black;
  * }
  */
-export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
+export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
   // Ruleset owns registration prep and marks `preEvaluated` directly.

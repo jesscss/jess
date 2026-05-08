@@ -414,7 +414,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const structuralParent = isNode(structuralParentFrame, N.Ruleset)
           ? structuralParentFrame.value.selector
           : null;
-        const composeParent = parentComposed ?? (
+        const composeParent = (parentComposed && !(parentComposed instanceof Nil) ? parentComposed : null) ?? (
           structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
         );
         const hasExtendedComposeContext = Boolean(
@@ -427,6 +427,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         );
         const composeInput = (
           ownSelector
+          && !(ownSelector instanceof Nil)
           && ownSelector.hasFlag(F_AMPERSAND)
           && !isBareAmpersandSelectorForSerialize(ownSelector)
           && composeParent

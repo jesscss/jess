@@ -86,6 +86,7 @@ export type SegmentFinalizers = {
 
 export function createRenderBuffer(kind: 'flat'): FlatRenderBuffer;
 export function createRenderBuffer(kind: 'segmented'): SegmentedRenderBuffer;
+export function createRenderBuffer(kind: RenderBuffer['kind']): RenderBuffer;
 export function createRenderBuffer(kind: RenderBuffer['kind']): RenderBuffer {
   return kind === 'flat'
     ? { kind, parts: [] }
