@@ -942,7 +942,7 @@ export abstract class Node<
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNode(n => n.preEval(context), context);
+        out = node.forEachNode(n => n.prepareRegistration(context), context);
       } catch (error: unknown) {
         throw error;
       }
