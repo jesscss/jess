@@ -1498,10 +1498,13 @@ function finalizeEvaluatedDeclarationReference(
   evaluatedNode: Node,
   isMergedAssign: boolean
 ): Node {
+  const resultNode = isMergedAssign
+    ? evaluatedNode
+    : cloneReferenceResultNode(referenceNode, evaluatedNode);
   return applyReferenceResultMetadata(
     referenceNode,
     normalizeMergedAssignReferenceResult(
-      cloneReferenceResultNode(referenceNode, evaluatedNode),
+      resultNode,
       isMergedAssign
     ),
     { frozen: true }

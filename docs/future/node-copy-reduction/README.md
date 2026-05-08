@@ -32,6 +32,8 @@ The remaining work is production conversion, not old model preservation.
     instead of deep-copying the referenced rules-like body
   - merged declaration reference flattening now reuses the already-copied
     leaves instead of copying them again
+  - merged declaration references now normalize the evaluated owned value
+    directly instead of making one more defensive result copy
   - ordinary reference result and declaration value evaluation still use
     defensive deep copies
 - `packages/core/src/tree/call.ts`

@@ -36,12 +36,13 @@ frozen-copy binding paths only where a focused proof shows the ownership
 problem. In `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Merged declaration reference flattening also
-reuses the copied value leaves it is handed instead of copying them again.
-Post-eval merged declaration coalescing in `packages/core/src/tree/rules.ts`
-now keeps accumulated values read-only and lets merge composition own the copy
-boundary instead of recopying stored/list-flattened leaves. The `Call.evalNode`
-`sourceNode.parent` repair is still active because the detached-ruleset
-non-leaky scope test fails without it.
+reuses the copied value leaves it is handed instead of copying them again, and
+merged declaration references normalize the already-owned evaluated value
+directly instead of making one more result copy. Post-eval merged declaration
+coalescing in `packages/core/src/tree/rules.ts` now keeps accumulated values
+read-only and lets merge composition own the copy boundary instead of recopying
+stored/list-flattened leaves. The `Call.evalNode` `sourceNode.parent` repair is
+still active because the detached-ruleset non-leaky scope test fails without it.
 
 ## Work Loop
 

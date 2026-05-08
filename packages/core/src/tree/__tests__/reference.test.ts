@@ -333,7 +333,7 @@ describe('reference', () => {
         const resolved = await ref({ key: 'background-color' }, { type: 'declaration' }).resolve(context);
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
-        expect(valueCopyCount).toBe(4);
+        expect(valueCopyCount).toBe(2);
       } finally {
         Any.prototype.copy = originalCopy;
       }
