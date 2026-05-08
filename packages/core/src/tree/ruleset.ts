@@ -10,7 +10,7 @@ import { N } from './node-type.js';
 import { Combinator } from './combinator.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { CompoundSelector } from './selector-compound.js';
-import type { SimpleSelector } from './selector-simple.js';
+import { SimpleSelector } from './selector-simple.js';
 import { SelectorList } from './selector-list.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import {
@@ -144,7 +144,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
 
   private static _toComplexComponent(selector: Selector): ComplexSelectorComponent {
     if (
-      isNode(selector, N.SimpleSelector)
+      selector instanceof SimpleSelector
       || isNode(selector, N.CompoundSelector)
       || isNode(selector, N.Combinator)
       || isNode(selector, N.Ampersand)
@@ -155,7 +155,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
   }
 
   private static _toSimpleSelector(selector: Selector): SimpleSelector {
-    if (isNode(selector, N.SimpleSelector) || isNode(selector, N.Ampersand)) {
+    if (selector instanceof SimpleSelector || isNode(selector, N.Ampersand)) {
       return selector;
     }
     return Ruleset._wrapIs(selector);

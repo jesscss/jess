@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -36,6 +37,10 @@ export class Block extends Node<Node, BlockOptions> {
     let end = type === 'square' ? ']' : '}';
     w.add(start);
     super.toTrimmedString(options);
+    const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+    if (trivia) {
+      w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
+    }
     w.add(end);
     return w.getSince(mark);
   }

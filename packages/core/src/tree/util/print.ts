@@ -78,12 +78,13 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
 
 export interface OutputWriter {
   add(text: string, origin?: unknown): void;
+  markSource(origin?: unknown): void;
   addSpacer(text: string): void;
   queueSpacer(text: string, shouldAdd?: (nextText: string) => boolean): void;
   mark(): number;
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
-  preview(fn: () => string | void): string;
+  preview(fn: () => string | void, preserveSegments?: boolean): string;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -118,6 +119,24 @@ type SourceMapOrigin = {
 const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
   return typeof value === 'object' && value !== null;
 };
+
+function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: number): SourceSegment | undefined {
+  const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
+  const loc = origin?.location;
+  if (!loc || !Array.isArray(loc) || loc.length !== 6) {
+    return undefined;
+  }
+  const startLine = (loc[1] ?? 1) - 1;
+  const startColumn = (loc[2] ?? 1) - 1;
+  const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
+  return {
+    genLine,
+    genColumn,
+    source: file,
+    origLine: startLine,
+    origColumn: startColumn
+  };
+}
 
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   if (options?.context) {
@@ -276,6 +295,13 @@ export class OutputWriter implements OutputWriter {
     return this._column;
   }
 
+  markSource(originParam?: unknown): void {
+    const segment = sourceSegmentFor(originParam, this._line, this._column);
+    if (segment) {
+      this._segments.push(segment);
+    }
+  }
+
   add(text: string, originParam?: unknown): void {
     if (!text) {
       return;
@@ -313,20 +339,7 @@ export class OutputWriter implements OutputWriter {
     }
 
     // Record a mapping segment if we have origin location info
-    const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
-    const loc = origin?.location;
-    if (loc && Array.isArray(loc) && loc.length === 6) {
-      const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
-      const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
-      const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
-      this._segments.push({
-        genLine: this._line,
-        genColumn: this._column,
-        source: file,
-        origLine: startLine,
-        origColumn: startColumn
-      });
-    }
+    this.markSource(originParam);
 
     // Track if the chunk ends with a newline and record its origin (for diagnostics)
     if (text.endsWith('\n')) {
@@ -402,11 +415,16 @@ export class OutputWriter implements OutputWriter {
     return false;
   }
 
-  preview(fn: () => string | void): string {
+  preview(fn: () => string | void, preserveSegments = false): string {
     const mark = this.mark();
+    const segmentsBefore = this._segments.length;
     const out = fn();
     const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
+    const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
     this.restore(mark);
+    if (preserveSegments) {
+      this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+    }
     return text;
   }
 

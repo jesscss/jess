@@ -1,7 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
 
 describe('Block', () => {
   let context: Context;
@@ -19,6 +33,17 @@ describe('Block', () => {
 
     expect(rule.toTrimmedString()).toBe('{foo}');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('emits source trivia before the closing delimiter', () => {
+    const value = any('foo', undefined, [1, 1, 2, 3, 1, 4]);
+    const node = block(value, undefined, [0, 1, 1, 7, 2, 3]);
+    const trivia = createTriviaMap({
+      before: new Map([[node.location[3], [token('\n  ')]]]),
+      after: new Map<number, IToken[]>()
+    }) satisfies TriviaMap;
+
+    expect(node.toTrimmedString({ trivia })).toBe('{foo\n  }');
   });
 
   it('renders resolved block values through render(context)', async () => {

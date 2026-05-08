@@ -1754,7 +1754,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           options.depth = depth;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          childRule = renderText(() => n.toTrimmedString(options));
+          childRule = w.preview(() => n.toTrimmedString(options), true);
           options.emittedTrivia = childEmittedTrivia;
           restorePrintState(options, childSaved);
         }
@@ -1798,6 +1798,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.depth = depth;
       options.referenceMode = referenceMode;
       options.referenceRenderEnabled = referenceRenderEnabled;
+      w.markSource(n);
       n.toTrimmedString(options);
       restorePrintState(options, leafSaved);
       if (!w.hasContentSince(leafMark)) {
