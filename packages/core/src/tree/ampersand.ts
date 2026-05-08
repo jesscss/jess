@@ -66,7 +66,7 @@ export type AmpersandValue = {
   appendValue?: string;
 
   /**
-   * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
+   * When set (e.g. by ruleset prep), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
   selectorContainer?: { selector?: Selector | Nil | undefined };

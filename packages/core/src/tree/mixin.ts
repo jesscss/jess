@@ -80,7 +80,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
-  // Mixin has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
+  // Mixin owns registration prep and marks `preEvaluated` directly.
 
   /** Return a selector-like keySet */
   private _keySet: Set<string> | undefined;
@@ -133,8 +133,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   private _prepareMixinRegistration(context: Context): MaybePromise<this> {
-    // Mixins should NOT pre-evaluate their rules during initial registration.
-    // Rules inside mixins should only be pre-evaluated when the mixin is called.
+    // Mixins should NOT prepare their body rules during initial registration.
+    // Body rules are prepared/evaluated when the mixin is called.
     let node = this;
     let { name, rules } = node.value;
     if (name && name instanceof Interpolated) {

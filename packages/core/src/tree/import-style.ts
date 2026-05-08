@@ -621,7 +621,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (type === 'import' && !evaldRules && !withValues) {
           // Plain imports still need an import-site-local Rules surface during
-          // preEval/eval. Reusing the canonical source tree here lets the first
+          // preparation/eval. Reusing the canonical source tree here lets the first
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
           rules = rules.clone(true) as Rules;

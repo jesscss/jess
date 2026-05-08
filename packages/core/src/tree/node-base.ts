@@ -267,7 +267,7 @@ export abstract class Node<
   /** Will be copied during inherit */
   state = F_DEFAULT;
 
-  /** Runtime tracking: has preEval been run on this node? */
+  /** Runtime tracking: has this node completed its current prep phase? */
   preEvaluated = false;
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
@@ -923,16 +923,11 @@ export abstract class Node<
   }
 
   /**
-   * `preEval` takes the following steps, which are extended in subclasses:
-   * 1. Clone the node (if the source node is wanted/needed)
-   * 2. Set `preEvaluated` to true
-   * 3. pre-evaluate all children
-   * 4. Return the node
+   * Compatibility entrypoint for older callers.
    *
-   * Mostly this is overridden to resolve names before registering.
-   *
-   * @todo - Update preEval / eval to use static evaluation based on flags.
-  */
+   * New preparation work should use `prepareRegistration()` or
+   * `prepareEval()` so the caller states which phase it needs.
+   */
   preEval(context: Context): MaybePromise<Node> {
     return this.prepareRegistration(context);
   }
@@ -1014,7 +1009,7 @@ export abstract class Node<
       return Node._evalStaticSync(node, context, needsReeval);
     }
 
-    let preEvaluatedNode: Node;
+    let preparedNode: Node;
 
     return pipe(
       () => {
@@ -1023,21 +1018,21 @@ export abstract class Node<
         }
         return node;
       },
-      (preEvald) => {
-        preEvaluatedNode = preEvald;
-        preEvaluatedNode.preEvaluated = true;
-        if (preEvald !== node) {
-          preEvaluatedNode.inherit(node);
+      (prepared) => {
+        preparedNode = prepared;
+        preparedNode.preEvaluated = true;
+        if (prepared !== node) {
+          preparedNode.inherit(node);
         }
-        if (!preEvaluatedNode.evaluated || needsReeval) {
-          return preEvaluatedNode.evalNode(context);
+        if (!preparedNode.evaluated || needsReeval) {
+          return preparedNode.evalNode(context);
         }
-        return preEvaluatedNode;
+        return preparedNode;
       },
       (evald) => {
         evald.evaluated = true;
-        if (preEvaluatedNode !== evald) {
-          evald.inherit(preEvaluatedNode);
+        if (preparedNode !== evald) {
+          evald.inherit(preparedNode);
         }
         return evald;
       }
@@ -1045,27 +1040,27 @@ export abstract class Node<
   }
 
   private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
-    let preEvaluatedNode: Node;
+    let preparedNode: Node;
 
     if (!node.preEvaluated || needsReeval) {
-      preEvaluatedNode = mustBeNode(node.prepareEval(context));
+      preparedNode = mustBeNode(node.prepareEval(context));
     } else {
-      preEvaluatedNode = node;
+      preparedNode = node;
     }
-    preEvaluatedNode.preEvaluated = true;
-    if (preEvaluatedNode !== node) {
-      preEvaluatedNode.inherit(node);
+    preparedNode.preEvaluated = true;
+    if (preparedNode !== node) {
+      preparedNode.inherit(node);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated || needsReeval) {
-      evald = mustBeNode(preEvaluatedNode.evalNode(context));
+    if (!preparedNode.evaluated || needsReeval) {
+      evald = mustBeNode(preparedNode.evalNode(context));
     } else {
-      evald = preEvaluatedNode;
+      evald = preparedNode;
     }
     evald.evaluated = true;
-    if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
-      evald.inherit(preEvaluatedNode);
+    if (preparedNode !== evald && typeof evald.inherit === 'function') {
+      evald.inherit(preparedNode);
     }
     return evald;
   }

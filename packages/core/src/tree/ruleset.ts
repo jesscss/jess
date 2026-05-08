@@ -70,11 +70,11 @@ type NarrowRulesetValue<T> = T extends RulesetValue ? T : RulesetValue;
 export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, RulesetOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
-  // Ruleset has preEval method but doesn't need to set flags - preEvaluated is tracked as boolean
+  // Ruleset owns registration prep and marks `preEvaluated` directly.
   frames: (Ruleset | AtRule)[] | undefined;
   /** Legacy canonical composed selector slot still used by extend post-processing. */
   declare _composedSelector?: Selector;
-  /** Canonical selector-cache owner for derived preEval wrappers. */
+  /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
 
   get selector() {
@@ -1158,7 +1158,7 @@ export class Ruleset<T = RulesetValue> extends Node<NarrowRulesetValue<T>, Rules
       context.frames.length = pushedFrameCount;
       pushedFrames = false;
     };
-    /** Should have been maybe cloned in preEval */
+    /** Registration prep may already have produced the wrapper being evaluated. */
     this.evaluated = true;
     const collapseNesting = context.opts.collapseNesting;
     // Store frames snapshot for collapseNesting serialization

@@ -942,6 +942,8 @@ The first code slice was a no-behavior-change extraction inside
 - gave the declaration-name and ordered-identity registration phases separate
   finish helpers, keeping the existing ordering but making the eval-owned
   declaration-name boundary explicit
+- cleaned stale local comments and variable names that described registration
+  prep and eval prep as generic pre-evaluation
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

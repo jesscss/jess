@@ -88,7 +88,7 @@ export class Extend extends Node<ExtendValue> {
     return w.getSince(mark);
   }
 
-  // Don't preEval Extend - let it be evaluated in evalNode when the ruleset is in the frame
+  // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
   override evalNode(context: Context): MaybePromise<Nil> {
@@ -104,7 +104,7 @@ export class Extend extends Node<ExtendValue> {
     if (!selector) {
       // Set selector to ampersand - it will resolve to the current ruleset's selector when evaluated
       // This matches the conceptual model: .c:extend(.ext all) is like { &:extend(.ext all); } inside .c
-      // The frame selector should already be :is(.a, .b) .c (the evaluated selector from preEval)
+      // The frame selector should already be :is(.a, .b) .c (the evaluated selector from ruleset prep).
       selector = Ampersand.create(undefined);
       // Make the ampersand visible so it's included in the selector when evaluated
       // This ensures the parent selector is properly included in the extend selector

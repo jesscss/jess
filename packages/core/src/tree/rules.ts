@@ -2043,7 +2043,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     } else if (isNode(node, N.Ruleset)) {
       // Register to 'mixin' for mixin calls.
       // Always register - guard filtering happens at call time in MixinCollection.evalCall.
-      // Note: extend processing keeps its own per-root Ruleset sets in Ruleset.preEval.
+      // Note: extend processing keeps its own per-root Ruleset sets during ruleset registration prep.
       this.register('mixin', node);
       const rulesetKey = getSimpleCallableRulesetKey(node as Ruleset);
       if (rulesetKey) {
@@ -2184,7 +2184,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Registration prep for the current Rules surface.
    *
-   * This still runs from preEval for now, but the work is registration setup:
+   * This can still be reached through the public preEval compatibility bridge,
+   * but the work is registration setup:
    * assign source-order indices, stabilize registerable identities, register
    * static names, and leave genuinely blocked names in narrow pending buckets.
    */
@@ -2217,7 +2218,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
-      // both preEval and dynamic resolution — they're handled by the eval queue.
+      // registration prep and dynamic resolution — they're handled by the eval queue.
       if (!this._isRegisterableType(node)) {
         node.index = nodeIndex;
         return;
@@ -2296,13 +2297,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
-    const preEvald = node.prepareRegistration(context);
-    if (isThenable(preEvald)) {
-      return (preEvald as Promise<Node>).then((preEvaldNode) => {
-        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, prepState);
+    const prepared = node.prepareRegistration(context);
+    if (isThenable(prepared)) {
+      return (prepared as Promise<Node>).then((preparedNode) => {
+        this._storePreparedRegistrationNode(rules, preparedNode, index, nodeIndex, prepState);
       });
     }
-    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, prepState);
+    this._storePreparedRegistrationNode(rules, prepared as Node, index, nodeIndex, prepState);
   }
 
   /**
@@ -3268,7 +3269,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _evalPreparedRules(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._setupContextForRules(context, rules);
     // When we're the outermost Rules, use the tree we're evaling as root
-    // (may differ from context.root set in getTree, or be preEval's clone).
+    // (may differ from context.root set in getTree, or be a prepared wrapper).
     if (context.rulesEvalStack.length === 1) {
       context.root = rules;
     }
