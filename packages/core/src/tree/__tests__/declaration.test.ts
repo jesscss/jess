@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -389,6 +389,48 @@ describe('Declaration', () => {
       src: base;
       src: one two, three;
     `);
+  });
+
+  it('coalesces merged declaration lists without recopying copied leaves', async () => {
+    const node = rules([
+      rules([
+        decl({
+          name: any('src'),
+          value: any('one')
+        }, { assign: AssignmentType.MergeList })
+      ]),
+      rules([
+        decl({
+          name: any('src'),
+          value: any('two')
+        }, { assign: AssignmentType.MergeList })
+      ]),
+      rules([
+        decl({
+          name: any('src'),
+          value: any('three')
+        }, { assign: AssignmentType.MergeList })
+      ])
+    ]);
+    const originalCopy = Node.prototype.copy;
+    let srcValueCopies = 0;
+    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+      if (this.type === 'Any' && /^(one|two|three)$/u.test(String(this.valueOf()))) {
+        srcValueCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      const evald = await node.eval(context);
+
+      expect(`${evald}`).toBeString(`
+        src: one, two, three;
+      `);
+      expect(srcValueCopies).toBe(12);
+    } finally {
+      Node.prototype.copy = originalCopy;
+    }
   });
 
   it('preserves authored multiline declaration values with a minimum continuation indent', async () => {

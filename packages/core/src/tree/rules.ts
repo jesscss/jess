@@ -2951,7 +2951,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         const collect = (node: Node): void => {
           if (isNode(node, N.List)) {
             for (const item of node.value) {
-              collect(item.copy(true, freezeChildren));
+              collect(item);
             }
             return;
           }
@@ -3006,8 +3006,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return undefined;
       }
       const basePriorValue = priorAccumulatedValue
-        ? priorAccumulatedValue.copy(true, freezeChildren)
-        : getDeclValue(prior)?.value.copy(true, freezeChildren);
+        ?? getDeclValue(prior)?.value;
       if (!basePriorValue) {
         return undefined;
       }
@@ -3020,7 +3019,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         decl.value.important = priorImportant;
       }
       const mergedDeclValue = getDeclValue(decl);
-      return mergedDeclValue?.value.copy(true, freezeChildren);
+      return mergedDeclValue?.value;
     };
     const normalizeMergedDeclarationValue = (node: Node): void => {
       if (!isNode(node, N.Declaration)) {
@@ -3102,7 +3101,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         continue;
       }
       normalizeMergedDeclarationValue(node);
-      let currentAccumulatedValue = getDeclValue(node)?.value.copy(true, freezeChildren);
+      let currentAccumulatedValue: Node | undefined;
 
       const prior = lastVisibleByName.get(name);
       const needsCrossScopeCompose = prior
@@ -3115,6 +3114,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           accumulatedValueByName.get(name)
         ) ?? currentAccumulatedValue;
       }
+      currentAccumulatedValue ??= getDeclValue(node)?.value.copy(true, freezeChildren);
 
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && isNode(existingAnchor.node, N.Declaration)) {
@@ -3128,7 +3128,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           mergedAnchorByName.set(name, occurrence);
           if (currentAccumulatedValue) {
-            accumulatedValueByName.set(name, currentAccumulatedValue.copy(true, freezeChildren));
+            accumulatedValueByName.set(name, currentAccumulatedValue);
           }
           if (node.visible) {
             lastVisibleByName.set(name, occurrence);
@@ -3139,7 +3139,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       mergedAnchorByName.set(name, occurrence);
       if (currentAccumulatedValue) {
-        accumulatedValueByName.set(name, currentAccumulatedValue.copy(true, freezeChildren));
+        accumulatedValueByName.set(name, currentAccumulatedValue);
       }
       if (node.visible) {
         lastVisibleByName.set(name, occurrence);

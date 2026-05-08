@@ -24,6 +24,9 @@ The remaining work is production conversion, not old model preservation.
     ownership surface exists
   - guarded mixin dispatch still has ambient scope plumbing
   - param/rest/`@arguments` binding still uses frozen deep copies in places
+  - post-eval merged declaration coalescing now keeps its accumulated value map
+    as a read-only snapshot surface and lets merge composition own the copy
+    boundary, instead of recopying every stored/list-flattened value leaf
 - `packages/core/src/tree/reference.ts`
   - `preserveRulesLike` variable references now keep a shallow owned wrapper
     instead of deep-copying the referenced rules-like body
