@@ -510,7 +510,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Defer import-path interpolation to evalNode so unresolved vars can be retried
    * after later imports/assignments in the same Rules scope have evaluated.
    */
-  override preEval(_context: Context): MaybePromise<this> {
+  override preEval(context: Context): MaybePromise<this> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(_context: Context): MaybePromise<this> {
     return this;
   }
 
@@ -705,9 +709,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
 
             try {
-              // Call preEval first to get the cloned Rules (if cloning occurs)
+              // Prepare registration first to get the cloned Rules (if cloning occurs)
               // sourceNode is already set above, so the cloned Rules will have it
-              rules = await rules.preEval(context);
+              const preparedRules = await rules.prepareRegistration(context);
+              if (!(preparedRules instanceof Rules)) {
+                throw new TypeError('Expected imported rules registration prep to return Rules');
+              }
+              rules = preparedRules;
               if (type === 'import') {
                 /** Needed at evaluation time for older import type */
                 node.adopt(rules);
