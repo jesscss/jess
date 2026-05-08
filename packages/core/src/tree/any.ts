@@ -57,6 +57,10 @@ export class Any<
   }
 
   override preEval(context: Context): this | Nil {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
     if (this._options?.role === 'charset') {

@@ -122,6 +122,10 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   override preEval(context: Context): MaybePromise<this> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(context: Context): MaybePromise<this> {
     if (this.preEvaluated) {
       return this;
     }
