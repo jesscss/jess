@@ -933,6 +933,8 @@ The first code slice was a no-behavior-change extraction inside
   `prepareRegistration()` implementation
 - routed the base `prepareEval()` default directly through
   `prepareRegistration()`
+- made `Rules` registration prep state internal to the one-time registration
+  helper
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

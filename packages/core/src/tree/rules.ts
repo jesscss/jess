@@ -2097,20 +2097,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override prepareRegistration(context: Context): MaybePromise<this> {
-    return this._prepareRegistrationOnce(context, this._createRegistrationPrepState());
+    return this._prepareRegistrationOnce(context);
   }
 
   protected override prepareEval(context: Context): MaybePromise<this> {
     return this.prepareRegistration(context);
   }
 
-  private _prepareRegistrationOnce(
-    context: Context,
-    prepState: RegistrationPrepState
-  ): MaybePromise<this> {
+  private _prepareRegistrationOnce(context: Context): MaybePromise<this> {
     if (!this.preEvaluated) {
       context.depth++;
       const rules = this;
+      const prepState = this._createRegistrationPrepState();
       rules.preEvaluated = true;
       const { saved, isNestableAtRuleBody } = this._setupRegistrationContext(context, rules);
 
@@ -3266,7 +3264,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Eval owns this bridge now, but the helper still performs the old
     // recursive prep internally until registration moves fully into eval.
-    const result = this._prepareRegistrationOnce(context, this._createRegistrationPrepState());
+    const result = this._prepareRegistrationOnce(context);
     return isThenable(result) ? (result as Promise<Rules>) : result;
   }
 
