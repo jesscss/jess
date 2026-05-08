@@ -922,6 +922,9 @@ The first code slice was a no-behavior-change extraction inside
   onto `prepareRegistration()`
 - moved declaration-value recursive prep inside declaration registration onto
   `prepareRegistration()`
+- made `Rules` expose its registration-prep implementation directly through
+  `prepareRegistration()`, with public `preEval()` left as a compatibility
+  delegate
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
