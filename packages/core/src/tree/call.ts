@@ -25,6 +25,10 @@ function stringifyValueOf(value: unknown): string {
   return String(value);
 }
 
+function isExtendedFn(value: unknown): value is ExtendedFn {
+  return typeof value === 'function';
+}
+
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
@@ -418,8 +422,8 @@ export class Call extends Node<CallValue, CallOptions> {
     }
 
     let fn = isNode(n, N.JsFunction) ? n.value : n;
-    if (typeof fn === 'function') {
-      const callable = fn as ExtendedFn;
+    if (isExtendedFn(fn)) {
+      const callable = fn;
       const originalCaller = context.caller;
       context.caller = this;
       let didPopCallStack = false;

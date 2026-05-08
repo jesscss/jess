@@ -60,7 +60,16 @@ type RestorablePrintStateKey =
   | 'suppressBoundaryTrivia'
   | 'writer';
 
-type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
+function isTriviaMap(value: unknown): value is TriviaMap {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && Reflect.get(value, 'runs') instanceof Set
+    && typeof Reflect.get(value, 'lookup') === 'function'
+    && typeof Reflect.get(value, 'entries') === 'function'
+    && typeof Reflect.get(value, 'has') === 'function'
+  );
+}
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
@@ -194,7 +203,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
-  state.trivia = seed?.trivia ?? (context.opts as { trivia?: TriviaMap }).trivia;
+  const contextTrivia = Reflect.get(context.opts, 'trivia');
+  state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 
   if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {

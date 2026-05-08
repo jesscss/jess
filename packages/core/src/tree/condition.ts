@@ -9,13 +9,21 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
-type CallLikeValue = {
-  name?: {
-    type?: string;
-    value?: { key?: unknown };
-    valueOf?: () => unknown;
-  } | string;
-};
+function getCallReferenceKey(name: unknown): string {
+  if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
+    return '';
+  }
+  const value = Reflect.get(name, 'value');
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  const key = Reflect.get(value, 'key');
+  return String(
+    key && typeof key === 'object' && 'valueOf' in key
+      ? Reflect.apply(Reflect.get(key, 'valueOf'), key, [])
+      : key ?? ''
+  );
+}
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -123,11 +131,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
         return node;
       }
-      const rawName = (rawValue as CallLikeValue).name;
+      const rawName = rawValue.name;
       const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-      const refKey = typeof rawName === 'object' && rawName?.type === 'Reference'
-        ? String(rawName.value?.key?.valueOf?.() ?? rawName.value?.key ?? '')
-        : '';
+      const refKey = getCallReferenceKey(rawName);
       if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
         return new Bool(Boolean(context.isDefault));
       }

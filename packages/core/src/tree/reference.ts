@@ -494,6 +494,10 @@ type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
 type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
 
+function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult, undefined> {
+  return isRuntimeVarBinding(value) || isNode(value) || Array.isArray(value);
+}
+
 type RulesLookupAdapterEnv = {
   context: Context;
   keyNode: ReferenceValue['key'];
@@ -883,8 +887,8 @@ function lookupAcrossRulesScopes(
       const result = performLookup(scope);
       if (isThenable(result)) {
         return Promise.resolve(result).then((resolved) => {
-          if (resolved != null) {
-            return resolved as RulesLookupResult;
+          if (isRulesLookupResult(resolved)) {
+            return resolved;
           }
           return walk(i + 1);
         });

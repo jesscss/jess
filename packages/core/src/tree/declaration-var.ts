@@ -4,6 +4,7 @@ import {
   type DeclarationOptions
 } from './declaration.js';
 import { Any, type AnyRole } from './any.js';
+import { Interpolated } from './interpolated.js';
 import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -81,7 +82,9 @@ export const vardecl = (
     ? new Any(name, { role: 'property' })
     : name instanceof Any
       ? new Any(name.value, { role: 'property' })
-      : name as DeclarationValue['name'];
+      : name instanceof Interpolated
+        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location, name.treeContext)
+        : name;
   const declarationValue: DeclarationValue = {
     ...value,
     name: nameNode
