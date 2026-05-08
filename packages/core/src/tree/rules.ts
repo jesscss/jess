@@ -2243,7 +2243,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return this._finishRegistrationWithoutPending(rules, context, saved);
     }
     const declarationResult = this._resolvePendingDeclarationNamePrep(rules, context, prepState.declarationNames);
-    const finishAfterDeclarations = () => this._finishRegistrationAfterDeclarationNames(rules, context, saved, prepState);
+    const finishAfterDeclarations = () => {
+      this._applyResolvedRegistrationNodes(rules, prepState.declarationNames.resolvedNodes);
+      return this._finishRegistrationAfterDeclarationNames(rules, context, saved, prepState);
+    };
     if (isThenable(declarationResult)) {
       return (declarationResult as Promise<void>).then(finishAfterDeclarations);
     }
@@ -2442,13 +2445,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       pendingDeclarationNames.nodes,
       handleResolvedNode
     );
-    const applyResolvedDeclarations = () => {
-      this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
-    };
-    if (isThenable(result)) {
-      return (result as Promise<void>).then(applyResolvedDeclarations);
-    }
-    applyResolvedDeclarations();
+    return result;
   }
 
   private _resolvePendingOrderedIdentityPrep(

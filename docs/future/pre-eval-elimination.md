@@ -937,6 +937,8 @@ The first code slice was a no-behavior-change extraction inside
   helper
 - split `Rules` registration finalization so declaration-name fixed-point prep
   runs before the ordered callable/import/selector identity lane
+- made the declaration-name registration phase apply its resolved nodes from
+  the registration finalization path
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
