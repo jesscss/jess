@@ -929,6 +929,8 @@ The first code slice was a no-behavior-change extraction inside
   `prepareRegistration()`
 - routed the base compatibility `preEval()` child walk through child
   `prepareRegistration()` hooks
+- inverted the base bridge so public `preEval()` delegates to the default
+  `prepareRegistration()` implementation
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

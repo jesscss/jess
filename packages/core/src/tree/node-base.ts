@@ -934,6 +934,16 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
   */
   preEval(context: Context): MaybePromise<Node> {
+    return this.prepareRegistration(context);
+  }
+
+  /**
+   * Registration-time identity preparation.
+   *
+   * The default recursively prepares children for registration. Nodes with
+   * narrower identity or mark-only behavior override this method directly.
+   */
+  prepareRegistration(context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
       const node = this;
       node.preEvaluated = true;
@@ -965,17 +975,6 @@ export abstract class Node<
    * phase name.
    */
   protected prepareEval(context: Context): MaybePromise<Node> {
-    return this.preEval(context);
-  }
-
-  /**
-   * Registration-time identity preparation.
-   *
-   * This is intentionally still a bridge to `preEval()` while nodes are being
-   * split apart. Callers that only need lookup identity should use this name so
-   * the remaining public preEval phase dependencies stay visible.
-   */
-  prepareRegistration(context: Context): MaybePromise<Node> {
     return this.preEval(context);
   }
 
