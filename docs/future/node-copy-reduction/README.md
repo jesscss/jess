@@ -19,8 +19,10 @@ It should stay small enough to read at startup.
 The remaining work is production conversion, not old model preservation.
 
 - `packages/core/src/tree/rules.ts`
-  - guarded mixin dispatch still has direct candidate field reads and ambient
-    scope plumbing
+  - guarded mixin dispatch now has local candidate accessors; those accessors
+    are the next place to replace raw candidate field reads when an explicit
+    ownership surface exists
+  - guarded mixin dispatch still has ambient scope plumbing
   - param/rest/`@arguments` binding still uses frozen deep copies in places
 - `packages/core/src/tree/reference.ts`
   - reference result and declaration value evaluation still use defensive deep

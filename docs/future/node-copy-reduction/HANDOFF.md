@@ -29,9 +29,11 @@ baseline. Core focused proofs cover the formerly-live
 `packages/core/src/tree/__tests__/mixin.test.ts`.
 
 The next useful runtime work is still in `packages/core/src/tree/rules.ts`:
-guarded mixin dispatch and param/rest binding. Start by reducing direct
-candidate field reads or frozen-copy binding paths only where a focused proof
-shows the ownership problem.
+guarded mixin dispatch and param/rest binding. Candidate field reads in
+`MixinCollection.evalCall(...)` are centralized behind local helpers now; start
+there when replacing them with an explicit ownership surface. Otherwise, target
+frozen-copy binding paths only where a focused proof shows the ownership
+problem.
 
 ## Work Loop
 

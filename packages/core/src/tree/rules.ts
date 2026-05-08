@@ -3527,6 +3527,26 @@ function isCallableEntry(entry: MixinEntry): entry is CallableEntry {
   return !isNode(entry, N.Ruleset);
 }
 
+function getMixinEntryRules(entry: MixinEntry): Rules {
+  return entry.value.rules;
+}
+
+function getMixinEntryGuard(entry: MixinEntry): Condition | Bool | Nil | undefined {
+  return entry.value.guard;
+}
+
+function getCallableEntryName(entry: CallableEntry): unknown {
+  return entry.value.name;
+}
+
+function getCallableEntryParams(entry: CallableEntry): List<Node> | undefined {
+  return entry.value.params;
+}
+
+function getCallableEntryGuard(entry: CallableEntry): Condition | Bool | undefined {
+  return entry.value.guard;
+}
+
 function mixinHasNoRequiredParams(mixinNode: Mixin): boolean {
   const params = mixinNode.value.params;
   if (!params || params.length === 0) {
@@ -3693,7 +3713,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     let emptyOutputSourceRules: Rules | undefined;
     for (let i = 0; i < mixinLength; i++) {
       let mixin = mixinArr[i]!;
-      let paramLength = isCallableEntry(mixin) ? mixin.value.params?.length ?? 0 : 0;
+      let paramLength = isCallableEntry(mixin) ? getCallableEntryParams(mixin)?.length ?? 0 : 0;
       if (!paramLength) {
         /** Exit early if args were passed in, but no args are possible */
         if (nodeArgs.length) {
@@ -3705,7 +3725,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (!isCallableEntry(mixin)) {
           continue;
         }
-        const originalParams = mixin.value.params;
+        const originalParams = getCallableEntryParams(mixin);
         if (!originalParams) {
           continue;
         }
@@ -3939,10 +3959,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
     };
     const getCallableCandidateIdentity = (candidate: MixinEntry): object => {
       if (isNode(candidate, N.Ruleset)) {
-        return getRootSourceRules(candidate.value.rules);
+        return getRootSourceRules(getMixinEntryRules(candidate));
       }
       if (!isNode(candidate) && candidate.kind === 'callable-rules') {
-        return getRootSourceRules(candidate.value.rules);
+        return getRootSourceRules(getMixinEntryRules(candidate));
       }
       return candidate;
     };
@@ -3980,14 +4000,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const seenCandidateIdentities = new WeakSet<object>();
     evalCandidates = mixinCandidates
       .filter((candidate) => {
-        const sourceRules = candidate.value.rules.sourceNode;
+        const candidateRules = getMixinEntryRules(candidate);
+        const sourceRules = candidateRules.sourceNode;
         const inStack = thisContext.rulesEvalStack.some(entry => entry === sourceRules);
         const blockedByFailedGuardAncestor = isNode(candidate)
           ? hasFailedGuardAncestor(candidate)
           : false;
         const rulesetRecursesToCaller = callerKey !== undefined
           && isNode(candidate, N.Ruleset)
-          && rulesContainCallKey(candidate.value.rules, callerKey);
+          && rulesContainCallKey(candidateRules, callerKey);
         if (inStack || blockedByFailedGuardAncestor || rulesetRecursesToCaller) {
           return false;
         }
@@ -4000,7 +4021,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       })
       .map<MixinEntry>(
         (candidate) => {
-          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(candidate.value.guard);
+          const hasDefaultGuard = Boolean(candidate.options?.hasDefault) || guardContainsDefault(getMixinEntryGuard(candidate));
           if (hasDefaultGuard) {
             candidate.options ??= {};
             candidate.options.hasDefault = true;
@@ -4107,7 +4128,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Mark output Rules as mixin output - accessible only when lookup has a target
         newRules.options.isMixinOutput = restrictMixinOutputLookup;
         newRules.options.referenceMode = false;
-        markMixinOutputSource(newRules, getRootSourceRules(candidate.value.rules));
+        markMixinOutputSource(newRules, getRootSourceRules(getMixinEntryRules(candidate)));
         clearReferenceModeForMixinOutput(newRules);
         outputRules.push(newRules);
       } catch (error) {
@@ -4130,12 +4151,12 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (isNode(candidate, N.Ruleset)) {
         // For Rulesets, guard was already evaluated at definition time in Ruleset.evalNode
         // guard === undefined means passed, guard instanceof Nil means failed
-        const rulesetGuard = (candidate as Ruleset).value.guard;
+        const rulesetGuard = getMixinEntryGuard(candidate);
         if (rulesetGuard instanceof Nil) {
           // Guard failed at definition time - skip this ruleset
           continue;
         }
-        const candidateRules = (candidate as Ruleset).value.rules;
+        const candidateRules = getMixinEntryRules(candidate);
         const sourceRules = getRootSourceRules(candidateRules);
         emptyOutputSourceRules ??= sourceRules;
         let rules = cloneRulesetCallableRules(sourceRules, true);
@@ -4167,8 +4188,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!isNode(candidate) && candidate.kind !== 'callable-rules') {
         throw new TypeError('Unexpected non-node mixin candidate');
       }
-      if (!isNode(candidate, N.Mixin) && !candidate.value.name && !candidate.value.params && !candidate.value.guard) {
-        const sourceRules = getRootSourceRules(candidate.value.rules);
+      const candidateName = getCallableEntryName(candidate);
+      const candidateParams = getCallableEntryParams(candidate);
+      const candidateGuard = getCallableEntryGuard(candidate);
+      if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
+        const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
         emptyOutputSourceRules ??= sourceRules;
         let unlocked = cloneRulesetCallableRules(sourceRules, false);
         const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
@@ -4198,12 +4222,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
         outputRules.push(unlocked);
         continue;
       }
-      let rules = candidate.value.rules;
+      const candidateRules = getMixinEntryRules(candidate);
+      let rules = candidateRules;
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
       rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
       if (isNode(candidate, N.Mixin)) {
-        Reflect.set(rules, 'parent', candidate.value.rules.parent);
+        Reflect.set(rules, 'parent', candidateRules.parent);
       }
       // Mixin body vars should follow the same leaky/non-leaky visibility model as
       // rulesets: visible outside only in Less/leaky mode, while remaining available
@@ -4254,8 +4279,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
         ? parentFrame
         : undefined;
       let usesPreboundParamGuardOuterRules = false;
-      if (candidate.value.params || paramBindings.length > 0) {
-        const needsOuterRules = Boolean(candidate.value.guard && !candidate.value.guard.hasFlag(F_STATIC));
+      if (candidateParams || paramBindings.length > 0) {
+        const needsOuterRules = Boolean(candidateGuard && !candidateGuard.hasFlag(F_STATIC));
         if (needsOuterRules) {
           ensureOuterRules(candidate.parent!, {
             rulesVisibility: {
@@ -4335,14 +4360,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
 
       /** Now we can evaluate our guards, if any */
       let guard: Condition | Bool | undefined = hasDefault
-        ? candidate.value.guard
-        : candidate.value.guard
-          ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
+        ? candidateGuard
+        : candidateGuard
+          ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : candidateGuard.copy(true))
           : undefined;
       const usesPreboundCallerGuardOuterRules = Boolean(
         guard
         && !guard.hasFlag(F_STATIC)
-        && !candidate.value.params
+        && !candidateParams
         && paramBindings.length === 0
       );
       if (
@@ -4375,8 +4400,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = candidate.value.guard
-                ? (candidate.value.guard.hasFlag(F_STATIC) ? candidate.value.guard : candidate.value.guard.copy(true))
+              const probeGuard = candidateGuard
+                ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : candidateGuard.copy(true))
                 : undefined;
               if (!probeGuard) {
                 return false;
@@ -4398,9 +4423,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
             if (debugDefaultGuard) {
               console.log('[default-guard:candidate]', JSON.stringify({
                 caller: debugCaller(),
-                candidate: candidate.value.name?.valueOf?.() ?? '<anon>',
-                guard: candidate.value.guard?.valueOf?.() ?? candidate.value.guard?.toString?.() ?? '',
-                params: candidate.value.params?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
+                candidate: candidateName?.valueOf?.() ?? '<anon>',
+                guard: candidateGuard?.valueOf?.() ?? candidateGuard?.toString?.() ?? '',
+                params: candidateParams?.value?.map((param: any) => param?.valueOf?.() ?? String(param)) ?? [],
                 passWhenDefaultFalse,
                 passWhenDefaultTrue
               }));
