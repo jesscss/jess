@@ -3542,6 +3542,49 @@ describe('Mixin', () => {
       `);
     });
 
+    it('expands rest call arguments across positional params', async () => {
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          any('b', { role: 'property' }),
+          any('c', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'padding', value: seq([
+            ref({ key: 'a' }, { type: 'variable' }),
+            ref({ key: 'b' }, { type: 'variable' }),
+            ref({ key: 'c' }, { type: 'variable' })
+          ]) })
+        ])
+      });
+
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([
+              any('10px'),
+              rest(seq([any('20px'), any('30px')]))
+            ])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toBeString(`
+        .test {
+          padding: 10px 20px 30px;
+        }
+      `);
+    });
+
     it('should match a mixin with rest parameter when multiple required params before rest', async () => {
       // Create a mixin with multiple params before rest: .my-mixin(@a, @b, @rest...) { margin: @rest; }
       const mixinDef = mixin({

@@ -3632,7 +3632,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               const restValue = evald.value;
               if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
                 for (const restArg of restValue.value) {
-                  nodeArgs.push(cloneBoundValue(restArg));
+                  nodeArgs.push(restArg);
                 }
                 continue;
               }
