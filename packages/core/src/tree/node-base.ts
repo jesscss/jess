@@ -975,7 +975,7 @@ export abstract class Node<
    * phase name.
    */
   protected prepareEval(context: Context): MaybePromise<Node> {
-    return this.preEval(context);
+    return this.prepareRegistration(context);
   }
 
   /**
