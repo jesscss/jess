@@ -920,6 +920,8 @@ The first code slice was a no-behavior-change extraction inside
   `prepareRegistration()` while keeping prelude evaluation in `evalNode()`
 - moved `StyleImport`'s no-op registration prep and imported-rules prep call
   onto `prepareRegistration()`
+- moved declaration-value recursive prep inside declaration registration onto
+  `prepareRegistration()`
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

@@ -399,7 +399,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const setValue = (newValue: Node) => {
       node.set('value', newValue);
     };
-    const out = node.value.value.preEval(context);
+    const out = node.value.value.prepareRegistration(context);
     if (isThenable(out)) {
       return out.then((value) => {
         setValue(value);
