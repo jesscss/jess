@@ -911,6 +911,8 @@ The first code slice was a no-behavior-change extraction inside
 - moved `Mixin` callable identity prep and `Any(role='charset')` output-order
   prep onto `prepareRegistration()` while keeping public `preEval()` as a
   compatibility delegate
+- moved `Declaration` key / assignment / value registration prep onto
+  `prepareRegistration()` while keeping current timing unchanged
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:

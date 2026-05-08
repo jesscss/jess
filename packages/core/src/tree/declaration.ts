@@ -263,6 +263,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(context: Context): MaybePromise<this> {
     /** We need a derived declaration, because registration prep mutates name/value/options. */
     let node = this.clone(false) as this;
     node.preEvaluated = true;

@@ -667,9 +667,9 @@ describe('reference', () => {
 
     it('retries blocked dynamic declaration names after later dynamic names resolve', async () => {
       const retryCounts = new Map<string, number>();
-      const recordPreEval = (node: Node, label: string): void => {
-        const original = node.preEval.bind(node);
-        node.preEval = (ctx: Context) => {
+      const recordRegistrationPrep = (node: Node, label: string): void => {
+        const original = node.prepareRegistration.bind(node);
+        node.prepareRegistration = (ctx: Context) => {
           retryCounts.set(label, (retryCounts.get(label) ?? 0) + 1);
           return original(ctx);
         };
@@ -689,8 +689,8 @@ describe('reference', () => {
         }),
         value: any('final')
       });
-      recordPreEval(dependent, 'dependent');
-      recordPreEval(provider, 'provider');
+      recordRegistrationPrep(dependent, 'dependent');
+      recordRegistrationPrep(provider, 'provider');
 
       const node = rules([
         vardecl({
