@@ -902,6 +902,8 @@ The first code slice was a no-behavior-change extraction inside
   accumulator instead of sharing the ordered-identity accumulator
 - added a focused mixin test proving callable identity prep still does not
   pre-evaluate the mixin body
+- moved registration prep state creation to the eval / preEval bridge and split
+  the declaration-name fixed-point state from the source-ordered identity state
 
 The current implementation slice has introduced `Rules`-owned pending
 registration state for two surfaces:
@@ -916,12 +918,13 @@ Both paths still run under the existing registration-prep call path for now.
 is needed, but declaration registration still depends on the preparatory scan.
 The old unused async child-preEval continuation helper has been removed.
 
-The next step is to move declaration-name pending state closer to
-`Rules.evalNode()` setup. Do not split the ordered non-declaration identity list
-into separate schedulers yet. There is now focused coverage that mixed
-callable/import/selector identity prep preserves source order; splitting that
-list still needs separate proof that each surface can move independently without
-changing registration or import retry timing.
+The next step is to make `Rules.evalNode()` own more of the declaration-name
+prep timing directly instead of reaching it through the public `preEval()` shape.
+Do not split the ordered non-declaration identity list into separate schedulers
+yet. There is now focused coverage that mixed callable/import/selector identity
+prep preserves source order; splitting that list still needs separate proof that
+each surface can move independently without changing registration or import
+retry timing.
 
 Do not simply override `Rules.eval()` to skip the public `preEval()` wrapper.
 That changes when registration prep runs relative to `rulesEvalStack` setup and

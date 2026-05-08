@@ -2093,10 +2093,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * This traverses deeply to visit all nodes, but indexes locally.
    */
   override preEval(context: Context) {
-    return this._prepareRegistrationOnce(context);
+    return this._prepareRegistrationOnce(context, this._createRegistrationPrepState());
   }
 
-  private _prepareRegistrationOnce(context: Context): MaybePromise<this> {
+  private _prepareRegistrationOnce(
+    context: Context,
+    prepState: RegistrationPrepState
+  ): MaybePromise<this> {
     if (!this.preEvaluated) {
       context.depth++;
       const rules = this;
@@ -2105,7 +2108,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       let mp: MaybePromise<this>;
       try {
-        mp = this._prepareRegistration(rules, context, saved);
+        mp = this._prepareRegistration(rules, context, saved, prepState);
       } catch (error) {
         this._restoreRegistrationAfterError(context, saved);
         throw error;
@@ -2182,23 +2185,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   private _prepareRegistration(
     rules: Rules,
     context: Context,
-    saved: ReturnType<Rules['_snapshotContext']>
+    saved: ReturnType<Rules['_snapshotContext']>,
+    prepState: RegistrationPrepState
   ): MaybePromise<this> {
-    const pendingResult = this._scanRegistrationNodes(rules, context);
+    const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
     if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<PendingPrep>).then(pending =>
-        this._finishRegistrationScan(rules, context, saved, pending)
+      return (pendingResult as Promise<RegistrationPrepState>).then(scanState =>
+        this._finishRegistrationScan(rules, context, saved, scanState)
       );
     }
-    return this._finishRegistrationScan(rules, context, saved, pendingResult as PendingPrep);
+    return this._finishRegistrationScan(rules, context, saved, pendingResult as RegistrationPrepState);
   }
 
-  private _scanRegistrationNodes(rules: Rules, context: Context): MaybePromise<PendingPrep> {
-    const pending: PendingPrep = {
-      pendingDeclarationNames: [],
-      orderedIdentities: []
-    };
-
+  private _scanRegistrationNodes(
+    rules: Rules,
+    context: Context,
+    prepState: RegistrationPrepState
+  ): MaybePromise<RegistrationPrepState> {
     // Process each node with a registerable identity, handling both sync and async prep.
     // Comment nodes do not participate in numeric rule indexing.
     let indexedRuleCount = 0;
@@ -2214,26 +2217,26 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       node.index = nodeIndex;
-      return this._prepareRegisterableNode(rules, node, index, nodeIndex, pending, context);
+      return this._prepareRegisterableNode(rules, node, index, nodeIndex, prepState, context);
     });
 
     if (isThenable(processResult)) {
-      return (processResult as Promise<void>).then(() => pending);
+      return (processResult as Promise<void>).then(() => prepState);
     }
-    return pending;
+    return prepState;
   }
 
   private _finishRegistrationScan(
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
-    pending: PendingPrep
+    prepState: RegistrationPrepState
   ): MaybePromise<this> {
     this._stampRegistrationMaps(rules);
-    if (!this._hasPendingPrep(pending)) {
+    if (!this._hasPendingPrep(prepState)) {
       return this._finishRegistrationWithoutPending(rules, context, saved);
     }
-    return this._resolvePendingPrep(rules, context, saved, pending);
+    return this._resolvePendingPrep(rules, context, saved, prepState);
   }
 
   private _finishRegistrationWithoutPending(
@@ -2272,21 +2275,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pending: PendingPrep,
+    prepState: RegistrationPrepState,
     context: Context
   ): MaybePromise<void> {
     if (!this._hasStaticName(node)) {
-      this._addPendingPrep(pending, node);
+      this._addPendingPrep(prepState, node);
       return;
     }
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const preEvald = node.preEval(context);
     if (isThenable(preEvald)) {
       return (preEvald as Promise<Node>).then((preEvaldNode) => {
-        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, pending);
+        this._storePreparedRegistrationNode(rules, preEvaldNode, index, nodeIndex, prepState);
       });
     }
-    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, pending);
+    this._storePreparedRegistrationNode(rules, preEvald as Node, index, nodeIndex, prepState);
   }
 
   /**
@@ -2315,7 +2318,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     node: Node,
     index: number,
     nodeIndex: number | undefined,
-    pending: PendingPrep
+    prepState: RegistrationPrepState
   ): void {
     rules.value[index] = node;
     node.index = nodeIndex;
@@ -2324,7 +2327,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       this._registerNodeIfEligible(rules, node);
       return;
     }
-    this._addPendingPrep(pending, node);
+    this._addPendingPrep(prepState, node);
   }
 
   /**
@@ -2386,40 +2389,49 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     rules: Rules,
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>,
-    pending: PendingPrep
+    prepState: RegistrationPrepState
   ): MaybePromise<this> {
-    const resolvedOrderedIdentityNodes: Node[] = [];
-
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
-      return this._recordResolvedRegistrationNode(rules, resolvedOrderedIdentityNodes, resolvedNode, node, stillUnresolved);
+      return this._recordResolvedRegistrationNode(
+        rules,
+        prepState.orderedIdentity.resolvedNodes,
+        resolvedNode,
+        node,
+        stillUnresolved
+      );
     };
 
     return pipe(
-      () => this._resolvePendingDeclarationNamePrep(rules, context, pending.pendingDeclarationNames),
-      () => this._resolvePendingOrderedIdentityPrep(context, pending.orderedIdentities, handleResolvedNode),
-      () => this._finishPendingPrep(rules, context, saved, resolvedOrderedIdentityNodes)
+      () => this._resolvePendingDeclarationNamePrep(rules, context, prepState.declarationNames),
+      () => this._resolvePendingOrderedIdentityPrep(context, prepState.orderedIdentity.nodes, handleResolvedNode),
+      () => this._finishPendingPrep(rules, context, saved, prepState.orderedIdentity.resolvedNodes)
     );
   }
 
   private _resolvePendingDeclarationNamePrep(
     rules: Rules,
     context: Context,
-    pendingDeclarationNames: Node[]
+    pendingDeclarationNames: PendingDeclarationNamePrepState
   ): MaybePromise<void> {
-    if (pendingDeclarationNames.length === 0) {
+    if (pendingDeclarationNames.nodes.length === 0) {
       return;
     }
-    const resolvedNodes: Node[] = [];
     const handleResolvedNode = (resolvedNode: Node, node: Node, stillUnresolved: Node[]): boolean => {
-      return this._recordResolvedRegistrationNode(rules, resolvedNodes, resolvedNode, node, stillUnresolved);
+      return this._recordResolvedRegistrationNode(
+        rules,
+        pendingDeclarationNames.resolvedNodes,
+        resolvedNode,
+        node,
+        stillUnresolved
+      );
     };
     const result = this._resolvePendingDeclarationNamesFixedPoint(
       context,
-      pendingDeclarationNames,
+      pendingDeclarationNames.nodes,
       handleResolvedNode
     );
     const applyResolvedDeclarations = () => {
-      this._applyResolvedRegistrationNodes(rules, resolvedNodes);
+      this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
     };
     if (isThenable(result)) {
       return (result as Promise<void>).then(applyResolvedDeclarations);
@@ -2499,19 +2511,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return isNode(node, N.VarDeclaration) || isNode(node, N.Declaration);
   }
 
-  private _addPendingPrep(pending: PendingPrep, node: Node): void {
+  private _addPendingPrep(prepState: RegistrationPrepState, node: Node): void {
     if (this._isDeclarationRegistrationNode(node)) {
-      pending.pendingDeclarationNames.push(node);
+      prepState.declarationNames.nodes.push(node);
       return;
     }
-    pending.orderedIdentities.push({
+    prepState.orderedIdentity.nodes.push({
       kind: this._pendingIdentityKind(node),
       node
     });
   }
 
-  private _hasPendingPrep(pending: PendingPrep): boolean {
-    return pending.pendingDeclarationNames.length > 0 || pending.orderedIdentities.length > 0;
+  private _hasPendingPrep(prepState: RegistrationPrepState): boolean {
+    return prepState.declarationNames.nodes.length > 0 || prepState.orderedIdentity.nodes.length > 0;
   }
 
   private _pendingIdentityKind(node: Node): PendingIdentityKind {
@@ -3246,8 +3258,21 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Eval owns this bridge now, but the helper still performs the old
     // recursive prep internally until registration moves fully into eval.
-    const result = this._prepareRegistrationOnce(context);
+    const result = this._prepareRegistrationOnce(context, this._createRegistrationPrepState());
     return isThenable(result) ? (result as Promise<Rules>) : result;
+  }
+
+  private _createRegistrationPrepState(): RegistrationPrepState {
+    return {
+      declarationNames: {
+        nodes: [],
+        resolvedNodes: []
+      },
+      orderedIdentity: {
+        nodes: [],
+        resolvedNodes: []
+      }
+    };
   }
 
   private _finishEval(
@@ -3342,11 +3367,22 @@ export const rules = defineType(Rules, 'Rules');
 
 type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
 
-// Registration prep has two pending lanes: declaration-name nodes run through a
-// local fixed point, while every other unresolved identity stays source-ordered.
-type PendingPrep = {
-  pendingDeclarationNames: Node[];
-  orderedIdentities: PendingIdentity[];
+// Registration prep has two pending lanes. Declaration-name nodes own a local
+// fixed-point state because one declaration name can unblock another; every
+// other unresolved identity stays in one source-ordered lane for now.
+type RegistrationPrepState = {
+  declarationNames: PendingDeclarationNamePrepState;
+  orderedIdentity: PendingOrderedIdentityPrepState;
+};
+
+type PendingDeclarationNamePrepState = {
+  nodes: Node[];
+  resolvedNodes: Node[];
+};
+
+type PendingOrderedIdentityPrepState = {
+  nodes: PendingIdentity[];
+  resolvedNodes: Node[];
 };
 
 type PendingIdentityKind = 'callable' | 'selector' | 'import' | 'other';
