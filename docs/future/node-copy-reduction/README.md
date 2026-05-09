@@ -31,9 +31,9 @@ The remaining work is production conversion, not old model preservation.
   - resolving live-slot values now also reuses those source-free scalar leaves,
     including children of copied source-free `@arguments`/rest containers; the
     containers themselves still keep an owned copy surface
-  - static guards are proven copy-free; dynamic guards still use a copied eval
-    surface, and default-guard probing now reuses that copied guard for both
-    `default()` states
+  - static guards are proven copy-free; dynamic guards and default-guard probes
+    still use a copied eval surface, but that surface now reuses childless
+    source-free scalar leaves
   - ruleset-call and ordinary mixin body clones now reuse childless source-free
     scalar leaves through the shared clone helper; the rules containers and
     non-leaf nodes still get owned eval surfaces

@@ -27,7 +27,6 @@ import {
 } from './util/print.js';
 
 import { atIndex } from './util/collections.js';
-import type { Condition } from './condition.js';
 import { Bool } from './bool.js';
 import * as Registries from './util/registry-utils.js';
 import { processExtends } from './util/extend-roots.js';
@@ -77,6 +76,14 @@ function childRulesOf(node: Node): Rules | undefined {
 
 function sourceRulesOf(rules: Rules): Rules {
   return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
+}
+
+function copyGuardForEval(guard: Node): Node {
+  const copied = copyWithReusableLeaves(guard);
+  if (copied.type !== guard.type) {
+    throw new TypeError(`Copied guard must remain ${guard.type}, got ${copied.type}`);
+  }
+  return copied;
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
@@ -3502,7 +3509,7 @@ type CallableEntryValue = {
   name?: unknown;
   params?: List<Node>;
   rules: Rules;
-  guard?: Condition | Bool;
+  guard?: Node;
 };
 
 export type CallableRulesEntry = {
@@ -3537,7 +3544,7 @@ function getMixinEntryRules(entry: MixinEntry): Rules {
   return entry.value.rules;
 }
 
-function getMixinEntryGuard(entry: MixinEntry): Condition | Bool | Nil | undefined {
+function getMixinEntryGuard(entry: MixinEntry): Node | Nil | undefined {
   return entry.value.guard;
 }
 
@@ -3549,7 +3556,7 @@ function getCallableEntryParams(entry: CallableEntry): List<Node> | undefined {
   return entry.value.params;
 }
 
-function getCallableEntryGuard(entry: CallableEntry): Condition | Bool | undefined {
+function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
   return entry.value.guard;
 }
 
@@ -4396,10 +4403,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
       }
 
       /** Now we can evaluate our guards, if any */
-      let guard: Condition | Bool | undefined = hasDefault
+      let guard: Node | undefined = hasDefault
         ? candidateGuard
         : candidateGuard
-          ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : candidateGuard.copy(true))
+          ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : copyGuardForEval(candidateGuard))
           : undefined;
       const usesPreboundCallerGuardOuterRules = Boolean(
         guard
@@ -4436,15 +4443,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
           let defaultGroup = DEF_FALSE_EITHER;
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
-            let defaultProbeGuard: Condition | Bool | undefined;
-            const getDefaultProbeGuard = (): Condition | Bool | undefined => {
+            let defaultProbeGuard: Node | undefined;
+            const getDefaultProbeGuard = (): Node | undefined => {
               if (!candidateGuard) {
                 return undefined;
               }
               if (candidateGuard.hasFlag(F_STATIC)) {
                 return candidateGuard;
               }
-              defaultProbeGuard ??= candidateGuard.copy(true);
+              defaultProbeGuard ??= copyGuardForEval(candidateGuard);
               return defaultProbeGuard;
             };
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {

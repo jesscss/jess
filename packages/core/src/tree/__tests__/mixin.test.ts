@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, Condition } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -2476,14 +2476,48 @@ describe('Mixin', () => {
     });
 
     it('keeps dynamic guards on a copied eval surface', async () => {
-      const originalCopy = Condition.prototype.copy;
-      let guardCopies = 0;
-      Condition.prototype.copy = function copyForCounting(
-        this: Condition,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        guardCopies++;
-        return originalCopy.apply(this, args);
+      context = new Context({ leakyRules: false });
+      const guard = condition([
+        expr(ref({ key: 'mode' }, { type: 'variable' })),
+        '=',
+        any('dark')
+      ]);
+      const root = rules([
+        mixin({
+          name: any('.guarded'),
+          guard,
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+
+      expect(evald.toString()).toContain('color: red;');
+      expect(guard.evaluated).toBe(false);
+      expect(guard.preEvaluated).toBe(false);
+    });
+
+    it('does not clone source-free scalar leaves inside copied dynamic guards', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'dark') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
       };
 
       try {
@@ -2513,9 +2547,9 @@ describe('Mixin', () => {
         const evald = await root.eval(context);
 
         expect(evald.toString()).toContain('color: red;');
-        expect(guardCopies).toBeGreaterThan(0);
+        expect(scalarClones).toBe(0);
       } finally {
-        Condition.prototype.copy = originalCopy;
+        Any.prototype.clone = originalClone;
       }
     });
 
@@ -2776,15 +2810,17 @@ describe('Mixin', () => {
       expect(css).not.toContain('value: blue;');
     });
 
-    it('copies each dynamic default guard once while probing both default states', async () => {
-      const originalCopy = Condition.prototype.copy;
-      let guardCopies = 0;
-      Condition.prototype.copy = function copyForCounting(
-        this: Condition,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        guardCopies++;
-        return originalCopy.apply(this, args);
+    it('does not clone source-free scalar leaves inside copied default guard probes', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'dark') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
       };
 
       try {
@@ -2818,9 +2854,9 @@ describe('Mixin', () => {
         const evald = await root.eval(context);
 
         expect(evald.toString()).toContain('color: red;');
-        expect(guardCopies).toBe(2);
+        expect(scalarClones).toBe(0);
       } finally {
-        Condition.prototype.copy = originalCopy;
+        Any.prototype.clone = originalClone;
       }
     });
 

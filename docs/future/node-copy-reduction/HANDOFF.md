@@ -38,9 +38,9 @@ just because the binding still needs an owned container surface. Resolving
 live-slot values also reuses those scalar leaves, including children of copied
 source-free `@arguments`/rest containers; source-backed values and containers
 still use the defensive copy path. Static guards are
-proven copy-free, dynamic guards still use an owned copy surface, and default
-guard probing reuses that copied guard across both `default()` states. Ruleset
-call and ordinary mixin body clones reuse childless source-free scalar leaves;
+proven copy-free; dynamic guards and default-guard probes still use an owned
+copy surface, but that surface reuses childless source-free scalar leaves.
+Ruleset call and ordinary mixin body clones reuse childless source-free scalar leaves;
 the rules containers and non-leaf nodes still get owned eval surfaces. Detached
 ruleset unlock is covered as an intentionally shallow clone boundary. Merged
 declaration composition now uses the shared reusable-leaf copy traversal, so
