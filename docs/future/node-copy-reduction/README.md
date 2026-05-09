@@ -39,8 +39,9 @@ The remaining work is production conversion, not old model preservation.
   - ordinary reference result and declaration value evaluation still use
     defensive deep copies
 - `packages/core/src/tree/call.ts`
-  - `Call.resolve()` still deep-clones before eval for non-trivial calls;
-    empty plain CSS calls skip the empty arg-list clone
+  - `Call.resolve()` still deep-clones before eval for non-plain calls; plain
+    string CSS calls now build their evaluated output directly, copying only
+    nested argument containers that need their own eval surface
   - JS function argument isolation still uses frozen deep copies for non-empty
     positional args and callbacks that receive the arg `List`; ordinary empty
     positional JS calls skip the arg-list copy

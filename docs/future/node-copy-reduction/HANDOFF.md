@@ -45,13 +45,14 @@ stored/list-flattened leaves. The `Call.evalNode` `sourceNode.parent` repair is
 still active because the detached-ruleset non-leaky scope test fails without it.
 In `packages/core/src/tree/call.ts`, ordinary JS functions with explicit empty
 positional arg lists no longer copy the empty `List`; callbacks that receive the
-arg `List` itself still keep the defensive copy. Plain CSS calls with explicit
-empty arg lists also skip the empty-list clone during `resolve(context)`;
-non-empty calls still use the existing defensive path. Derived empty mixin
-wrapper surfaces in `packages/core/src/tree/rules.ts` are constructed directly
-instead of shallow-cloning non-empty body rules and clearing them, avoiding
-parent churn on cloned body children while preserving rule options and function
-registry ownership.
+arg `List` itself still keep the defensive copy. Plain string CSS calls now
+build evaluated `resolve(context)` output directly instead of deep-cloning the
+whole call first; nested argument containers still get a local copied eval
+surface when needed so source argument containers stay canonical. Derived empty
+mixin wrapper surfaces in `packages/core/src/tree/rules.ts` are constructed
+directly instead of shallow-cloning non-empty body rules and clearing them,
+avoiding parent churn on cloned body children while preserving rule options and
+function registry ownership.
 
 ## Work Loop
 

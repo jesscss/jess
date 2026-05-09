@@ -251,15 +251,8 @@ export class Call extends Node<CallValue, CallOptions> {
     if (
       typeof this.value.name === 'string'
       && !this.value.contentNode
-      && (!this.value.args || this.value.args.value.length === 0)
     ) {
-      const options = this._options
-        ? { ...this._options, silentFail: false }
-        : undefined;
-      return new Call({
-        name: this.value.name,
-        args: this.value.args ? list([]) : undefined
-      }, options, this.location, this.treeContext).inherit(this);
+      return this.evalNode(context);
     }
     return this.clone(true).eval(context) as MaybePromise<Node>;
   }
@@ -308,13 +301,23 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return node;
     };
-    const evalArgNodes = async (nodes?: List<Node>) => {
+    const evalArgNodes = async (
+      nodes?: List<Node>,
+      options?: { preserveSourceParents?: boolean }
+    ) => {
       if (!nodes) {
         return undefined;
       }
       const out: Node[] = [];
       for (const node of nodes.value) {
-        out.push(await node.eval(context) as Node);
+        const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence)
+          ? node.copy(true, freezeChildren)
+          : node;
+        const evald = await evalTarget.eval(context) as Node;
+        if (evald === node && options?.preserveSourceParents) {
+          evald.frozen = true;
+        }
+        out.push(evald);
       }
       return list(out, nodes.options);
     };
@@ -519,15 +522,16 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await evalArgNodes(args);
+      const evaluatedArgs = await evalArgNodes(args, { preserveSourceParents: true });
 
       if (n === 'calc') {
         context.calcFrames--;
       }
       context.parenFrames.pop();
       context.callStack.pop();
-      const node = this.clone();
-      node.options.silentFail = false;
+      const callOptions = this._options
+        ? { ...this._options, silentFail: false }
+        : { silentFail: false };
       if (
         n === 'calc' && evaluatedArgs
       ) {
@@ -537,8 +541,11 @@ export class Call extends Node<CallValue, CallOptions> {
           return new Paren(evaluatedArgs.value[0]!);
         }
       }
-      node.value.name = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
-      node.value.args = evaluatedArgs;
+      const node = new Call({
+        ...this.value,
+        name: typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n),
+        args: evaluatedArgs
+      }, callOptions, this.location, this.treeContext);
       return adoptCallWhitespace(node);
     };
   }

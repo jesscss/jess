@@ -190,6 +190,32 @@ describe('Call', () => {
     }
   });
 
+  it('does not deep-clone non-empty plain CSS call args before resolve(context)', async () => {
+    const originalClone = List.prototype.clone;
+    let clonedLists = 0;
+    List.prototype.clone = function cloneForCounting(this: List, ...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
+      clonedLists++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const args = list([num(10), num(20), num(30)]);
+      const rule = call({
+        name: 'rgb',
+        args
+      });
+      const resolved = await rule.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('rgb(10, 20, 30)');
+      expect(clonedLists).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.preEvaluated).toBe(false);
+    } finally {
+      List.prototype.clone = originalClone;
+    }
+  });
+
   it('reduces safe direct arithmetic while preserving nested calc calls when rendering calc()', () => {
     const direct = call({
       name: 'calc',
