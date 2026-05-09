@@ -22,10 +22,16 @@ export interface Block extends Node<Node, BlockOptions> {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
-  private withValue(value: Node): this {
-    const node = this.clone(false) as this;
-    node.set(null, value);
-    return node;
+  private withValue(value: Node): Block {
+    const location = this._location && this._location.length === 6
+      ? this._location
+      : undefined;
+    return new Block(
+      value,
+      this._options ? { ...this._options } : undefined,
+      location,
+      this.treeContext
+    ).inherit(this);
   }
 
   override toTrimmedString(options?: PrintOptions) {

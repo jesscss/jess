@@ -99,6 +99,10 @@ touching production code.
   - resolved paren wrappers now construct directly from the resolved child
     instead of shallow-cloning first, so resolving a child container no longer
     reparents the source paren value
+- `packages/core/src/tree/block.ts`
+  - resolved block wrappers now construct directly from the resolved child
+    instead of shallow-cloning first, so resolving a block child no longer
+    reparents the source block value
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

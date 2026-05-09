@@ -97,7 +97,10 @@ unchanged source operands remain parented to the source operation when a
 resolved sibling keeps the operation shape alive. `packages/core/src/tree/paren.ts`
 now builds resolved paren wrappers directly from the resolved child instead of
 shallow-cloning before replacement, so resolving a child container leaves the
-source paren value parented to the source paren. The unused
+source paren value parented to the source paren. `packages/core/src/tree/block.ts`
+now uses the same direct construction pattern for resolved block wrappers, so
+source block values stay parented to the canonical source block after
+`resolve(context)`. The unused
 `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
 `packages/core/src/tree/util/cloning.ts`.
 

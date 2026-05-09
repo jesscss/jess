@@ -117,9 +117,11 @@ describe('Block', () => {
     context.rulesContext = evald as RulesClass;
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const sourceValue = blockNode.value;
     const resolved = await blockNode.resolve(context);
 
     expect(`${resolved}`).toBe('{foo}');
+    expect(sourceValue.parent).toBe(blockNode);
     expect(blockNode.toTrimmedString()).toBe('{$value}');
   });
 });
