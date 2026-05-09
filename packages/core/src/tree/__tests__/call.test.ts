@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { Any, Call, JsFunction, List, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, vardecl } from '../index.js';
+import { Any, Call, JsFunction, List, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -419,6 +419,130 @@ describe('Call', () => {
 
       expect(result.toTrimmedString()).toBe('ok');
       expect(scalarClones).toBe(0);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'echo',
+      fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const originalArgs = list([any('red')]);
+      const rule = call({
+        name: ref({ key: 'echo' }, { type: 'function' }),
+        args: originalArgs
+      });
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+      expect(originalArgs.parent).toBe(rule);
+      expect(rule.evaluated).toBe(false);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not clone source-free scalar leaves in nested args before resolving referenced JS function calls', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'echo',
+      fn: defineFunction(
+        'echo',
+        async function(this: { rawArgs: List }) {
+          const value = this.rawArgs.value[0];
+          return any(isNode(value, N.Sequence) && value.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalArgs = list([originalValue]);
+      const rule = call({
+        name: ref({ key: 'echo' }, { type: 'function' }),
+        args: originalArgs
+      });
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'first',
+      fn: defineFunction(
+        'first',
+        async function(this: { rawArgs: List }) {
+          return any(this.rawArgs.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Any }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const originalArgs = list([any('red')]);
+      const rule = call({
+        name: ref({ key: 'first' }, { type: 'function' }),
+        args: originalArgs
+      });
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+      expect(originalArgs.parent).toBe(rule);
     } finally {
       Any.prototype.clone = originalClone;
     }

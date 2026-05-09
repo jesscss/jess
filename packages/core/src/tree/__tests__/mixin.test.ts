@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Sequence, Bool, bool, Condition } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, Condition } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -1299,44 +1299,31 @@ describe('Mixin', () => {
       }
     });
 
-    it('keeps default param containers on the defensive copy path', async () => {
-      const originalCopy = Sequence.prototype.copy;
-      let containerCopies = 0;
-      Sequence.prototype.copy = function copyForCounting(
-        this: Sequence,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        containerCopies++;
-        return originalCopy.apply(this, args);
-      };
+    it('keeps default param containers owned without reparenting the source container', async () => {
+      const defaultValue = seq([any('red'), any('10px')]);
+      const param = vardecl({ name: 'space', value: defaultValue }, { paramVar: true });
+      const root = rules([
+        mixin({
+          name: any('.container-default'),
+          params: list([param]),
+          rules: rules([])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({
+              name: ref({ key: '.container-default' }, { type: 'mixin' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
 
-      try {
-        const root = rules([
-          mixin({
-            name: any('.container-default'),
-            params: list([
-              vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
-            ]),
-            rules: rules([])
-          }),
-          ruleset({
-            selector: el('.use'),
-            rules: rules([
-              call({
-                name: ref({ key: '.container-default' }, { type: 'mixin' })
-              })
-            ])
-          })
-        ]);
-        context.root = root;
+      const evald = await root.eval(context);
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toBe('');
-        expect(containerCopies).toBeGreaterThan(0);
-      } finally {
-        Sequence.prototype.copy = originalCopy;
-      }
+      expect(evald.toString()).toBe('');
+      expect(defaultValue.parent).toBe(param);
+      expect(param.parent?.parent).toBe(root.value[0]);
     });
 
     it('does not clone source-free scalar leaves inside copied positional param containers', async () => {

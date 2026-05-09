@@ -254,7 +254,11 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    return this.clone(true).eval(context) as MaybePromise<Node>;
+    const copied = copyWithReusableLeaves(this);
+    if (!isNode(copied, N.Call)) {
+      throw new TypeError('Copied call must remain a Call');
+    }
+    return copied.eval(context) as MaybePromise<Node>;
   }
 
   /** Recursively makes declarations important */

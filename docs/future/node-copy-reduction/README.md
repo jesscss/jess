@@ -61,9 +61,10 @@ The remaining work is production conversion, not old model preservation.
     reference result containers also use the shared reusable-leaf traversal
     rather than freezing every child leaf
 - `packages/core/src/tree/call.ts`
-  - `Call.resolve()` still deep-clones before eval for non-plain calls; plain
-    string CSS calls now build their evaluated output directly, copying only
-    nested argument containers that need their own eval surface
+  - non-plain `Call.resolve()` now keeps an owned copied call surface while
+    reusing childless source-free scalar leaves; plain string CSS calls build
+    their evaluated output directly, copying only nested argument containers
+    that need their own eval surface
   - JS function argument isolation still uses frozen deep copies for non-empty
     source-backed or non-leaf values; ordinary empty positional JS calls skip
     the arg-list copy, and copied positional/callback arg containers now reuse

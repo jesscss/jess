@@ -69,6 +69,10 @@ source-free scalar leaves while keeping an owned arg-list surface. Plain string
 CSS calls now build evaluated `resolve(context)` output directly instead of
 deep-cloning the whole call first; nested argument containers still get a local
 copied eval surface when needed so source argument containers stay canonical.
+Non-plain `Call.resolve()` also uses the shared reusable-leaf traversal now:
+the copied call/list/sequence containers still own eval-time mutation, but
+childless source-free scalar leaves are reused and the original call-site
+parents are left alone.
 Derived empty mixin wrapper surfaces in
 `packages/core/src/tree/rules.ts` are constructed directly instead of
 shallow-cloning non-empty body rules and clearing them, avoiding parent churn on

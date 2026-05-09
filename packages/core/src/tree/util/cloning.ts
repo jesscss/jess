@@ -66,6 +66,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function nodeOptions(node: Node): unknown {
+  return Object.getOwnPropertyDescriptor(node, '_options')?.value;
+}
+
+function constructCopy(node: Node, value: unknown): Node {
+  const options = nodeOptions(node);
+  const copy = Reflect.construct(
+    node.constructor,
+    [
+      value,
+      options && isRecord(options) ? { ...options } : undefined,
+      node.location,
+      node.treeContext
+    ]
+  );
+  if (!(copy instanceof Node)) {
+    throw new TypeError('Copied value must construct a Node');
+  }
+  return copy.inherit(node);
+}
+
 export function copyWithReusableLeaves(node: Node): Node {
   if (node.type === 'Comment') {
     const nilNode = node.nil?.();
@@ -76,8 +97,7 @@ export function copyWithReusableLeaves(node: Node): Node {
   if (canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
-  const copy = node.copy(false).inherit(node);
-  copy.set(null, copyChild(node.value));
+  const copy = constructCopy(node, copyChild(node.value));
   copy.frozen = true;
   return copy;
 }
