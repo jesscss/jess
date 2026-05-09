@@ -916,6 +916,48 @@ describe('Mixin', () => {
       }
     });
 
+    it('does not copy childless static default params just to bind mixin params', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.noop'),
+            params: list([
+              vardecl({ name: 'color', value: any('red') }, { paramVar: true })
+            ]),
+            rules: rules([])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.noop' }, { type: 'mixin' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toBe('');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
     it('should call a mixin with multiple parameters', async () => {
       // Create a mixin with multiple parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({

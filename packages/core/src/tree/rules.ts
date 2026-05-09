@@ -3668,7 +3668,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return false;
     }
     function canReuseBoundValue(value: Node): boolean {
-      return value.frozen
+      return (value.frozen || value.hasFlag(F_STATIC))
         && value.location.length === 0
         && !hasNodeChild(value.value);
     }
