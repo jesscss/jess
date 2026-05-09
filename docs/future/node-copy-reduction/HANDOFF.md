@@ -122,6 +122,10 @@ whole-file lint clean. `packages/core/src/tree/util/bitset.ts` now keeps
 third-party bitset internals behind local guards and preserves selector-bit
 library identity without copying private fields through `any`; this is a
 utility boundary cleanup, not a selector/extend generated-output clone change.
+`packages/core/src/jess-error.ts` now keeps slash-style diagnostic codes in a
+typed map and reads Chevrotain parser/lexer error details through local guards,
+so the parser diagnostic adapter is whole-file lint clean without weakening the
+diagnostic code contract.
 Broader typed cleanup in legacy high-debt files should be planned separately
 because the staged-file hook lints whole touched files. This cleanup does not
 change the selector/extend generated-output clone frontier below.

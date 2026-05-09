@@ -16,6 +16,23 @@ export type LocNode = { location?: LocationInfo };
 
 type Phase = 'parse' | 'resolve' | 'import' | 'eval' | 'extend' | 'plugin';
 type Severity = 'error' | 'warn';
+type JessErrorCode =
+  | 'parse/unexpected-token'
+  | 'parse/unterminated-string'
+  | 'parse/unexpected-syntax'
+  | 'parse/syntax-error'
+  | 'resolve/name-not-found'
+  | 'import/circular-compose'
+  | 'eval/bad-call-arity'
+  | 'eval/type-mismatch'
+  | 'extend/protected-boundary'
+  | 'extend/not-found'
+  | 'extend/not-accessible'
+  | 'plugin/unsupported-feature'
+  | 'eval/deprecated'
+  | 'resolve/unused-variable'
+  | 'selector/duplicate'
+  | 'selector/parentless-ampersand';
 
 /**
  * Normalized error format for all phases (lexing, parsing, evaluation).
@@ -92,7 +109,7 @@ export interface WarningDiagnostic {
  */
 export type JessErrorInit = {
   severity?: Severity;
-  code: keyof typeof TEMPLATES;
+  code: JessErrorCode;
   phase: Phase;
 
   /** Optional: auto-wire file/line/col/source from compiler context + node */
@@ -131,105 +148,137 @@ export type JessErrorInit = {
  */
 type Template = { summary: string; reason: string; fix: string };
 
-const TEMPLATES = {
+const TEMPLATES = new Map<JessErrorCode, Template>([
   // Parse/Lex
-  'parse/unexpected-token': {
+  ['parse/unexpected-token', {
     summary: 'Unexpected token',
     reason: 'Token "${token}" is not valid here.',
     fix: 'Check for a missing quote/comma or wrong operator.'
-  },
-  'parse/unterminated-string': {
+  }],
+  ['parse/unterminated-string', {
     summary: 'Unterminated string',
     reason: 'Missing closing quote.',
     fix: 'Close the string, e.g. url("hero.jpg").'
-  },
-  'parse/unexpected-syntax': {
+  }],
+  ['parse/unexpected-syntax', {
     summary: 'Unexpected syntax',
     reason: 'Expected ${expected}, got ${got}.',
     fix: 'Add the expected token or remove the unexpected one.'
-  },
-  'parse/syntax-error': {
+  }],
+  ['parse/syntax-error', {
     summary: 'Syntax error',
     reason: '${message}',
     fix: 'Check surrounding tokens near this location.'
-  },
+  }],
 
   // Resolve/Import
-  'resolve/name-not-found': {
+  ['resolve/name-not-found', {
     summary: 'Name not found',
     reason: 'Symbol "${symbol}" is undefined in this scope.',
     fix: 'Define "${symbol}" or import a file that provides it.'
-  },
-  'import/circular-compose': {
+  }],
+  ['import/circular-compose', {
     summary: 'Circular @-compose detected',
     reason: '${chain}',
     fix: 'Break the cycle (extract shared bits and compose that).'
-  },
+  }],
 
   // Eval
-  'eval/bad-call-arity': {
+  ['eval/bad-call-arity', {
     summary: 'Bad call: wrong arity',
     reason: '${callee} expects ${expectedCount} args, got ${gotCount}.',
     fix: 'Add/remove arguments to match the signature.'
-  },
-  'eval/type-mismatch': {
+  }],
+  ['eval/type-mismatch', {
     summary: 'Type mismatch',
     reason: '${callee} expects ${expected}, got ${got}.',
     fix: 'Pass a ${expected}; convert or choose a compatible value.'
-  },
+  }],
 
   // Extend
-  'extend/protected-boundary': {
+  ['extend/protected-boundary', {
     summary: 'Extend blocked by protected boundary',
     reason: '"${target}" is defined behind a protected compose boundary.',
     fix: 'Move "${target}" to a shared file or create a local shim.'
-  },
-  'extend/not-found': {
+  }],
+  ['extend/not-found', {
     summary: 'Extend target "${target}" not found',
     reason: 'No ruleset found matching "${target}" in accessible extend roots.',
     fix: 'Ensure "${target}" exists and is accessible from the current extend root.'
-  },
-  'extend/not-accessible': {
+  }],
+  ['extend/not-accessible', {
     summary: 'Extend target "${target}" not accessible',
     reason: '"${target}" exists but is not accessible from the current extend root (blocked by at-rule or compose boundary).',
     fix: 'Move the extend or the target to a shared extend root, or use a different approach.'
-  },
+  }],
 
   // Plugin
-  'plugin/unsupported-feature': {
+  ['plugin/unsupported-feature', {
     summary: 'Unsupported feature',
     reason: 'Plugin "${plugin}" does not implement ${feature}.',
     fix: 'Use a supported alternative or enable a fallback.'
-  },
+  }],
 
   // ---------- Warnings (examples you can expand) ----------
-  'eval/deprecated': {
+  ['eval/deprecated', {
     summary: 'Deprecated feature',
     reason: '"${what}" is deprecated.',
     fix: 'Use "${use}" instead.'
-  },
-  'resolve/unused-variable': {
+  }],
+  ['resolve/unused-variable', {
     summary: 'Unused variable',
     reason: '"${symbol}" is declared but its value is never used.',
     fix: 'Remove it or prefix with "_" to silence.'
-  },
-  'selector/duplicate': {
+  }],
+  ['selector/duplicate', {
     summary: 'Duplicate selector',
     reason: 'Selector "${selector}" is defined multiple times.',
     fix: 'Consolidate rules or remove the duplicate.'
-  },
-  'selector/parentless-ampersand': {
+  }],
+  ['selector/parentless-ampersand', {
     summary: 'Parentless ampersand ignored',
     reason: 'Selector "${selector}" uses "&" without an available parent selector in this context.',
     fix: 'Move the selector under a real parent selector, or remove the stray "&".'
-  }
-} satisfies Record<string, Template>;
+  }]
+]);
 
 /**
  * Replaces `${key}` with values from `meta`. Unset keys render as `<key>`.
  */
 function interpolate(s: string, meta: Record<string, unknown>): string {
   return s.replace(/\$\{(\w+)\}/g, (_: string, k: string) => String(meta[k] ?? `<${k}>`));
+}
+
+function hasObjectShape(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  const field = value[key];
+  return typeof field === 'string' ? field : undefined;
+}
+
+function numberField(value: Record<string, unknown>, key: string): number | undefined {
+  const field = value[key];
+  return typeof field === 'number' ? field : undefined;
+}
+
+function recognitionToken(error: IRecognitionException | ILexingError): IRecognitionException['token'] | undefined {
+  return 'token' in error ? error.token : undefined;
+}
+
+function isLexerError(error: IRecognitionException | ILexingError): error is ILexingError {
+  return !('token' in error);
+}
+
+function errorMessage(error: IRecognitionException | ILexingError): string {
+  return hasObjectShape(error) ? stringField(error, 'message') ?? '' : '';
+}
+
+function lexerTokenText(error: ILexingError): string {
+  const message = error.message;
+  const match = message.match(/unexpected character:\s*->([^<-]+)<-/i);
+  return match?.[1] ?? '/';
 }
 
 /* =========================
@@ -386,7 +435,7 @@ function codeFrameFromFile(file: JessFile, line = 1, col = 1): string {
 
 export class JessError extends Error {
   severity: Severity = 'error';
-  code: keyof typeof TEMPLATES = 'parse/syntax-error';
+  code: JessErrorCode = 'parse/syntax-error';
   phase: Phase = 'parse';
 
   // Resolved source context (fileObj preferred; filePath is legacy)
@@ -413,7 +462,7 @@ export class JessError extends Error {
     const source = fileObj?.source ?? init.source;
 
     const meta = init.meta ?? {};
-    const t = TEMPLATES[init.code] ?? TEMPLATES['parse/syntax-error'];
+    const t = TEMPLATES.get(init.code) ?? TEMPLATES.get('parse/syntax-error')!;
 
     const summary = init.summary ?? interpolate(t.summary, meta);
     const reason = init.reason ?? interpolate(t.reason, meta);
@@ -657,28 +706,25 @@ export function getErrorFromParser(
     return new JessError({ code: 'parse/syntax-error', phase: 'parse', filePath, source, ctx });
   }
 
-  const isLex =
-    (error as any).name === 'LexerError'
-    || ('token' in error && (error as any).lexer);
+  const token = recognitionToken(error);
+  const record = hasObjectShape(error) ? error : {};
 
   const line =
-    'token' in error
-      ? error.token?.startLine ?? (error as any).line
-      : (error as any).line;
+    token?.startLine
+    ?? numberField(record, 'line');
 
   const column =
-    'token' in error
-      ? error.token?.startColumn ?? (error as any).column
-      : (error as any).column;
+    token?.startColumn
+    ?? numberField(record, 'column');
 
-  const message = (error as any).message || '';
+  const message = errorMessage(error);
 
-  let code: keyof typeof TEMPLATES = 'parse/syntax-error';
+  let code: JessErrorCode = 'parse/syntax-error';
   let meta: Record<string, unknown> = {};
 
-  if (isLex) {
+  if (isLexerError(error)) {
     code = 'parse/unexpected-token';
-    meta = { token: (error as any).char ?? '/' };
+    meta = { token: lexerTokenText(error) };
   } else if (/unterminated|string not closed/i.test(message)) {
     code = 'parse/unterminated-string';
   } else if (/expecting/i.test(message)) {

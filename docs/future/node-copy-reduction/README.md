@@ -215,8 +215,11 @@ helpers, and `use-webpack-resolver.ts` is whole-file lint clean. `bitset.ts`
 now keeps the third-party bitset internals behind local guards and preserves
 selector-bit library identity without `any` field copying; treat this as a
 small utility boundary cleanup, not as selector/extend generated-output work.
-Broader typed cleanup in legacy high-debt files should be planned as its own
-batch, not mixed into node-copy work opportunistically.
+`jess-error.ts` now keeps slash-style diagnostic codes in a typed map instead
+of a lint-hostile object literal, and its Chevrotain adapter reads parser and
+lexer error shapes through local guards instead of `any` assertions. Broader
+typed cleanup in legacy high-debt files should be planned as its own batch, not
+mixed into node-copy work opportunistically.
 
 ## Working Rule
 
