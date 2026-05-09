@@ -4,6 +4,7 @@ import {
   any,
   interpolated,
   list,
+  List,
   quoted,
   ref,
   rules,
@@ -143,7 +144,47 @@ describe('Interpolated', () => {
     const resolved = await interpolatedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('hello-one, world');
+    expect(interpolatedNode.value.replacements[0]?.parent).toBe(interpolatedNode);
     expect(interpolatedNode.toTrimmedString()).toBe('hello-one, $name');
+  });
+
+  it('does not clone unchanged source replacement containers before resolving interpolated values', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+    const originalClone = List.prototype.clone;
+    let clonedLists = 0;
+    List.prototype.clone = function cloneForCounting(
+      this: List,
+      ...args: Parameters<List['clone']>
+    ): ReturnType<List['clone']> {
+      clonedLists++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const replacement = list([
+        any('one'),
+        ref({ key: 'name' }, { type: 'variable' })
+      ]);
+      const interpolatedNode = interpolated({
+        source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [replacement]
+      });
+      const resolved = await interpolatedNode.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('hello-one, world');
+      expect(clonedLists).toBe(0);
+      expect(replacement.parent).toBe(interpolatedNode);
+    } finally {
+      List.prototype.clone = originalClone;
+    }
   });
 
   it('preserves quoted replacement syntax when requested', () => {

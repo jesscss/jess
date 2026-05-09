@@ -80,6 +80,13 @@ Non-plain `Call.resolve()` also uses the shared reusable-leaf traversal now:
 the copied call/list/sequence containers still own eval-time mutation, but
 childless source-free scalar leaves are reused and the original call-site
 parents are left alone.
+At-rule registration and resolve wrappers now use direct derived construction
+with owned/reusable child surfaces instead of shallow clone/replacement, so
+source preludes and rule bodies stay parented to the canonical at-rule.
+Interpolated value resolve now constructs a fresh interpolated wrapper only
+when replacement values actually change, and interpolated selector resolve
+uses that resolve path instead of cloning the source interpolated value before
+selector conversion.
 Derived empty mixin wrapper surfaces in
 `packages/core/src/tree/rules.ts` are constructed directly instead of
 shallow-cloning non-empty body rules and clearing them, avoiding parent churn on

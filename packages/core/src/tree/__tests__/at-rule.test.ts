@@ -71,12 +71,13 @@ describe('AtRule', () => {
   });
 
   it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
+    const prelude = seq([any('screen', { role: 'keyword' })]);
     const node = atrule({
       name: interpolated({
         source: '@media',
         replacements: []
       }),
-      prelude: seq([any('screen', { role: 'keyword' })])
+      prelude
     });
 
     const prepared = await node.prepareRegistration(context);
@@ -88,6 +89,7 @@ describe('AtRule', () => {
       throw new Error('Expected AtRule result');
     }
     expect(prepared.value.name.valueOf()).toBe('@media');
+    expect(prelude.parent).toBe(node);
   });
 
   it('restores at-rule body registration context when child registration prep throws', () => {
@@ -219,6 +221,9 @@ describe('AtRule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
+    const sourceName = node.value.name;
+    const sourcePrelude = node.value.prelude;
+    const sourceRules = node.value.rules;
 
     const resolved = await node.resolve(context);
 
@@ -227,6 +232,9 @@ describe('AtRule', () => {
         color: red;
       }
     `);
+    expect(sourceName.parent).toBe(node);
+    expect(sourcePrelude?.parent).toBe(node);
+    expect(sourceRules?.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();

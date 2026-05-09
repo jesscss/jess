@@ -506,6 +506,22 @@ describe('Call', () => {
     }
   });
 
+  it('keeps source fallback call args canonical when optional function evaluation falls back', async () => {
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const originalArg = args.value[0]!;
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args
+    }, { silentFail: true });
+
+    const resolved = await rule.eval(context);
+
+    expect(isNode(resolved, N.Call)).toBe(true);
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+    expect(args.parent).toBe(rule);
+    expect(originalArg.parent).toBe(args);
+  });
+
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

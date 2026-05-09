@@ -11,6 +11,7 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -38,7 +39,7 @@ function registerInnerExtendRootIfHoisted(
 }
 
 export type AtRuleValue = {
-  name: Any<'atkeyword'>;
+  name: Any | Interpolated;
   /** The prelude */
   prelude?: Node;
   rules?: Rules;
@@ -73,6 +74,42 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   frames: (Ruleset | AtRule)[] | undefined;
 
   protected _valueOf: string | undefined;
+
+  private ownName(name: AtRuleValue['name']): AtRuleValue['name'] {
+    const owned = canReuseLeaf(name) ? reuseLeaf(name) : copyWithReusableLeaves(name);
+    if (!(owned instanceof Any) && !(owned instanceof Interpolated)) {
+      throw new TypeError('Expected at-rule name copy');
+    }
+    return owned;
+  }
+
+  private ownNode(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+  }
+
+  private ownRules(rules: Rules): Rules {
+    const owned = canReuseLeaf(rules) ? reuseLeaf(rules) : copyWithReusableLeaves(rules);
+    if (!(owned instanceof Rules)) {
+      throw new TypeError('Expected at-rule rules copy');
+    }
+    return owned;
+  }
+
+  private deriveAtRule(value: AtRuleValue, sourceValue: AtRuleValue = this.value): AtRule {
+    const node = new AtRule(
+      {
+        name: value.name === sourceValue.name ? this.ownName(value.name) : value.name,
+        prelude: value.prelude && value.prelude === sourceValue.prelude ? this.ownNode(value.prelude) : value.prelude,
+        rules: value.rules && value.rules === sourceValue.rules ? this.ownRules(value.rules) : value.rules
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+    node.hoistToRoot = this.hoistToRoot;
+    node.frames = this.frames ? [...this.frames] : undefined;
+    return node;
+  }
 
   /** Used for equality comparison with other at-rules */
   override valueOf() {
@@ -128,7 +165,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return this;
     }
 
-    const node = this.clone(false) as AtRule;
+    const node = this.deriveAtRule(this.value);
     node.preEvaluated = true;
 
     const maybeKey = node.value.name.eval(context);
@@ -137,7 +174,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!(key instanceof Any)) {
           throw new TypeError('Expected interpolated at-rule name to resolve to Any');
         }
-        node.value.name = key;
+        node.set('name', key);
         return node;
       });
     }
@@ -145,7 +182,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!(maybeKey instanceof Any)) {
       throw new TypeError('Expected interpolated at-rule name to resolve to Any');
     }
-    node.value.name = maybeKey;
+    node.set('name', maybeKey);
     return node;
   }
 
@@ -189,7 +226,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   ): MaybePromise<AtRule> {
     const ensureDerived = (): AtRule => {
       if (node === original) {
-        node = original.clone(false) as AtRule;
+        node = original.deriveAtRule(original.value);
       }
       node.preEvaluated = true;
       return node;
@@ -339,7 +376,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let out = idt;
 
     if (withoutComments) {
-      name = name.copy(true) as Any<'atkeyword'>;
+      const copiedName = name.copy(true);
+      if (!(copiedName instanceof Any) && !(copiedName instanceof Interpolated)) {
+        throw new TypeError('Expected at-rule name copy');
+      }
+      name = copiedName;
       if (prelude) {
         prelude = prelude.copy(true) as Node;
       }
@@ -686,7 +727,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.clone(false).eval(context);
+    return this.deriveAtRule(this.value).eval(context);
   }
 
   /** @todo - move to visitors */

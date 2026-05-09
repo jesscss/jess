@@ -2,7 +2,9 @@
 
 This doc exists to make **extend-related tests** easy to find (especially for LLM-assisted debugging).
 
-**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules and the header comments in `../extend.ts` for implementation context. Keep operational “what to run / where to look” guidance in Cursor-native files (e.g. `.cursor/rules/subtrees/core__extend.mdc`).\n+\n+Historical deep-dive audits and refactoring notes were archived/removed from this directory to reduce noise; use git history if you need them.
+**Before changing extend logic:** See `../EXTEND_RULES.md` for the single set of rules and the header comments in `../extend.ts` for implementation context. Keep operational “what to run / where to look” guidance in Cursor-native files (e.g. `.cursor/rules/subtrees/core__extend.mdc`).
+
+Historical deep-dive audits and refactoring notes were archived/removed from this directory to reduce noise; use git history if you need them.
 
 ## “Where are the extend tests?”
 
@@ -71,4 +73,3 @@ If you are fixing a fixture like `tests-unit/extend-exact/extend-exact.less`, th
 - `src/tree/__tests__/extend-eval-integration.test.ts` (if it’s an eval/print behavior)
 - `src/tree/util/__tests__/find-extendable-locations.test.ts` (if it’s primarily a matcher problem)
 - `src/tree/util/__tests__/extend-ampersand-boundary.test.ts` (if it’s specifically about implicit `&` / parent prefix crossings)
-

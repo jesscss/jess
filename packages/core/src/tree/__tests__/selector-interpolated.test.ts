@@ -5,6 +5,7 @@ import {
   attr,
   compound,
   el,
+  Interpolated,
   interpolated,
   interpolatedSelector,
   INTERPOLATION_PLACEHOLDER,
@@ -125,7 +126,44 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
+    expect(replacement.parent).toBe(selectorNode.value);
     expect(replacement.toTrimmedString()).toBe('a[data=$capture-attr]');
     expect(selectorNode.toTrimmedString()).toBe('a[data=$capture-attr]');
+  });
+
+  it('does not clone the source interpolated value before resolving interpolated selectors', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+    const originalClone = Interpolated.prototype.clone;
+    let clonedInterpolatedValues = 0;
+    Interpolated.prototype.clone = function cloneForCounting(
+      this: Interpolated,
+      ...args: Parameters<Interpolated['clone']>
+    ): ReturnType<Interpolated['clone']> {
+      clonedInterpolatedValues++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const value = interpolated({
+        source: `.${INTERPOLATION_PLACEHOLDER}`,
+        replacements: [ref({ key: 'name' }, { type: 'index' })]
+      });
+      const selectorNode = interpolatedSelector(value);
+      const resolved = await selectorNode.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.foo');
+      expect(clonedInterpolatedValues).toBe(0);
+      expect(value.parent).toBe(selectorNode);
+    } finally {
+      Interpolated.prototype.clone = originalClone;
+    }
   });
 });

@@ -78,6 +78,16 @@ touching production code.
   - JS function argument isolation copies only when a local arg-list surface is
     needed; ordinary empty positional JS calls skip the arg-list copy, and
     copied positional/callback arg containers reuse source-free scalar leaves
+- `packages/core/src/tree/at-rule.ts`
+  - at-rule registration/resolve wrappers now construct owned/reusable child
+    surfaces directly instead of shallow-cloning and replacing name/body
+    children, so source at-rule preludes and rules stay parented to the
+    canonical at-rule after prep and `resolve(context)`
+- `packages/core/src/tree/interpolated.ts` and
+  `packages/core/src/tree/selector-interpolated.ts`
+  - resolved interpolated wrappers now construct directly when replacement
+    values change, and interpolated selector resolve no longer deep-clones the
+    source interpolated value before resolving selector output
 - `packages/core/src/tree/control.ts`
   - `$for` aggregate/empty output wrappers are now constructed directly instead
     of shallow-cloning the loop body rules and clearing them

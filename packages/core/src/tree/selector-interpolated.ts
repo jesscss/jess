@@ -45,7 +45,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   override resolve(context: Context): MaybePromise<Selector> {
     const { selectorBits } = context;
     this.keySetLibrary ??= selectorBits;
-    const out = this.value.clone(true).evalToSelector(context);
+    const out = this.value.evalToSelector(context, 'resolve');
     if (isThenable(out)) {
       return (out as Promise<Selector>).then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }

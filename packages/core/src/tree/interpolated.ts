@@ -185,7 +185,7 @@ export class Interpolated<
    * Can turn simple #id, .class, element or SelectorCapture into a selector.
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
-  createSelector() {
+  createSelector(mode: 'eval' | 'resolve' = 'eval') {
     let { source, replacements } = this.value;
     const segments = source.split(INTERPOLATION_PLACEHOLDER);
     const isWholeSelectorInterpolation = (
@@ -198,7 +198,7 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (!replacement.evaluated) {
+      if (mode === 'eval' && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
@@ -208,7 +208,7 @@ export class Interpolated<
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (!replacement.evaluated) {
+      if (mode === 'eval' && !replacement.evaluated) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();
@@ -243,12 +243,12 @@ export class Interpolated<
   }
 
   /** Convenience: evaluate replacements then convert to Selector (BasicSelector or SelectorList) */
-  evalToSelector(context: Context): MaybePromise<Selector> {
-    const out = this._evalToInterpolated(context);
+  evalToSelector(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<Selector> {
+    const out = this._evalToInterpolated(context, mode);
     if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector());
+      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector(mode));
     }
-    return (out as Interpolated<Role>).createSelector();
+    return (out as Interpolated<Role>).createSelector(mode);
   }
 
   override evalNode(context: Context): MaybePromise<Any> {
@@ -278,7 +278,7 @@ export class Interpolated<
    * because depending on the context, it will turn into different
    * node types.
    */
-  _evalToInterpolated(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<this> {
+  _evalToInterpolated(context: Context, mode: 'eval' | 'resolve' = 'eval'): MaybePromise<Interpolated<Role>> {
     const node = this;
     const currentReplacements = node.value.replacements;
     const evaluatedReplacements = [...currentReplacements];
@@ -287,9 +287,15 @@ export class Interpolated<
       if (!changed) {
         return node;
       }
-      const next = node.clone();
-      next.value.replacements = evaluatedReplacements;
-      return next;
+      return new Interpolated<Role>(
+        {
+          source: node.value.source,
+          replacements: evaluatedReplacements
+        },
+        node._options ? { ...node._options } : undefined,
+        node.location,
+        node.treeContext
+      ).inherit(node);
     };
 
     let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
