@@ -15,7 +15,7 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { freezeChildren } from './util/cloning.js';
+import { canReuseLeaf, freezeChildren, reuseLeaf } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { List } from './list.js';
@@ -1307,8 +1307,7 @@ function cloneReferenceResultNode(
 
 function cloneReferenceChild(node: Node): Node {
   if (canReuseReferenceValue(node)) {
-    node.frozen = true;
-    return node;
+    return reuseLeaf(node);
   }
   return freezeChildren(node);
 }
@@ -1323,23 +1322,8 @@ function copyReferenceValue(node: Node): Node {
   return node.copy(true, cloneReferenceChild).inherit(node);
 }
 
-function hasNodeChild(value: unknown): boolean {
-  if (isNode(value)) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.some(item => hasNodeChild(item));
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.values(value).some(item => hasNodeChild(item));
-  }
-  return false;
-}
-
 function canReuseReferenceValue(node: Node): boolean {
-  return (node.hasFlag(F_STATIC) || (node.frozen && !node.hasFlag(F_NON_STATIC)))
-    && node.location.length === 0
-    && !hasNodeChild(node.value);
+  return canReuseLeaf(node);
 }
 
 function canReuseFallbackValue(node: Node): boolean {

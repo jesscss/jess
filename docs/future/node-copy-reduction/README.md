@@ -32,6 +32,11 @@ The remaining work is production conversion, not old model preservation.
   - static guards are proven copy-free; dynamic guards still use a copied eval
     surface, and default-guard probing now reuses that copied guard for both
     `default()` states
+  - ruleset-call and ordinary mixin body clones now reuse childless source-free
+    scalar leaves through the shared clone helper; the rules containers and
+    non-leaf nodes still get owned eval surfaces
+  - detached-ruleset unlock is covered by a regression test proving it does not
+    deep-clone body leaves before evaluating the unlocked surface
   - derived empty mixin wrapper surfaces are now constructed directly instead
     of shallow-cloning non-empty body rules and clearing them
   - post-eval merged declaration coalescing now keeps its accumulated value map

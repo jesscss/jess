@@ -28,18 +28,18 @@ baseline. Core focused proofs cover the formerly-live
 `.Person(person, "Male"); .person.sayGender();` closure shape in
 `packages/core/src/tree/__tests__/mixin.test.ts`.
 
-The next useful runtime work is still in `packages/core/src/tree/rules.ts`:
-guarded mixin dispatch and param/rest binding. Candidate field reads in
-`MixinCollection.evalCall(...)` are centralized behind local helpers now; start
-there when replacing them with an explicit ownership surface. Otherwise, target
-frozen-copy binding paths only where a focused proof shows the ownership
-problem. Param binding now reuses already-evaluated or static childless scalar
+The latest runtime pass in `packages/core/src/tree/rules.ts` narrowed the main
+mixin clone boundaries without removing the owned eval surfaces that still
+matter. Param binding reuses already-evaluated or static childless scalar
 values with no source location instead of copying them just to create a live
 slot. Resolving live-slot values also reuses those scalar leaves, including
 children of copied source-free `@arguments`/rest containers; source-backed
 values and containers still use the defensive copy path. Static guards are
 proven copy-free, dynamic guards still use an owned copy surface, and default
-guard probing reuses that copied guard across both `default()` states. In
+guard probing reuses that copied guard across both `default()` states. Ruleset
+call and ordinary mixin body clones reuse childless source-free scalar leaves;
+the rules containers and non-leaf nodes still get owned eval surfaces. Detached
+ruleset unlock is covered as an intentionally shallow clone boundary. In
 `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Childless static fallback values with no source

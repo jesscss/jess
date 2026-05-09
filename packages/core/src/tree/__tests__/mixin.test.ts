@@ -212,6 +212,49 @@ describe('Mixin', () => {
       `);
     });
 
+    it('does not clone childless source-free scalar leaves when calling a ruleset as a mixin', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        deep?: boolean,
+        cloneFn?: (n: Node) => Node
+      ) {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.call(this, deep, cloneFn);
+      };
+
+      try {
+        const callerRules = rules([]);
+        const root = rules([
+          ruleset({
+            selector: el('.my-mixin'),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: callerRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = callerRules;
+
+        const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
+        callerRules.adopt(mixinCall);
+        const result = await mixinCall.eval(context);
+
+        expect(result.toString()).toContain('color: red;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
     it('should call a mixin with parameters', async () => {
       // Create a mixin with a parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({
@@ -465,6 +508,49 @@ describe('Mixin', () => {
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('background-color: blue');
+    });
+
+    it('unlocks detached rulesets without deep-cloning their body leaves first', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        deep?: boolean,
+        cloneFn?: (n: Node) => Node
+      ) {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.call(this, deep, cloneFn);
+      };
+
+      try {
+        const callerRules = rules([]);
+        const root = rules([
+          vardecl({
+            name: 'content',
+            value: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: callerRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = callerRules;
+
+        const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
+        callerRules.adopt(detachedCall);
+        const result = await detachedCall.eval(context);
+
+        expect(result.toString()).toContain('color: red;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
     });
 
     it('resolves local mixin body vars when a detached ruleset variable is called inside a child ruleset', async () => {
@@ -913,6 +999,49 @@ describe('Mixin', () => {
         expect(scalarCopies).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('does not clone childless source-free scalar leaves when calling a dynamic mixin body', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          vardecl({ name: 'borderColor', value: any('blue') }),
+          mixin({
+            name: any('.paint'),
+            rules: rules([
+              decl({ name: 'color', value: any('red') }),
+              decl({ name: 'border-color', value: ref({ key: 'borderColor' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: rules([
+              call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = evald.toString();
+
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: blue;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
       }
     });
 

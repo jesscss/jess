@@ -44,7 +44,7 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { freezeChildren } from './util/cloning.js';
+import { canReuseLeaf, freezeChildren, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
@@ -3655,18 +3655,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
-    function hasNodeChild(value: unknown): boolean {
-      if (isNode(value)) {
-        return true;
-      }
-      if (isArray(value)) {
-        return value.some(item => hasNodeChild(item));
-      }
-      if (value && typeof value === 'object') {
-        return Object.values(value).some(item => hasNodeChild(item));
-      }
-      return false;
-    }
     function canReuseBoundValue(value: Node): boolean {
       return (value.frozen || value.hasFlag(F_STATIC))
         && value.location.length === 0
@@ -3737,8 +3725,17 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function markMixinOutputSource(output: Rules, sourceRules: Rules): void {
       output.sourceNode = sourceRules.sourceNode ?? sourceRules;
     }
-    function cloneRulesetCallableRules(sourceRules: Rules, deep: boolean): Rules {
-      return sourceRules.clone(deep);
+    function cloneCallableRules(sourceRules: Rules, deep: boolean): Rules {
+      if (!deep) {
+        return sourceRules.clone(false);
+      }
+      const cloneChild = (node: Node): Node => {
+        if (canReuseLeaf(node)) {
+          return reuseLeaf(node);
+        }
+        return node.clone(true, cloneChild);
+      };
+      return sourceRules.clone(true, cloneChild);
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
@@ -4193,7 +4190,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = getMixinEntryRules(candidate);
         const sourceRules = getRootSourceRules(candidateRules);
         emptyOutputSourceRules ??= sourceRules;
-        let rules = cloneRulesetCallableRules(sourceRules, true);
+        let rules = cloneCallableRules(sourceRules, true);
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
@@ -4228,7 +4225,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
         const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
         emptyOutputSourceRules ??= sourceRules;
-        let unlocked = cloneRulesetCallableRules(sourceRules, false);
+        let unlocked = cloneCallableRules(sourceRules, false);
         const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
         const parentFrame = isNode(callSiteRules, N.Rules)
           ? (callSiteRules as Rules).getScopeFrame()
@@ -4260,7 +4257,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let rules = candidateRules;
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = rules.clone(rules.hasFlag(F_STATIC) ? false : true);
+      rules = cloneCallableRules(rules, !rules.hasFlag(F_STATIC));
       if (isNode(candidate, N.Mixin)) {
         Reflect.set(rules, 'parent', candidateRules.parent);
       }
