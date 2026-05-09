@@ -23,7 +23,9 @@ The remaining work is production conversion, not old model preservation.
     are the next place to replace raw candidate field reads when an explicit
     ownership surface exists
   - guarded mixin dispatch still has ambient scope plumbing
-  - param/rest/`@arguments` binding still uses frozen deep copies in places
+  - param/rest/`@arguments` binding still uses frozen deep copies in places;
+    already-evaluated childless scalar args with no source location now bind
+    directly
   - derived empty mixin wrapper surfaces are now constructed directly instead
     of shallow-cloning non-empty body rules and clearing them
   - post-eval merged declaration coalescing now keeps its accumulated value map

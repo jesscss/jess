@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -872,6 +872,47 @@ describe('Mixin', () => {
         expect(shallowMarkerBodyClones).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not copy childless evaluated scalar args just to bind mixin params', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.noop'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.noop' }, { type: 'mixin' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toBe('');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
       }
     });
 

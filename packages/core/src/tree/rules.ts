@@ -3655,7 +3655,27 @@ export class MixinCollection extends Node<MixinEntry[]> {
      * (Any mixin with a mis-match of
      * arguments fails.)
      */
+    function hasNodeChild(value: unknown): boolean {
+      if (isNode(value)) {
+        return true;
+      }
+      if (isArray(value)) {
+        return value.some(item => hasNodeChild(item));
+      }
+      if (value && typeof value === 'object') {
+        return Object.values(value).some(item => hasNodeChild(item));
+      }
+      return false;
+    }
+    function canReuseBoundValue(value: Node): boolean {
+      return value.frozen
+        && value.location.length === 0
+        && !hasNodeChild(value.value);
+    }
     function cloneBoundValue(value: Node): Node {
+      if (canReuseBoundValue(value)) {
+        return value;
+      }
       const boundValue = value.copy(true, freezeChildren).detachTrivia(true);
       boundValue.frozen = true;
       return boundValue;

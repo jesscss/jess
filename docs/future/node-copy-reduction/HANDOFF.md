@@ -33,7 +33,10 @@ guarded mixin dispatch and param/rest binding. Candidate field reads in
 `MixinCollection.evalCall(...)` are centralized behind local helpers now; start
 there when replacing them with an explicit ownership surface. Otherwise, target
 frozen-copy binding paths only where a focused proof shows the ownership
-problem. In `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
+problem. Param binding now reuses already-evaluated childless scalar args with
+no source location instead of copying them just to create a live slot; source
+backed values, defaults, and containers still use the defensive copy path. In
+`packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Merged declaration reference flattening also
 reuses the copied value leaves it is handed instead of copying them again, and
