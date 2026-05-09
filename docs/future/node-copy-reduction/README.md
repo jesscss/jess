@@ -217,9 +217,12 @@ selector-bit library identity without `any` field copying; treat this as a
 small utility boundary cleanup, not as selector/extend generated-output work.
 `jess-error.ts` now keeps slash-style diagnostic codes in a typed map instead
 of a lint-hostile object literal, and its Chevrotain adapter reads parser and
-lexer error shapes through local guards instead of `any` assertions. Broader
-typed cleanup in legacy high-debt files should be planned as its own batch, not
-mixed into node-copy work opportunistically.
+lexer error shapes through local guards instead of `any` assertions. The
+follow-up moved diagnostic-code validation and ErrorDiagnostic-to-JessError
+conversion into `jess-error.ts`, so `context.ts` and `plugin.ts` no longer carry
+their own duplicate code whitelists or throw-conversion blocks. Broader typed
+cleanup in legacy high-debt files should be planned as its own batch, not mixed
+into node-copy work opportunistically.
 
 ## Working Rule
 

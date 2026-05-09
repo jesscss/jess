@@ -16,7 +16,7 @@ export type LocNode = { location?: LocationInfo };
 
 type Phase = 'parse' | 'resolve' | 'import' | 'eval' | 'extend' | 'plugin';
 type Severity = 'error' | 'warn';
-type JessErrorCode =
+export type JessErrorCode =
   | 'parse/unexpected-token'
   | 'parse/unterminated-string'
   | 'parse/unexpected-syntax'
@@ -241,6 +241,12 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     fix: 'Move the selector under a real parent selector, or remove the stray "&".'
   }]
 ]);
+
+const JESS_ERROR_CODE_SET: ReadonlySet<string> = new Set(TEMPLATES.keys());
+
+export function isJessErrorCode(code: string): code is JessErrorCode {
+  return JESS_ERROR_CODE_SET.has(code);
+}
 
 /**
  * Replaces `${key}` with values from `meta`. Unset keys render as `<key>`.
@@ -578,6 +584,26 @@ export function resetDedupe(): void {
 
 export function makeJessError(init: JessErrorInit): JessError {
   return new JessError(init);
+}
+
+export function makeJessErrorFromDiagnostic(diagnostic: ErrorDiagnostic): JessError {
+  const code = isJessErrorCode(diagnostic.code) ? diagnostic.code : 'parse/syntax-error';
+  return new JessError({
+    code,
+    phase: diagnostic.phase,
+    severity: 'error',
+    summary: diagnostic.message,
+    ctx: diagnostic.file ? { file: diagnostic.file } : undefined,
+    filePath: diagnostic.filePath,
+    source: diagnostic.file?.source,
+    line: diagnostic.line,
+    column: diagnostic.column,
+    reason: diagnostic.reason,
+    fix: diagnostic.fix,
+    note: diagnostic.note,
+    errors: diagnostic.errors,
+    lexerErrors: diagnostic.lexerErrors
+  });
 }
 
 type Common = {

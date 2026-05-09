@@ -15,7 +15,7 @@ import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
@@ -110,33 +110,6 @@ export interface TreeContextOptions extends ContextOptions {
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
-
-const JESS_ERROR_CODES = [
-  'parse/unexpected-token',
-  'parse/unterminated-string',
-  'parse/unexpected-syntax',
-  'parse/syntax-error',
-  'resolve/name-not-found',
-  'import/circular-compose',
-  'eval/bad-call-arity',
-  'eval/type-mismatch',
-  'extend/protected-boundary',
-  'extend/not-found',
-  'extend/not-accessible',
-  'plugin/unsupported-feature',
-  'eval/deprecated',
-  'resolve/unused-variable',
-  'selector/duplicate',
-  'selector/parentless-ampersand'
-] as const satisfies readonly ConstructorParameters<typeof JessError>[0]['code'][];
-
-type JessErrorCode = typeof JESS_ERROR_CODES[number];
-
-const jessErrorCodeSet: ReadonlySet<string> = new Set(JESS_ERROR_CODES);
-
-function isJessErrorCode(code: string): code is JessErrorCode {
-  return jessErrorCodeSet.has(code);
-}
 
 /**
  * @todo - Redo:
@@ -661,22 +634,7 @@ export class Context {
     if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
-      const code = isJessErrorCode(firstError.code) ? firstError.code : 'parse/syntax-error';
-      throw new JessError({
-        code,
-        phase: firstError.phase,
-        severity: 'error',
-        ctx: firstError.file ? { file: firstError.file } : undefined,
-        filePath: firstError.filePath,
-        source: firstError.file?.source,
-        line: firstError.line,
-        column: firstError.column,
-        reason: firstError.reason,
-        fix: firstError.fix,
-        note: firstError.note,
-        errors: firstError.errors,
-        lexerErrors: firstError.lexerErrors
-      });
+      throw makeJessErrorFromDiagnostic(firstError);
     }
 
     if (parseResult.tree) {

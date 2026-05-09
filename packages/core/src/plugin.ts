@@ -3,7 +3,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**
@@ -95,33 +95,6 @@ export interface PluginInterface {
 
 const { isArray } = Array;
 
-const JESS_ERROR_CODES = [
-  'parse/unexpected-token',
-  'parse/unterminated-string',
-  'parse/unexpected-syntax',
-  'parse/syntax-error',
-  'resolve/name-not-found',
-  'import/circular-compose',
-  'eval/bad-call-arity',
-  'eval/type-mismatch',
-  'extend/protected-boundary',
-  'extend/not-found',
-  'extend/not-accessible',
-  'plugin/unsupported-feature',
-  'eval/deprecated',
-  'resolve/unused-variable',
-  'selector/duplicate',
-  'selector/parentless-ampersand'
-] as const satisfies readonly ConstructorParameters<typeof JessError>[0]['code'][];
-
-type JessErrorCode = typeof JESS_ERROR_CODES[number];
-
-const jessErrorCodeSet: ReadonlySet<string> = new Set(JESS_ERROR_CODES);
-
-function isJessErrorCode(code: string): code is JessErrorCode {
-  return jessErrorCodeSet.has(code);
-}
-
 export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
 
@@ -172,22 +145,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     const { tree, errors } = safeParse.call(this, filePath, source);
     if (errors.length > 0) {
       const firstError = errors[0]!;
-      const code = isJessErrorCode(firstError.code) ? firstError.code : 'parse/syntax-error';
-      throw new JessError({
-        code,
-        phase: firstError.phase,
-        severity: 'error',
-        ctx: firstError.file ? { file: firstError.file } : undefined,
-        filePath: firstError.filePath,
-        source: firstError.file?.source,
-        line: firstError.line,
-        column: firstError.column,
-        reason: firstError.reason,
-        fix: firstError.fix,
-        note: firstError.note,
-        errors: firstError.errors,
-        lexerErrors: firstError.lexerErrors
-      });
+      throw makeJessErrorFromDiagnostic(firstError);
     }
     if (!tree) {
       throw new Error(`Plugin "${this.name}" failed to parse "${filePath}"`);
