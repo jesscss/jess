@@ -221,8 +221,22 @@ export class For extends Node<StructuredLoopValue> {
   override allowRuleRoot = true;
 
   private createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
-    const output = sourceRules.clone(false) as Rules;
-    output.set(null, []);
+    const sourceOptions = sourceRules.options;
+    const sourceLocation = sourceRules.location.length === 0
+      ? undefined
+      : sourceRules.location;
+    const output = new Rules(
+      [],
+      {
+        ...sourceOptions,
+        rulesVisibility: { ...sourceOptions.rulesVisibility }
+      },
+      sourceLocation,
+      sourceRules.treeContext
+    ).inherit(sourceRules);
+    if (sourceRules.functionRegistry) {
+      output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
+    }
     output.scopeFrame = undefined;
     if (childNodes) {
       for (const childNode of childNodes) {

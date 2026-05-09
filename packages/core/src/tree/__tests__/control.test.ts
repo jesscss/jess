@@ -431,6 +431,42 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toBe('');
   });
 
+  it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
+    const context = new Context();
+    const originalClone = Rules.prototype.clone;
+    let shallowMarkerBodyClones = 0;
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      const [deep] = args;
+      if (
+        deep === false
+        && this.value.some(node => (
+          node.type === 'Declaration'
+          && node.value?.name?.valueOf?.() === 'marker'
+        ))
+      ) {
+        shallowMarkerBodyClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const loopRules = rules([
+        decl({ name: 'marker', value: ref({ key: 'value' }, { type: 'variable' }) })
+      ]);
+      const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+
+      const evald = await root.eval(context);
+
+      expect(`${evald}`).toBe('');
+      expect(shallowMarkerBodyClones).toBe(0);
+    } finally {
+      Rules.prototype.clone = originalClone;
+    }
+  });
+
   it('collapses single-iteration $for output without an extra Rules wrapper', async () => {
     const context = new Context();
     const loopRules = rules([

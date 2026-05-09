@@ -52,7 +52,10 @@ surface when needed so source argument containers stay canonical. Derived empty
 mixin wrapper surfaces in `packages/core/src/tree/rules.ts` are constructed
 directly instead of shallow-cloning non-empty body rules and clearing them,
 avoiding parent churn on cloned body children while preserving rule options and
-function registry ownership.
+function registry ownership. `$for` aggregate and zero-iteration output wrappers
+in `packages/core/src/tree/control.ts` are also constructed directly now; the
+per-iteration body wrapper still uses the existing shallow wrapper path because
+it owns the live-slot `ScopeFrame` for that iteration.
 
 ## Work Loop
 

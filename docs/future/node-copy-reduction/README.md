@@ -45,6 +45,11 @@ The remaining work is production conversion, not old model preservation.
   - JS function argument isolation still uses frozen deep copies for non-empty
     positional args and callbacks that receive the arg `List`; ordinary empty
     positional JS calls skip the arg-list copy
+- `packages/core/src/tree/control.ts`
+  - `$for` aggregate/empty output wrappers are now constructed directly instead
+    of shallow-cloning the loop body rules and clearing them
+  - per-iteration `$for` body rules still use the existing shallow wrapper path
+    because they carry the live slot `ScopeFrame`
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
