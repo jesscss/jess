@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Sequence } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Sequence, Bool, bool, Condition } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -2091,6 +2091,88 @@ describe('Mixin', () => {
       `);
     });
 
+    it('does not copy static bool guards before evaluating candidates', async () => {
+      const originalCopy = Bool.prototype.copy;
+      let guardCopies = 0;
+      Bool.prototype.copy = function copyForCounting(
+        this: Bool,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        guardCopies++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            guard: bool(true),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('color: red;');
+        expect(guardCopies).toBe(0);
+      } finally {
+        Bool.prototype.copy = originalCopy;
+      }
+    });
+
+    it('keeps dynamic guards on a copied eval surface', async () => {
+      const originalCopy = Condition.prototype.copy;
+      let guardCopies = 0;
+      Condition.prototype.copy = function copyForCounting(
+        this: Condition,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        guardCopies++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        context = new Context({ leakyRules: false });
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            guard: condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('dark')
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              vardecl({ name: 'mode', value: any('dark') }),
+              call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('color: red;');
+        expect(guardCopies).toBeGreaterThan(0);
+      } finally {
+        Condition.prototype.copy = originalCopy;
+      }
+    });
+
     it('evaluates dynamic mixin guards against caller scope while params still resolve from live slots', async () => {
       context = new Context({ leakyRules: false });
       const mixinDef = mixin({
@@ -2346,6 +2428,54 @@ describe('Mixin', () => {
       expect(css).toContain('value: outer-light;');
       expect(css).not.toContain('value: red;');
       expect(css).not.toContain('value: blue;');
+    });
+
+    it('copies each dynamic default guard once while probing both default states', async () => {
+      const originalCopy = Condition.prototype.copy;
+      let guardCopies = 0;
+      Condition.prototype.copy = function copyForCounting(
+        this: Condition,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        guardCopies++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        context = new Context({ leakyRules: false });
+        const root = rules([
+          mixin({
+            name: any('.guarded-default'),
+            guard: condition([
+              condition([
+                expr(ref({ key: 'mode' }, { type: 'variable' })),
+                '=',
+                any('dark')
+              ]),
+              'and',
+              defaultguard()
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.dark'),
+            rules: rules([
+              vardecl({ name: 'mode', value: any('dark') }),
+              call({ name: ref({ key: '.guarded-default' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('color: red;');
+        expect(guardCopies).toBe(2);
+      } finally {
+        Condition.prototype.copy = originalCopy;
+      }
     });
 
     it('evaluates no-param default guards against caller scope', async () => {

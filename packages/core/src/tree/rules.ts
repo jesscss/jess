@@ -4433,10 +4433,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
           let defaultGroup = DEF_FALSE_EITHER;
           if (hasDefault) {
             const originalIsDefault = thisContext.isDefault;
+            let defaultProbeGuard: Condition | Bool | undefined;
+            const getDefaultProbeGuard = (): Condition | Bool | undefined => {
+              if (!candidateGuard) {
+                return undefined;
+              }
+              if (candidateGuard.hasFlag(F_STATIC)) {
+                return candidateGuard;
+              }
+              defaultProbeGuard ??= candidateGuard.copy(true);
+              return defaultProbeGuard;
+            };
             const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
-              const probeGuard = candidateGuard
-                ? (candidateGuard.hasFlag(F_STATIC) ? candidateGuard : candidateGuard.copy(true))
-                : undefined;
+              const probeGuard = getDefaultProbeGuard();
               if (!probeGuard) {
                 return false;
               }

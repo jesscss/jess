@@ -37,7 +37,9 @@ problem. Param binding now reuses already-evaluated or static childless scalar
 values with no source location instead of copying them just to create a live
 slot. Resolving live-slot values also reuses those scalar leaves, including
 children of copied source-free `@arguments`/rest containers; source-backed
-values and containers still use the defensive copy path. In
+values and containers still use the defensive copy path. Static guards are
+proven copy-free, dynamic guards still use an owned copy surface, and default
+guard probing reuses that copied guard across both `default()` states. In
 `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Childless static fallback values with no source

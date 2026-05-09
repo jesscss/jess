@@ -29,6 +29,9 @@ The remaining work is production conversion, not old model preservation.
   - resolving live-slot values now also reuses those source-free scalar leaves,
     including children of copied source-free `@arguments`/rest containers; the
     containers themselves still keep an owned copy surface
+  - static guards are proven copy-free; dynamic guards still use a copied eval
+    surface, and default-guard probing now reuses that copied guard for both
+    `default()` states
   - derived empty mixin wrapper surfaces are now constructed directly instead
     of shallow-cloning non-empty body rules and clearing them
   - post-eval merged declaration coalescing now keeps its accumulated value map
