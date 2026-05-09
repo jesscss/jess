@@ -1309,7 +1309,7 @@ function cloneReferenceChild(node: Node): Node {
   if (canReuseReferenceValue(node)) {
     return reuseLeaf(node);
   }
-  return freezeChildren(node);
+  return copyWithReusableLeaves(node);
 }
 
 function copyReferenceValue(node: Node): Node {

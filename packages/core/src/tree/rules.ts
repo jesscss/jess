@@ -44,7 +44,7 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, copyWithReusableLeaves, freezeChildren, hasNodeChild, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
@@ -3670,7 +3670,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (canReuseBoundValue(value)) {
         return value;
       }
-      const boundValue = value.copy(true, freezeChildren).detachTrivia(true);
+      const boundValue = copyWithReusableLeaves(value).detachTrivia(true);
       boundValue.frozen = true;
       return boundValue;
     }

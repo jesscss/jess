@@ -32,9 +32,12 @@ The latest runtime pass in `packages/core/src/tree/rules.ts` narrowed the main
 mixin clone boundaries without removing the owned eval surfaces that still
 matter. Param binding reuses already-evaluated or static childless scalar
 values with no source location instead of copying them just to create a live
-slot. Resolving live-slot values also reuses those scalar leaves, including
-children of copied source-free `@arguments`/rest containers; source-backed
-values and containers still use the defensive copy path. Static guards are
+slot. Copied param, default, rest, and `@arguments` containers also use the
+shared reusable-leaf traversal now, so source-free scalar leaves are not cloned
+just because the binding still needs an owned container surface. Resolving
+live-slot values also reuses those scalar leaves, including children of copied
+source-free `@arguments`/rest containers; source-backed values and containers
+still use the defensive copy path. Static guards are
 proven copy-free, dynamic guards still use an owned copy surface, and default
 guard probing reuses that copied guard across both `default()` states. Ruleset
 call and ordinary mixin body clones reuse childless source-free scalar leaves;
@@ -49,10 +52,12 @@ reintroduce a deep copy there. Childless static fallback values with no source
 location also resolve directly; copied fallback and declaration reference
 containers keep an owned surface while reusing source-free scalar leaves.
 Source-backed fallbacks, defaults, and non-leaf nodes still use the defensive
-copy path. Merged declaration reference
-flattening also reuses the copied value leaves it is handed instead of copying
-them again, and merged declaration references normalize the already-owned
-evaluated value directly instead of making one more result copy. Post-eval
+copy path. Nested source-free reference result containers also use the shared
+reusable-leaf traversal instead of freezing every child leaf. Merged
+declaration reference flattening also reuses the copied value leaves it is
+handed instead of copying them again, and merged declaration references
+normalize the already-owned evaluated value directly instead of making one more
+result copy. Post-eval
 merged declaration coalescing in `packages/core/src/tree/rules.ts` now keeps
 accumulated values read-only and lets merge composition own the copy boundary
 instead of recopying stored/list-flattened leaves. The `Call.evalNode`

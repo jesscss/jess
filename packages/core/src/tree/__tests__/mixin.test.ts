@@ -1339,6 +1339,236 @@ describe('Mixin', () => {
       }
     });
 
+    it('does not clone source-free scalar leaves inside copied positional param containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-param'),
+            params: list([any('space', { role: 'property' })]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-param' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied named arg containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-param'),
+            params: list([any('space', { role: 'property' })]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-param' }, { type: 'mixin' }),
+                args: list([
+                  vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
+                ])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied default param containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-default'),
+            params: list([
+              vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-default' }, { type: 'mixin' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied rest containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.resty'),
+            params: list([
+              any('first', { role: 'property' }),
+              rest('rest')
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.resty' }, { type: 'mixin' }),
+                args: list([any('0'), seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied @arguments containers', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.args'),
+            params: list([
+              any('space', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.args' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
     it('resolves param/default/rest/@arguments bindings without declaration lookup', async () => {
       context.treeContext = new TreeContext({
         file: {

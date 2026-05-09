@@ -25,7 +25,9 @@ The remaining work is production conversion, not old model preservation.
   - guarded mixin dispatch still has ambient scope plumbing
   - param/rest/`@arguments` binding still uses frozen deep copies in places;
     already-evaluated or static childless scalar values with no source location
-    now bind directly
+    now bind directly, and copied param/default/rest/`@arguments` containers
+    now reuse source-free scalar leaves while keeping the container as the
+    owned binding surface
   - resolving live-slot values now also reuses those source-free scalar leaves,
     including children of copied source-free `@arguments`/rest containers; the
     containers themselves still keep an owned copy surface
@@ -55,7 +57,9 @@ The remaining work is production conversion, not old model preservation.
   - childless static fallback values with no source location now resolve
     directly; copied fallback/declaration containers now keep an owned surface
     while reusing source-free scalar leaves; source-backed values, defaults,
-    and non-leaf nodes still use defensive owned copies
+    and non-leaf nodes still use defensive owned copies. Nested source-free
+    reference result containers also use the shared reusable-leaf traversal
+    rather than freezing every child leaf
 - `packages/core/src/tree/call.ts`
   - `Call.resolve()` still deep-clones before eval for non-plain calls; plain
     string CSS calls now build their evaluated output directly, copying only
