@@ -65,8 +65,10 @@ and eval-time declaration wrappers with owned/reusable child surfaces instead
 of shallow-cloning the declaration before replacing individual children, so
 source declaration values stay parented to the canonical source declaration
 after `resolve(context)`. Interpolated declaration names also reuse
-source-free scalar replacement leaves inside the owned name wrapper. Post-eval
-merged declaration coalescing in `packages/core/src/tree/rules.ts` now keeps
+source-free scalar replacement leaves inside the owned name wrapper, and
+source-backed `!important` flag leaves now use the same reusable-leaf copy path
+instead of `clone(true)`. Post-eval merged declaration coalescing in
+`packages/core/src/tree/rules.ts` now keeps
 accumulated values read-only and lets merge composition own the copy boundary
 instead of recopying stored/list-flattened leaves. The `Call.evalNode`
 `sourceNode.parent` repair is still active because the detached-ruleset
@@ -96,9 +98,12 @@ body rules stay canonical. `Rules.resolve(context)` now uses the same explicit
 derived Rules surface instead of `clone(false)`, preserving function-registry
 and live-slot ownership while forcing lazy registry re-indexing. Import-owned
 child Rules surfaces reuse that helper too, so configured import placement no
-longer shallow-clones imported source rules. Framed ampersand resolution now
-constructs the framed wrapper directly instead of shallow-cloning the source
-ampersand just to attach the active selector frame.
+longer shallow-clones imported source rules. Compose/import output visibility
+wrappers also use `Rules.derive()` instead of shallow `Rules.clone()`, and
+first-use import-local deep copies reuse childless source-free scalar leaves
+while keeping owned container copies. Framed ampersand resolution now constructs
+the framed wrapper directly instead of shallow-cloning the source ampersand just
+to attach the active selector frame.
 Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before

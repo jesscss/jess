@@ -77,6 +77,8 @@ touching production code.
   - interpolated declaration names also use the shared reusable-leaf traversal
     for derived wrappers, so source-free scalar replacement leaves are not
     cloned just to own the name container
+  - source-backed `!important` flag leaves now use the same reusable-leaf copy
+    path as other derived declaration parts instead of calling `clone(true)`
 - `packages/core/src/tree/call.ts`
   - non-plain `Call.resolve()` now keeps an owned copied call surface while
     reusing childless source-free scalar leaves; plain string CSS calls build
@@ -108,6 +110,9 @@ touching production code.
   - import-owned child Rules surfaces now reuse the shared derived Rules helper
     instead of shallow-cloning imported source rules, keeping the import
     placement surface explicit without treating clone as isolation machinery
+  - compose/import output visibility wrappers now use `Rules.derive()` instead
+    of shallow `Rules.clone()`, and first-use import-local deep copies reuse
+    childless source-free scalar leaves while keeping owned container copies
 - `packages/core/src/tree/ampersand.ts`
   - framed ampersand resolution now constructs the framed wrapper directly
     instead of shallow-cloning the source ampersand just to attach the current

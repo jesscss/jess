@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -304,6 +304,38 @@ describe('Declaration', () => {
     expect(`${evald}`).toBeString(`
       color: red !important;
     `);
+  });
+
+  it('derives source-backed important flags without deep-cloning the flag leaf', async () => {
+    const originalClone = Any.prototype.clone;
+    let clonedImportantFlags = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.value === '!important') {
+        clonedImportantFlags++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const important = any('!important', { role: 'flag' });
+      important._location = [12, 1, 13, 21, 1, 22];
+      const node = decl({
+        name: any('color'),
+        value: any('red'),
+        important
+      });
+
+      const evald = await node.resolve(context);
+
+      expect(`${evald}`).toBe('color: red !important');
+      expect(clonedImportantFlags).toBe(0);
+      expect(important.parent).toBe(node);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
   });
 
   it('serializes comment trivia between declaration values and semicolons', () => {

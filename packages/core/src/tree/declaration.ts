@@ -173,7 +173,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (canReuseLeaf(node)) {
       return reuseLeaf(node);
     }
-    const copy = node.clone(true);
+    const copy = copyWithReusableLeaves(node);
+    if (!(copy instanceof Any)) {
+      throw new TypeError('Copied important flag must remain an Any node');
+    }
     copy.frozen = true;
     return copy;
   }

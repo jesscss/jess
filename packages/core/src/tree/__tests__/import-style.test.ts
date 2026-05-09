@@ -28,6 +28,7 @@ import {
   INTERPOLATION_PLACEHOLDER,
   type Rules,
   Node,
+  Any,
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
@@ -1781,6 +1782,46 @@ describe('Style import', () => {
   });
 
   describe('multiple imports', () => {
+    it('reuses source-free scalar leaves when creating first-use import-local rules copies', async () => {
+      const originalClone = Any.prototype.clone;
+      let clonedRedLeaves = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.value === 'red' && this.location.length === 0) {
+          clonedRedLeaves++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        context.sourceTrees.set('imported.jess', rules([
+          ruleset({
+            selector: sellist([sel([el('.imported')])]),
+            rules: rules([
+              decl({ name: any('color'), value: any('red') })
+            ])
+          })
+        ]));
+
+        const node = rules([
+          style({
+            path: quoted(any('imported.jess'))
+          }, {
+            type: 'import'
+          })
+        ]);
+
+        const evald = await node.eval(context);
+
+        expect(evald.toString()).toContain('color: red;');
+        expect(clonedRedLeaves).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
     it('import type can be imported multiple times', async () => {
       context.sourceTrees.set('imported.jess', rules([
         ruleset({
@@ -3091,33 +3132,50 @@ describe('Style import', () => {
       expect(css.split('.imported').length - 1).toBe(1);
     });
 
-    it('still allows per-import visibility differences via shallow clone', async () => {
-      context.sourceTrees.set('library-vis.jess', rules([
-        ruleset({
-          selector: sellist([sel([el('.imported')])]),
-          rules: rules([
-            decl({ name: any('color'), value: any('red') })
-          ])
-        })
-      ]));
+    it('still allows per-import visibility differences via derived Rules wrappers', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedLibraryRules = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.value.some(node => isNode(node, N.Ruleset))) {
+          clonedLibraryRules++;
+        }
+        return originalClone.apply(this, args);
+      };
 
-      const node = rules([
-        style(
-          { path: quoted(any('library-vis.jess')) },
-          { type: 'compose', namespace: '*', importOptions: { mutable: true } }
-        ),
-        style(
-          { path: quoted(any('library-vis.jess')) },
-          { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
-        )
-      ]);
+      try {
+        context.sourceTrees.set('library-vis.jess', rules([
+          ruleset({
+            selector: sellist([sel([el('.imported')])]),
+            rules: rules([
+              decl({ name: any('color'), value: any('red') })
+            ])
+          })
+        ]));
 
-      const evald = await node.eval(context);
-      expect(evald.value.length).toBe(2);
-      const first = evald.at(0) as Rules;
-      const second = evald.at(1) as Rules;
-      expect(first.options.rulesVisibility.Ruleset).toBe('public');
-      expect(second.options.rulesVisibility.Ruleset).toBe('private');
+        const node = rules([
+          style(
+            { path: quoted(any('library-vis.jess')) },
+            { type: 'compose', namespace: '*', importOptions: { mutable: true } }
+          ),
+          style(
+            { path: quoted(any('library-vis.jess')) },
+            { type: 'compose', namespace: '*', importOptions: { mutable: false, multiple: true } }
+          )
+        ]);
+
+        const evald = await node.eval(context);
+        expect(evald.value.length).toBe(2);
+        const first = evald.at(0) as Rules;
+        const second = evald.at(1) as Rules;
+        expect(first.options.rulesVisibility.Ruleset).toBe('public');
+        expect(second.options.rulesVisibility.Ruleset).toBe('private');
+        expect(clonedLibraryRules).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
     });
   });
 });
