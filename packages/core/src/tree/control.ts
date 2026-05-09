@@ -11,7 +11,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
-import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -248,13 +248,10 @@ export class For extends Node<StructuredLoopValue> {
   }
 
   private createIterationEvalSurface(sourceRules: Rules): Rules {
-    const cloneChild = (node: Node): Node => {
-      if (canReuseLeaf(node)) {
-        return reuseLeaf(node);
-      }
-      return node.clone(true, cloneChild);
-    };
-    const iterationRules = sourceRules.clone(true, cloneChild) as Rules;
+    const iterationRules = copyWithReusableLeaves(sourceRules);
+    if (!(iterationRules instanceof Rules)) {
+      throw new TypeError('Copied $for body must remain Rules');
+    }
     iterationRules.options.rulesVisibility = {
       ...iterationRules.options.rulesVisibility,
       ...PUBLIC_RULE_VISIBILITY

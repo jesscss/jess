@@ -12,6 +12,7 @@ import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import { List, list } from './list.js';
+import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -84,6 +85,30 @@ export type ExtendedFn<T extends unknown[] = unknown[], R = unknown> = ((this: C
  */
 export class Call extends Node<CallValue, CallOptions> {
   override _requiredSemi = true;
+
+  private deriveCall(value: CallValue, options?: CallOptions): Call {
+    return new Call(
+      value,
+      options,
+      this.location,
+      this.treeContext
+    ).inherit(this);
+  }
+
+  private derivePreserveRulesLikeReference(name: Node): Node {
+    if (!isNode(name, N.Reference)) {
+      return name;
+    }
+    return new Reference(
+      name.value,
+      {
+        ...name.options,
+        preserveRulesLike: true
+      },
+      name.location.length === 0 ? undefined : name.location,
+      name.treeContext
+    ).inherit(name);
+  }
 
   private isPlainFunctionSurface(name: string | Node): boolean {
     return typeof name === 'string'
@@ -333,11 +358,7 @@ export class Call extends Node<CallValue, CallOptions> {
     if (typeof name === 'string') {
       n = name;
     } else if (preservesRulesLikeVariableTarget) {
-      const callableName = name.clone();
-      callableName.options = {
-        ...callableName.options,
-        preserveRulesLike: true
-      };
+      const callableName = this.derivePreserveRulesLikeReference(name);
       n = await callableName.eval(context);
     } else {
       n = await name.eval(context);
@@ -431,13 +452,20 @@ export class Call extends Node<CallValue, CallOptions> {
         if (!this._options?.silentFail) {
           throw e;
         }
-        let newCall = this.clone().inherit(this);
-        newCall.options.silentFail = false;
-        newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
+        const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : stringifyValueOf(n);
-        newCall.value.args = await evalArgNodes(args);
-        return adoptCallWhitespace(newCall);
+        return adoptCallWhitespace(this.deriveCall(
+          {
+            ...this.value,
+            name: fallbackName,
+            args: await evalArgNodes(args)
+          },
+          {
+            ...this.options,
+            silentFail: false
+          }
+        ));
       }
     }
 
@@ -510,14 +538,20 @@ export class Call extends Node<CallValue, CallOptions> {
         if (!this._options?.silentFail || shouldRethrowForMode) {
           throw e;
         }
-        let newCall = this.clone().inherit(this);
-        /** Remove this flag for serialization */
-        newCall.options.silentFail = false;
-        newCall.value.name = isNode(name, N.Reference) && name.options.fallbackValue === true
+        const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : stringifyValueOf(n);
-        newCall.value.args = await evalArgNodes(args);
-        return adoptCallWhitespace(newCall);
+        return adoptCallWhitespace(this.deriveCall(
+          {
+            ...this.value,
+            name: fallbackName,
+            args: await evalArgNodes(args)
+          },
+          {
+            ...this.options,
+            silentFail: false
+          }
+        ));
       } finally {
         context.caller = originalCaller;
         context.parenFrames.pop();

@@ -487,6 +487,40 @@ describe('Control Nodes', () => {
     expect(`${evald}`).toContain('item: a');
   });
 
+  it('builds $for iteration eval surfaces without calling Rules.clone()', async () => {
+    const context = new Context();
+    const originalClone = Rules.prototype.clone;
+    let clonedLoopRules = 0;
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.value.some(node => (
+        node.type === 'Declaration'
+        && node.value?.name?.valueOf?.() === 'item'
+      ))) {
+        clonedLoopRules++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
+      const loopRules = rules([
+        itemDecl
+      ]);
+      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+
+      const evald = await root.eval(context);
+
+      expect(`${evald}`).toContain('item: a');
+      expect(clonedLoopRules).toBe(0);
+      expect(itemDecl.parent).toBe(loopRules);
+    } finally {
+      Rules.prototype.clone = originalClone;
+    }
+  });
+
   it('derives multi-iteration $for output from the canonical loop body wrapper', async () => {
     const context = new Context();
     const loopRules = rules([

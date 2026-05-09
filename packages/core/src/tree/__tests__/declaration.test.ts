@@ -113,6 +113,47 @@ describe('Declaration', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('reuses source-free scalar leaves when deriving interpolated declaration names', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const originalClone = Node.prototype.clone;
+    let clonedNameLeaves = 0;
+    Node.prototype.clone = function cloneForCounting(
+      this: Node,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'color') {
+        clonedNameLeaves++;
+      }
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      const sourceNameLeaf = any('color');
+      const node = decl({
+        name: interpolated({
+          source: `border-${INTERPOLATION_PLACEHOLDER}`,
+          replacements: [sourceNameLeaf]
+        }),
+        value: ref({ key: 'tone' }, { type: 'variable' })
+      });
+      const sourceName = node.value.name;
+      const resolved = await node.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('border-color: red');
+      expect(clonedNameLeaves).toBe(0);
+      expect(sourceName.parent).toBe(node);
+      expect(sourceNameLeaf.parent).toBe(sourceName);
+    } finally {
+      Node.prototype.clone = originalClone;
+    }
+  });
+
   it('resolves custom declarations without touching render state', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })

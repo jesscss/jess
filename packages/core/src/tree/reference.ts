@@ -91,6 +91,18 @@ export type ReferenceOptions = {
   preserveRulesLike?: boolean;
 };
 
+type PreservedRulesLikeValue = Node & { sourceNode?: Node };
+type NodeValueConstructor = new (
+  value: unknown,
+  options?: unknown,
+  location?: LocationInfo,
+  treeContext?: TreeContext
+) => Node;
+
+function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
+  return typeof value === 'function';
+}
+
 const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
   value !== null
   && typeof value === 'object'
@@ -1382,8 +1394,18 @@ function createDirectCallableReferenceResult(
       if ('sourceNode' in callableItem && isNode(callableItem.sourceNode)) {
         callableItem.sourceNode.frozen = true;
       }
-      callableItems.push(preserveRulesLikeValue(callableItem));
-      continue;
+      const preserved = preserveRulesLikeValue(callableItem);
+      if (isNode(preserved, N.Mixin)) {
+        callableItems.push(preserved);
+        continue;
+      }
+      if (isNode(preserved, N.Ruleset)) {
+        callableItems.push(preserved);
+        continue;
+      }
+      {
+        return cast(undefined);
+      }
     }
     callableItems.push(callableItem);
   }
@@ -1566,8 +1588,23 @@ function finalizeDeclarationReferenceResult(
   ));
 }
 
-function preserveRulesLikeValue<T extends Node>(directValue: T): T {
-  const preservedValue = directValue.clone(false) as T & { sourceNode?: Node };
+function preserveRulesLikeValue(directValue: Node): PreservedRulesLikeValue {
+  const options = Object.getOwnPropertyDescriptor(directValue, '_options')?.value;
+  const nodeConstructor = directValue.constructor;
+  if (!isNodeValueConstructor(nodeConstructor)) {
+    throw new TypeError('Preserved rules-like value must have a constructable node type');
+  }
+  const constructed = new nodeConstructor(
+    directValue.value,
+    options && typeof options === 'object' ? { ...options } : undefined,
+    directValue.location.length === 0 ? undefined : directValue.location,
+    directValue.treeContext
+  );
+  if (!(constructed instanceof Node)) {
+    throw new TypeError('Preserved rules-like value must remain a Node');
+  }
+  const preservedValue: PreservedRulesLikeValue = constructed;
+  preservedValue.inherit(directValue);
   Reflect.set(preservedValue, 'parent', directValue.parent);
   preservedValue.sourceNode = directValue;
   return preservedValue;

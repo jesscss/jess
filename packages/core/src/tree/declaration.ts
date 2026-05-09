@@ -154,7 +154,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (canReuseLeaf(node)) {
       return reuseLeaf(node);
     }
-    const copy = node.clone(true);
+    const copy = copyWithReusableLeaves(node);
+    if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
+      throw new TypeError('Copied declaration name must remain a declaration name');
+    }
     copy.frozen = true;
     return copy;
   }

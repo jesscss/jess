@@ -48,8 +48,8 @@ declaration composition now uses the shared reusable-leaf copy traversal, so
 source-free scalar leaves are not copied again while the output still gets its
 own list/sequence/rules containers. In `packages/core/src/tree/reference.ts`,
 `preserveRulesLike` variable
-references now return the shallow owned rules-like wrapper directly; do not
-reintroduce a deep copy there. Childless static fallback values with no source
+references now return the shallow owned rules-like wrapper directly without
+using `clone(false)`; do not reintroduce a deep copy there. Childless static fallback values with no source
 location also resolve directly; copied fallback and declaration reference
 containers keep an owned surface while reusing source-free scalar leaves through
 the shared reusable-leaf traversal. The old `freezeChildren` reference-result
@@ -64,7 +64,8 @@ result copy. `packages/core/src/tree/declaration.ts` now derives registration
 and eval-time declaration wrappers with owned/reusable child surfaces instead
 of shallow-cloning the declaration before replacing individual children, so
 source declaration values stay parented to the canonical source declaration
-after `resolve(context)`. Post-eval
+after `resolve(context)`. Interpolated declaration names also reuse
+source-free scalar replacement leaves inside the owned name wrapper. Post-eval
 merged declaration coalescing in `packages/core/src/tree/rules.ts` now keeps
 accumulated values read-only and lets merge composition own the copy boundary
 instead of recopying stored/list-flattened leaves. The `Call.evalNode`
@@ -79,7 +80,10 @@ copied eval surface when needed so source argument containers stay canonical.
 Non-plain `Call.resolve()` also uses the shared reusable-leaf traversal now:
 the copied call/list/sequence containers still own eval-time mutation, but
 childless source-free scalar leaves are reused and the original call-site
-parents are left alone.
+parents are left alone. Optional fallback call output is derived directly
+instead of shallow-cloning the source call, and variable-reference call names
+that need `preserveRulesLike` use a derived reference wrapper instead of
+cloning the source reference.
 At-rule registration and resolve wrappers now use direct derived construction
 with owned/reusable child surfaces instead of shallow clone/replacement, so
 source preludes and rule bodies stay parented to the canonical at-rule.
@@ -101,7 +105,8 @@ ownership. `$for` aggregate and zero-iteration output wrappers in
 `packages/core/src/tree/control.ts` are also constructed directly now; the
 per-iteration body wrapper owns a copied eval surface because it carries the
 live-slot `ScopeFrame` for that iteration, while childless source-free scalar
-leaves inside that body are reused. Source-free scalar `$for` iteration values
+leaves inside that body are reused through the shared reusable-leaf traversal
+without calling `Rules.clone()`. Source-free scalar `$for` iteration values
 bind without being copied or cloned first. `packages/core/src/tree/sequence.ts`
 now routes `Sequence.operate('+')` through the shared reusable-leaf traversal
 for both operands, so sequence/list addition does not reparent source children

@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { Any, Call, JsFunction, List, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, JsFunction, List, Reference, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -299,6 +299,44 @@ describe('Call', () => {
     expect(`${result}`).toContain('background-color');
   });
 
+  it('derives preserve-rules-like variable call names without cloning the source reference', async () => {
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      })
+    ]);
+
+    context.root = root;
+    const evaldRoot = await root.eval(context);
+    context.rulesContext = evaldRoot;
+
+    const originalClone = Reference.prototype.clone;
+    let clonedReferences = 0;
+    Reference.prototype.clone = function cloneForCounting(
+      this: Reference,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedReferences++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      const name = ref('themeBlock', { type: 'variable' });
+      const rule = call({ name });
+      const result = await rule.eval(context);
+
+      expect(isNode(result, N.Rules)).toBe(true);
+      expect(result.toTrimmedString()).toContain('color: blue');
+      expect(clonedReferences).toBe(0);
+      expect(name.parent).toBe(rule);
+    } finally {
+      Reference.prototype.clone = originalClone;
+    }
+  });
+
   it('marks declaration-only JS call output without call-site back-pointers', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({
@@ -507,6 +545,16 @@ describe('Call', () => {
   });
 
   it('keeps source fallback call args canonical when optional function evaluation falls back', async () => {
+    const originalClone = Call.prototype.clone;
+    let clonedCalls = 0;
+    Call.prototype.clone = function cloneForCounting(
+      this: Call,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedCalls++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
     const originalArg = args.value[0]!;
     const rule = call({
@@ -514,12 +562,57 @@ describe('Call', () => {
       args
     }, { silentFail: true });
 
-    const resolved = await rule.eval(context);
+    try {
+      const resolved = await rule.eval(context);
 
-    expect(isNode(resolved, N.Call)).toBe(true);
-    expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
-    expect(args.parent).toBe(rule);
-    expect(originalArg.parent).toBe(args);
+      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+      expect(clonedCalls).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(originalArg.parent).toBe(args);
+    } finally {
+      Call.prototype.clone = originalClone;
+    }
+  });
+
+  it('derives optional JS failure call output without shallow-cloning the source call', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Call.prototype.clone;
+    let clonedCalls = 0;
+    Call.prototype.clone = function cloneForCounting(
+      this: Call,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedCalls++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      const args = list([seq([any('red'), dimension([10, 'px'])])]);
+      const originalArg = args.value[0]!;
+      const rule = call({
+        name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+        args
+      }, { silentFail: true });
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(true);
+      expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
+      expect(clonedCalls).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(originalArg.parent).toBe(args);
+    } finally {
+      Call.prototype.clone = originalClone;
+    }
   });
 
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {

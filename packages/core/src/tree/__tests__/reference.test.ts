@@ -125,6 +125,15 @@ describe('reference', () => {
     });
 
     it('preserves rules-like variable references as shallow owned surfaces', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedRules = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        clonedRules++;
+        return originalClone.apply(this, args);
+      };
       const sourceDecl = decl({ name: 'color', value: any('blue') });
       const sourceValue = rules([sourceDecl]);
       const sourceBinding = vardecl({
@@ -138,20 +147,25 @@ describe('reference', () => {
       context.root = evald as RulesClass;
       context.rulesContext = evald as RulesClass;
 
-      const refNode = ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true });
-      const resolved = await refNode.eval(context);
+      try {
+        const refNode = ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true });
+        const resolved = await refNode.eval(context);
 
-      expect(resolved).toBeInstanceOf(RulesClass);
-      if (!(resolved instanceof RulesClass)) {
-        throw new Error('Expected Rules result');
+        expect(resolved).toBeInstanceOf(RulesClass);
+        if (!(resolved instanceof RulesClass)) {
+          throw new Error('Expected Rules result');
+        }
+        expect(resolved).not.toBe(resolved.sourceNode);
+        const resolvedSource = resolved.sourceNode;
+        expect(resolvedSource).toBeInstanceOf(RulesClass);
+        if (!(resolvedSource instanceof RulesClass)) {
+          throw new Error('Expected Rules source');
+        }
+        expect(clonedRules).toBe(0);
+        expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
       }
-      expect(resolved).not.toBe(resolved.sourceNode);
-      const resolvedSource = resolved.sourceNode;
-      expect(resolvedSource).toBeInstanceOf(RulesClass);
-      if (!(resolvedSource instanceof RulesClass)) {
-        throw new Error('Expected Rules source');
-      }
-      expect(resolved.value[0]).toBe(resolvedSource.value[0]);
     });
 
     it('keeps fallback value containers canonical after resolve(context)', async () => {

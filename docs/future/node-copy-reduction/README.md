@@ -51,7 +51,8 @@ touching production code.
     again while list/sequence/rules surfaces remain owned by the output
 - `packages/core/src/tree/reference.ts`
   - `preserveRulesLike` variable references now keep a shallow owned wrapper
-    instead of deep-copying the referenced rules-like body
+    instead of deep-copying the referenced rules-like body; that shallow
+    wrapper is constructed directly instead of through `clone(false)`
   - fallback, runtime-binding, and declaration reference result copies now use
     the shared reusable-leaf traversal directly; the old `freezeChildren` copy
     branch and bespoke source-free list/sequence clone path are gone
@@ -70,6 +71,9 @@ touching production code.
     reusable child surfaces instead of shallow-cloning the declaration and then
     replacing individual children, so resolving a declaration no longer
     reparents the source value
+  - interpolated declaration names also use the shared reusable-leaf traversal
+    for derived wrappers, so source-free scalar replacement leaves are not
+    cloned just to own the name container
 - `packages/core/src/tree/call.ts`
   - non-plain `Call.resolve()` now keeps an owned copied call surface while
     reusing childless source-free scalar leaves; plain string CSS calls build
@@ -78,6 +82,10 @@ touching production code.
   - JS function argument isolation copies only when a local arg-list surface is
     needed; ordinary empty positional JS calls skip the arg-list copy, and
     copied positional/callback arg containers reuse source-free scalar leaves
+  - optional fallback call output is now derived directly instead of shallow
+    cloning the source call before mutating name/options/args
+  - variable-reference callable names that need `preserveRulesLike` now get a
+    derived reference wrapper instead of cloning the source reference
 - `packages/core/src/tree/at-rule.ts`
   - at-rule registration/resolve wrappers now construct owned/reusable child
     surfaces directly instead of shallow-cloning and replacing name/body
@@ -104,7 +112,8 @@ touching production code.
   - per-iteration `$for` body rules now use an owned copied body surface because
     they carry the live slot `ScopeFrame`; childless source-free scalar leaves
     inside that copied body are reused so the source body stays canonical without
-    cloning inert values
+    cloning inert values, and the owned surface now uses the shared
+    reusable-leaf traversal rather than `Rules.clone()`
   - source-free scalar `$for` iteration values bind directly without copy or
     clone; the iteration wrapper remains the ownership surface
 - `packages/core/src/tree/sequence.ts`
