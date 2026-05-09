@@ -2723,9 +2723,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Only switch treeContext if the rules have one AND it's different
     // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
     // and we don't want to lose leakyRules and other settings
-    // IMPORTANT: Check _treeContext (private field) not treeContext (getter that lazily creates)
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const rulesTreeContext = (rules as any)._treeContext as TreeContext | undefined;
+    // IMPORTANT: Check the explicit tree context, not treeContext (getter that lazily creates).
+    const rulesTreeContext = rules.treeContextIfSet;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
       context.allRoots.push(rules);
       context.treeContext = rulesTreeContext;

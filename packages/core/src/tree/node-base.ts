@@ -81,8 +81,8 @@ export type LocationInfo = [
   endColumn: number
 ];
 
-function createNodeOptions<O extends NodeOptions>(): O & AllNodeOptions {
-  return {} as O & AllNodeOptions;
+function createNodeOptions() {
+  return Object.create(null);
 }
 
 function isPrimitiveValue(value: unknown): value is Primitive {
@@ -243,7 +243,7 @@ export abstract class Node<
 
   protected _options: O & AllNodeOptions | undefined;
   get options(): O & AllNodeOptions {
-    return (this._options ??= createNodeOptions<O>());
+    return (this._options ??= createNodeOptions());
   }
 
   set options(options: O & AllNodeOptions) {
@@ -500,6 +500,10 @@ export abstract class Node<
     this._options = options;
   }
 
+  get treeContextIfSet(): TreeContext | undefined {
+    return this._treeContext;
+  }
+
   getValue() {
     return this.value;
   }
@@ -526,15 +530,15 @@ export abstract class Node<
    * @param treeContext - Tree context
    * @returns A new node instance with generated flag set if applicable
    */
-  static create<T extends new (...args: any[]) => Node>(
-    this: T,
-    value: ConstructorParameters<T>[0],
-    options?: ConstructorParameters<T>[1],
-    location?: ConstructorParameters<T>[2],
-    treeContext?: ConstructorParameters<T>[3]
-  ): InstanceType<T> {
+  static create<T extends Node, V, NodeOptionsT extends NodeOptions>(
+    this: new (value: V, options?: NodeOptionsT, location?: LocationInfo, treeContext?: TreeContext) => T,
+    value: V,
+    options?: NodeOptionsT,
+    location?: LocationInfo,
+    treeContext?: TreeContext
+  ): T {
     // Create the instance with the same signature as constructor
-    const instance = new this(value, options, location, treeContext) as InstanceType<T>;
+    const instance = new this(value, options, location, treeContext);
 
     // Mark as generated if the value is an object that can be marked
     if (instance instanceof Node) {
@@ -770,9 +774,9 @@ export abstract class Node<
     return result instanceof Node ? result : this;
   }
 
-  cloneValue<T>(value: T): T {
+  cloneValue(value: unknown): unknown {
     if (isArray(value)) {
-      return [...value] as T;
+      return [...value];
     } else if (isPlainObject(value)) {
       const clonedValue: Record<string, unknown> = {};
       for (const k in value) {
@@ -780,7 +784,7 @@ export abstract class Node<
           clonedValue[k] = this.cloneValue((value as Record<string, unknown>)[k]);
         }
       }
-      return clonedValue as T;
+      return clonedValue;
     }
     return value;
   }
@@ -803,7 +807,7 @@ export abstract class Node<
     if (deep) {
       cloneFn ??= n => n.clone(deep);
       if (cloned instanceof Node) {
-        cloned = cloneFn(cloned) as Data;
+        cloned = cloneFn(cloned);
       } else {
         this._deepCloneChildren(cloned, cloneFn);
       }

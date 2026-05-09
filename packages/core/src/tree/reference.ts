@@ -18,6 +18,8 @@ import type { Interpolated } from './interpolated.js';
 import { canReuseLeaf, copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
+import { JsArray } from './js-array.js';
+import { JsObject } from './js-object.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
@@ -1097,11 +1099,10 @@ function lookupDirectArrayIndexTarget(
   targetNode: Node,
   valueKey: number
 ): RulesLookupResult {
-  if (!isNode(targetNode, N.JsArray)) {
+  if (!(targetNode instanceof JsArray)) {
     return undefined;
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return atIndex((targetNode as any).value, valueKey);
+  return atIndex(targetNode.value, valueKey);
 }
 
 function getDirectRulesIndexFilterType(
@@ -1123,9 +1124,8 @@ function lookupDirectNamedTarget(
   key: string,
   keyNode: ReferenceValue['key']
 ): RulesLookupResult {
-  if (isNode(targetNode, N.JsObject)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return (targetNode as any).value[key];
+  if (targetNode instanceof JsObject) {
+    return targetNode.value[key];
   }
   if (isNode(targetNode, N.Rules)) {
     return lookupDirectRulesTarget(targetNode, key, keyNode);

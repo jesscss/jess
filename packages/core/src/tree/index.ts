@@ -1,10 +1,7 @@
 /**
  * @note
- * These nodes are actually taking the role of two ASTs,
- * because there are nodes that will be used to produce a module,
- * and that module will create AST nodes to create CSS.
- *
- * @todo - rewrite the above, this is no longer true
+ * Tree nodes are canonical source/runtime values. Evaluation may create
+ * placement-owned wrappers, but the source tree remains the default owner.
  */
 
 /**
@@ -17,7 +14,7 @@ import {
   F_VISIBLE,
   F_MAY_ASYNC,
   F_STATIC,
-  F_NON_STATIC,
+  F_NON_STATIC
 } from './node.js';
 import { TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
@@ -86,20 +83,25 @@ export * from './url.js';
 // Patch Selector.compare after all exports to avoid circular dependency
 import { selectorCompare } from './util/compare.js';
 
+function isSelectorLike(value: unknown): value is Selector {
+  return !!value
+    && typeof value === 'object'
+    && (value as { isSelector?: unknown }).isSelector === true;
+}
+
 /** Patch Selector to avoid circularity */
 Selector.prototype.compare = function(other: Node) {
   // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
   // if the same file is loaded via different specifiers.
-  if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
-    const otherSelector = other as unknown as Selector;
-    const forward = selectorCompare(this, otherSelector);
+  if (isSelectorLike(other)) {
+    const forward = selectorCompare(this, other);
     if (forward.isEquivalent) {
       return 0;
     }
     if (forward.hasPartialMatch) {
       return -1;
     }
-    const backward = selectorCompare(otherSelector, this);
+    const backward = selectorCompare(other, this);
     if (backward.hasPartialMatch) {
       return 1;
     }

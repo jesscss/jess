@@ -36,8 +36,8 @@ export interface BindingCell {
  */
 export interface BindingEntry {
   cell: BindingCell;
-  /** The VarDeclaration or Declaration AST node in Rules.value. */
-  sourceNode: VarDeclaration;
+  /** The AST node that owns this binding. */
+  sourceNode: Node;
 }
 
 /**
@@ -155,8 +155,7 @@ export function resolveFrameCell(
     // 1. Live slots (mixin params, @arguments, loop vars)
     const live = f.liveSlotsByName.get(name);
     if (live) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      return { cell: live, sourceNode: live.sourceNode as unknown as VarDeclaration };
+      return { cell: live, sourceNode: live.sourceNode ?? live.value };
     }
 
     // 2. Static contextual bucket — last entry wins

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { paren, any } from '../index.js';
+import { Any, any, paren } from '../index.js';
+import { TreeContext } from '../../context.js';
 
 describe('Node mutation', () => {
   it('updates a node value canonically', () => {
@@ -23,5 +24,15 @@ describe('Node mutation', () => {
 
     expect(child.getParent()).toBe(parent2);
     expect(parent1.value).toBe(child);
+  });
+
+  it('exposes only an explicitly attached tree context without creating one', () => {
+    const node = any('10px');
+    expect(node.treeContextIfSet).toBeUndefined();
+
+    const treeContext = new TreeContext();
+    const sourced = new Any('10px', undefined, undefined, treeContext);
+
+    expect(sourced.treeContextIfSet).toBe(treeContext);
   });
 });

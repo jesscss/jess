@@ -18,9 +18,8 @@ import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awa
 import { WARN, toDiagnostic } from '../jess-error.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
-// TODO - fix later
+/** Components that may appear in a complex or relative selector. */
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
-// type SelectorValue = Component[]
 export type ComplexSelectorValue = ComplexSelectorComponent[];
 
 const isUnresolvedAmpersand = (part: ComplexSelectorComponent | Nil): part is Ampersand => {
@@ -377,68 +376,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   //       }
   //     }
   //   }
-
-  //   for (let [sel, i] of getEntries(selector.value)) {
-  //     selector.value[i] = await sel.eval(context) as ComplexSelectorComponent
-  //   }
-
-  //   let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
-  //     let elementsLength = elements.length
-  //     for (let i = 0; i < elementsLength; i++) {
-  //       let value = elements[i]!
-
-  //       if (
-  //         i === 0
-  //         && (
-  //           (
-  //             value instanceof ComplexSelector
-  //             && value.value.length === 0
-  //           )
-  //           || value instanceof Nil
-  //           || (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
-  //         )
-  //       ) {
-  //         elements.shift()
-  //         elementsLength -= 1
-  //         i -= 1
-  //       /**
-  //        * @note The following two can occur because of evaluation of `&`
-  //        */
-  //       } else if (value instanceof ComplexSelector) {
-  //         elements = elements.slice(0, i).concat(value.value).concat(elements.slice(i + 1))
-  //         elementsLength += value.value.length - 1
-  //       } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
-  //         /**
-  //          * Wrap returned lists with :is(), if
-  //          * there are more elements in the sequence
-  //          */
-  //         elements[i] = new PseudoSelector({
-  //           name: ':is',
-  //           arg: value
-  //         })
-  //       }
-  //     }
-  //     return elements as ComplexSelectorValue
-  //     // This can/should only happen with compound selectors
-  //     // elements.sort((a, b) => {
-  //     //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
-  //     //   const bVal = b instanceof BasicSelector && b.isTag ? -1 : 0
-  //     //   return aVal - bVal
-  //     // })
-  //   }
-
-  //   /** @todo - Selector lists can have basic selectors */
-  //   if (isNode(selector, 'SelectorList')) {
-  //     selector.value.forEach(sel => { (sel).value = cleanElements(sel.value) })
-  //   } else {
-  //     selector.value = cleanElements(selector.value)
-  //   }
-
-  //   if (elements.length === 0) {
-  //     return new Nil()
-  //   }
-  //   return selector
-  // }
 
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
