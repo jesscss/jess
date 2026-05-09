@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { Any, Call, JsFunction, List, Reference, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, JsFunction, List, Reference, Rules, Sequence, any, call, coll, decl, dimension, el, list, num, op, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -280,23 +280,42 @@ describe('Call', () => {
   });
 
   it('keeps detached collection calls on the collection surface', async () => {
-    const root = rules([
-      vardecl({ name: 'hoverColor', value: any('blue') }),
-      vardecl({
-        name: 'themeMap',
-        value: coll([
-          decl({ name: 'background-color', value: ref('hoverColor', { type: 'variable' }) })
-        ])
-      })
-    ]);
+    const originalClone = Rules.prototype.clone;
+    let collectionClones = 0;
 
-    context.root = root;
-    const evaldRoot = await root.eval(context);
-    context.rulesContext = evaldRoot;
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      const [deep] = args;
+      if (deep === false && isNode(this, N.Collection)) {
+        collectionClones++;
+      }
+      return originalClone.apply(this, args);
+    };
 
-    const result = await call({ name: ref('themeMap', { type: 'variable' }) }).eval(context);
-    expect(isNode(result, N.Collection)).toBe(true);
-    expect(`${result}`).toContain('background-color');
+    try {
+      const root = rules([
+        vardecl({ name: 'hoverColor', value: any('blue') }),
+        vardecl({
+          name: 'themeMap',
+          value: coll([
+            decl({ name: 'background-color', value: ref('hoverColor', { type: 'variable' }) })
+          ])
+        })
+      ]);
+
+      context.root = root;
+      const evaldRoot = await root.eval(context);
+      context.rulesContext = evaldRoot;
+
+      const result = await call({ name: ref('themeMap', { type: 'variable' }) }).eval(context);
+      expect(isNode(result, N.Collection)).toBe(true);
+      expect(`${result}`).toContain('background-color');
+      expect(collectionClones).toBe(0);
+    } finally {
+      Rules.prototype.clone = originalClone;
+    }
   });
 
   it('derives preserve-rules-like variable call names without cloning the source reference', async () => {

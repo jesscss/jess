@@ -14,7 +14,7 @@ import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
-import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
+import { cloneWithReusableLeaves } from './util/cloning.js';
 
 /**
  * This class is for Jess / Sass+ / Less-style imports,
@@ -626,13 +626,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // preparation/eval. Reusing the canonical source tree here lets the first
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
-          const cloneChild = (node: Node): Node => {
-            if (canReuseLeaf(node)) {
-              return reuseLeaf(node);
-            }
-            return node.clone(true, cloneChild);
-          };
-          rules = rules.clone(true, cloneChild) as Rules;
+          rules = cloneWithReusableLeaves(rules);
         }
 
         // Compose caching semantics:

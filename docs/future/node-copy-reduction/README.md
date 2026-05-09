@@ -23,7 +23,8 @@ touching production code.
 - `packages/core/src/tree/rules.ts`
   - `Rules.resolve(context)` now uses the shared derived Rules surface instead
     of `clone(false)`; the derived wrapper preserves function-registry and
-    live-slot ownership while forcing lazy registry re-indexing
+    live-slot ownership while forcing lazy registry re-indexing, and preserves
+    rules-like subclasses such as `Collection`
   - guarded mixin dispatch now has local candidate accessors; those accessors
     are the next place to replace raw candidate field reads when an explicit
     ownership surface exists
@@ -41,9 +42,11 @@ touching production code.
     source-free scalar leaves
   - ruleset-call and ordinary mixin body clones now reuse childless source-free
     scalar leaves through the shared clone helper; the rules containers and
-    non-leaf nodes still get owned eval surfaces
+    non-leaf nodes still get owned eval surfaces, while direct comment children
+    remain cloned/preserved for each output placement
   - detached-ruleset unlock is covered by a regression test proving it does not
-    deep-clone body leaves before evaluating the unlocked surface
+    deep-clone body leaves before evaluating the unlocked surface, and now
+    derives the unlock wrapper instead of shallow-cloning the source rules
   - derived empty mixin wrapper surfaces are now constructed directly instead
     of shallow-cloning non-empty body rules and clearing them
   - post-eval merged declaration coalescing now keeps its accumulated value map
@@ -112,7 +115,8 @@ touching production code.
     placement surface explicit without treating clone as isolation machinery
   - compose/import output visibility wrappers now use `Rules.derive()` instead
     of shallow `Rules.clone()`, and first-use import-local deep copies reuse
-    childless source-free scalar leaves while keeping owned container copies
+    childless source-free scalar leaves through the shared clone helper while
+    keeping owned container copies and preserving direct comment children
 - `packages/core/src/tree/ampersand.ts`
   - framed ampersand resolution now constructs the framed wrapper directly
     instead of shallow-cloning the source ampersand just to attach the current
@@ -195,6 +199,11 @@ Use this as the active checklist for the next narrow batches:
    canonical-parent tests before changing them.
 5. Record only durable frontier changes here; old recovery details belong in
    git history, not this startup handoff.
+
+Current scan note: outside clone infrastructure and key-set/bitset copies, the
+remaining production `clone()` calls are concentrated in selector/extend
+generation helpers. Treat those as generated-output work, not as automatic
+runtime-eval copy debt.
 
 ## Working Rule
 

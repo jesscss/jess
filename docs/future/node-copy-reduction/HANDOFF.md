@@ -42,8 +42,10 @@ still use the defensive copy path. Static guards are
 proven copy-free; dynamic guards and default-guard probes still use an owned
 copy surface, but that surface reuses childless source-free scalar leaves.
 Ruleset call and ordinary mixin body clones reuse childless source-free scalar leaves;
-the rules containers and non-leaf nodes still get owned eval surfaces. Detached
-ruleset unlock is covered as an intentionally shallow clone boundary. Merged
+the rules containers and non-leaf nodes still get owned eval surfaces, and
+direct comment children remain cloned/preserved for each output placement.
+Detached ruleset unlock now derives its wrapper instead of shallow-cloning the
+source rules. Merged
 declaration composition now uses the shared reusable-leaf copy traversal, so
 source-free scalar leaves are not copied again while the output still gets its
 own list/sequence/rules containers. In `packages/core/src/tree/reference.ts`,
@@ -96,12 +98,14 @@ mixin and scope behavior. Mixin interpolated-name registration prep also
 derives an owned wrapper directly, so source dynamic names, params, guards, and
 body rules stay canonical. `Rules.resolve(context)` now uses the same explicit
 derived Rules surface instead of `clone(false)`, preserving function-registry
-and live-slot ownership while forcing lazy registry re-indexing. Import-owned
+and live-slot ownership while forcing lazy registry re-indexing; derived
+surfaces preserve rules-like subclasses such as `Collection`. Import-owned
 child Rules surfaces reuse that helper too, so configured import placement no
 longer shallow-clones imported source rules. Compose/import output visibility
 wrappers also use `Rules.derive()` instead of shallow `Rules.clone()`, and
 first-use import-local deep copies reuse childless source-free scalar leaves
-while keeping owned container copies. Framed ampersand resolution now constructs
+through the shared clone helper while keeping owned container copies and
+preserving direct comment children. Framed ampersand resolution now constructs
 the framed wrapper directly instead of shallow-cloning the source ampersand just
 to attach the active selector frame.
 Interpolated value resolve now constructs a fresh interpolated wrapper only

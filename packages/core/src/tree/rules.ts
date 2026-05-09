@@ -43,7 +43,7 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, cloneWithReusableLeaves, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
@@ -328,12 +328,19 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   derive(value: Node[] = [...this.value]): Rules {
     const sourceLocation = this.location.length === 6 ? this.location : undefined;
-    const derived = new Rules(
-      value,
-      this.options ? { ...this.options } : undefined,
-      sourceLocation,
-      this.treeContext
-    ).inherit(this);
+    const derived = Reflect.construct(
+      this.constructor,
+      [
+        value,
+        this.options ? { ...this.options } : undefined,
+        sourceLocation,
+        this.treeContext
+      ]
+    );
+    if (!(derived instanceof Rules)) {
+      throw new TypeError('Derived rules value must remain rules-like');
+    }
+    derived.inherit(this);
     derived.resetDerivedState(this);
 
     return derived;
@@ -3756,15 +3763,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
     function cloneCallableRules(sourceRules: Rules, deep: boolean): Rules {
       if (!deep) {
-        return sourceRules.clone(false);
+        return sourceRules.derive();
       }
-      const cloneChild = (node: Node): Node => {
-        if (canReuseLeaf(node)) {
-          return reuseLeaf(node);
-        }
-        return node.clone(true, cloneChild);
-      };
-      return sourceRules.clone(true, cloneChild);
+      return cloneWithReusableLeaves(sourceRules);
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];

@@ -29,6 +29,19 @@ export function reuseLeaf<T extends Node>(node: T): T {
   return node;
 }
 
+/**
+ * Clone an output/eval surface while sharing inert source-free scalar leaves.
+ * Unlike `copyWithReusableLeaves`, this preserves comments because mixin/import
+ * output needs direct comment children at each generated placement.
+ */
+export function cloneWithReusableLeaves<T extends Node>(node: T): T {
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  const cloneChild = (child: Node): Node => cloneWithReusableLeaves(child);
+  return node.clone(true, cloneChild);
+}
+
 function copyChild(value: unknown): unknown {
   if (value instanceof Node) {
     return copyWithReusableLeaves(value);

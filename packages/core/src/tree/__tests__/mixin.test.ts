@@ -553,6 +553,55 @@ describe('Mixin', () => {
       }
     });
 
+    it('unlocks detached rulesets without shallow-cloning the rules wrapper', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let detachedRuleClones = 0;
+
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        const [deep] = args;
+        if (
+          deep === false
+          && this.value.some(node => (
+            node.type === 'Declaration'
+            && node.value?.name?.valueOf?.() === 'color'
+          ))
+        ) {
+          detachedRuleClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const callerRules = rules([]);
+        const root = rules([
+          vardecl({
+            name: 'content',
+            value: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: callerRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = callerRules;
+
+        const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
+        callerRules.adopt(detachedCall);
+        const result = await detachedCall.eval(context);
+
+        expect(result.toString()).toContain('color: red;');
+        expect(detachedRuleClones).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
     it('resolves local mixin body vars when a detached ruleset variable is called inside a child ruleset', async () => {
       const tableRowVariantMixin = mixin({
         name: any('.table-row-variant'),
