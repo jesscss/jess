@@ -291,9 +291,12 @@ describe('Extend Selector Tests', () => {
       expect(rootResultStr).toBe('.g,.i.j');
       // Extract the :is() argument to compare
       if (isNode(isResult, N.PseudoSelector)) {
-        const pseudo = isResult as PseudoSelector;
+        const pseudo = isResult;
         if (pseudo.value && typeof pseudo.value === 'object' && 'name' in pseudo.value && pseudo.value.name === ':is' && 'arg' in pseudo.value && pseudo.value.arg) {
-          const isArgStr = (pseudo.value.arg as Selector).valueOf();
+          if (!isNode(pseudo.value.arg, N.Selector)) {
+            throw new Error('Expected :is() argument to be a selector');
+          }
+          const isArgStr = pseudo.value.arg.valueOf();
           expect(isArgStr).toBe('.g,.i.j');
         } else {
           throw new Error(`Expected :is() selector, got ${isResult.type}`);
@@ -597,7 +600,10 @@ describe('Extend Selector Tests', () => {
 
       // Extend .foo with ".ext1 .ext2" (a complex selector)
       const ext1Ext2 = sel([el('.ext1'), co(' '), el('.ext2')]);
-      selector = extendSelector(selector, el('.foo'), ext1Ext2, true) as SelectorList;
+      selector = extendSelector(selector, el('.foo'), ext1Ext2, true);
+      if (!isNode(selector, N.SelectorList)) {
+        throw new Error('Expected selector list after first extend');
+      }
 
       // Count occurrences of .ext1 .ext2 pattern - should appear exactly once per :is()
       const ext1Count = (selector.valueOf().match(/\.ext1/g) || []).length;
@@ -605,10 +611,16 @@ describe('Extend Selector Tests', () => {
       expect(ext1Count).toBeLessThanOrEqual(2);
 
       // Extend .foo with .ext3
-      selector = extendSelector(selector, el('.foo'), el('.ext3'), true) as SelectorList;
+      selector = extendSelector(selector, el('.foo'), el('.ext3'), true);
+      if (!isNode(selector, N.SelectorList)) {
+        throw new Error('Expected selector list after second extend');
+      }
 
       // Extend .foo with .ext4
-      selector = extendSelector(selector, el('.foo'), el('.ext4'), true) as SelectorList;
+      selector = extendSelector(selector, el('.foo'), el('.ext4'), true);
+      if (!isNode(selector, N.SelectorList)) {
+        throw new Error('Expected selector list after third extend');
+      }
 
       // The result should have each extension appear exactly twice (once per original selector)
       // NOT have any :is(.ext1 .ext2) wrappers around individual extensions
@@ -796,10 +808,12 @@ describe('Extend Selector Tests', () => {
     describe('(a)-(d) ampersand present, valueOf uses it, exact .bb does not match', () => {
       it('(a) implicit ampersand is present on selector (first component is Ampersand with stored selector)', () => {
         const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
-        expect(isNode(withImplicit, N.ComplexSelector)).toBe(true);
-        const first = (withImplicit as any).value?.[0];
-        expect(first?.type).toBe('Ampersand');
-        expect(first?.getResolvedSelector?.()).toBeDefined();
+        if (!isNode(withImplicit, N.ComplexSelector)) {
+          throw new Error('Expected implicit selector to be complex');
+        }
+        const first = withImplicit.value[0];
+        expect(isNode(first, N.Ampersand)).toBe(true);
+        expect(isNode(first, N.Ampersand) ? first.getResolvedSelector() : undefined).toBeDefined();
       });
 
       it('(b) valueOf() uses ampersand selector to produce full selector string', () => {
@@ -811,9 +825,15 @@ describe('Extend Selector Tests', () => {
       it('(c) ampersand retains stored selector (copy of parent at build time)', () => {
         const parent = el('.bb');
         const withImplicit = getImplicitSelector(el('.bb'), parent, false);
-        const first = (withImplicit as any).value?.[0];
-        expect(first?.getResolvedSelector?.()).toBeDefined();
-        expect(first.getResolvedSelector?.()?.valueOf()).toBe('.bb');
+        if (!isNode(withImplicit, N.ComplexSelector)) {
+          throw new Error('Expected implicit selector to be complex');
+        }
+        const first = withImplicit.value[0];
+        if (!isNode(first, N.Ampersand)) {
+          throw new Error('Expected first component to be an ampersand');
+        }
+        expect(first.getResolvedSelector()).toBeDefined();
+        expect(first.getResolvedSelector()?.valueOf()).toBe('.bb');
       });
 
       it('(d) full selector value .bb .bb is not an exact match for .bb so extend utility rejects', () => {
@@ -849,9 +869,11 @@ describe('Extend Selector Tests', () => {
       expect(out).toContain('.x');
       expect(out).toContain('.b');
       // Should preserve structure (implicit & not materialized in serialization when same context)
-      expect(isNode(result, N.ComplexSelector)).toBe(true);
-      const first = (result as any).value?.[0];
-      expect(first?.type).toBe('Ampersand');
+      if (!isNode(result, N.ComplexSelector)) {
+        throw new Error('Expected partial extend result to be complex');
+      }
+      const first = result.value[0];
+      expect(isNode(first, N.Ampersand)).toBe(true);
     });
 
     it('full extend (complete match of one list item) when target is SelectorList with invisible ampersand: append extendWith with same &', () => {
@@ -864,13 +886,34 @@ describe('Extend Selector Tests', () => {
 
       const result = tryExtendSelector(target, el('.replace'), el('.rep_ace'), true);
       expect(result.error).toBeUndefined();
-      expect(isNode(result.value, N.SelectorList)).toBe(true);
-      const list = result.value as SelectorList;
+      if (!isNode(result.value, N.SelectorList)) {
+        throw new Error('Expected full extend result to be a selector list');
+      }
+      const list = result.value;
       expect(list.value.length).toBeGreaterThanOrEqual(2);
       const str = result.value.valueOf();
       expect(str).toContain('.replace');
       expect(str).toContain('.rep_ace');
       expect(str).toContain('.c');
+    });
+
+    it('builds implicit selector-list output directly instead of cloning the source list', () => {
+      const outerSel = el('.outer');
+      const target = sellist([el('.replace'), el('.c')]);
+      let cloneCalls = 0;
+      const originalClone = target.clone.bind(target);
+      target.clone = ((...args) => {
+        cloneCalls++;
+        return originalClone(...args);
+      }) as typeof target.clone;
+
+      const result = getImplicitSelector(target, outerSel, false);
+
+      expect(cloneCalls).toBe(0);
+      expect(result).not.toBe(target);
+      expect(result.valueOf()).toBe('.outer .replace,.outer .c');
+      expect(target.value[0]!.parent).toBe(target);
+      expect(target.value[1]!.parent).toBe(target);
     });
 
     it('extend find that matches only own part (within boundary): ampersand not flattened', () => {

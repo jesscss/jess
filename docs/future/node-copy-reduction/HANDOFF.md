@@ -169,6 +169,10 @@ derived-construction pattern for resolved selector arguments/items/components,
 leaving source selector children parented to their canonical wrappers. Selector
 expansion and extend clone sites are still a different category: they produce
 generated selector output rather than repairing shallow-wrapper replacement.
+`packages/core/src/tree/util/selector-utils.ts` now handles selector-list
+implicit ampersand output by constructing a fresh `SelectorList` from mapped
+generated items instead of cloning the source list and replacing children, so
+source list children remain parented to the source list.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 

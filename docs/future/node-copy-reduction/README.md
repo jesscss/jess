@@ -183,6 +183,11 @@ touching production code.
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
+- `packages/core/src/tree/util/selector-utils.ts`
+  - implicit selector-list construction now maps generated implicit-ampersand
+    items into a fresh `SelectorList` instead of cloning the source selector
+    list and replacing children, so source list children stay canonical while
+    generated selector output still owns its emitted items
 
 ## Current Todo Shape
 

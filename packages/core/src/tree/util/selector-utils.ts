@@ -10,8 +10,6 @@ import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-// Some build targets for core do not include Node typings; keep debug gating type-safe.
-declare const process: { env: Record<string, string | undefined> };
 
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
@@ -79,6 +77,10 @@ function snapshotParentSource(parentSelector: Selector, collapseNesting: boolean
   return { value: container };
 }
 
+function isSnapshotParentSource(parent: ParentSource | Selector): parent is { value: SelectorContainer } {
+  return !isNode(parent) && typeof parent === 'object' && parent !== null && 'value' in parent;
+}
+
 /**
  * Gets the implicit selector by adding an implicit ampersand from the parent.
  * This is used by rulesets and extends to prepend the parent selector to their own selector.
@@ -97,21 +99,24 @@ export function getImplicitSelector(
     return selector;
   }
   const parentSource: ParentSource | undefined = isNode(parent, N.Ruleset)
-    ? (parent as Ruleset)
-    : snapshotParentSource(parent as Selector, collapseNesting);
+    ? parent
+    : isSnapshotParentSource(parent)
+      ? parent
+      : snapshotParentSource(parent, collapseNesting);
   if (isNode(selector, N.SelectorList)) {
     let mutated = false;
     const value = selector.value;
+    const nextValue: Selector[] = [];
     for (let i = 0; i < value.length; i++) {
       const sel = value[i]!;
       const result = addImplicitAmpersand(sel, collapseNesting, parentSource);
+      nextValue.push(result);
       if (result !== sel) {
-        if (!mutated) {
-          selector = selector.clone(true);
-        }
-        (selector as SelectorList).value[i] = result;
         mutated = true;
       }
+    }
+    if (mutated) {
+      selector = SelectorList.create(nextValue).inherit(selector) as Selector;
     }
   } else {
     selector = addImplicitAmpersand(selector, collapseNesting, parentSource);
