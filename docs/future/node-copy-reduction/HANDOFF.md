@@ -79,9 +79,10 @@ shallow-cloning non-empty body rules and clearing them, avoiding parent churn on
 cloned body children while preserving rule options and function registry
 ownership. `$for` aggregate and zero-iteration output wrappers in
 `packages/core/src/tree/control.ts` are also constructed directly now; the
-per-iteration body wrapper still uses the existing shallow wrapper path because
-it owns the live-slot `ScopeFrame` for that iteration. Source-free scalar
-`$for` iteration values bind without being copied or cloned first.
+per-iteration body wrapper owns a copied eval surface because it carries the
+live-slot `ScopeFrame` for that iteration, while childless source-free scalar
+leaves inside that body are reused. Source-free scalar `$for` iteration values
+bind without being copied or cloned first.
 
 ## Work Loop
 

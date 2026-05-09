@@ -72,8 +72,10 @@ The remaining work is production conversion, not old model preservation.
 - `packages/core/src/tree/control.ts`
   - `$for` aggregate/empty output wrappers are now constructed directly instead
     of shallow-cloning the loop body rules and clearing them
-  - per-iteration `$for` body rules still use the existing shallow wrapper path
-    because they carry the live slot `ScopeFrame`
+  - per-iteration `$for` body rules now use an owned copied body surface because
+    they carry the live slot `ScopeFrame`; childless source-free scalar leaves
+    inside that copied body are reused so the source body stays canonical without
+    cloning inert values
   - source-free scalar `$for` iteration values bind directly without copy or
     clone; the iteration wrapper remains the ownership surface
 - `packages/core/src/tree/util/serialize-helper.ts`

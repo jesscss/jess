@@ -11,6 +11,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
+import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -246,6 +247,21 @@ export class For extends Node<StructuredLoopValue> {
     return output;
   }
 
+  private createIterationEvalSurface(sourceRules: Rules): Rules {
+    const cloneChild = (node: Node): Node => {
+      if (canReuseLeaf(node)) {
+        return reuseLeaf(node);
+      }
+      return node.clone(true, cloneChild);
+    };
+    const iterationRules = sourceRules.clone(true, cloneChild) as Rules;
+    iterationRules.options.rulesVisibility = {
+      ...iterationRules.options.rulesVisibility,
+      ...PUBLIC_RULE_VISIBILITY
+    };
+    return iterationRules;
+  }
+
   constructor(value: StructuredLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -302,11 +318,7 @@ export class For extends Node<StructuredLoopValue> {
           resolvedKey = new Any(String(key), { role: 'property' });
         }
 
-        const iterationRules = originalRules.clone(false) as Rules;
-        iterationRules.options.rulesVisibility = {
-          ...iterationRules.options.rulesVisibility,
-          ...PUBLIC_RULE_VISIBILITY
-        };
+        const iterationRules = this.createIterationEvalSurface(originalRules);
 
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
         const liveSlots = new Map<string, BindingCell>();

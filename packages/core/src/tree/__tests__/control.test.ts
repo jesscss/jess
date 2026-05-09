@@ -535,39 +535,47 @@ describe('Control Nodes', () => {
     }
   });
 
-  it('keeps $for per-iteration body wrappers shallow', async () => {
+  it('keeps canonical $for body children parented to the source wrapper', async () => {
     const context = new Context();
-    const originalClone = Rules.prototype.clone;
-    let deepBodyClones = 0;
-    Rules.prototype.clone = function cloneForCounting(
-      this: Rules,
+    const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
+    const loopRules = rules([itemDecl]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const evald = await root.eval(context);
+
+    expect(`${evald}`).toContain('item: a');
+    expect(`${evald}`).toContain('item: b');
+    expect(itemDecl.parent).toBe(loopRules);
+  });
+
+  it('reuses childless source-free scalar leaves in $for per-iteration body copies', async () => {
+    const context = new Context();
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
       ...args: Parameters<typeof originalClone>
     ): ReturnType<typeof originalClone> {
-      const [deep] = args;
-      if (
-        deep === true
-        && this.value.some(node => (
-          node.type === 'Declaration'
-          && node.value?.name?.valueOf?.() === 'item'
-        ))
-      ) {
-        deepBodyClones++;
+      if (this.valueOf() === 'red') {
+        scalarClones++;
       }
       return originalClone.apply(this, args);
     };
 
     try {
       const loopRules = rules([
+        decl({ name: 'color', value: any('red') }),
         decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
       const evald = await root.eval(context);
 
+      expect(`${evald}`).toContain('color: red');
       expect(`${evald}`).toContain('item: a');
       expect(`${evald}`).toContain('item: b');
-      expect(deepBodyClones).toBe(0);
+      expect(scalarClones).toBe(0);
     } finally {
-      Rules.prototype.clone = originalClone;
+      Any.prototype.clone = originalClone;
     }
   });
 
