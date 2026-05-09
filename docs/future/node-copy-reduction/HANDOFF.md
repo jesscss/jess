@@ -112,6 +112,13 @@ Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before
 selector conversion.
+The latest utility quality pass made `Context.getTree()` expose its no-tree
+unsupported-file case without a hidden `any`, removed catch/rethrow and stale
+commented import clone scaffolding there, and made import evaluation handle the
+no-tree case explicitly. Broader typed cleanup in legacy high-debt files should
+be planned separately because the staged-file hook lints whole touched files.
+This cleanup does not change the selector/extend generated-output clone
+frontier below.
 Derived empty mixin wrapper surfaces in
 `packages/core/src/tree/rules.ts` are constructed directly instead of
 shallow-cloning non-empty body rules and clearing them, avoiding parent churn on

@@ -205,6 +205,13 @@ remaining production `clone()` calls are concentrated in selector/extend
 generation helpers. Treat those as generated-output work, not as automatic
 runtime-eval copy debt.
 
+Recent quality pass note: utility cleanups should stay focused on files whose
+whole-file lint debt can actually be paid in the same patch. `Context.getTree()`
+now avoids catch/rethrow and no longer hides unsupported-file no-tree results
+behind `any`; import evaluation handles that no-tree case explicitly. Broader
+typed cleanup in legacy high-debt files should be planned as its own batch, not
+mixed into node-copy work opportunistically.
+
 ## Working Rule
 
 Pick one narrow production seam, prove it with the closest focused test, then

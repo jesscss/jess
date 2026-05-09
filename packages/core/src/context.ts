@@ -5,10 +5,8 @@ import type {
   ImportOptions,
   Node,
   Any,
-  Selector,
-  Mixin
+  Selector
 } from './tree/index.js';
-import type { Visitor } from './visitor/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -17,9 +15,8 @@ import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
-import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
@@ -113,6 +110,33 @@ export interface TreeContextOptions extends ContextOptions {
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
+
+const JESS_ERROR_CODES = [
+  'parse/unexpected-token',
+  'parse/unterminated-string',
+  'parse/unexpected-syntax',
+  'parse/syntax-error',
+  'resolve/name-not-found',
+  'import/circular-compose',
+  'eval/bad-call-arity',
+  'eval/type-mismatch',
+  'extend/protected-boundary',
+  'extend/not-found',
+  'extend/not-accessible',
+  'plugin/unsupported-feature',
+  'eval/deprecated',
+  'resolve/unused-variable',
+  'selector/duplicate',
+  'selector/parentless-ampersand'
+] as const satisfies readonly ConstructorParameters<typeof JessError>[0]['code'][];
+
+type JessErrorCode = typeof JESS_ERROR_CODES[number];
+
+const jessErrorCodeSet: ReadonlySet<string> = new Set(JESS_ERROR_CODES);
+
+function isJessErrorCode(code: string): code is JessErrorCode {
+  return jessErrorCodeSet.has(code);
+}
 
 /**
  * @todo - Redo:
@@ -626,12 +650,7 @@ export class Context {
 
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
-    let source: string;
-    try {
-      source = await sourceGetter.getSource!(resolvedPath);
-    } catch (error: any) {
-      throw error;
-    }
+    const source = await sourceGetter.getSource!(resolvedPath);
     const parseResult = plugin.safeParse!(resolvedPath, source);
 
     // Collect normalized errors and warnings from plugin
@@ -642,8 +661,9 @@ export class Context {
     if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
+      const code = isJessErrorCode(firstError.code) ? firstError.code : 'parse/syntax-error';
       throw new JessError({
-        code: firstError.code as any,
+        code,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,
@@ -691,7 +711,7 @@ export class Context {
       column: 1
     });
     return {
-      node: null as any,
+      node: null,
       triedPaths,
       resolvedPath
     };
@@ -785,28 +805,6 @@ export class Context {
       resolvedPath
     };
   }
-
-  // async getRules(
-  //   filePath: string,
-  //   nodeOptions: StyleImportOptions,
-  //   userOptions: Record<string, any> = {},
-  //   withValues?: StyleImportValue['with']
-  // ) {
-  //   let rules = await this.getTree(filePath, userOptions);
-  //   if (withValues && isNode(withValues.node, 'Rules')) {
-  //     if (rules.options.readonly) {
-  //       throw new Error('Cannot set an import\'s "with" values more than once.');
-  //     }
-  //     /** @todo - Throw errors for undefined vars */
-  //     let withRules = withValues.node.clone(true) as Rules;
-  //     withRules.value.unshift(rules);
-  //     rules = withRules;
-  //     if (withValues.type === 'set') {
-  //       this.sourceTrees.set(filePath, rules);
-  //     }
-  //   }
-  //   return rules;
-  // }
 
   /**
    * Hash a CSS class name or not depending on the `module` setting

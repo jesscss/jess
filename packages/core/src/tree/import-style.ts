@@ -606,7 +606,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {
           try {
-            ({ node: rules, resolvedPath } = await context.getTree(finalPath, importOptions));
+            const loaded = await context.getTree(finalPath, importOptions);
+            if (!loaded.node) {
+              return this.createImportAnchorSurface(context);
+            }
+            ({ node: rules, resolvedPath } = loaded);
           } catch (error: any) {
             if (importOptions!.optional) {
               return this.createImportAnchorSurface(context);
