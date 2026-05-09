@@ -93,7 +93,10 @@ addition keep source children canonical while reusing inert scalar leaves.
 `packages/core/src/tree/operation.ts` now builds preserved operation wrappers
 directly from final operands instead of shallow-cloning before replacement, so
 unchanged source operands remain parented to the source operation when a
-resolved sibling keeps the operation shape alive. The unused
+resolved sibling keeps the operation shape alive. `packages/core/src/tree/paren.ts`
+now builds resolved paren wrappers directly from the resolved child instead of
+shallow-cloning before replacement, so resolving a child container leaves the
+source paren value parented to the source paren. The unused
 `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
 `packages/core/src/tree/util/cloning.ts`.
 

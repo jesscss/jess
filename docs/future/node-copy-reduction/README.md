@@ -93,6 +93,10 @@ The remaining work is production conversion, not old model preservation.
     from final operands instead of shallow-cloning first, so unchanged source
     operands are not reparented when a resolved sibling keeps the operation
     shape alive
+- `packages/core/src/tree/paren.ts`
+  - resolved paren wrappers now construct directly from the resolved child
+    instead of shallow-cloning first, so resolving a child container no longer
+    reparents the source paren value
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

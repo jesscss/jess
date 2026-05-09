@@ -132,10 +132,12 @@ describe('Paren', () => {
       any('one'),
       ref({ key: 'value' }, { type: 'variable' })
     ]));
+    const sourceValue = parenNode.value;
     const resolved = await parenNode.resolve(context);
 
     expect(`${resolved}`).toBe('(one, foo)');
     expect(parenNode.toTrimmedString()).toBe('(one, $value)');
+    expect(sourceValue?.parent).toBe(parenNode);
   });
 
   it('normalizes escaped semicolon lists to commas on eval', async () => {

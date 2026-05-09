@@ -86,10 +86,13 @@ function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  private withValue(value: Node | undefined): this {
-    const node = this.clone();
-    node.set(null, value);
-    return node;
+  private withValue(value: Node | undefined): Paren {
+    return new Paren(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this.location,
+      this.treeContext
+    ).inherit(this);
   }
 
   constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
