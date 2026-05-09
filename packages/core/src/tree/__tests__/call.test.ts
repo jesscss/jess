@@ -175,13 +175,16 @@ describe('Call', () => {
     };
 
     try {
-      const resolved = await call({
+      const args = list([]);
+      const rule = call({
         name: 'var',
-        args: list([])
-      }).resolve(context);
+        args
+      });
+      const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('var()');
       expect(clonedLists).toBe(0);
+      expect(args.parent).toBe(rule);
     } finally {
       List.prototype.clone = originalClone;
     }

@@ -253,12 +253,13 @@ export class Call extends Node<CallValue, CallOptions> {
       && !this.value.contentNode
       && (!this.value.args || this.value.args.value.length === 0)
     ) {
-      const node = this.clone(false);
-      node.options.silentFail = false;
-      if (this.value.args) {
-        node.value.args = list([]);
-      }
-      return node;
+      const options = this._options
+        ? { ...this._options, silentFail: false }
+        : undefined;
+      return new Call({
+        name: this.value.name,
+        args: this.value.args ? list([]) : undefined
+      }, options, this.location, this.treeContext).inherit(this);
     }
     return this.clone(true).eval(context) as MaybePromise<Node>;
   }
