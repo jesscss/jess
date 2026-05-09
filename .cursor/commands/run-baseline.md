@@ -7,7 +7,7 @@ Run the test baseline for the **current debugging focus** and report results. Do
 Use in order of precedence:
 
 - What the user said after the command (e.g. "/run-baseline for extend" or "/run-baseline extend").
-- `.cursor/PROJECT_STATE.md` section 4 – "Area".
+- `.cursor/PROJECT_STATE.md` current-focus "Area".
 - If unclear, run the **extend** baseline (most documented) or ask the user.
 
 ## 2. Run the right tests

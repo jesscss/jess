@@ -24,7 +24,8 @@ false status.
 ## Current Status
 
 `packages/jess/test/less/all-less.test.ts` was green at the last pushed
-baseline. Core focused proofs cover the formerly-live
+baseline, and `pnpm run verify:baseline` was re-run during the docs quality pass
+that condensed stale registry handoff state. Core focused proofs cover the formerly-live
 `.Person(person, "Male"); .person.sayGender();` closure shape in
 `packages/core/src/tree/__tests__/mixin.test.ts`.
 
@@ -108,3 +109,11 @@ source paren value parented to the source paren. The unused
 4. Run the focused proof first.
 5. Run the nearest broader verification.
 6. Commit and push when the checkpoint is clean.
+
+## Do Not Resurrect
+
+- checked-in task registries or unattended task loops
+- stage trackers that mostly describe absent machinery
+- broad "current dirty diff" notes copied from an old session
+- fixture-expectation changes that are not tied to an explicit Jess behavior
+  decision

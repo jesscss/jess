@@ -43,9 +43,12 @@ This repo uses a **path-scoped Cursor context system** so day-to-day work does n
 
 ### Persistent state (“project memory”)
 
-- `.cursor/PROJECT_STATE.md` is the shared memory for package graph/build order/test baselines/current debugging focus.
+- `.cursor/PROJECT_STATE.md` is intentionally small: package/build shape,
+  verification commands, and the current debugging focus only when one is
+  actively open.
 - `.cursor/DEBUGGING_ORCHESTRATION.md` explains the debugging system design.
-- Area plans (e.g. extend) live in `.cursor/` alongside the state.
+- Area plans should stay small and current. Prefer package docs and scoped rules
+  over long root-level status files.
 
 ### The auto-inference contract (what should happen in practice)
 
@@ -72,4 +75,3 @@ When you say something like:
 ### Notes
 
 The active guidance surface is canonical and minimal: global guardrails (`00-global`, `20-quality-bar`, `30-tests`) plus scoped domain/package/subtree rules.
-

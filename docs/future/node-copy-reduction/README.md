@@ -16,7 +16,9 @@ It should stay small enough to read at startup.
 
 ## Current Frontier
 
-The remaining work is production conversion, not old model preservation.
+The remaining work is production conversion, not old model preservation. The
+verified baseline is green; use focused tests to prove each copy boundary before
+touching production code.
 
 - `packages/core/src/tree/rules.ts`
   - guarded mixin dispatch now has local candidate accessors; those accessors
@@ -100,6 +102,22 @@ The remaining work is production conversion, not old model preservation.
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
+
+## Current Todo Shape
+
+Use this as the active checklist for the next narrow batches:
+
+1. Continue eliminating shallow-clone-then-replace patterns that temporarily
+   reparent canonical source children.
+2. Prefer `copyWithReusableLeaves(...)` when a container still needs an owned
+   eval/output surface but childless source-free scalar leaves do not need
+   copies.
+3. Keep semantic wrapper surfaces where they carry real scope, registry,
+   import/reference, merge, or output ownership.
+4. Audit remaining `clone()` call sites by node shape and prove changes with
+   canonical-parent tests before changing them.
+5. Record only durable frontier changes here; old recovery details belong in
+   git history, not this startup handoff.
 
 ## Working Rule
 

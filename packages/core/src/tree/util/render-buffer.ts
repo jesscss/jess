@@ -168,6 +168,8 @@ export function renderNodeToBuffer(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): MaybePromise<string> {
+  // Track 5 bridge only: this adapts current node serializers to flat buffers.
+  // Nodes with delayed-output semantics must write explicit segments instead.
   if (buffer.kind !== 'flat') {
     throw new Error('renderNodeToBuffer(...) can only use the default bridge with flat RenderBuffer; segmented rendering needs explicit segment handling.');
   }

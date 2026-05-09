@@ -4,16 +4,19 @@ Remind the user and yourself to update project state so the next session (or a n
 
 ## What to update
 
-1. **`.cursor/PROJECT_STATE.md`** — Section 4 (Current debugging focus):
+1. **`.cursor/PROJECT_STATE.md`** — Current debugging focus:
    - **Area** (if it changed): e.g. extend, mixins, parser.
    - **Relevant plan file** (if any): keep this minimal; prefer Cursor-native rules + canonical package docs.
    - **Last passing baseline** (if known).
    - **Last thing we tried:** hypothesis, change, result (pass/fail or error).
    - **Next step:** concrete next action so the next session can continue.
 
-2. **Area-specific plan file** (if one exists and you changed status or priorities):
-   - For extend, prefer updating PROJECT_STATE §4 plus keeping the canonical pointers current:\n+     - `.cursor/rules/subtrees/core__extend.mdc`\n+     - `packages/core/src/tree/util/EXTEND_RULES.md`\n+     - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
-   - For other areas: create or update a plan file in `.cursor/` if the project starts tracking that area the same way.
+2. **Area-specific plan file** (only if one is currently active and you changed status or priorities):
+   - For extend, prefer `PROJECT_STATE.md` plus the canonical pointers:
+     - `.cursor/rules/subtrees/core__extend.mdc`
+     - `packages/core/src/tree/util/EXTEND_RULES.md`
+     - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
+   - For other areas: create a plan file only when the repo starts tracking that area as active work.
 
 3. **`.cursor/changes.md`** (if there was a significant fix or discovery):
    - Add a short entry at the top with today's date (see main rules).
