@@ -117,6 +117,18 @@ touching production code.
     unchanged child surfaces instead of shallow-cloning and replacing the
     resolved value, so resolving an attribute selector no longer reparents the
     source value
+- `packages/core/src/tree/selector-pseudo.ts`,
+  `packages/core/src/tree/selector-list.ts`,
+  `packages/core/src/tree/selector-compound.ts`, and
+  `packages/core/src/tree/selector-complex.ts`
+  - resolved selector wrappers now construct derived selector surfaces with
+    owned/reusable unchanged children instead of shallow-cloning wrappers and
+    replacing resolved children, so source selector arguments, items, and
+    components stay parented to their canonical wrappers after
+    `resolve(context)`
+  - selector expansion and extend copy sites are intentionally separate from
+    this cleanup; they still represent generated selector output, not
+    shallow-wrapper replacement
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

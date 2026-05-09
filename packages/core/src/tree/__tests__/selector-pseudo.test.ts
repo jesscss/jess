@@ -143,9 +143,11 @@ describe('PseudoSelector', () => {
       name: ':is',
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
+    const sourceArg = pseudoNode.value.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(`${resolved}`).toBe(':is(.foo, .bar)');
+    expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });
 });

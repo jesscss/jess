@@ -184,8 +184,15 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (evaluatedArg === currentArg) {
           return this;
         }
-        const node = this.clone();
-        node.value.arg = evaluatedArg;
+        const node = new PseudoSelector(
+          {
+            ...this.value,
+            arg: evaluatedArg
+          },
+          this._options ? { ...this._options } : undefined,
+          this.location.length ? this.location : undefined,
+          this.treeContext
+        ).inherit(this);
         attachSelectorBitLibrary(node, context.selectorBits);
         return node;
       }

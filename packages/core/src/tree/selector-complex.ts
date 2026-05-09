@@ -16,6 +16,7 @@ import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState }
 import { consumeTriviaBetween, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -30,6 +31,12 @@ const isComplexSelectorComponent = (part: ComplexSelectorComponent | Nil): part 
   return !isNode(part, N.Nil);
 };
 
+const isComplexSelectorComponentNode = (part: Node): part is ComplexSelectorComponent => {
+  return part instanceof Selector
+    && !isNode(part, N.SelectorList)
+    && !isNode(part, N.ComplexSelector);
+};
+
 /**
  * Selectors with combinators.
  *
@@ -40,10 +47,32 @@ const isComplexSelectorComponent = (part: ComplexSelectorComponent | Nil): part 
  * relative selector, which means it may start with a combinator.
  */
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  private withComponents(value: ComplexSelectorValue): this {
-    const node = this.clone();
-    node.set(null, value);
-    return node;
+  private ownComponent(component: ComplexSelectorComponent): ComplexSelectorComponent {
+    const owned = canReuseLeaf(component) ? reuseLeaf(component) : copyWithReusableLeaves(component);
+    if (!isComplexSelectorComponentNode(owned)) {
+      throw new TypeError('Expected complex selector component copy');
+    }
+    return owned;
+  }
+
+  private withComponents(
+    value: ComplexSelectorValue,
+    sourceValue: readonly ComplexSelectorComponent[] = this.value
+  ): this {
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        // Own unchanged source children; evaluated clones may carry runtime state.
+        value.map(component => sourceValue.includes(component) ? this.ownComponent(component) : component),
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    if (value.some(component => component.hoistToRoot)) {
+      node.hoistToRoot = true;
+    }
+    return node.inherit(this);
   }
 
   private renderComplexSyntax(options?: PrintOptions): string {
@@ -238,7 +267,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (!changed) {
           return selector;
         }
-        return selector.withComponents(value.filter(isComplexSelectorComponent));
+        return selector.withComponents(value.filter(isComplexSelectorComponent), currentValue);
       }
     );
   }
@@ -326,7 +355,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (!changed) {
           return selector;
         }
-        return selector.withComponents(value.filter(isComplexSelectorComponent));
+        return selector.withComponents(value.filter(isComplexSelectorComponent), currentValue);
       }
     );
   }

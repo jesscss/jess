@@ -17,6 +17,7 @@ import {
   emitCommentTriviaBeforeDelimiter,
   emitTriviaTokens
 } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 function emitSelectorListItem(
   item: Selector,
@@ -34,10 +35,26 @@ function emitSelectorListItem(
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  private withSelectors(value: Selector[]): this {
-    const node = this.clone();
-    node.set(null, value);
-    return node;
+  private ownSelector(item: Selector): Selector {
+    const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector copy');
+    }
+    return owned;
+  }
+
+  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        // Own unchanged source children; evaluated clones may carry runtime state.
+        value.map(item => sourceValue.includes(item) ? this.ownSelector(item) : item),
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    return node.inherit(this);
   }
 
   private renderSelectorListSyntax(options?: PrintOptions): string {
@@ -226,7 +243,7 @@ export class SelectorList extends Selector<Selector[]> {
         if (!changed) {
           return list;
         }
-        return list.withSelectors(flattened);
+        return list.withSelectors(flattened, currentValue);
       }
     );
   }
@@ -300,7 +317,7 @@ export class SelectorList extends Selector<Selector[]> {
         if (!changed) {
           return list;
         }
-        return list.withSelectors(flattened);
+        return list.withSelectors(flattened, currentValue);
       }
     );
   }

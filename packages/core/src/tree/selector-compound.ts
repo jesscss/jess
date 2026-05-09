@@ -9,6 +9,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 /**
  * @example
@@ -41,10 +42,29 @@ function emitCompoundPart(
 }
 
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  private withComponents(value: Selector[]): this {
-    const node = this.clone();
-    node.set(null, value);
-    return node;
+  private ownSelector(item: Selector): Selector {
+    const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector copy');
+    }
+    return owned;
+  }
+
+  private withComponents(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        // Own unchanged source children; evaluated clones may carry runtime state.
+        value.map(item => sourceValue.includes(item) ? this.ownSelector(item) : item),
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    if (value.some(item => item.hoistToRoot)) {
+      node.hoistToRoot = true;
+    }
+    return node.inherit(this);
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
@@ -157,7 +177,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (!changed) {
           return sel;
         }
-        return sel.withComponents(value);
+        return sel.withComponents(value, currentValue);
       }
     );
   }
@@ -212,7 +232,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (!changed) {
           return sel;
         }
-        return sel.withComponents(value);
+        return sel.withComponents(value, currentValue);
       }
     );
   }

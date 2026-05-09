@@ -109,9 +109,14 @@ quoted wrappers directly as well, so interpolated source quoted values are no
 longer reparented to the resolved string wrapper.
 `packages/core/src/tree/selector-attr.ts` now constructs resolved attribute
 selector wrappers with owned/reusable unchanged child surfaces, so resolving an
-attribute selector no longer reparents the source attribute value. The unused
-`freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
-`packages/core/src/tree/util/cloning.ts`.
+attribute selector no longer reparents the source attribute value. Pseudo,
+selector-list, compound, and complex selector wrappers now use the same direct
+derived-construction pattern for resolved selector arguments/items/components,
+leaving source selector children parented to their canonical wrappers. Selector
+expansion and extend clone sites are still a different category: they produce
+generated selector output rather than repairing shallow-wrapper replacement.
+The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
+from `packages/core/src/tree/util/cloning.ts`.
 
 ## Work Loop
 

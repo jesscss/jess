@@ -154,9 +154,15 @@ describe('Complex selector', () => {
         co('>'),
         el('.foo')
       ]);
+      const sourceCompound = selector.value[0]!;
+      const sourceCombinator = selector.value[1]!;
+      const sourceChild = selector.value[2]!;
       const resolved = await selector.resolve(context);
 
       expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(sourceCompound.parent).toBe(selector);
+      expect(sourceCombinator.parent).toBe(selector);
+      expect(sourceChild.parent).toBe(selector);
       expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
     });
   });

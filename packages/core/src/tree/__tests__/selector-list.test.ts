@@ -134,9 +134,13 @@ describe('Selector list', () => {
       ]),
       el('.bar')
     ]);
+    const sourceFirst = selector.value[0]!;
+    const sourceSecond = selector.value[1]!;
     const resolved = await selector.resolve(context);
 
     expect(`${resolved}`).toBe('a[data=foo],\n.bar');
+    expect(sourceFirst.parent).toBe(selector);
+    expect(sourceSecond.parent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$attr-name],\n.bar');
   });
 });
