@@ -3,9 +3,7 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
-import type { IParseResult } from './types/index.js';
-import type { ILexingResult } from 'chevrotain';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**
@@ -97,8 +95,37 @@ export interface PluginInterface {
 
 const { isArray } = Array;
 
+const JESS_ERROR_CODES = [
+  'parse/unexpected-token',
+  'parse/unterminated-string',
+  'parse/unexpected-syntax',
+  'parse/syntax-error',
+  'resolve/name-not-found',
+  'import/circular-compose',
+  'eval/bad-call-arity',
+  'eval/type-mismatch',
+  'extend/protected-boundary',
+  'extend/not-found',
+  'extend/not-accessible',
+  'plugin/unsupported-feature',
+  'eval/deprecated',
+  'resolve/unused-variable',
+  'selector/duplicate',
+  'selector/parentless-ampersand'
+] as const satisfies readonly ConstructorParameters<typeof JessError>[0]['code'][];
+
+type JessErrorCode = typeof JESS_ERROR_CODES[number];
+
+const jessErrorCodeSet: ReadonlySet<string> = new Set(JESS_ERROR_CODES);
+
+function isJessErrorCode(code: string): code is JessErrorCode {
+  return jessErrorCodeSet.has(code);
+}
+
 export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
+
+  declare safeParse: PluginInterface['safeParse'];
 
   /**
    * Does a basic path resolution. Node resolution is in other plugins.
@@ -123,12 +150,7 @@ export abstract class AbstractPlugin implements PluginInterface {
 
   /** Default source getter */
   async getSource(absoluteFilePath: string): Promise<string> {
-    try {
-      const result = await readFile(absoluteFilePath, 'utf8');
-      return result;
-    } catch (error: any) {
-      throw error;
-    }
+    return readFile(absoluteFilePath, 'utf8');
   }
 
   /** Gets the first match using from the filesystem that exists */
@@ -143,15 +165,16 @@ export abstract class AbstractPlugin implements PluginInterface {
   }
 
   parse(filePath: string, source: string): Rules {
-    const safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
+    const safeParse = this.safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }
     const { tree, errors } = safeParse.call(this, filePath, source);
     if (errors.length > 0) {
       const firstError = errors[0]!;
+      const code = isJessErrorCode(firstError.code) ? firstError.code : 'parse/syntax-error';
       throw new JessError({
-        code: firstError.code as any,
+        code,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,

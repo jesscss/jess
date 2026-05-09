@@ -153,13 +153,6 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   /**
-   * If this ruleset shares its value object with a descendant ruleset, give those
-   * descendants their own value so mutating this ruleset's value.selector does not
-   * overwrite the descendant's selector (e.g. .rep_ace nested ruleset case).
-   *
-   * @todo - this is LLM garbage, remove later
-   */
-  /**
    * Compose a child selector with its parent selector, resolving `&`.
    *
    * Two cases:
@@ -562,11 +555,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   /**
-   * Render the opening of this ruleset (selector)
-   * @todo - Efficiently serialize the selector with and without comments?
-  */
-  /** Ensure every node in the selector has F_VISIBLE so toString() does not skip them (rep_ace bug).
-   * Do NOT add F_VISIBLE to implicit ampersands: they must stay invisible so nested output stays short. */
+   * Make authored selector nodes printable while keeping implicit ampersands
+   * invisible so nested output stays short.
+   */
   private static ensureSelectorVisible(sel: Selector | Nil): void {
     if (!sel || sel instanceof Nil) {
       return;
@@ -1329,28 +1320,6 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
     );
   }
-
-  /** @todo move to ToCssVisitor */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   const { sels, value } = this
-  //   context.inSelector = true
-  //   sels.toCSS(context, out)
-  //   context.inSelector = false
-  //   out.add(' ')
-  //   value.toCSS(context, out)
-  // }
-
-  /** @todo Move to ToModuleVisitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.rule({\n', this.location)
-  //   context.indent++
-  //   out.add(`sels: `)
-  //   this.sels.toModule(context, out)
-  //   out.add(`,\nvalue: `)
-  //   this.value.toModule(context, out)
-  //   context.indent--
-  //   out.add(`},${JSON.stringify(this.location)})`)
-  // }
 }
 
 type RulesetParams = ConstructorParameters<typeof Ruleset>;

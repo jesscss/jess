@@ -1,4 +1,4 @@
-import { Dimension, Num, Sequence, Operation, List } from './tree/index.js';
+import { Dimension, Num, Sequence, Operation } from './tree/index.js';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
@@ -140,9 +140,10 @@ export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
 });
 
 export const clamp = (min: number, max: number): ConversionPlugin => (value: unknown) => {
-  if (typeof value !== 'number') {
-    return Math.max(min, Math.min(max, value as number));
+  if (typeof value === 'number') {
+    return Math.max(min, Math.min(max, value));
   }
+  return value;
 };
 
 /**
@@ -242,7 +243,7 @@ export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
  * ```
  */
 export const splitSequence = (): PreprocessParams => {
-  return (args: any[], context: Context): any[] => {
+  return (args: any[], _context: Context): any[] => {
     // Only process if we have exactly one argument that is a Sequence
     if (args.length !== 1 || !isNode(args[0], N.Sequence)) {
       return args;
@@ -256,15 +257,14 @@ export const splitSequence = (): PreprocessParams => {
       const item = sequence.value[i]!;
 
       // Check if this is the last item and it's an Operation (likely a slash)
-      if (i === sequence.value.length - 1 && item.type === 'Operation') {
-        const [left, op, right] = (item as Operation).value;
+      if (i === sequence.value.length - 1 && item instanceof Operation) {
+        const [left, , right] = item.value;
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)
         // This handles test cases where Num(0) is used as a placeholder for undefined
         if (right) {
-          const isPlaceholder = right.type === 'Num'
-            && (right as any).value?.number === 0;
+          const isPlaceholder = right instanceof Num && right.value.number === 0;
           if (!isPlaceholder) {
             splitArgs.push(right);
           }

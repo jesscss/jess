@@ -67,7 +67,7 @@ function summarizeArray(items: unknown[], opts: Required<SerializeTypesOptions>)
   // For non-node arrays emit a compact summary: [a, b]
   const parts = items.map((item) => {
     if (isJessNode(item)) {
-      return opts.useShortType ? (item as any).shortType : (item as any).type;
+      return opts.useShortType ? item.shortType : item.type;
     }
     if (Array.isArray(item)) {
       return '[' + summarizeArray(item, opts) + ']';
@@ -84,7 +84,10 @@ function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeT
   }
   const first = arr[0];
   if (isJessNode(first)) {
-    const inner = arr.map(item => serializeNode(item as Node, depth + 1, opts, visiting)).join('\n');
+    const childPad = indent(depth + 1, opts.indentSize);
+    const inner = arr.map(item => (
+      isJessNode(item) ? serializeNode(item, depth + 1, opts, visiting) : `${childPad}(undefined)`
+    )).join('\n');
     return `${pad}[\n${inner}\n${pad}]`;
   }
   // Not a node array; show compact
@@ -123,7 +126,7 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
   if (!opts.showOptions) {
     return null;
   }
-  const nodeOptions = (n as any).options;
+  const nodeOptions = n.options;
   if (!nodeOptions || typeof nodeOptions !== 'object') {
     return null;
   }
@@ -136,9 +139,10 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
 }
 
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
-  const typeName = opts.useShortType ? (n as any).shortType : (n as any).type;
+  const typeName = opts.useShortType ? n.shortType : n.type;
   const pad = indent(depth, opts.indentSize);
-  const role = (n as any)?.options?.role as string | undefined;
+  const roleValue = n.options.role;
+  const role = typeof roleValue === 'string' ? roleValue : undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
 
@@ -148,7 +152,7 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   }
   visiting.add(n);
 
-  const value = (n as any).value as unknown;
+  const { value } = n;
   const optionsStr = serializeNodeOptions(n, depth, opts, visiting);
 
   // If the main value is a primitive, include it inline
@@ -186,8 +190,8 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
 
   // Special-case Number plain object: print compact form
   if (typeName === 'Num' && isPlainObject(value)) {
-    const num = (value as any).number;
-    const keys = Object.keys(value as Record<string, unknown>).filter(k => (value as any)[k] !== undefined);
+    const num = value.number;
+    const keys = Object.keys(value).filter(k => value[k] !== undefined);
     if (typeof num === 'number' && (keys.length === 1 || (keys.length === 0))) {
       visiting.delete(n);
       if (optionsStr) {
