@@ -150,16 +150,66 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override allowRuleRoot = true;
 
+  private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
+    if (canReuseLeaf(node)) {
+      return reuseLeaf(node);
+    }
+    const copy = node.clone(true);
+    copy.frozen = true;
+    return copy;
+  }
+
+  private copyValueForDerived(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+  }
+
+  private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
+    if (!node) {
+      return undefined;
+    }
+    if (canReuseLeaf(node)) {
+      return reuseLeaf(node);
+    }
+    const copy = node.clone(true);
+    copy.frozen = true;
+    return copy;
+  }
+
+  private withParts(value: DeclarationValue): this {
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        value,
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    return node.inherit(this);
+  }
+
+  private derive(): this {
+    return this.withParts({
+      name: this.copyNameForDerived(this.value.name),
+      value: this.copyValueForDerived(this.value.value),
+      important: this.copyImportantForDerived(this.value.important)
+    });
+  }
+
   private withValue(value: Node): this {
-    const node = this.clone(false) as this;
-    node.value.value = value;
-    return node;
+    return this.withParts({
+      name: this.copyNameForDerived(this.value.name),
+      value,
+      important: this.copyImportantForDerived(this.value.important)
+    });
   }
 
   private withImportant(important: Any<'flag'>): this {
-    const node = this.clone(false) as this;
-    node.value.important = important;
-    return node;
+    return this.withParts({
+      name: this.copyNameForDerived(this.value.name),
+      value: this.copyValueForDerived(this.value.value),
+      important
+    });
   }
 
   private formatNonCustomValue(valOut: string, _options: PrintOptions) {
@@ -276,7 +326,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override prepareRegistration(context: Context): MaybePromise<this> {
     /** We need a derived declaration, because registration prep mutates name/value/options. */
-    let node = this.clone(false) as this;
+    let node = this.derive();
     node.preEvaluated = true;
     // Index should already be assigned by parent Rules
     return this._prepareDeclarationRegistration(node, context);

@@ -65,6 +65,11 @@ touching production code.
     and non-leaf nodes still use defensive owned copies. Nested source-free
     reference result containers also use the shared reusable-leaf traversal
     rather than freezing every child leaf
+- `packages/core/src/tree/declaration.ts`
+  - declaration registration/eval derived wrappers now construct with owned or
+    reusable child surfaces instead of shallow-cloning the declaration and then
+    replacing individual children, so resolving a declaration no longer
+    reparents the source value
 - `packages/core/src/tree/call.ts`
   - non-plain `Call.resolve()` now keeps an owned copied call surface while
     reusing childless source-free scalar leaves; plain string CSS calls build

@@ -102,10 +102,12 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
+    const sourceValue = node.value.value;
 
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('color: red');
+    expect(sourceValue.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();

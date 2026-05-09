@@ -60,7 +60,11 @@ reusable-leaf traversal instead of freezing every child leaf. Merged
 declaration reference flattening also reuses the copied value leaves it is
 handed instead of copying them again, and merged declaration references
 normalize the already-owned evaluated value directly instead of making one more
-result copy. Post-eval
+result copy. `packages/core/src/tree/declaration.ts` now derives registration
+and eval-time declaration wrappers with owned/reusable child surfaces instead
+of shallow-cloning the declaration before replacing individual children, so
+source declaration values stay parented to the canonical source declaration
+after `resolve(context)`. Post-eval
 merged declaration coalescing in `packages/core/src/tree/rules.ts` now keeps
 accumulated values read-only and lets merge composition own the copy boundary
 instead of recopying stored/list-flattened leaves. The `Call.evalNode`
