@@ -38,8 +38,9 @@ The remaining work is production conversion, not old model preservation.
     leaves instead of copying them again
   - merged declaration references now normalize the evaluated owned value
     directly instead of making one more defensive result copy
-  - ordinary reference result and declaration value evaluation still use
-    defensive deep copies
+  - childless static fallback values with no source location now resolve
+    directly; source-backed values, defaults, containers, ordinary reference
+    results, and declaration value evaluation still use defensive deep copies
 - `packages/core/src/tree/call.ts`
   - `Call.resolve()` still deep-clones before eval for non-plain calls; plain
     string CSS calls now build their evaluated output directly, copying only

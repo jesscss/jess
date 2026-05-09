@@ -1301,6 +1301,40 @@ function cloneReferenceResultNode(
   );
 }
 
+function hasNodeChild(value: unknown): boolean {
+  if (isNode(value)) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.some(item => hasNodeChild(item));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.values(value).some(item => hasNodeChild(item));
+  }
+  return false;
+}
+
+function canReuseFallbackValue(node: Node): boolean {
+  return node.hasFlag(F_STATIC)
+    && node.location.length === 0
+    && !hasNodeChild(node.value);
+}
+
+function evaluateFallbackValue(
+  referenceNode: Reference,
+  fallbackValue: Node,
+  context: Context
+): MaybePromise<Node> {
+  if (canReuseFallbackValue(fallbackValue)) {
+    return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
+  }
+  const out = fallbackValue.copy(true, freezeChildren).eval(context);
+  if (isThenable(out)) {
+    return Promise.resolve(out).then(node => node);
+  }
+  return out;
+}
+
 function finalizeFallbackReferenceResult(args: {
   referenceNode: Reference;
   valueKey: NormalizedLookupKey;
@@ -1325,11 +1359,7 @@ function finalizeFallbackReferenceResult(args: {
     any.options.role = referenceNode.options.role;
     return any;
   }
-  const out = fallbackValue.copy(true, freezeChildren).eval(context);
-  if (isThenable(out)) {
-    return Promise.resolve(out).then(node => node);
-  }
-  return out;
+  return evaluateFallbackValue(referenceNode, fallbackValue, context);
 }
 
 function finalizeDirectReferenceResult(

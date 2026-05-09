@@ -183,6 +183,38 @@ describe('reference', () => {
       expect(refNode.toTrimmedString()).toBe('$missing');
     });
 
+    it('does not copy childless scalar fallback values before resolve(context)', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const fallback = any('red');
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+        const resolved = await refNode.resolve(context);
+
+        expect(`${resolved}`).toBe('red');
+        expect(scalarCopies).toBe(0);
+        expect(refNode.toTrimmedString()).toBe('$missing');
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),
