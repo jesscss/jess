@@ -211,9 +211,12 @@ now avoids catch/rethrow and no longer hides unsupported-file no-tree results
 behind `any`; import evaluation handles that no-tree case explicitly. The
 follow-up cleanup kept that scope: `rules.ts` no longer catches only to rethrow
 mixin-argument eval failures, import parse-error checks use small `unknown`-safe
-helpers, and `use-webpack-resolver.ts` is whole-file lint clean. Broader typed
-cleanup in legacy high-debt files should be planned as its own batch, not mixed
-into node-copy work opportunistically.
+helpers, and `use-webpack-resolver.ts` is whole-file lint clean. `bitset.ts`
+now keeps the third-party bitset internals behind local guards and preserves
+selector-bit library identity without `any` field copying; treat this as a
+small utility boundary cleanup, not as selector/extend generated-output work.
+Broader typed cleanup in legacy high-debt files should be planned as its own
+batch, not mixed into node-copy work opportunistically.
 
 ## Working Rule
 

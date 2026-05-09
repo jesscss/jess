@@ -118,10 +118,13 @@ commented import clone scaffolding there, and made import evaluation handle the
 no-tree case explicitly. The follow-up cleanup removed redundant mixin-argument
 eval catch/rethrow plumbing in `rules.ts`, moved import parse-error detection
 behind small `unknown`-safe helpers, and made the small webpack resolver helper
-whole-file lint clean. Broader typed cleanup in legacy high-debt files should be
-planned separately because the staged-file hook lints whole touched files. This
-cleanup does not change the selector/extend generated-output clone frontier
-below.
+whole-file lint clean. `packages/core/src/tree/util/bitset.ts` now keeps
+third-party bitset internals behind local guards and preserves selector-bit
+library identity without copying private fields through `any`; this is a
+utility boundary cleanup, not a selector/extend generated-output clone change.
+Broader typed cleanup in legacy high-debt files should be planned separately
+because the staged-file hook lints whole touched files. This cleanup does not
+change the selector/extend generated-output clone frontier below.
 Derived empty mixin wrapper surfaces in
 `packages/core/src/tree/rules.ts` are constructed directly instead of
 shallow-cloning non-empty body rules and clearing them, avoiding parent churn on
