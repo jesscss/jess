@@ -50,9 +50,11 @@ own list/sequence/rules containers. In `packages/core/src/tree/reference.ts`,
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Childless static fallback values with no source
 location also resolve directly; copied fallback and declaration reference
-containers keep an owned surface while reusing source-free scalar leaves.
-Source-backed fallbacks, defaults, and non-leaf nodes still use the defensive
-copy path. Nested source-free reference result containers also use the shared
+containers keep an owned surface while reusing source-free scalar leaves through
+the shared reusable-leaf traversal. The old `freezeChildren` reference-result
+branch and bespoke source-free list/sequence clone path are gone.
+Source-backed fallbacks, defaults, and non-leaf nodes still use defensive owned
+copies. Nested source-free reference result containers also use the shared
 reusable-leaf traversal instead of freezing every child leaf. Merged
 declaration reference flattening also reuses the copied value leaves it is
 handed instead of copying them again, and merged declaration references
@@ -65,8 +67,8 @@ instead of recopying stored/list-flattened leaves. The `Call.evalNode`
 non-leaky scope test fails without it. In `packages/core/src/tree/call.ts`,
 ordinary JS functions with explicit empty positional arg lists no longer copy
 the empty `List`; copied positional and callback arg containers now reuse
-source-free scalar leaves while keeping an owned arg-list surface. Plain string
-CSS calls now build evaluated `resolve(context)` output directly instead of
+source-free scalar leaves while keeping an owned arg-list surface only when
+needed. Plain string CSS calls now build evaluated `resolve(context)` output directly instead of
 deep-cloning the whole call first; nested argument containers still get a local
 copied eval surface when needed so source argument containers stay canonical.
 Non-plain `Call.resolve()` also uses the shared reusable-leaf traversal now:

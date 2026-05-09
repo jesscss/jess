@@ -50,6 +50,9 @@ The remaining work is production conversion, not old model preservation.
 - `packages/core/src/tree/reference.ts`
   - `preserveRulesLike` variable references now keep a shallow owned wrapper
     instead of deep-copying the referenced rules-like body
+  - fallback, runtime-binding, and declaration reference result copies now use
+    the shared reusable-leaf traversal directly; the old `freezeChildren` copy
+    branch and bespoke source-free list/sequence clone path are gone
   - merged declaration reference flattening now reuses the already-copied
     leaves instead of copying them again
   - merged declaration references now normalize the evaluated owned value
@@ -65,10 +68,9 @@ The remaining work is production conversion, not old model preservation.
     reusing childless source-free scalar leaves; plain string CSS calls build
     their evaluated output directly, copying only nested argument containers
     that need their own eval surface
-  - JS function argument isolation still uses frozen deep copies for non-empty
-    source-backed or non-leaf values; ordinary empty positional JS calls skip
-    the arg-list copy, and copied positional/callback arg containers now reuse
-    source-free scalar leaves
+  - JS function argument isolation copies only when a local arg-list surface is
+    needed; ordinary empty positional JS calls skip the arg-list copy, and
+    copied positional/callback arg containers reuse source-free scalar leaves
 - `packages/core/src/tree/control.ts`
   - `$for` aggregate/empty output wrappers are now constructed directly instead
     of shallow-cloning the loop body rules and clearing them

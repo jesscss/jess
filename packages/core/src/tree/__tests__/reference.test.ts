@@ -1,4 +1,4 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -247,6 +247,36 @@ describe('reference', () => {
       }
     });
 
+    it('does not clone source-free fallback containers before resolving them', async () => {
+      const originalClone = List.prototype.clone;
+      let listClones = 0;
+      List.prototype.clone = function cloneForCounting(
+        this: List,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        listClones++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const fallback = list([any('red')]);
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+        const resolved = await refNode.resolve(context);
+
+        expect(`${resolved}`).toBe('red');
+        expect(listClones).toBe(0);
+        expect(fallback.toTrimmedString()).toBe('red');
+      } finally {
+        List.prototype.clone = originalClone;
+      }
+    });
+
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),
@@ -338,6 +368,39 @@ describe('reference', () => {
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free declaration reference containers before resolving them', async () => {
+      const sourceValue = list([any('red')]);
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      const evaldRoot = await node.eval(context);
+      context.root = evaldRoot as RulesClass;
+      context.rulesContext = evaldRoot as RulesClass;
+
+      const originalClone = List.prototype.clone;
+      let listClones = 0;
+      List.prototype.clone = function cloneForCounting(
+        this: List,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        listClones++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
+
+        expect(`${resolved}`).toBe('red');
+        expect(listClones).toBe(0);
+        expect(sourceValue.toTrimmedString()).toBe('red');
+      } finally {
+        List.prototype.clone = originalClone;
       }
     });
 

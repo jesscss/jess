@@ -15,11 +15,10 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { canReuseLeaf, copyWithReusableLeaves, freezeChildren, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { List } from './list.js';
-import { Sequence } from './sequence.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
@@ -1293,32 +1292,16 @@ function applyReferenceResultMetadata(
 
 function cloneReferenceResultNode(
   referenceNode: Reference,
-  node: Node,
-  options?: { reuseSourceFreeLeaves?: boolean }
+  node: Node
 ): Node {
   return applyReferenceResultMetadata(
     referenceNode,
-    options?.reuseSourceFreeLeaves
-      ? copyReferenceValue(node)
-      : node.copy(true, freezeChildren).inherit(node),
+    copyReferenceValue(node),
     { frozen: true }
   );
 }
 
-function cloneReferenceChild(node: Node): Node {
-  if (canReuseReferenceValue(node)) {
-    return reuseLeaf(node);
-  }
-  return copyWithReusableLeaves(node);
-}
-
 function copyReferenceValue(node: Node): Node {
-  const sourceFreeSequence = node instanceof Sequence || node instanceof List;
-  if (sourceFreeSequence && node.location.length === 0) {
-    const copy = node.clone(false).inherit(node);
-    copy.set(null, node.value.map(child => cloneReferenceChild(child)));
-    return copy;
-  }
   return copyWithReusableLeaves(node).inherit(node);
 }
 
@@ -1451,7 +1434,7 @@ function finalizeRuntimeVarBindingResult(
       evald.frozen = true;
       return evald;
     }
-    return cloneReferenceResultNode(referenceNode, evald, { reuseSourceFreeLeaves: true });
+    return cloneReferenceResultNode(referenceNode, evald);
   };
   const evaluatedBinding = (() => {
     const savedRulesContext = context.rulesContext;
@@ -1546,7 +1529,7 @@ function finalizeEvaluatedDeclarationReference(
 ): Node {
   const resultNode = isMergedAssign
     ? evaluatedNode
-    : cloneReferenceResultNode(referenceNode, evaluatedNode, { reuseSourceFreeLeaves: true });
+    : cloneReferenceResultNode(referenceNode, evaluatedNode);
   return applyReferenceResultMetadata(
     referenceNode,
     normalizeMergedAssignReferenceResult(
