@@ -2,6 +2,7 @@ import type { IToken } from 'chevrotain';
 import { TreeContext, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
+import { Node } from '../node.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -204,6 +205,54 @@ describe('List', () => {
 
     expect(`${resolved}`).toBe('one, four');
     expect(listNode.toTrimmedString()).toBe('one, $item');
+  });
+
+  it('keeps source list children canonical after list addition', () => {
+    const leftChild = any('left');
+    const rightChild = any('right');
+    const left = list([leftChild]);
+    const right = list([rightChild]);
+
+    const result = left.operate(right, '+', context);
+
+    expect(`${result}`).toBe('left, right');
+    expect(leftChild.parent).toBe(left);
+    expect(rightChild.parent).toBe(right);
+  });
+
+  it('keeps source scalar children canonical after list plus scalar', () => {
+    const leftChild = any('left');
+    const right = any('right');
+    const left = list([leftChild]);
+
+    const result = left.operate(right, '+', context);
+
+    expect(`${result}`).toBe('left, right');
+    expect(leftChild.parent).toBe(left);
+    expect(right.parent).toBeUndefined();
+  });
+
+  it('reuses childless source-free scalar leaves during list addition copies', () => {
+    const originalClone = Node.prototype.clone;
+    let scalarClones = 0;
+    Node.prototype.clone = function cloneForCounting(
+      this: Node,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.type === 'Any' && this.valueOf() === 'right') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const result = list([any('left')]).operate(list([any('right')]), '+', context);
+
+      expect(`${result}`).toBe('left, right');
+      expect(scalarClones).toBe(0);
+    } finally {
+      Node.prototype.clone = originalClone;
+    }
   });
 
   it('should serialize to a list', () => {

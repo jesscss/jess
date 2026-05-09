@@ -84,6 +84,10 @@ The remaining work is production conversion, not old model preservation.
   - `Sequence.operate('+')` now copies both sides through the shared
     reusable-leaf traversal, so source children keep their canonical parents
     and childless source-free scalar leaves are reused
+- `packages/core/src/tree/list.ts`
+  - `List.operate('+')` now uses the same reusable-leaf traversal for both
+    operands, so list addition no longer reparents source children and still
+    reuses childless source-free scalar leaves
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

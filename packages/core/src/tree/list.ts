@@ -14,6 +14,7 @@ import {
   renderNodeToBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -144,12 +145,14 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const newList = new List<Node>([...this.value], this._options ? { ...this._options } : undefined);
-    newList.inherit(this);
+    const newList = copyWithReusableLeaves(this);
+    if (!(newList instanceof List)) {
+      throw new TypeError('Copied list must remain a List');
+    }
     if (b instanceof List) {
-      newList.value.push(...b.value);
+      newList.value.push(...b.value.map(value => copyWithReusableLeaves(value)));
     } else {
-      newList.value.push(b);
+      newList.value.push(copyWithReusableLeaves(b));
     }
     return newList;
   }

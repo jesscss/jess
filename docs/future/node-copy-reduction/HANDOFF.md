@@ -87,7 +87,9 @@ leaves inside that body are reused. Source-free scalar `$for` iteration values
 bind without being copied or cloned first. `packages/core/src/tree/sequence.ts`
 now routes `Sequence.operate('+')` through the shared reusable-leaf traversal
 for both operands, so sequence/list addition does not reparent source children
-and does not clone childless source-free scalar leaves. The unused
+and does not clone childless source-free scalar leaves. `packages/core/src/tree/list.ts`
+now does the same for `List.operate('+')`, so list/list and list/scalar
+addition keep source children canonical while reusing inert scalar leaves. The unused
 `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
 `packages/core/src/tree/util/cloning.ts`.
 
