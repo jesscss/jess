@@ -147,9 +147,11 @@ describe('quoted', () => {
         ref({ key: 'message' }, { type: 'variable' })
       ])]
     }));
+    const sourceValue = quotedNode.value;
     const resolved = await quotedNode.resolve(context);
 
     expect(`${resolved}`).toBe('"say-one, hello"');
+    expect(sourceValue.parent).toBe(quotedNode);
     expect(quotedNode.toTrimmedString()).toBe('"say-one, $message"');
   });
 });

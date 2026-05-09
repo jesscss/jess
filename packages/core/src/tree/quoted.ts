@@ -24,10 +24,13 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
  * to avoid conflict with the built-in `String` class.
  */
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
-  private withValue(value: string | Any | Interpolated): this {
-    const node = this.clone(false) as this;
-    node.set(null, value);
-    return node;
+  private withValue(value: string | Any | Interpolated): Quoted {
+    return new Quoted(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this.location,
+      this.treeContext
+    ).inherit(this);
   }
 
   private renderQuotedSyntax(options?: PrintOptions): string {

@@ -103,6 +103,10 @@ touching production code.
   - resolved block wrappers now construct directly from the resolved child
     instead of shallow-cloning first, so resolving a block child no longer
     reparents the source block value
+- `packages/core/src/tree/quoted.ts`
+  - resolved quoted wrappers now construct directly from the resolved value
+    instead of shallow-cloning first, so resolving interpolated quoted content
+    no longer reparents the source quoted value
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
