@@ -106,7 +106,10 @@ now uses the same direct construction pattern for resolved block wrappers, so
 source block values stay parented to the canonical source block after
 `resolve(context)`. `packages/core/src/tree/quoted.ts` now constructs resolved
 quoted wrappers directly as well, so interpolated source quoted values are no
-longer reparented to the resolved string wrapper. The unused
+longer reparented to the resolved string wrapper.
+`packages/core/src/tree/selector-attr.ts` now constructs resolved attribute
+selector wrappers with owned/reusable unchanged child surfaces, so resolving an
+attribute selector no longer reparents the source attribute value. The unused
 `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
 `packages/core/src/tree/util/cloning.ts`.
 

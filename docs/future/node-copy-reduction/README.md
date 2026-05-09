@@ -112,6 +112,11 @@ touching production code.
   - resolved quoted wrappers now construct directly from the resolved value
     instead of shallow-cloning first, so resolving interpolated quoted content
     no longer reparents the source quoted value
+- `packages/core/src/tree/selector-attr.ts`
+  - resolved attribute selector wrappers now construct with owned/reusable
+    unchanged child surfaces instead of shallow-cloning and replacing the
+    resolved value, so resolving an attribute selector no longer reparents the
+    source value
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

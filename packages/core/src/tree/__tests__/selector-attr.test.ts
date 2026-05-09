@@ -102,9 +102,11 @@ describe('Attribute Selector', () => {
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
     });
+    const sourceValue = attrNode.value.value;
     const resolved = await attrNode.resolve(context);
 
     expect(`${resolved}`).toBe('[data=foo]');
+    expect(sourceValue?.parent).toBe(attrNode);
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
 

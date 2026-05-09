@@ -8,6 +8,7 @@ import { quoted } from './quoted.js';
 import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -26,16 +27,39 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
+  private copyForDerived(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+  }
+
   private withResolvedParts(name: string | Node, value: Node | undefined): this {
-    const node = this.clone(false) as this;
-    node.set(null, { ...this.value, name, value });
+    const currentName = this.value.name;
+    const currentValue = this.value.value;
+    const nextName = (
+      typeof name === 'string'
+        ? name
+        : name === currentName
+          ? this.copyForDerived(name)
+          : name
+    );
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        {
+          ...this.value,
+          name: nextName,
+          value: value && value === currentValue ? this.copyForDerived(value) : value
+        },
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    node.inherit(this);
     return node;
   }
 
   private createResolvedValueNode(value: Node): this {
-    const node = this.clone();
-    node.set('value', quoted(String(value.valueOf())));
-    return node;
+    return this.withResolvedParts(this.value.name, quoted(String(value.valueOf())));
   }
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
