@@ -31,6 +31,20 @@ import { getPrintOptions, OutputWriter } from '../util/print.js';
 
 let context: Context;
 
+function expectRulesNode(node: Node | undefined): Rules {
+  if (!isNode(node, N.Rules)) {
+    throw new Error(`Expected Rules, got ${node?.type ?? 'undefined'}`);
+  }
+  return node;
+}
+
+function expectDeclarationNode(node: Node | undefined): Declaration {
+  if (!isNode(node, N.Declaration)) {
+    throw new Error(`Expected Declaration, got ${node?.type ?? 'undefined'}`);
+  }
+  return node;
+}
+
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
   opts.searchParents = true;
@@ -115,10 +129,11 @@ describe('Rules', () => {
     index = node.at(1)?.index ?? index;
     expect(node.at(2)?.index).toBeGreaterThan(index);
     index = node.at(2)?.index ?? index;
-    expect((node.at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
-    index = (node.at(2) as Rules).at(1)?.index ?? index;
-    expect((node.at(2) as Rules).at(2)?.index).toBeGreaterThan(index);
-    expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
+    const childRules = expectRulesNode(node.at(2));
+    expect(childRules.at(0)?.index).toBeGreaterThan(index);
+    index = childRules.at(1)?.index ?? index;
+    expect(childRules.at(2)?.index).toBeGreaterThan(index);
+    expect(expectRulesNode(childRules.at(2)).at(0)?.index).toBeGreaterThan(index);
   });
 
   it('keeps Rules render flags render-local', () => {
@@ -152,6 +167,35 @@ describe('Rules', () => {
     expect(first).toBe('color: red;');
     expect(second).toBe('color: red;');
     expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
+  it('derives rules resolve wrappers without shallow-cloning the source rules', async () => {
+    const originalClone = Node.prototype.clone;
+    let clonedRules = 0;
+    Node.prototype.clone = function cloneForCounting(
+      this: Node,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.type === 'Rules') {
+        clonedRules++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const root = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
+      ]);
+
+      const resolved = await root.resolve(context);
+
+      expect(`${resolved}`).toContain('color: red;');
+      expect(clonedRules).toBe(0);
+      expect(root.evaluated).toBe(false);
+    } finally {
+      Node.prototype.clone = originalClone;
+    }
   });
 
   it('does not count direct comment children as numeric rule entries', () => {
@@ -726,10 +770,19 @@ describe('Rules', () => {
 
         root = await root.eval(context);
         expect(context.searchScope.size).toBe(0);
-        const scope1 = root.at(1) as any;
-        const scope2 = scope1.value.rules.at(1) as any;
-        const scope3 = scope2.value.rules.at(0) as any;
-        const scope3Rules = scope3.value.rules as Rules;
+        const scope1 = root.at(1);
+        if (!isNode(scope1, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at index 1, got ${scope1?.type ?? 'undefined'}`);
+        }
+        const scope2 = scope1.value.rules.at(1);
+        if (!isNode(scope2, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at nested index 1, got ${scope2?.type ?? 'undefined'}`);
+        }
+        const scope3 = scope2.value.rules.at(0);
+        if (!isNode(scope3, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
+        }
+        const scope3Rules = scope3.value.rules;
         expect(`${getVar(scope3Rules, 'z', { start: 0 })}`).toBe('$z: black');
         const scope3Found = scope3Rules.find('declaration', 'z', 'VarDeclaration', {
           filter: () => true,
@@ -739,7 +792,7 @@ describe('Rules', () => {
           start: 0
         });
         expect(`${scope3Found}`).toBe('$z: black');
-        const border = scope3Rules.at(0) as Declaration;
+        const border = expectDeclarationNode(scope3Rules.at(0));
         context.rulesContext = scope3Rules;
         const evald = await border.eval(context);
         expect(`${evald}`).toBe('border-color: black');
@@ -764,7 +817,7 @@ describe('Rules', () => {
         ]);
 
         root = await root.eval(context);
-        const color = root.at(1) as Declaration;
+        const color = expectDeclarationNode(root.at(1));
         const evald = await color.eval(context);
         expect(`${evald}`).toBe('color: blue');
       });
@@ -786,7 +839,7 @@ describe('Rules', () => {
         ]);
 
         root = await root.eval(context);
-        const width = root.at(0) as Declaration;
+        const width = expectDeclarationNode(root.at(0));
         const evald = await width.eval(context);
         expect(`${evald}`).toBe('total-width: 96em');
       });
@@ -813,8 +866,11 @@ describe('Rules', () => {
         ]);
 
         root = await root.eval(context);
-        const grid = root.at(0) as any;
-        const width = grid.value.rules.at(0) as Declaration;
+        const grid = root.at(0);
+        if (!isNode(grid, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
+        }
+        const width = expectDeclarationNode(grid.value.rules.at(0));
         context.rulesContext = grid.value.rules;
         const evald = await width.eval(context);
         expect(`${evald}`).toBe('total-width: 96em');
@@ -830,7 +886,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         let inherited = node.at(1);
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one: three');
+        expect(`${getVar(expectRulesNode(inherited), 'one')}`).toBe('$one: three');
       });
 
       it('shadows variables #2', async () => {
@@ -844,7 +900,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         let inherited = node.at(1);
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one: three');
+        expect(`${getVar(expectRulesNode(inherited), 'one')}`).toBe('$one: three');
       });
 
       it.skip('sets existing variables', async () => {
@@ -859,7 +915,7 @@ describe('Rules', () => {
         // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
         expect(`${getVar(node, 'one')}`).toBe('$one: three');
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one := three');
+        expect(`${getVar(expectRulesNode(inherited), 'one')}`).toBe('$one := three');
       });
 
       it.skip('demonstrates setDefined behavior like Sass !global', async () => {
@@ -886,14 +942,14 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         // The first rule should use the original value (red) - setDefined shouldn't affect earlier references
-        let firstRule = node.at(1) as Rules; // First rule (background)
-        let firstDecl = firstRule.at(0) as Declaration;
+        let firstRule = expectRulesNode(node.at(1)); // First rule (background)
+        let firstDecl = expectDeclarationNode(firstRule.at(0));
         let firstResult = await firstDecl.eval(context);
         expect(`${firstResult}`).toBe('background: red');
 
         // The last rule should also use the updated value (blue)
-        let lastRule = node.at(3) as Rules; // Last rule (border-color)
-        let lastDecl = lastRule.at(0) as Declaration;
+        let lastRule = expectRulesNode(node.at(3)); // Last rule (border-color)
+        let lastDecl = expectDeclarationNode(lastRule.at(0));
         let lastResult = await lastDecl.eval(context);
         expect(`${lastResult}`).toBe('border-color: blue');
 
@@ -984,7 +1040,7 @@ describe('Rules', () => {
         }
         // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
         if (!isNode(boxRules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${(boxRules as any)?.type || 'undefined'}`);
+          throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
         }
         expect(boxRules.value.length).toBe(2);
 
@@ -1017,7 +1073,7 @@ describe('Rules', () => {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${(box3Rules as any)?.type || 'undefined'}`);
+          throw new Error(`Expected Rules, got ${box3Rules?.type ?? 'undefined'}`);
         }
         expect(box3Rules.value.length).toBe(2);
 
@@ -1186,9 +1242,10 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         // child1.jess should see child2.jess's vars because it owns the `@use`
-        expect(`${getVar(node.at(0) as Rules, 'one')}`).toBe('$one: two');
+        const childRules = expectRulesNode(node.at(0));
+        expect(`${getVar(childRules, 'one')}`).toBe('$one: two');
         // child1.jess can still see its own vars
-        expect(`${getVar(node.at(0) as Rules, 'foo')}`).toBe('$foo: bar');
+        expect(`${getVar(childRules, 'foo')}`).toBe('$foo: bar');
         // root.jess can see child1.jess's vars but not child2.jess's
         expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
         expect(getVar(node, 'one')).toBeUndefined();

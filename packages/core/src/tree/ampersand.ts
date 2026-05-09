@@ -393,8 +393,15 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      * preserve it instead of overwriting with the frame selector.
      */
     if (!amp._selectorContainer && frame && frame.selector) {
-      amp = this.clone(false) as Ampersand;
-      amp._selectorContainer = frame;
+      amp = new Ampersand(
+        {
+          appendValue: this.value.appendValue,
+          selectorContainer: frame
+        },
+        this.options,
+        this.location.length === 0 ? undefined : this.location,
+        this.treeContext
+      ).inherit(this);
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);

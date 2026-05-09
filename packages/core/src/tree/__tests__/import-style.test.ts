@@ -1272,6 +1272,17 @@ describe('Style import', () => {
     });
 
     it('keeps replacement configs on an imported child rules surface when additive nodes are also present', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedLibraryRules = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.value.some(node => isNode(node, N.VarDeclaration) && node.value.name.valueOf() === 'baseColor')) {
+          clonedLibraryRules++;
+        }
+        return originalClone.apply(this, args);
+      };
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
@@ -1305,20 +1316,25 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      try {
+        const evald = await node.eval(context);
+        const composedRules = evald.at(0) as Rules;
+        const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
-      expect(composedRules.options.importBoundary).toBe(true);
-      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-      expect(composedRules.toString()).toContain('.base');
-      expect(composedRules.toString()).toContain('.addon');
+        expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.options.importBoundary).toBe(true);
+        expect(importedChildSurface?.options.importBoundary).toBeUndefined();
+        expect(composedRules.toString()).toContain('.base');
+        expect(composedRules.toString()).toContain('.addon');
+        expect(clonedLibraryRules).toBe(0);
 
-      const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
-      expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
-      expect(`${derivedColorValue}`).toBe('teal');
+        const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
+        expect(derivedColor).toBeDefined();
+        const derivedColorValue = await derivedColor!.value.value.eval(context);
+        expect(`${derivedColorValue}`).toBe('teal');
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
     });
 
     it('keeps replacement "set" configs on an imported child rules surface for detached ruleset variable closures', async () => {

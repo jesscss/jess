@@ -92,7 +92,13 @@ surface, so source selectors stay parented to the canonical ruleset. Body rules
 remain the existing registration/eval surface because copying them changes
 mixin and scope behavior. Mixin interpolated-name registration prep also
 derives an owned wrapper directly, so source dynamic names, params, guards, and
-body rules stay canonical.
+body rules stay canonical. `Rules.resolve(context)` now uses the same explicit
+derived Rules surface instead of `clone(false)`, preserving function-registry
+and live-slot ownership while forcing lazy registry re-indexing. Import-owned
+child Rules surfaces reuse that helper too, so configured import placement no
+longer shallow-clones imported source rules. Framed ampersand resolution now
+constructs the framed wrapper directly instead of shallow-cloning the source
+ampersand just to attach the active selector frame.
 Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before

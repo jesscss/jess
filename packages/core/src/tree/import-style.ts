@@ -165,7 +165,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
     const wrapped = childNodes !== undefined
       ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules.treeContext).inherit(anchorRules)
-      : anchorRules.clone(false) as Rules;
+      : anchorRules.derive();
     if (options?.resetScopeFrame) {
       wrapped.scopeFrame = undefined;
     }

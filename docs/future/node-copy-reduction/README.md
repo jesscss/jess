@@ -21,6 +21,9 @@ verified baseline is green; use focused tests to prove each copy boundary before
 touching production code.
 
 - `packages/core/src/tree/rules.ts`
+  - `Rules.resolve(context)` now uses the shared derived Rules surface instead
+    of `clone(false)`; the derived wrapper preserves function-registry and
+    live-slot ownership while forcing lazy registry re-indexing
   - guarded mixin dispatch now has local candidate accessors; those accessors
     are the next place to replace raw candidate field reads when an explicit
     ownership surface exists
@@ -101,6 +104,14 @@ touching production code.
   - interpolated-name registration prep now derives an owned wrapper directly
     instead of shallow-cloning the source mixin before replacing the name, so
     source dynamic names, params, guards, and body rules stay canonical
+- `packages/core/src/tree/import-style.ts`
+  - import-owned child Rules surfaces now reuse the shared derived Rules helper
+    instead of shallow-cloning imported source rules, keeping the import
+    placement surface explicit without treating clone as isolation machinery
+- `packages/core/src/tree/ampersand.ts`
+  - framed ampersand resolution now constructs the framed wrapper directly
+    instead of shallow-cloning the source ampersand just to attach the current
+    selector frame
 - `packages/core/src/tree/interpolated.ts` and
   `packages/core/src/tree/selector-interpolated.ts`
   - resolved interpolated wrappers now construct directly when replacement

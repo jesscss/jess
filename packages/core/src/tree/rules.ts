@@ -321,44 +321,60 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    */
   override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
     const newRules = super.clone(deep, cloneFn);
+    newRules.resetDerivedState(this);
 
+    return newRules;
+  }
+
+  derive(value: Node[] = [...this.value]): Rules {
+    const sourceLocation = this.location.length === 6 ? this.location : undefined;
+    const derived = new Rules(
+      value,
+      this.options ? { ...this.options } : undefined,
+      sourceLocation,
+      this.treeContext
+    ).inherit(this);
+    derived.resetDerivedState(this);
+
+    return derived;
+  }
+
+  private resetDerivedState(source: Rules): void {
     // Only preserve *function* registry across clones.
     // This supports Less plugin compat, where plugins can inject functions into the registry
     // without creating AST nodes that would be re-registered on clone.
     //
     // Do NOT reuse declaration/mixin registries across clones; those should always
     // be rebuilt from AST nodes via lazy indexing.
-    if (this.functionRegistry) {
-      newRules.functionRegistry = this.functionRegistry.cloneForRules(newRules);
+    if (source.functionRegistry) {
+      this.functionRegistry = source.functionRegistry.cloneForRules(this);
     }
 
     // IMPORTANT: cloned Rules must re-index their own registries.
     // Otherwise, a clone can inherit `rulesIndexed` from the source Rules (often == value.length),
     // while having an empty/incorrect registry state, causing lookup misses (e.g. @c in detached-rulesets).
-    newRules.rulesIndexed = 0;
-    newRules._indexing = false;
-    newRules._rulesSet = undefined;
-    newRules.varsByName = undefined;
-    newRules.mixinsByName = undefined;
-    newRules._hasExtends = false;
-    newRules._hasReferenceImports = false;
+    this.rulesIndexed = 0;
+    this._indexing = false;
+    this._rulesSet = undefined;
+    this.varsByName = undefined;
+    this.mixinsByName = undefined;
+    this._hasExtends = false;
+    this._hasReferenceImports = false;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
     // source tree can shadow a live wrapper frame that actually carries live slots.
-    if (this.scopeFrame?.liveSlotsByName.size || this.scopeFrame?.fallbackFrame) {
-      newRules.scopeFrame = buildScopeFrame(
+    if (source.scopeFrame?.liveSlotsByName.size || source.scopeFrame?.fallbackFrame) {
+      this.scopeFrame = buildScopeFrame(
         undefined,
-        newRules,
-        this.scopeFrame.parent,
-        new Map(this.scopeFrame.liveSlotsByName)
+        this,
+        source.scopeFrame.parent,
+        new Map(source.scopeFrame.liveSlotsByName)
       );
-      newRules.scopeFrame.fallbackFrame = this.scopeFrame.fallbackFrame;
+      this.scopeFrame.fallbackFrame = source.scopeFrame.fallbackFrame;
     } else {
-      newRules.scopeFrame = undefined;
+      this.scopeFrame = undefined;
     }
-
-    return newRules;
   }
 
   /**
@@ -3405,7 +3421,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.clone(false).eval(context);
+    return this.derive().eval(context);
   }
 }
 

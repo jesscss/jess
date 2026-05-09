@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
+  Ampersand,
   type SimpleSelector, type Combinator, type Selector
 } from '../index.js';
 import { Context } from '../../context.js';
@@ -103,6 +104,39 @@ describe('Ampersand', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
+    const originalClone = Ampersand.prototype.clone;
+    let clonedAmpersands = 0;
+    Ampersand.prototype.clone = function cloneForCounting(
+      this: Ampersand,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedAmpersands++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const frame = ruleset({
+        selector: sel([el('.foo')]),
+        rules: rules([])
+      });
+      context.rulesetFrames.push(frame);
+      const node = amp();
+
+      const resolved = await node.resolve(context);
+
+      expect(resolved).toBeInstanceOf(Ampersand);
+      if (!(resolved instanceof Ampersand)) {
+        throw new Error(`Expected Ampersand, got ${resolved.type}`);
+      }
+      expect(resolved.getResolvedSelector()?.toTrimmedString()).toBe('.foo');
+      expect(clonedAmpersands).toBe(0);
+      expect(node.evaluated).toBe(false);
+    } finally {
+      Ampersand.prototype.clone = originalClone;
+    }
   });
 
   it('should collapse selectors when in collapsing mode #1', async () => {
