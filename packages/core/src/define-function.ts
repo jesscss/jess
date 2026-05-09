@@ -6,6 +6,7 @@ import type { Context } from './context.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
+import { copyWithReusableLeaves } from './tree/util/cloning.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
@@ -323,9 +324,16 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   }
 
   /** Normalize positional args into a List node for tracking original arguments */
-  const originalArgsList: List = listArg
-    ? listArg.copy(true)
-    : new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
+  let originalArgsList: List;
+  if (listArg) {
+    const copiedListArg = copyWithReusableLeaves(listArg);
+    if (!isNode(copiedListArg, N.List)) {
+      throw new TypeError('Copied function arguments must remain a List');
+    }
+    originalArgsList = copiedListArg;
+  } else {
+    originalArgsList = new List(args.map(arg => isNode(arg) ? copyWithReusableLeaves(arg) : arg));
+  }
 
   const hasParams = !!(fn as any)?.options?.params;
 

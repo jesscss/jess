@@ -10,7 +10,7 @@ import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
-import { freezeChildren } from './util/cloning.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 import { List, list } from './list.js';
 import {
   isRenderBuffer,
@@ -311,7 +311,7 @@ export class Call extends Node<CallValue, CallOptions> {
       const out: Node[] = [];
       for (const node of nodes.value) {
         const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence)
-          ? node.copy(true, freezeChildren)
+          ? copyWithReusableLeaves(node)
           : node;
         const evald = await evalTarget.eval(context) as Node;
         if (evald === node && options?.preserveSourceParents) {
@@ -447,7 +447,10 @@ export class Call extends Node<CallValue, CallOptions> {
         const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
         /** Freeze args */
         if (args && (args.value.length > 0 || shouldPassListArgs)) {
-          const copiedArgs = args.copy(true, freezeChildren);
+          const copiedArgs = copyWithReusableLeaves(args);
+          if (!isNode(copiedArgs, N.List)) {
+            throw new TypeError('Copied call arguments must remain a List');
+          }
           for (const copied of copiedArgs.value) {
             // Anchor copied references to this Call so nested property refs
             // (e.g. $list-1) can walk back to call-site Rules.

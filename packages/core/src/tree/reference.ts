@@ -15,7 +15,7 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { canReuseLeaf, freezeChildren, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, freezeChildren, reuseLeaf } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { List } from './list.js';
@@ -1319,7 +1319,7 @@ function copyReferenceValue(node: Node): Node {
     copy.set(null, node.value.map(child => cloneReferenceChild(child)));
     return copy;
   }
-  return node.copy(true, cloneReferenceChild).inherit(node);
+  return copyWithReusableLeaves(node).inherit(node);
 }
 
 function canReuseReferenceValue(node: Node): boolean {
@@ -1339,7 +1339,7 @@ function evaluateFallbackValue(
   if (canReuseFallbackValue(fallbackValue)) {
     return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
   }
-  const out = fallbackValue.copy(true, freezeChildren).eval(context);
+  const out = copyReferenceValue(fallbackValue).eval(context);
   if (isThenable(out)) {
     return Promise.resolve(out).then(node => node);
   }
@@ -1546,7 +1546,7 @@ function finalizeEvaluatedDeclarationReference(
 ): Node {
   const resultNode = isMergedAssign
     ? evaluatedNode
-    : cloneReferenceResultNode(referenceNode, evaluatedNode);
+    : cloneReferenceResultNode(referenceNode, evaluatedNode, { reuseSourceFreeLeaves: true });
   return applyReferenceResultMetadata(
     referenceNode,
     normalizeMergedAssignReferenceResult(
@@ -1681,7 +1681,7 @@ function evaluateReferenceValueNode(
     if (options.reuseSourceFreeLeaves === true) {
       return copyReferenceValue(declValue).eval(context);
     }
-    return declValue.copy(true, freezeChildren).eval(context);
+    return copyReferenceValue(declValue).eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }

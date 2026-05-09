@@ -39,12 +39,17 @@ proven copy-free, dynamic guards still use an owned copy surface, and default
 guard probing reuses that copied guard across both `default()` states. Ruleset
 call and ordinary mixin body clones reuse childless source-free scalar leaves;
 the rules containers and non-leaf nodes still get owned eval surfaces. Detached
-ruleset unlock is covered as an intentionally shallow clone boundary. In
-`packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
+ruleset unlock is covered as an intentionally shallow clone boundary. Merged
+declaration composition now uses the shared reusable-leaf copy traversal, so
+source-free scalar leaves are not copied again while the output still gets its
+own list/sequence/rules containers. In `packages/core/src/tree/reference.ts`,
+`preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Childless static fallback values with no source
-location also resolve directly; source-backed fallbacks, defaults, and
-containers still use the defensive copy path. Merged declaration reference
+location also resolve directly; copied fallback and declaration reference
+containers keep an owned surface while reusing source-free scalar leaves.
+Source-backed fallbacks, defaults, and non-leaf nodes still use the defensive
+copy path. Merged declaration reference
 flattening also reuses the copied value leaves it is handed instead of copying
 them again, and merged declaration references normalize the already-owned
 evaluated value directly instead of making one more result copy. Post-eval
@@ -54,18 +59,20 @@ instead of recopying stored/list-flattened leaves. The `Call.evalNode`
 `sourceNode.parent` repair is still active because the detached-ruleset
 non-leaky scope test fails without it. In `packages/core/src/tree/call.ts`,
 ordinary JS functions with explicit empty positional arg lists no longer copy
-the empty `List`; callbacks that receive the arg `List` itself still keep the
-defensive copy. Plain string CSS calls now build evaluated `resolve(context)`
-output directly instead of deep-cloning the whole call first; nested argument
-containers still get a local copied eval surface when needed so source argument
-containers stay canonical. Derived empty mixin wrapper surfaces in
+the empty `List`; copied positional and callback arg containers now reuse
+source-free scalar leaves while keeping an owned arg-list surface. Plain string
+CSS calls now build evaluated `resolve(context)` output directly instead of
+deep-cloning the whole call first; nested argument containers still get a local
+copied eval surface when needed so source argument containers stay canonical.
+Derived empty mixin wrapper surfaces in
 `packages/core/src/tree/rules.ts` are constructed directly instead of
 shallow-cloning non-empty body rules and clearing them, avoiding parent churn on
 cloned body children while preserving rule options and function registry
 ownership. `$for` aggregate and zero-iteration output wrappers in
 `packages/core/src/tree/control.ts` are also constructed directly now; the
 per-iteration body wrapper still uses the existing shallow wrapper path because
-it owns the live-slot `ScopeFrame` for that iteration.
+it owns the live-slot `ScopeFrame` for that iteration. Source-free scalar
+`$for` iteration values bind without being copied or cloned first.
 
 ## Work Loop
 

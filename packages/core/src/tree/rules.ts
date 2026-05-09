@@ -44,7 +44,7 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, freezeChildren, hasNodeChild, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, freezeChildren, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
@@ -2943,9 +2943,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
       decl.value.value = value;
     };
+    const copyMergedValue = (value: Node): Node => (
+      canReuseLeaf(value)
+        ? reuseLeaf(value)
+        : copyWithReusableLeaves(value)
+    );
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
-      const priorCopy = priorValue.copy(true, freezeChildren);
-      const nextCopy = nextValue.copy(true, freezeChildren);
+      const priorCopy = copyMergedValue(priorValue);
+      const nextCopy = copyMergedValue(nextValue);
       const toMergedItems = (value: Node): Node[] => {
         const items: Node[] = [];
         const collect = (node: Node): void => {
@@ -3056,10 +3061,10 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       if (rest.length === 1) {
-        setDeclValue(node, rest[0]!.copy(true, freezeChildren));
+        setDeclValue(node, copyMergedValue(rest[0]!));
         return;
       }
-      setDeclValue(node, new List(rest.map(item => item.copy(true, freezeChildren))));
+      setDeclValue(node, new List(rest.map(item => copyMergedValue(item))));
     };
 
     const lastVisibleByName = new Map<string, DeclOccurrence>();
@@ -3114,7 +3119,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           accumulatedValueByName.get(name)
         ) ?? currentAccumulatedValue;
       }
-      currentAccumulatedValue ??= getDeclValue(node)?.value.copy(true, freezeChildren);
+      const currentValue = getDeclValue(node)?.value;
+      currentAccumulatedValue ??= currentValue ? copyMergedValue(currentValue) : undefined;
 
       const existingAnchor = mergedAnchorByName.get(name);
       if (existingAnchor && isNode(existingAnchor.node, N.Declaration)) {

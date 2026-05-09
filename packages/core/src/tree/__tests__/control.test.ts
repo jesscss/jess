@@ -535,6 +535,84 @@ describe('Control Nodes', () => {
     }
   });
 
+  it('keeps $for per-iteration body wrappers shallow', async () => {
+    const context = new Context();
+    const originalClone = Rules.prototype.clone;
+    let deepBodyClones = 0;
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      const [deep] = args;
+      if (
+        deep === true
+        && this.value.some(node => (
+          node.type === 'Declaration'
+          && node.value?.name?.valueOf?.() === 'item'
+        ))
+      ) {
+        deepBodyClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const loopRules = rules([
+        decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+      ]);
+      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+      const evald = await root.eval(context);
+
+      expect(`${evald}`).toContain('item: a');
+      expect(`${evald}`).toContain('item: b');
+      expect(deepBodyClones).toBe(0);
+    } finally {
+      Rules.prototype.clone = originalClone;
+    }
+  });
+
+  it('binds source-free scalar $for values without copying or cloning them first', async () => {
+    const context = new Context();
+    const originalCopy = Any.prototype.copy;
+    const originalClone = Any.prototype.clone;
+    let scalarCopies = 0;
+    let scalarClones = 0;
+    Any.prototype.copy = function copyForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this.valueOf() === 'a' || this.valueOf() === 'b') {
+        scalarCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'a' || this.valueOf() === 'b') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const loopRules = rules([
+        decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+      ]);
+      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+      const evald = await root.eval(context);
+
+      expect(`${evald}`).toContain('item: a');
+      expect(`${evald}`).toContain('item: b');
+      expect(scalarCopies).toBe(0);
+      expect(scalarClones).toBe(0);
+    } finally {
+      Any.prototype.copy = originalCopy;
+      Any.prototype.clone = originalClone;
+    }
+  });
+
   it('forces public rulesVisibility for $if, $for, and $while rules', () => {
     const privateRules = rules([], {
       rulesVisibility: {

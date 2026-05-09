@@ -42,6 +42,9 @@ The remaining work is production conversion, not old model preservation.
   - post-eval merged declaration coalescing now keeps its accumulated value map
     as a read-only snapshot surface and lets merge composition own the copy
     boundary, instead of recopying every stored/list-flattened value leaf
+  - merged declaration composition now copies owned value containers with the
+    shared reusable-leaf traversal, so source-free scalar leaves are not copied
+    again while list/sequence/rules surfaces remain owned by the output
 - `packages/core/src/tree/reference.ts`
   - `preserveRulesLike` variable references now keep a shallow owned wrapper
     instead of deep-copying the referenced rules-like body
@@ -50,20 +53,24 @@ The remaining work is production conversion, not old model preservation.
   - merged declaration references now normalize the evaluated owned value
     directly instead of making one more defensive result copy
   - childless static fallback values with no source location now resolve
-    directly; source-backed values, defaults, containers, ordinary reference
-    results, and declaration value evaluation still use defensive deep copies
+    directly; copied fallback/declaration containers now keep an owned surface
+    while reusing source-free scalar leaves; source-backed values, defaults,
+    and non-leaf nodes still use defensive owned copies
 - `packages/core/src/tree/call.ts`
   - `Call.resolve()` still deep-clones before eval for non-plain calls; plain
     string CSS calls now build their evaluated output directly, copying only
     nested argument containers that need their own eval surface
   - JS function argument isolation still uses frozen deep copies for non-empty
-    positional args and callbacks that receive the arg `List`; ordinary empty
-    positional JS calls skip the arg-list copy
+    source-backed or non-leaf values; ordinary empty positional JS calls skip
+    the arg-list copy, and copied positional/callback arg containers now reuse
+    source-free scalar leaves
 - `packages/core/src/tree/control.ts`
   - `$for` aggregate/empty output wrappers are now constructed directly instead
     of shallow-cloning the loop body rules and clearing them
   - per-iteration `$for` body rules still use the existing shallow wrapper path
     because they carry the live slot `ScopeFrame`
+  - source-free scalar `$for` iteration values bind directly without copy or
+    clone; the iteration wrapper remains the ownership surface
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

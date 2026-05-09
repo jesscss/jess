@@ -18,6 +18,7 @@ import type { Call } from './call.js';
 import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export const enum AssignmentType {
   Default = ':',
@@ -465,10 +466,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return;
           }
           if (mergedItems.length === 1) {
-            setVal(mergedItems[0]!.copy(true));
+            const item = mergedItems[0]!;
+            setVal(canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item));
             return;
           }
-          setVal(new List(mergedItems.map(item => item.copy(true))));
+          setVal(new List(mergedItems.map(item => (
+            canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item)
+          ))));
         };
         /** Registration prep already stabilized the name; eval handles the value. */
         if (node.type === 'VarDeclaration') {

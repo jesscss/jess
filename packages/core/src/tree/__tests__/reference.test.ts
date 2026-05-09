@@ -215,6 +215,38 @@ describe('reference', () => {
       }
     });
 
+    it('does not clone childless source-free scalar leaves inside copied fallback containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const fallback = list([any('red')]);
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+        const resolved = await refNode.resolve(context);
+
+        expect(`${resolved}`).toBe('red');
+        expect(scalarClones).toBe(0);
+        expect(fallback.toTrimmedString()).toBe('red');
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),
@@ -274,6 +306,39 @@ describe('reference', () => {
         foo: red;
         bar: red;
       `);
+    });
+
+    it('does not clone childless source-free scalar leaves inside declaration reference containers', async () => {
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: list([any('red')])
+        })
+      ]);
+      const evaldRoot = await node.eval(context);
+      context.root = evaldRoot as RulesClass;
+      context.rulesContext = evaldRoot as RulesClass;
+
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
+
+        expect(`${resolved}`).toBe('red');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
     });
 
     it('should get a var from scope below reference', async () => {
@@ -365,7 +430,7 @@ describe('reference', () => {
         const resolved = await ref({ key: 'background-color' }, { type: 'declaration' }).resolve(context);
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
-        expect(valueCopyCount).toBe(2);
+        expect(valueCopyCount).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
       }

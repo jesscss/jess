@@ -310,6 +310,38 @@ describe('Declaration', () => {
     `);
   });
 
+  it('normalizes merged declaration placeholders without recopying scalar leaves', async () => {
+    const node = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background-color'),
+        value: any('foo')
+      }, { assign: '+:' })
+    ]);
+    const originalCopy = Node.prototype.copy;
+    let scalarCopies = 0;
+    Node.prototype.copy = function copyForCounting(this: Node, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+      if (this.type === 'Any' && /^(red|foo)$/u.test(String(this.valueOf()))) {
+        scalarCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      const evald = await node.eval(context);
+
+      expect(`${evald}`).toBeString(`
+        background-color: red, foo;
+      `);
+      expect(scalarCopies).toBe(0);
+    } finally {
+      Node.prototype.copy = originalCopy;
+    }
+  });
+
   it('resolves merged declaration lookups without duplicating or keeping empty placeholders', async () => {
     const node = rules([
       decl({
@@ -427,7 +459,7 @@ describe('Declaration', () => {
       expect(`${evald}`).toBeString(`
         src: one, two, three;
       `);
-      expect(srcValueCopies).toBe(12);
+      expect(srcValueCopies).toBe(0);
     } finally {
       Node.prototype.copy = originalCopy;
     }

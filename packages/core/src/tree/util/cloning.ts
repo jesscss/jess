@@ -1,7 +1,7 @@
 import { F_NON_STATIC, Node } from '../node-base.js';
 
 /** Cloning functions */
-export function freezeChildren(node: Node) {
+export function freezeChildren<T extends Node>(node: T): T {
   let n = node.clone(true);
   n.frozen = true;
   return n;
@@ -31,7 +31,53 @@ export function canReuseLeaf(node: Node): boolean {
     && !hasNodeChild(node.value);
 }
 
-export function reuseLeaf(node: Node): Node {
+export function reuseLeaf<T extends Node>(node: T): T {
   node.frozen = true;
   return node;
+}
+
+export function cloneOrReuseLeaf(node: Node): Node {
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  return freezeChildren(node);
+}
+
+function copyChild(value: unknown): unknown {
+  if (value instanceof Node) {
+    return copyWithReusableLeaves(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => copyChild(item));
+  }
+  if (isRecord(value)) {
+    const out: Record<string, unknown> = {};
+    for (const key in value) {
+      if (Object.hasOwn(value, key)) {
+        out[key] = copyChild(value[key]);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+export function copyWithReusableLeaves(node: Node): Node {
+  if (node.type === 'Comment') {
+    const nilNode = node.nil?.();
+    if (nilNode) {
+      return nilNode.inherit(node);
+    }
+  }
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  const copy = node.copy(false).inherit(node);
+  copy.set(null, copyChild(node.value));
+  copy.frozen = true;
+  return copy;
 }
