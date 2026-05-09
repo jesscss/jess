@@ -1,12 +1,5 @@
 import { F_NON_STATIC, Node } from '../node-base.js';
 
-/** Cloning functions */
-export function freezeChildren<T extends Node>(node: T): T {
-  let n = node.clone(true);
-  n.frozen = true;
-  return n;
-};
-
 export function hasNodeChild(value: unknown): boolean {
   if (value instanceof Node) {
     return true;
@@ -34,13 +27,6 @@ export function canReuseLeaf(node: Node): boolean {
 export function reuseLeaf<T extends Node>(node: T): T {
   node.frozen = true;
   return node;
-}
-
-export function cloneOrReuseLeaf(node: Node): Node {
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
-  }
-  return freezeChildren(node);
 }
 
 function copyChild(value: unknown): unknown {

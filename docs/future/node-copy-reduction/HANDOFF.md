@@ -84,7 +84,12 @@ ownership. `$for` aggregate and zero-iteration output wrappers in
 per-iteration body wrapper owns a copied eval surface because it carries the
 live-slot `ScopeFrame` for that iteration, while childless source-free scalar
 leaves inside that body are reused. Source-free scalar `$for` iteration values
-bind without being copied or cloned first.
+bind without being copied or cloned first. `packages/core/src/tree/sequence.ts`
+now routes `Sequence.operate('+')` through the shared reusable-leaf traversal
+for both operands, so sequence/list addition does not reparent source children
+and does not clone childless source-free scalar leaves. The unused
+`freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
+`packages/core/src/tree/util/cloning.ts`.
 
 ## Work Loop
 

@@ -12,6 +12,7 @@ import {
   renderNodeToBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 export type SequenceOptions = {
   /**
@@ -162,15 +163,20 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`);
     }
-    const newSequence = this.clone();
+    const newSequence = copyWithReusableLeaves(this);
+    if (!(newSequence instanceof Sequence)) {
+      throw new TypeError('Copied sequence must remain a Sequence');
+    }
     if (b instanceof List) {
-      return new List([newSequence, ...b.value]).inherit(this);
+      return new List([
+        newSequence,
+        ...b.value.map(value => copyWithReusableLeaves(value))
+      ]).inherit(this);
     } else if (isNode(b, N.Sequence)) {
-      /** Inference not working in this class? */
-      const values = b.value.map(v => v.clone(true));
+      const values = b.value.map(v => copyWithReusableLeaves(v));
       newSequence.value.push(...values);
     } else {
-      b = b.clone(true);
+      b = copyWithReusableLeaves(b);
       newSequence.value.push(b);
     }
     return newSequence;

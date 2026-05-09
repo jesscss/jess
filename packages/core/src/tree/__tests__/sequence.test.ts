@@ -158,6 +158,55 @@ describe('Sequence', () => {
     expect(node.toTrimmedString()).toBe('0 one, $item 2');
   });
 
+  it('keeps source sequence children canonical after sequence addition', () => {
+    const leftChild = any('left');
+    const rightChild = any('right');
+    const left = seq([leftChild]);
+    const right = seq([rightChild]);
+
+    const result = left.operate(right, '+', context);
+
+    expect(`${result}`).toBe('left right');
+    expect(leftChild.parent).toBe(left);
+    expect(rightChild.parent).toBe(right);
+  });
+
+  it('keeps source list children canonical after sequence plus list', () => {
+    const leftChild = any('left');
+    const rightChild = any('right');
+    const left = seq([leftChild]);
+    const right = list([rightChild]);
+
+    const result = left.operate(right, '+', context);
+
+    expect(`${result}`).toBe('left, right');
+    expect(leftChild.parent).toBe(left);
+    expect(rightChild.parent).toBe(right);
+  });
+
+  it('reuses childless source-free scalar leaves during sequence addition copies', () => {
+    const originalClone = Node.prototype.clone;
+    let scalarClones = 0;
+    Node.prototype.clone = function cloneForCounting(
+      this: Node,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.type === 'Any' && this.valueOf() === 'right') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const result = seq([any('left')]).operate(seq([any('right')]), '+', context);
+
+      expect(`${result}`).toBe('left right');
+      expect(scalarClones).toBe(0);
+    } finally {
+      Node.prototype.clone = originalClone;
+    }
+  });
+
   it('should serialize to a single value', () => {
     let rule = seq([num(10), num(20), num(30)]);
     expect(`${rule}`).toBe('10 20 30');

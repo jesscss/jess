@@ -80,6 +80,10 @@ The remaining work is production conversion, not old model preservation.
     cloning inert values
   - source-free scalar `$for` iteration values bind directly without copy or
     clone; the iteration wrapper remains the ownership surface
+- `packages/core/src/tree/sequence.ts`
+  - `Sequence.operate('+')` now copies both sides through the shared
+    reusable-leaf traversal, so source children keep their canonical parents
+    and childless source-free scalar leaves are reused
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
