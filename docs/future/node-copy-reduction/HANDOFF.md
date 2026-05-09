@@ -89,7 +89,11 @@ now routes `Sequence.operate('+')` through the shared reusable-leaf traversal
 for both operands, so sequence/list addition does not reparent source children
 and does not clone childless source-free scalar leaves. `packages/core/src/tree/list.ts`
 now does the same for `List.operate('+')`, so list/list and list/scalar
-addition keep source children canonical while reusing inert scalar leaves. The unused
+addition keep source children canonical while reusing inert scalar leaves.
+`packages/core/src/tree/operation.ts` now builds preserved operation wrappers
+directly from final operands instead of shallow-cloning before replacement, so
+unchanged source operands remain parented to the source operation when a
+resolved sibling keeps the operation shape alive. The unused
 `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed from
 `packages/core/src/tree/util/cloning.ts`.
 

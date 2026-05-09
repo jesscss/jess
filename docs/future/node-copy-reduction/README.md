@@ -88,6 +88,11 @@ The remaining work is production conversion, not old model preservation.
   - `List.operate('+')` now uses the same reusable-leaf traversal for both
     operands, so list addition no longer reparents source children and still
     reuses childless source-free scalar leaves
+- `packages/core/src/tree/operation.ts`
+  - preserved operation wrappers now construct the derived operation directly
+    from final operands instead of shallow-cloning first, so unchanged source
+    operands are not reparented when a resolved sibling keeps the operation
+    shape alive
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions

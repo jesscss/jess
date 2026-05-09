@@ -13,6 +13,7 @@ import {
   renderNodeToBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -32,10 +33,16 @@ export class Operation extends Node<OperationValue> {
     return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
   }
 
-  private withOperands(left: Node, right: Node): this {
-    const node = this.clone();
-    node.set(null, [left, this.value[1], right]);
-    return node;
+  private withOperands(left: Node, right: Node): Operation {
+    const finalLeft = left === this.value[0] ? copyWithReusableLeaves(left) : left;
+    const finalRight = right === this.value[2] ? copyWithReusableLeaves(right) : right;
+    const node = new Operation(
+      [finalLeft, this.value[1], finalRight],
+      this._options ? { ...this._options } : undefined,
+      this.location,
+      this.treeContext
+    );
+    return node.inherit(this);
   }
 
   constructor(value: OperationValue, options?: any, location?: any, treeContext?: any) {

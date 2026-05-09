@@ -124,10 +124,13 @@ describe('Operation', () => {
       '+',
       any('two')
     ]);
+    const [leftOperand, , rightOperand] = operationNode.value;
     const resolved = await operationNode.resolve(context);
 
     expect(`${resolved}`).toBe('one, foo, two');
     expect(operationNode.toTrimmedString()).toBe('one, $item + two');
+    expect(leftOperand.parent).toBe(operationNode);
+    expect(rightOperand.parent).toBe(operationNode);
   });
 
   it('preserves slash-list operands instead of forcing math on outer operations', async () => {
@@ -157,11 +160,14 @@ describe('Operation', () => {
       '*',
       num(2)
     ]);
+    const [leftOperand, , rightOperand] = resolvedOperation.value;
 
     const resolved = await resolvedOperation.resolve(resolveContext);
     expect(resolveContext.printState.writer).toBeUndefined();
     expect(resolved.type).toBe('Operation');
     expect(resolved.toTrimmedString()).toBe('10px / 2 * 2');
+    expect(leftOperand.parent).toBe(resolvedOperation);
+    expect(rightOperand.parent).toBe(resolvedOperation);
   });
 
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {
