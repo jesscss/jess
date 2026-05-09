@@ -35,7 +35,9 @@ there when replacing them with an explicit ownership surface. Otherwise, target
 frozen-copy binding paths only where a focused proof shows the ownership
 problem. Param binding now reuses already-evaluated or static childless scalar
 values with no source location instead of copying them just to create a live
-slot; source-backed values and containers still use the defensive copy path. In
+slot. Resolving live-slot values also reuses those scalar leaves, including
+children of copied source-free `@arguments`/rest containers; source-backed
+values and containers still use the defensive copy path. In
 `packages/core/src/tree/reference.ts`, `preserveRulesLike` variable
 references now return the shallow owned rules-like wrapper directly; do not
 reintroduce a deep copy there. Childless static fallback values with no source

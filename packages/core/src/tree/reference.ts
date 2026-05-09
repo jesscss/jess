@@ -19,6 +19,7 @@ import { freezeChildren } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { List } from './list.js';
+import { Sequence } from './sequence.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
@@ -1292,13 +1293,34 @@ function applyReferenceResultMetadata(
 
 function cloneReferenceResultNode(
   referenceNode: Reference,
-  node: Node
+  node: Node,
+  options?: { reuseSourceFreeLeaves?: boolean }
 ): Node {
   return applyReferenceResultMetadata(
     referenceNode,
-    node.copy(true, freezeChildren).inherit(node),
+    options?.reuseSourceFreeLeaves
+      ? copyReferenceValue(node)
+      : node.copy(true, freezeChildren).inherit(node),
     { frozen: true }
   );
+}
+
+function cloneReferenceChild(node: Node): Node {
+  if (canReuseReferenceValue(node)) {
+    node.frozen = true;
+    return node;
+  }
+  return freezeChildren(node);
+}
+
+function copyReferenceValue(node: Node): Node {
+  const sourceFreeSequence = node instanceof Sequence || node instanceof List;
+  if (sourceFreeSequence && node.location.length === 0) {
+    const copy = node.clone(false).inherit(node);
+    copy.set(null, node.value.map(child => cloneReferenceChild(child)));
+    return copy;
+  }
+  return node.copy(true, cloneReferenceChild).inherit(node);
 }
 
 function hasNodeChild(value: unknown): boolean {
@@ -1314,10 +1336,15 @@ function hasNodeChild(value: unknown): boolean {
   return false;
 }
 
-function canReuseFallbackValue(node: Node): boolean {
-  return node.hasFlag(F_STATIC)
+function canReuseReferenceValue(node: Node): boolean {
+  return (node.hasFlag(F_STATIC) || (node.frozen && !node.hasFlag(F_NON_STATIC)))
     && node.location.length === 0
     && !hasNodeChild(node.value);
+}
+
+function canReuseFallbackValue(node: Node): boolean {
+  return node.hasFlag(F_STATIC)
+    && canReuseReferenceValue(node);
 }
 
 function evaluateFallbackValue(
@@ -1436,7 +1463,11 @@ function finalizeRuntimeVarBindingResult(
       evald.frozen = true;
       return evald;
     }
-    return cloneReferenceResultNode(referenceNode, evald);
+    if (canReuseReferenceValue(evald)) {
+      evald.frozen = true;
+      return evald;
+    }
+    return cloneReferenceResultNode(referenceNode, evald, { reuseSourceFreeLeaves: true });
   };
   const evaluatedBinding = (() => {
     const savedRulesContext = context.rulesContext;
@@ -1452,7 +1483,8 @@ function finalizeRuntimeVarBindingResult(
     }
     try {
       return evaluateReferenceValueNode(binding.value, context, {
-        preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset'
+        preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
+        reuseSourceFreeLeaves: true
       });
     } catch (error) {
       context.rulesContext = savedRulesContext;
@@ -1633,6 +1665,7 @@ function evaluateReferenceValueNode(
   context: Context,
   options: {
     preserveRulesLike?: boolean;
+    reuseSourceFreeLeaves?: boolean;
   } = {}
 ): MaybePromise<Node> {
   if (
@@ -1657,6 +1690,12 @@ function evaluateReferenceValueNode(
   try {
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
+    }
+    if (options.reuseSourceFreeLeaves === true && canReuseReferenceValue(declValue)) {
+      return declValue;
+    }
+    if (options.reuseSourceFreeLeaves === true) {
+      return copyReferenceValue(declValue).eval(context);
     }
     return declValue.copy(true, freezeChildren).eval(context);
   } finally {

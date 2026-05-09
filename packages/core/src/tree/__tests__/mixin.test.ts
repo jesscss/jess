@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Sequence } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
@@ -916,6 +916,49 @@ describe('Mixin', () => {
       }
     });
 
+    it('does not copy childless scalar params again when resolving live slots', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.use-color'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([
+              decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.use-color' }, { type: 'mixin' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('color: red;');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
     it('does not copy childless static default params just to bind mixin params', async () => {
       const originalCopy = Any.prototype.copy;
       let scalarCopies = 0;
@@ -1025,6 +1068,146 @@ describe('Mixin', () => {
       context.root = root;
 
       await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
+    });
+
+    it('does not copy childless scalar param values through @arguments children', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.args'),
+            params: list([
+              any('color', { role: 'property' }),
+              any('size', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.args' }, { type: 'mixin' }),
+                args: list([any('red'), any('10px')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('does not copy childless scalar rest param values when resolving rest slots', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.resty'),
+            params: list([
+              any('first', { role: 'property' }),
+              rest('rest')
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.resty' }, { type: 'mixin' }),
+                args: list([any('0'), any('red'), any('10px')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('keeps default param containers on the defensive copy path', async () => {
+      const originalCopy = Sequence.prototype.copy;
+      let containerCopies = 0;
+      Sequence.prototype.copy = function copyForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        containerCopies++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-default'),
+            params: list([
+              vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
+            ]),
+            rules: rules([])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-default' }, { type: 'mixin' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toBe('');
+        expect(containerCopies).toBeGreaterThan(0);
+      } finally {
+        Sequence.prototype.copy = originalCopy;
+      }
     });
 
     it('resolves param/default/rest/@arguments bindings without declaration lookup', async () => {

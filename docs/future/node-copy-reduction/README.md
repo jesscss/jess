@@ -26,6 +26,9 @@ The remaining work is production conversion, not old model preservation.
   - param/rest/`@arguments` binding still uses frozen deep copies in places;
     already-evaluated or static childless scalar values with no source location
     now bind directly
+  - resolving live-slot values now also reuses those source-free scalar leaves,
+    including children of copied source-free `@arguments`/rest containers; the
+    containers themselves still keep an owned copy surface
   - derived empty mixin wrapper surfaces are now constructed directly instead
     of shallow-cloning non-empty body rules and clearing them
   - post-eval merged declaration coalescing now keeps its accumulated value map
