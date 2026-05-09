@@ -208,9 +208,12 @@ runtime-eval copy debt.
 Recent quality pass note: utility cleanups should stay focused on files whose
 whole-file lint debt can actually be paid in the same patch. `Context.getTree()`
 now avoids catch/rethrow and no longer hides unsupported-file no-tree results
-behind `any`; import evaluation handles that no-tree case explicitly. Broader
-typed cleanup in legacy high-debt files should be planned as its own batch, not
-mixed into node-copy work opportunistically.
+behind `any`; import evaluation handles that no-tree case explicitly. The
+follow-up cleanup kept that scope: `rules.ts` no longer catches only to rethrow
+mixin-argument eval failures, import parse-error checks use small `unknown`-safe
+helpers, and `use-webpack-resolver.ts` is whole-file lint clean. Broader typed
+cleanup in legacy high-debt files should be planned as its own batch, not mixed
+into node-copy work opportunistically.
 
 ## Working Rule
 

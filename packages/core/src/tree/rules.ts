@@ -3661,22 +3661,18 @@ export class MixinCollection extends Node<MixinEntry[]> {
             nodeArgs.push(arg);
             continue;
           }
-          try {
-            const evald = await arg.eval(thisContext);
-            if (evald.type === 'Rest') {
-              const restValue = evald.value;
-              if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
-                for (const restArg of restValue.value) {
-                  nodeArgs.push(restArg);
-                }
-                continue;
+          const evald = await arg.eval(thisContext);
+          if (evald.type === 'Rest') {
+            const restValue = evald.value;
+            if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
+              for (const restArg of restValue.value) {
+                nodeArgs.push(restArg);
               }
+              continue;
             }
-            evald.frozen = true;
-            nodeArgs.push(evald);
-          } catch (error: any) {
-            throw error;
           }
+          evald.frozen = true;
+          nodeArgs.push(evald);
         } else {
           nodeArgs.push(cast(arg));
         }

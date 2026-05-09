@@ -16,6 +16,24 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneWithReusableLeaves } from './util/cloning.js';
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function markPathResolutionError(error: unknown): void {
+  if (isObject(error)) {
+    error._isPathResolutionError = true;
+  }
+}
+
+function isParseError(error: unknown): boolean {
+  if (!isObject(error)) {
+    return false;
+  }
+  return error.phase === 'parse'
+    || (typeof error.code === 'string' && error.code.startsWith('parse/'));
+}
+
 /**
  * This class is for Jess / Sass+ / Less-style imports,
  * not the CSS `@import` rule. The two will be distinguished
@@ -523,11 +541,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private _preparePathIdentity(context: Context): MaybePromise<Node> {
     try {
       return this.value.path.eval(context);
-    } catch (e: any) {
+    } catch (e) {
       // Tag path-resolution errors so the eval-queue retry policy can
       // distinguish "path interpolation not ready" (cheap, worth retrying)
       // from "content evaluation failed" (expensive clone, not worth retrying).
-      e._isPathResolutionError = true;
+      markPathResolutionError(e);
       throw e;
     }
   }
@@ -611,11 +629,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
               return this.createImportAnchorSurface(context);
             }
             ({ node: rules, resolvedPath } = loaded);
-          } catch (error: any) {
+          } catch (error) {
             if (importOptions!.optional) {
               return this.createImportAnchorSurface(context);
             }
-            if (importOptions!.reference && (error?.phase === 'parse' || String(error?.code ?? '').startsWith('parse/'))) {
+            if (importOptions!.reference && isParseError(error)) {
               return this.createImportAnchorSurface(context);
             }
             throw error;
