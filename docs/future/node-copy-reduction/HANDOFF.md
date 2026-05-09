@@ -45,7 +45,9 @@ stored/list-flattened leaves. The `Call.evalNode` `sourceNode.parent` repair is
 still active because the detached-ruleset non-leaky scope test fails without it.
 In `packages/core/src/tree/call.ts`, ordinary JS functions with explicit empty
 positional arg lists no longer copy the empty `List`; callbacks that receive the
-arg `List` itself still keep the defensive copy.
+arg `List` itself still keep the defensive copy. Plain CSS calls with explicit
+empty arg lists also skip the empty-list clone during `resolve(context)`;
+non-empty calls still use the existing defensive path.
 
 ## Work Loop
 

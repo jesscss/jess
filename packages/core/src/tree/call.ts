@@ -248,6 +248,18 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    if (
+      typeof this.value.name === 'string'
+      && !this.value.contentNode
+      && (!this.value.args || this.value.args.value.length === 0)
+    ) {
+      const node = this.clone(false);
+      node.options.silentFail = false;
+      if (this.value.args) {
+        node.value.args = list([]);
+      }
+      return node;
+    }
     return this.clone(true).eval(context) as MaybePromise<Node>;
   }
 
