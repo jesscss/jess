@@ -47,7 +47,11 @@ In `packages/core/src/tree/call.ts`, ordinary JS functions with explicit empty
 positional arg lists no longer copy the empty `List`; callbacks that receive the
 arg `List` itself still keep the defensive copy. Plain CSS calls with explicit
 empty arg lists also skip the empty-list clone during `resolve(context)`;
-non-empty calls still use the existing defensive path.
+non-empty calls still use the existing defensive path. Derived empty mixin
+wrapper surfaces in `packages/core/src/tree/rules.ts` are constructed directly
+instead of shallow-cloning non-empty body rules and clearing them, avoiding
+parent churn on cloned body children while preserving rule options and function
+registry ownership.
 
 ## Work Loop
 

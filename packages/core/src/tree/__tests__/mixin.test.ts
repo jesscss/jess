@@ -820,6 +820,61 @@ describe('Mixin', () => {
       expect(css).toContain('sub-scope-only: inside;');
     });
 
+    it('does not shallow-clone mixin body children to create param guard wrappers', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let shallowMarkerBodyClones = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        const [deep] = args;
+        if (
+          deep === false
+          && this.value.some(node => (
+            node.type === 'Declaration'
+            && node.value?.name?.valueOf?.() === 'marker'
+          ))
+        ) {
+          shallowMarkerBodyClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            params: list([any('color', { role: 'property' })]),
+            guard: condition([
+              ref({ key: 'color' }, { type: 'variable' }),
+              '=',
+              any('red')
+            ]),
+            rules: rules([
+              decl({ name: 'marker', value: ref({ key: 'color' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.guarded' }, { type: 'mixin' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('marker: red;');
+        expect(shallowMarkerBodyClones).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
     it('should call a mixin with multiple parameters', async () => {
       // Create a mixin with multiple parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({
