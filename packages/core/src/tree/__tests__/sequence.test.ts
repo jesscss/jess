@@ -154,6 +154,7 @@ describe('Sequence', () => {
     const resolved = await node.resolve(context);
 
     expect(`${resolved}`).toBe('0 one, foo 2');
+    expect(child.parent).toBe(node);
     expect(child.toTrimmedString()).toBe('one, $item');
     expect(node.toTrimmedString()).toBe('0 one, $item 2');
   });

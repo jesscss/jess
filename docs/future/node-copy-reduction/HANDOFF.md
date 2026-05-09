@@ -83,6 +83,12 @@ parents are left alone.
 At-rule registration and resolve wrappers now use direct derived construction
 with owned/reusable child surfaces instead of shallow clone/replacement, so
 source preludes and rule bodies stay parented to the canonical at-rule.
+Ruleset registration/resolve prep now derives the wrapper with an owned selector
+surface, so source selectors stay parented to the canonical ruleset. Body rules
+remain the existing registration/eval surface because copying them changes
+mixin and scope behavior. Mixin interpolated-name registration prep also
+derives an owned wrapper directly, so source dynamic names, params, guards, and
+body rules stay canonical.
 Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before
@@ -99,7 +105,9 @@ leaves inside that body are reused. Source-free scalar `$for` iteration values
 bind without being copied or cloned first. `packages/core/src/tree/sequence.ts`
 now routes `Sequence.operate('+')` through the shared reusable-leaf traversal
 for both operands, so sequence/list addition does not reparent source children
-and does not clone childless source-free scalar leaves. `packages/core/src/tree/list.ts`
+and does not clone childless source-free scalar leaves. Sequence changed-value
+eval/resolve wrappers are also constructed directly now instead of cloning
+before replacing the value array. `packages/core/src/tree/list.ts`
 now does the same for `List.operate('+')`, so list/list and list/scalar
 addition keep source children canonical while reusing inert scalar leaves.
 `packages/core/src/tree/operation.ts` now builds preserved operation wrappers

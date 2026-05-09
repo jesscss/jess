@@ -3887,11 +3887,14 @@ describe('Mixin', () => {
         source: '.inner-' + INTERPOLATION_PLACEHOLDER,
         replacements: [any('foo')]
       });
+      const params = list([any('value', { role: 'property' })]);
+      const body = rules([
+        decl({ name: any('value'), value: any('ok') })
+      ]);
       const node = mixin({
         name: dynamicMixinName,
-        rules: rules([
-          decl({ name: any('value'), value: any('ok') })
-        ])
+        params,
+        rules: body
       });
 
       const prepared = await node.prepareRegistration(context);
@@ -3899,6 +3902,9 @@ describe('Mixin', () => {
       expect(prepared).not.toBe(node);
       expect(prepared.sourceNode).toBe(prepared);
       expect(prepared.value.name.valueOf()).toBe('.inner-foo');
+      expect(dynamicMixinName.parent).toBe(node);
+      expect(params.parent).toBe(node);
+      expect(body.parent).toBe(node);
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {

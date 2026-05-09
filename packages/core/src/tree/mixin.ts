@@ -1,12 +1,13 @@
 import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
-import type { Condition } from './condition.js';
-import { type List } from './list.js';
-import type { Any, AnyRole } from './any.js';
-import type { Rules } from './rules.js';
+import { Condition } from './condition.js';
+import { List } from './list.js';
+import { Any, type AnyRole } from './any.js';
+import { Rules } from './rules.js';
 import { Interpolated } from './interpolated.js';
 import type { Context, TreeContext } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -82,6 +83,58 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
 
   // Mixin owns registration prep and marks `preEvaluated` directly.
 
+  private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    if (owned instanceof Interpolated || owned instanceof Any) {
+      return owned;
+    }
+    throw new TypeError('Expected mixin name copy');
+  }
+
+  private ownRules(value: Rules): Rules {
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    if (owned instanceof Rules) {
+      return owned;
+    }
+    throw new TypeError('Expected mixin rules copy');
+  }
+
+  private ownParams(value: List<Node> | undefined): List<Node> | undefined {
+    if (!value) {
+      return undefined;
+    }
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    if (owned instanceof List) {
+      return owned;
+    }
+    throw new TypeError('Expected mixin params copy');
+  }
+
+  private ownGuard(value: Condition | undefined): Condition | undefined {
+    if (!value) {
+      return undefined;
+    }
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    if (owned instanceof Condition) {
+      return owned;
+    }
+    throw new TypeError('Expected mixin guard copy');
+  }
+
+  private deriveMixin(value: MixinValue): Mixin {
+    return new Mixin(
+      {
+        ...(value.name !== undefined && { name: this.ownName(value.name) }),
+        rules: this.ownRules(value.rules),
+        ...(value.params !== undefined && { params: this.ownParams(value.params) }),
+        ...(value.guard !== undefined && { guard: this.ownGuard(value.guard) })
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+  }
+
   /** Return a selector-like keySet */
   private _keySet: Set<string> | undefined;
   get keySet() {
@@ -121,24 +174,24 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
-  override preEval(context: Context): MaybePromise<this> {
+  override preEval(context: Context): MaybePromise<Mixin> {
     return this.prepareRegistration(context);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
+  override prepareRegistration(context: Context): MaybePromise<Mixin> {
     if (this.preEvaluated) {
       return this;
     }
     return this._prepareMixinRegistration(context);
   }
 
-  private _prepareMixinRegistration(context: Context): MaybePromise<this> {
+  private _prepareMixinRegistration(context: Context): MaybePromise<Mixin> {
     // Mixins should NOT prepare their body rules during initial registration.
     // Body rules are prepared/evaluated when the mixin is called.
-    let node = this;
+    let node: Mixin = this;
     let { name, rules } = node.value;
     if (name && name instanceof Interpolated) {
-      node = this.clone(false) as this;
+      node = this.deriveMixin(this.value);
       name = node.value.name;
       rules = node.value.rules;
     }
@@ -160,19 +213,25 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   private _prepareMixinNameIdentity(
-    node: this,
+    node: Mixin,
     name: MixinValue['name'],
     context: Context
-  ): MaybePromise<this> {
+  ): MaybePromise<Mixin> {
     if (name && name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
-        return (maybeKey as Promise<Any<'name'>>).then((key) => {
-          node.value.name = key;
+        return maybeKey.then((key) => {
+          if (!(key instanceof Any)) {
+            throw new TypeError('Expected evaluated mixin name');
+          }
+          node.set('name', key);
           return node;
         });
       }
-      node.value.name = maybeKey as Any<'name'>;
+      if (!(maybeKey instanceof Any)) {
+        throw new TypeError('Expected evaluated mixin name');
+      }
+      node.set('name', maybeKey);
     }
     return node;
   }

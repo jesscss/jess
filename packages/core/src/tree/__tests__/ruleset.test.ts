@@ -131,6 +131,23 @@ describe('Rule', () => {
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
+  it('keeps source selector canonical after ruleset registration prep', async () => {
+    const selector = sellist([sel([el('.foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+
+    const prepared = await node.prepareRegistration(context);
+
+    expect(prepared).not.toBe(node);
+    expect(selector.parent).toBe(node);
+    expect(prepared.value.rules).toBe(body);
+  });
+
   it('restores eval frames when body eval throws', () => {
     const savedRulesetFrame = ruleset({
       selector: el('.saved'),
@@ -200,6 +217,27 @@ describe('Rule', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source selector canonical while reusing body registration surface after resolve(context)', async () => {
+    const selector = sellist([sel([el('.foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      .foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(resolved.value.rules).toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {

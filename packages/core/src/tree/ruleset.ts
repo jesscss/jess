@@ -4,7 +4,7 @@ import type { Context } from '../context.js';
 import { Nil } from './nil.js';
 import { Bool } from './bool.js';
 import type { Condition } from './condition.js';
-import { attachSelectorBitLibrary, type Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Combinator } from './combinator.js';
@@ -29,6 +29,7 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -74,6 +75,78 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   declare _composedSelector?: Selector;
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
+
+  private ownSelector(value: RulesetValue['selector']): RulesetValue['selector'] {
+    if (value instanceof Nil) {
+      return value;
+    }
+    if (!(value instanceof Selector)) {
+      return value;
+    }
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    if (owned instanceof Selector) {
+      return owned;
+    }
+    throw new TypeError('Expected ruleset selector copy');
+  }
+
+  private attachSelectorBits(selector: RulesetValue['selector'], selectorBits: Context['selectorBits']): void {
+    if (selector instanceof Nil) {
+      return;
+    }
+    if (!(selector instanceof Selector)) {
+      return;
+    }
+    this.attachSelectorBitsToNode(selector, selectorBits);
+  }
+
+  private attachSelectorBitsToNode(node: Node, selectorBits: Context['selectorBits']): void {
+    if (node instanceof Selector) {
+      node.keySetLibrary ??= selectorBits;
+      const { sourceNode } = node;
+      if (sourceNode !== node && sourceNode instanceof Selector) {
+        this.attachSelectorBitsToNode(sourceNode, selectorBits);
+      }
+    }
+    this.attachSelectorBitsToValue(node.value, selectorBits);
+  }
+
+  private attachSelectorBitsToValue(value: unknown, selectorBits: Context['selectorBits']): void {
+    if (value instanceof Node) {
+      this.attachSelectorBitsToNode(value, selectorBits);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        this.attachSelectorBitsToValue(item, selectorBits);
+      }
+      return;
+    }
+    if (value !== null && typeof value === 'object') {
+      for (const item of Object.values(value)) {
+        this.attachSelectorBitsToValue(item, selectorBits);
+      }
+    }
+  }
+
+  private deriveRuleset(value: RulesetValue, sourceValue: RulesetValue = this.value): Ruleset {
+    const node = new Ruleset(
+      {
+        selector: value.selector === sourceValue.selector ? this.ownSelector(value.selector) : value.selector,
+        rules: value.rules,
+        ...(value.guard !== undefined && { guard: value.guard }),
+        ...(value.selectorBeforeExtend !== undefined && {
+          selectorBeforeExtend: value.selectorBeforeExtend
+        })
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+    node.hoistToRoot = this.hoistToRoot;
+    node.frames = this.frames ? [...this.frames] : undefined;
+    return node;
+  }
 
   get selector() {
     return this.value.selector;
@@ -962,19 +1035,20 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       : normalizeIndent(header, idt)) + '\n';
   }
 
-  override preEval(context: Context): MaybePromise<this> {
+  override preEval(context: Context): MaybePromise<Ruleset> {
     return this.prepareRegistration(context);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
+  override prepareRegistration(context: Context): MaybePromise<Ruleset> {
     if (!this.preEvaluated) {
       return this._prepareRulesetRegistration(context);
     }
     return this;
   }
 
-  private _prepareRulesetRegistration(context: Context): MaybePromise<this> {
-    const node = this.clone(false) as this;
+  private _prepareRulesetRegistration(context: Context): MaybePromise<Ruleset> {
+    this.attachSelectorBits(this.value.selector, context.selectorBits);
+    const node = this.deriveRuleset(this.value);
     node._selectorCacheOwner = this;
     node.preEvaluated = true;
     const { selector } = node.value;
@@ -1010,7 +1084,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     this.set('rules', value);
   }
 
-  private _prepareRulesVisibility(node: this, context: Context): void {
+  private _prepareRulesVisibility(node: Ruleset, context: Context): void {
     const { rules } = node.value;
     // Generated wrapper rulesets (e.g. implicit `& { ... }` created by AtRule hoisting)
     // should not force var visibility to `private`, otherwise sibling vars inside the wrapper
@@ -1027,17 +1101,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
   }
 
-  private _storeOwnSelector(node: this, selector: Selector | Nil, selectorBits: Context['selectorBits']): void {
+  private _storeOwnSelector(node: Ruleset, selector: Selector | Nil, selectorBits: Context['selectorBits']): void {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
-    if ('keySetLibrary' in selector && !(selector instanceof Nil)) {
-      (selector as Selector).keySetLibrary ??= selectorBits;
-    }
+    this.attachSelectorBits(selector, selectorBits);
     const ownSelector = !(selector instanceof Nil)
       ? ((selector as Selector).copy(true) as Selector)
       : selector;
-    if ('keySetLibrary' in ownSelector && !(ownSelector instanceof Nil)) {
-      (ownSelector as Selector).keySetLibrary ??= selectorBits;
-    }
+    this.attachSelectorBits(ownSelector, selectorBits);
     if (node.options) {
       (node.options as RulesetOptions).ownSelector = ownSelector;
     } else {
@@ -1046,10 +1116,10 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   private _finishRulesetSelectorPrep(
-    node: this,
+    node: Ruleset,
     sel: Selector | Nil,
     context: Context
-  ): MaybePromise<this> {
+  ): MaybePromise<Ruleset> {
     // If this ruleset shares its value with a descendant ruleset, give descendants
     // their own value before we overwrite value.selector so they keep their selector.
     const rulesetNode: Ruleset = node;
@@ -1076,7 +1146,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return this._prepareChildRulesRegistration(node, context, extendRoot);
   }
 
-  private _prepareChildRulesRegistration(node: this, context: Context, extendRoot: Rules | undefined): MaybePromise<this> {
+  private _prepareChildRulesRegistration(node: Ruleset, context: Context, extendRoot: Rules | undefined): MaybePromise<Ruleset> {
     // Depth-first: prepare child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
     // Push this ruleset to the frame so nested rulesets get the correct parent selector

@@ -39,10 +39,13 @@ function hasNonWhitespaceTrivia(tokens: ReturnType<NonNullable<PrintOptions['tri
  * actually be a sequence of values (like for shorthand)
  */
 export class Sequence extends Node<Node[], SequenceOptions> {
-  private withValue(value: Node[]): this {
-    const node = this.clone(false) as this;
-    node.set(null, value);
-    return node;
+  private withValue(value: Node[]): Sequence {
+    return new Sequence(
+      value,
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
   }
 
   private evaluateValues(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node[]> {

@@ -287,6 +287,16 @@ describe('AtRule', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('  all and (tv)', { role: 'keyword' }),
+      rules: rules([])
+    });
+
+    expect(node.getHeaderString(getPrintOptions())).toBe('@media all and (tv) {\n');
+  });
+
   describe('nested @media rules', () => {
     it('should handle nested @media rules inside rulesets', async () => {
       // Represents: .body { @media print { padding: 20px; } }

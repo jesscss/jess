@@ -83,6 +83,16 @@ touching production code.
     surfaces directly instead of shallow-cloning and replacing name/body
     children, so source at-rule preludes and rules stay parented to the
     canonical at-rule after prep and `resolve(context)`
+- `packages/core/src/tree/ruleset.ts`
+  - ruleset registration/resolve prep now derives the wrapper with an owned
+    selector surface instead of shallow-cloning the source ruleset, so source
+    selectors stay parented to the canonical ruleset; body rules remain the
+    existing registration/eval surface because copying them changes mixin and
+    scope behavior
+- `packages/core/src/tree/mixin.ts`
+  - interpolated-name registration prep now derives an owned wrapper directly
+    instead of shallow-cloning the source mixin before replacing the name, so
+    source dynamic names, params, guards, and body rules stay canonical
 - `packages/core/src/tree/interpolated.ts` and
   `packages/core/src/tree/selector-interpolated.ts`
   - resolved interpolated wrappers now construct directly when replacement
@@ -101,6 +111,8 @@ touching production code.
   - `Sequence.operate('+')` now copies both sides through the shared
     reusable-leaf traversal, so source children keep their canonical parents
     and childless source-free scalar leaves are reused
+  - changed-value eval/resolve now constructs the derived sequence directly
+    instead of cloning the source sequence before replacing its value array
 - `packages/core/src/tree/list.ts`
   - `List.operate('+')` now uses the same reusable-leaf traversal for both
     operands, so list addition no longer reparents source children and still

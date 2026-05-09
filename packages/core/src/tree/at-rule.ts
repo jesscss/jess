@@ -437,8 +437,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       // If name ends with space AND prelude starts with space, trim the prelude's leading space
       // Otherwise, add a space only if neither has spacing
       let finalPreludeOut = preludeOut;
-      if (nameEndsWithSpace && preludeStartsWithSpace) {
-        finalPreludeOut = preludeOut.replace(/^\s+/, '');
+      if (preludeStartsWithSpace) {
+        finalPreludeOut = preludeOut.replace(/^\s+/, nameEndsWithSpace ? '' : ' ');
       } else if (!nameEndsWithSpace && !preludeStartsWithSpace) {
         out += ' ';
       }
