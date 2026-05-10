@@ -144,6 +144,30 @@ describe('Extend Ampersand Handling Tests', () => {
       }
     });
 
+    it('uses an owned extend copy for the resolved ampersand selector', () => {
+      const parentSelector = el('.foo');
+      const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
+      const originalCopy = parentSelector.copy.bind(parentSelector);
+      let parentSelectorCopies = 0;
+      parentSelector.copy = ((...args) => {
+        parentSelectorCopies++;
+        return originalCopy(...args);
+      }) as typeof parentSelector.copy;
+
+      try {
+        const target = compound([el('.foo'), el('.bar')]);
+        const extendWith = el('.a');
+
+        const result = extendSelector(selector, target, extendWith, true);
+
+        expect(parentSelectorCopies).toBe(0);
+        expect(result.hoistToRoot).toBe(true);
+        expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
+      } finally {
+        parentSelector.copy = originalCopy;
+      }
+    });
+
     it('should extend .foo &.bar across boundary to create .foo.bar, .extended', () => {
       // Original: .foo { &.bar { color: red; } }
       // Target: .foo.bar (matches resolved form of &.bar)

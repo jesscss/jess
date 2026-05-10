@@ -3301,7 +3301,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
   const selectorCopy = isNode(selector, N.CompoundSelector)
     ? copySelectorForExtend(selector)
     : selector.copy();
-  let resolvedSelector: Selector = resolved.copy();
+  let resolvedSelector: Selector = copySelectorForExtend(resolved);
 
   // If the resolved selector is a SelectorList, wrap it in :is() so it can be used as a single
   // selector component. This prevents invalid structures and matches Less output expectations.
