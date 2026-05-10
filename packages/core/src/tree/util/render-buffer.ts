@@ -8,7 +8,6 @@ export type RenderBufferNode = {
 
 export type RenderableOutput = {
   type?: string;
-  toString?(options?: PrintOptions): string;
   toTrimmedString(options?: PrintOptions): string;
 };
 
@@ -216,7 +215,11 @@ function isRootRulesOutput(
 ): resolved is RootRenderableOutput {
   return resolved.type === 'Rules'
     && (resolved === context.root || node === context.root)
-    && typeof resolved.toString === 'function';
+    && hasCallableToString(resolved);
+}
+
+function hasCallableToString(value: RenderableOutput): value is RenderableOutput & { toString(options?: PrintOptions): string } {
+  return 'toString' in value && typeof value.toString === 'function';
 }
 
 export function pushRenderSegment(buffer: SegmentedRenderBuffer, segment: Exclude<Segment, string>): void {
