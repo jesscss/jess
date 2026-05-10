@@ -1,6 +1,6 @@
 import type { Context } from '../../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { prepareContextPrintState, type PrintOptions } from './print.js';
+import { getPrintOptions, prepareContextPrintState, type PrintOptions } from './print.js';
 
 export type RenderBufferNode = {
   resolve(context: Context): MaybePromise<RenderableOutput>;
@@ -189,7 +189,19 @@ export function renderNodeToString(
   // Track 5 bridge only: this adapts current node serializers to evaluated
   // string output. Nodes with delayed-output semantics must write explicit
   // segments instead of growing a second AST.
-  const prepared = prepareContextPrintState(context, options);
+  const canReuseActivePrintState = (
+    options?.context === context
+    && (
+      options.writer !== undefined
+      || options.inFrames !== undefined
+      || options.treeFrames !== undefined
+      || options.lastRenderedFrames !== undefined
+      || options.frameHeaders !== undefined
+    )
+  );
+  const prepared = canReuseActivePrintState
+    ? getPrintOptions(options)
+    : prepareContextPrintState(context, options);
   const writeResolved = (resolved: RenderableOutput): string => resolved.toTrimmedString(prepared);
   const resolved = node.resolve(context);
   return isThenable(resolved)

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any } from '../index.js';
 import { Node } from '../node-base.js';
@@ -72,6 +73,26 @@ describe('renderNodeToBuffer', () => {
 
     expect(renderNodeToString(node, context, { writer })).toBe('writer-output');
     expect(writer.toString()).toBe('writer-output');
+  });
+
+  it('reuses active print state instead of resetting it', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const frameHeaders = ['@media screen'];
+    const emittedTrivia = new Set<IToken[]>();
+    const node = any('stateful-output');
+    const options = {
+      context,
+      writer,
+      frameHeaders,
+      emittedTrivia
+    };
+
+    expect(renderNodeToString(node, context, options)).toBe('stateful-output');
+
+    expect(options.writer).toBe(writer);
+    expect(options.frameHeaders).toBe(frameHeaders);
+    expect(options.emittedTrivia).toBe(emittedTrivia);
   });
 
   it('requires explicit implementations for segmented rendering', () => {
