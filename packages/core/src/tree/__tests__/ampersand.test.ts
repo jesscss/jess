@@ -3,8 +3,9 @@ import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
   Ampersand,
-  type SimpleSelector, type Combinator, type Selector
+  type SimpleSelector, type Combinator
 } from '../index.js';
+import { Selector } from '../selector.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -104,6 +105,42 @@ describe('Ampersand', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('derives appended framed ampersand selectors without cloning the frame selector', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const sourceSelector = frame.value.selector;
+    expect(sourceSelector).toBeInstanceOf(Selector);
+    if (!(sourceSelector instanceof Selector)) {
+      throw new Error(`Expected Selector, got ${sourceSelector.type}`);
+    }
+    const originalClone = sourceSelector.clone;
+    let clonedSourceSelectors = 0;
+    sourceSelector.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedSourceSelectors++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const node = amp('-bar');
+
+      const resolved = await node.resolve(context);
+
+      expect(clonedSourceSelectors).toBe(0);
+      expect(resolved.toTrimmedString()).toBe('.foo-bar');
+      expect(resolved).not.toBe(sourceSelector);
+      expect(sourceSelector.toTrimmedString()).toBe('.foo');
+      expect(frame.value.selector).toBe(sourceSelector);
+      expect(resolved.hoistToRoot).toBe(true);
+    } finally {
+      sourceSelector.clone = originalClone;
+    }
   });
 
   it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {

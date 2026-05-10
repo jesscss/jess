@@ -121,6 +121,11 @@ touching production code.
   - framed ampersand resolution now constructs the framed wrapper directly
     instead of shallow-cloning the source ampersand just to attach the current
     selector frame
+  - appended framed ampersands (`&-foo`) now derive a generated selector
+    output surface directly instead of deep-cloning and mutating the frame
+    selector; template merge forms still use their existing generated output
+    path, and hoist-only ampersands still return the frame selector without
+    append mutation
 - `packages/core/src/tree/interpolated.ts` and
   `packages/core/src/tree/selector-interpolated.ts`
   - resolved interpolated wrappers now construct directly when replacement

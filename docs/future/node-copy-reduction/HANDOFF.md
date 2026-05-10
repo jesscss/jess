@@ -107,7 +107,11 @@ first-use import-local deep copies reuse childless source-free scalar leaves
 through the shared clone helper while keeping owned container copies and
 preserving direct comment children. Framed ampersand resolution now constructs
 the framed wrapper directly instead of shallow-cloning the source ampersand just
-to attach the active selector frame.
+to attach the active selector frame. Appended framed ampersands (`&-foo`) now
+derive their generated selector output directly instead of deep-cloning and
+mutating the frame selector; selector-list append, template-merge append, and
+hoist-only output are covered separately so this does not change their
+semantics.
 Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before
