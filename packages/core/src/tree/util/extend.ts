@@ -116,7 +116,6 @@ import { ComplexSelector, type ComplexSelectorComponent } from '../selector-comp
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
-import { Nil } from '../nil.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
 import type { Node } from '../node.js';
@@ -149,7 +148,41 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
 }
 
 function isSelectorNode(value: unknown): value is Selector {
-  return !!value && typeof value === 'object' && (value as any).isSelector === true;
+  return !!value && typeof value === 'object' && Reflect.get(value, 'isSelector') === true;
+}
+
+function expectSelector(value: unknown): Selector {
+  if (isSelectorNode(value)) {
+    return value;
+  }
+  throw new TypeError('Expected selector');
+}
+
+function expectSelectorArray(value: Selector | Selector[] | ExtendErrorType): Selector[] {
+  if (typeof value === 'string') {
+    throw new TypeError('Expected selector array, got extend error');
+  }
+  return isArray(value) ? value : [value];
+}
+
+function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
+  return isNode(value, N.SimpleSelector)
+    || isNode(value, N.CompoundSelector)
+    || isNode(value, N.ComplexSelector)
+    || isNode(value, N.Combinator);
+}
+
+function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType): ComplexSelectorComponent[] {
+  if (typeof value === 'string') {
+    throw new TypeError('Expected complex selector components, got extend error');
+  }
+  const items = isArray(value) ? value : [value];
+  for (const item of items) {
+    if (!isComplexComponent(item)) {
+      throw new TypeError('Expected complex selector component');
+    }
+  }
+  return items;
 }
 
 /**
@@ -492,6 +525,10 @@ function createErrorResult(selector: Selector, error: ExtendError): ExtendResult
   return { value: selector, error };
 }
 
+function createExtendError(type: ExtendErrorType): ExtendError {
+  return new ExtendError(type, type);
+}
+
 /**
  * Creates a deduplicated selector list using simple valueOf() comparison
  * @param selectors - Array of selectors to deduplicate
@@ -588,19 +625,18 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     selectors = [...selectors];
   }
   for (let el of selectors) {
-    const originalEl = el;
     // Copy-on-write: only copy if we might modify the selector
     // Simple selectors that won't be modified don't need copying
     let needsCopy = isNode(el, N.PseudoSelector) || isNode(el, N.SelectorList)
       || isNode(el, N.CompoundSelector) || isNode(el, N.ComplexSelector) || isNode(el, N.Ampersand);
     if (needsCopy) {
-      el = el.copy() as Selector;
+      el = expectSelector(el.copy());
     }
     if (isNode(el, N.PseudoSelector)) {
       if (el.value.name === ':is') {
         const arg = el.value.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          const deduped = deduplicateSelectors((arg as SelectorList).value as Selector[]);
+          const deduped = deduplicateSelectors(arg.value);
           if (deduped.length === 1) {
             push(deduped[0]!);
             continue;
@@ -608,11 +644,11 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         }
       }
       if (root && el.value.name === ':is' && el.generated) {
-        let result = createProcessedSelector(el.value.arg as Selector);
+        let result = createProcessedSelector(expectSelector(el.value.arg));
         if (typeof result === 'string') {
           return result;
         }
-        result = result as Selector;
+        result = expectSelector(result);
         /**
          * Result will be a single selector, which we want to bubble
          * into the parent selector array if we're at the root.
@@ -626,7 +662,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         }
       } else {
         if (el.value.arg) {
-          let result = createProcessedSelector(el.value.arg as Selector, root);
+          let result = createProcessedSelector(expectSelector(el.value.arg), root);
           if (typeof result === 'string') {
             return result;
           }
@@ -641,7 +677,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
                 if (arg && isNode(arg, N.SelectorList)) {
                   flattened.push(...arg.value);
                 } else if (arg) {
-                  flattened.push(arg as Selector);
+                  flattened.push(expectSelector(arg));
                 }
               } else {
                 flattened.push(sel);
@@ -652,7 +688,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             // Single selector result - check if it's a generated :is() to unwrap
             if (isNode(result, N.PseudoSelector) && result.value.name === ':is' && result.generated) {
               // Unwrap - use the argument directly
-              el.value.arg = result.value.arg as Selector;
+              el.value.arg = expectSelector(result.value.arg);
             } else {
               el.value.arg = result;
             }
@@ -661,11 +697,11 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
         push(el);
       }
     } else if (isNode(el, N.SelectorList)) {
-      let processedResult = createProcessedSelector(el.value as Selector[], true);
+      let processedResult = createProcessedSelector(el.value, true);
       if (typeof processedResult === 'string') {
         return processedResult;
       }
-      let processed = processedResult as Selector[];
+      let processed = expectSelectorArray(processedResult);
       // Flatten any generated :is() wrappers in the SelectorList
       const flattened: Selector[] = [];
       for (const sel of processed) {
@@ -675,7 +711,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           if (arg && isNode(arg, N.SelectorList)) {
             flattened.push(...arg.value);
           } else if (arg) {
-            flattened.push(arg as Selector);
+            flattened.push(expectSelector(arg));
           }
         } else {
           flattened.push(sel);
@@ -732,12 +768,12 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound selectors can have duplicate components (e.g., .v.w.v)
       // Process components with root=false to prevent deduplication
-      const compoundProcessed = createProcessedSelector(el.value as Selector[], false);
+      const compoundProcessed = createProcessedSelector(el.value, false);
       if (typeof compoundProcessed === 'string') {
         return compoundProcessed;
       }
       // @ts-expect-error direct mutation: see extend short-term exception above
-      el.value = compoundProcessed as Selector[];
+      el.value = expectSelectorArray(compoundProcessed);
       push(el);
     } else if (isNode(el, N.ComplexSelector)) {
       let components = el.value;
@@ -745,7 +781,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       if (typeof complexProcessed === 'string') {
         return complexProcessed;
       }
-      let result = complexProcessed as Selector[];
+      let result = expectComplexComponents(complexProcessed);
       // @ts-expect-error direct mutation: see extend short-term exception above
       el.value = result;
       let [first, second] = components;
@@ -810,17 +846,17 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
             || (!!first
               && isNode(first, N.PseudoSelector)
               && first.value.name === ':is'
-              && (first as any).generated === true
+              && first.generated === true
               && !maybeCombinator.hasFlag(F_VISIBLE))
             // ...or we already resolved the invisible ampersand to a concrete selector in `result`,
             // but the original components indicate this came from implicit `& ` nesting.
             || (!!originalFirst
-              && isNode(originalFirst as any, N.Ampersand)
-              && ((originalFirst as any).hasFlag?.(F_IMPLICIT_AMPERSAND) || (originalFirst as any).generated)
-              && !(originalFirst as any).hasFlag?.(F_VISIBLE)
+              && isNode(originalFirst, N.Ampersand)
+              && (originalFirst.hasFlag(F_IMPLICIT_AMPERSAND) || originalFirst.generated)
+              && !originalFirst.hasFlag(F_VISIBLE)
               && !!originalSecond
-              && (originalSecond as any).type === 'Combinator'
-              && !(originalSecond as any).hasFlag?.(F_VISIBLE));
+              && isNode(originalSecond, N.Combinator)
+              && !originalSecond.hasFlag(F_VISIBLE));
 
           // Only flatten when we know this is the implicit `& ` nesting case.
           // Do NOT flatten other combinators (e.g. `.ext6 > :is(...)`) — Less expects
@@ -831,23 +867,23 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           }
 
           const argSel = maybeIs.value.arg;
-          const argList: Selector[] = isNode(argSel, N.SelectorList) ? (argSel.value as Selector[]) : [argSel as Selector];
+          const argList: Selector[] = isNode(argSel, N.SelectorList) ? argSel.value : [expectSelector(argSel)];
           // If this came from implicit `& ` nesting (both ampersand and the space are invisible),
           // then the prefix is already represented by the parent ruleset context and must not be
           // duplicated in nested output. In that case we drop the prefix entirely.
           const dropImplicitPrefix =
             !!originalFirst
-            && isNode(originalFirst as any, N.Ampersand)
-            && ((originalFirst as any).hasFlag?.(F_IMPLICIT_AMPERSAND) || (originalFirst as any).generated)
-            && !(originalFirst as any).hasFlag?.(F_VISIBLE)
+            && isNode(originalFirst, N.Ampersand)
+            && (originalFirst.hasFlag(F_IMPLICIT_AMPERSAND) || originalFirst.generated)
+            && !originalFirst.hasFlag(F_VISIBLE)
             && !!originalSecond
-            && (originalSecond as any).type === 'Combinator'
-            && !(originalSecond as any).hasFlag?.(F_VISIBLE);
+            && isNode(originalSecond, N.Combinator)
+            && !originalSecond.hasFlag(F_VISIBLE);
           const dropImplicitPrefixViaGeneratedIs =
             !!first
             && isNode(first, N.PseudoSelector)
             && first.value.name === ':is'
-            && (first as any).generated === true
+            && first.generated === true
             && !maybeCombinator.hasFlag(F_VISIBLE);
           const outputPrefix = (dropImplicitPrefix || dropImplicitPrefixViaGeneratedIs) ? [] : prefix;
 
@@ -858,7 +894,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
           const retainInvisibleAmpersandAndCombinator = dropImplicitPrefix && outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
           const isIndexInResult = result.length - 1;
           const suffixAfterIs = retainInvisibleAmpersandAndCombinator
-            ? components.slice(isIndexInResult + 1).map((c: any) => (c && typeof c.copy === 'function' ? c.copy(true) : c) as any)
+            ? copyComplexComponentsForPlacement(components.slice(isIndexInResult + 1))
             : [];
 
           for (const inner of argList) {
@@ -874,33 +910,40 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               if (innerFirst && prefixFirstValue && innerFirst.valueOf() === prefixFirstValue) {
                 // Drop the matching first selector and an optional following combinator.
                 const dropCount = innerParts[1]?.type === 'Combinator' ? 2 : 1;
-                innerSel = ComplexSelector.create(innerParts.slice(dropCount) as any).inherit(innerSel);
+                innerSel = ComplexSelector.create(innerParts.slice(dropCount)).inherit(innerSel);
               }
             }
             const omitCombinator = outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
             if (retainInvisibleAmpersandAndCombinator) {
               // Copy invisible ampersand + combinator onto each item so selector list items have
               // correct valueOf() for extend (e.g. .bb .bb, .aa .dd). Preserve selectorContainer when present so & stays live.
-              const origAmp = originalFirst as Ampersand;
+              if (!isNode(originalFirst, N.Ampersand)) {
+                throw new TypeError('Expected implicit ampersand source');
+              }
+              const origAmp = originalFirst;
               const resolved = origAmp.getResolvedSelector();
               const parentSel = resolved ?? undefined;
               let amp = origAmp.derive();
-              if (!origAmp.getStoredSelector() && parentSel) {
-                amp = Ampersand.create({ selectorContainer: { selector: parentSel.copy(true) } });
+              if (!origAmp.getStoredSelector() && isSelectorNode(parentSel)) {
+                amp = Ampersand.create({ selectorContainer: { selector: copySelectorForExtend(parentSel) } });
               }
               amp.addFlag(F_IMPLICIT_AMPERSAND);
               amp.removeFlag(F_VISIBLE);
-              const combCopy = maybeCombinator.copy(true) as any;
+              const combCopy = copyComplexComponentForPlacement(maybeCombinator);
               combCopy.removeFlag(F_VISIBLE);
-              const parts: any[] = [amp, combCopy, copySelectorForExtend(innerSel as Selector), ...suffixAfterIs];
+              const parts: ComplexSelectorComponent[] = [amp, combCopy, copySelectorForExtend(innerSel), ...suffixAfterIs];
               const next = ComplexSelector.create(parts).inherit(el);
               push(next);
             } else if (outputPrefix.length === 0 && omitCombinator) {
               // Prefix/combinator dropped but not implicit (e.g. first was :is()): emit inner as-is.
-              push(innerSel.copy().inherit(el) as Selector);
+              push(expectSelector(innerSel.copy().inherit(el)));
             } else {
-              const parts: any[] = [...outputPrefix, maybeCombinator.copy(), innerSel.copy()];
-              const next = ComplexSelector.create(parts as any).inherit(el);
+              const parts: ComplexSelectorComponent[] = [
+                ...outputPrefix,
+                copyComplexComponentForPlacement(maybeCombinator),
+                copySelectorForExtend(innerSel)
+              ];
+              const next = ComplexSelector.create(parts).inherit(el);
               push(next);
             }
           }
@@ -916,13 +959,13 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
       if (el.hasFlag(F_IMPLICIT_AMPERSAND)) {
         push(el);
       } else if (el.generated) {
-        const sel = (el as Ampersand).getResolvedSelector();
+        const sel = el.getResolvedSelector();
         if (sel && !isNode(sel, N.Nil)) {
-          const ampProcessed = createProcessedSelector(sel as Selector);
+          const ampProcessed = createProcessedSelector(expectSelector(sel));
           if (typeof ampProcessed === 'string') {
             return ampProcessed;
           }
-          push(ampProcessed as Selector);
+          push(expectSelector(ampProcessed));
         } else {
           push(el);
         }
@@ -951,7 +994,7 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
       return arg.value;
     } else if (arg) {
       // Single selector argument
-      return [arg as Selector];
+      return [expectSelector(arg)];
     }
   }
   // Not a :is() selector, return as-is
@@ -972,19 +1015,16 @@ function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelecto
   });
 }
 
+function copyComplexComponentForPlacement(node: ComplexSelectorComponent): ComplexSelectorComponent {
+  const copied = copyOwnedWithReusableLeaves(node);
+  if (!isComplexComponent(copied)) {
+    throw new TypeError('Expected complex selector component copy');
+  }
+  return copied;
+}
+
 function copyComplexComponentsForPlacement(nodes: ComplexSelectorComponent[]): ComplexSelectorComponent[] {
-  return nodes.map((node) => {
-    const copied = copyOwnedWithReusableLeaves(node);
-    if (
-      !isNode(copied, N.SimpleSelector)
-      && !isNode(copied, N.CompoundSelector)
-      && !isNode(copied, N.Combinator)
-      && !isNode(copied, N.Ampersand)
-    ) {
-      throw new TypeError('Expected complex selector component copy');
-    }
-    return copied;
-  });
+  return nodes.map(copyComplexComponentForPlacement);
 }
 
 /**
@@ -1033,7 +1073,7 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
       if (isAppendOne) {
         restSorted = rest;
       } else {
-        const orderFor = (s: Selector, origIndex: number): number => {
+        const orderFor = (s: Selector): number => {
           const fromMap = orderMap.get(s);
           if (fromMap !== undefined) {
             return fromMap;
@@ -1049,7 +1089,7 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
           return order ?? 999999;
         };
         const NO_ORDER = 999999;
-        const mapped = rest.map((s, i) => ({ selector: s, order: orderFor(s, i), origIndex: i }));
+        const mapped = rest.map((s, i) => ({ selector: s, order: orderFor(s), origIndex: i }));
         restSorted = mapped
           .sort((a, b) => {
             if (a.order === NO_ORDER && b.order === NO_ORDER) {
@@ -1159,7 +1199,7 @@ function detectAndHandleBoundaryCrossing(
     }
 
     const arg = comp.value.arg;
-    if (!arg || !(arg as any).isSelector || !isNode(arg, N.SelectorList)) {
+    if (!isNode(arg, N.SelectorList)) {
       continue;
     }
 
@@ -1293,7 +1333,7 @@ export function tryExtendSelector(
   try {
     const result = extendSelector(target, find, extendWith, partial, skipAmpersandCheck, false);
     if (typeof result === 'string') {
-      return { value: target, error: { type: result } as ExtendError };
+      return { value: target, error: createExtendError(result) };
     }
     return createSuccessResult(result);
   } catch (error) {
@@ -1484,11 +1524,11 @@ export function extendSelector(
         const [start, end] = location.complexMatchRange;
         const segmentComponents = target.value.slice(start, end);
         const matchedSegment = segmentComponents.length === 1
-          ? segmentComponents[0]!
-          : ComplexSelector.create(segmentComponents as any).inherit(target);
+          ? expectSelector(segmentComponents[0])
+          : ComplexSelector.create(segmentComponents).inherit(target);
         const wrapped = createValidatedIsWrapperWithErrors(
-          [matchedSegment as Selector, extendWith],
-          matchedSegment as Selector,
+          [matchedSegment, extendWith],
+          matchedSegment,
           undefined,
           undefined
         );
@@ -1496,7 +1536,7 @@ export function extendSelector(
           return wrapped;
         }
         const before = target.value.slice(0, start);
-        const newComponents = [...before, wrapped as any, ...target.value.slice(end)];
+        const newComponents: ComplexSelectorComponent[] = [...before, wrapped, ...target.value.slice(end)];
         return ComplexSelector.create(newComponents).inherit(target);
       }
       // Check if we have remainders that need to be combined with the extension
@@ -1508,15 +1548,15 @@ export function extendSelector(
 
         if (isNode(remainder, N.ComplexSelector) && remainder.value.length > 0) {
           // Remainder is complex selector - append extension
-          const newComponents = [...remainder.value, extendWith as any];
+          const newComponents: ComplexSelectorComponent[] = [...remainder.value, extendWith];
           combinedExtension = ComplexSelector.create(newComponents).inherit(remainder);
         } else {
           // Simple remainder - create compound or complex as needed
           if (isNode(extendWith, N.ComplexSelector)) {
-            const newComponents = [remainder as any, ...extendWith.value];
+            const newComponents: ComplexSelectorComponent[] = [remainder, ...extendWith.value];
             combinedExtension = ComplexSelector.create(newComponents).inherit(extendWith);
           } else {
-            const compResult = createValidatedCompoundSelectorWithErrors([remainder as any, extendWith as any], remainder, { target, find, extendWith });
+            const compResult = createValidatedCompoundSelectorWithErrors([remainder, extendWith], remainder, { target, find, extendWith });
             if (typeof compResult === 'string') {
               return compResult;
             }
@@ -1564,7 +1604,7 @@ export function extendSelector(
                       if (typeof remResult === 'string') {
                         return remResult;
                       }
-                      compoundRemainder = remResult as Selector;
+                      compoundRemainder = expectSelector(remResult);
                     }
                     foundCompoundRemainder = true;
                   }
@@ -1575,7 +1615,7 @@ export function extendSelector(
 
           if (foundCompoundRemainder && compoundRemainder) {
             // Create combined extension with remainder
-            const combinedExtension = createValidatedCompoundSelectorWithErrors([compoundRemainder as any, extendWith as any], compoundRemainder, { target, find, extendWith });
+            const combinedExtension = createValidatedCompoundSelectorWithErrors([compoundRemainder, extendWith], compoundRemainder, { target, find, extendWith });
             if (typeof combinedExtension === 'string') {
               return combinedExtension;
             }
@@ -1614,7 +1654,10 @@ export function extendSelector(
           const newComponents = [...target.value];
           const extendWithSelectors = extractSelectorsFromIs(extendWith);
           for (const matchLoc of componentMatches) {
-            const componentIndex = matchLoc.path[0] as number;
+            const [componentIndex] = matchLoc.path;
+            if (typeof componentIndex !== 'number') {
+              continue;
+            }
             const matchedComponent = newComponents[componentIndex];
             if (matchedComponent) {
               const wrapped = wrapMatchInIs(
@@ -1628,7 +1671,7 @@ export function extendSelector(
               if (typeof wrapped === 'string') {
                 return wrapped;
               }
-              newComponents[componentIndex] = wrapped as any;
+              newComponents[componentIndex] = wrapped;
             }
           }
           return createValidatedCompoundSelectorWithErrors(newComponents, target);
@@ -1700,23 +1743,26 @@ export function extendSelector(
               // (including "wrap all occurrences" for `.replace.replace`).
               const extendedArg = isNode(arg, N.SelectorList)
                 ? extendSelectorList(arg, find, extendWith, true, true, false)
-                : extendSelector(arg as Selector, find, extendWith, true, true, false);
+                : extendSelector(arg, find, extendWith, true, true, false);
               if (typeof extendedArg === 'string') {
                 return extendedArg;
               }
               if (component.generated) {
-                component.value.arg = extendedArg as any;
+                component.value.arg = extendedArg;
               } else {
                 newComponents[idx] = PseudoSelector.create({
                   name: component.value.name,
-                  arg: extendedArg as any
-                }).inherit(component) as any;
+                  arg: extendedArg
+                }).inherit(component);
               }
             }
           }
 
           for (const matchLoc of complexMatches) {
-            const componentIndex = matchLoc.path[0] as number;
+            const [componentIndex] = matchLoc.path;
+            if (typeof componentIndex !== 'number') {
+              continue;
+            }
             const component = newComponents[componentIndex];
             if (!component || isNode(component, N.Combinator)) {
               continue;
@@ -1725,8 +1771,8 @@ export function extendSelector(
             // Match is the entire complex component
             if (matchLoc.path.length === 1) {
               const wrappedComp = wrapMatchInIs(
-                component as any,
-                component as any,
+                component,
+                component,
                 extendWith,
                 target,
                 { target, find, extendWith },
@@ -1735,7 +1781,7 @@ export function extendSelector(
               if (typeof wrappedComp === 'string') {
                 return wrappedComp;
               }
-              newComponents[componentIndex] = wrappedComp as any;
+              newComponents[componentIndex] = wrappedComp;
               continue;
             }
 
@@ -1756,12 +1802,12 @@ export function extendSelector(
                 if (typeof wrappedChild === 'string') {
                   return wrappedChild;
                 }
-                compoundComponents[childIndex] = wrappedChild as any;
+                compoundComponents[childIndex] = wrappedChild;
                 const compoundResult = createValidatedCompoundSelectorWithErrors(compoundComponents, component, { target, find, extendWith });
                 if (typeof compoundResult === 'string') {
                   return compoundResult;
                 }
-                newComponents[componentIndex] = compoundResult as any;
+                newComponents[componentIndex] = compoundResult;
               }
               continue;
             }
@@ -1895,7 +1941,10 @@ export function extendSelector(
     if (location.path.length === 1 && isNode(target, N.ComplexSelector) && location.path[0] === 0) {
       // This is a component match in a complex selector - create :is() wrapper
       // REASON: Anything that's "part of" a selector gets wrapped in :is()
-      const componentIndex = location.path[0] as number;
+      const [componentIndex] = location.path;
+      if (typeof componentIndex !== 'number') {
+        return target;
+      }
       const matchedComponent = target.value[componentIndex];
 
       if (matchedComponent && !isNode(matchedComponent, N.Combinator)) {
@@ -1908,7 +1957,7 @@ export function extendSelector(
           return isWrapper;
         }
 
-        newComponents[componentIndex] = isWrapper as any;
+        newComponents[componentIndex] = isWrapper;
         return ComplexSelector.create(newComponents).inherit(target);
       }
     }
@@ -1930,7 +1979,10 @@ export function extendSelector(
           // Process all component matches - wrap each matching component in :is()
           const newComponents = [...target.value];
           for (const matchLoc of componentMatches) {
-            const componentIndex = matchLoc.path[0] as number;
+            const [componentIndex] = matchLoc.path;
+            if (typeof componentIndex !== 'number') {
+              continue;
+            }
             const matchedComponent = newComponents[componentIndex];
             if (matchedComponent) {
               // Wrap this component in :is(original, extension)
@@ -1943,7 +1995,7 @@ export function extendSelector(
               if (typeof isWrapResult === 'string') {
                 return isWrapResult;
               }
-              newComponents[componentIndex] = isWrapResult as any;
+              newComponents[componentIndex] = isWrapResult;
             }
           }
           return createValidatedCompoundSelectorWithErrors(newComponents, target, { target, find, extendWith });
@@ -1951,7 +2003,10 @@ export function extendSelector(
       }
 
       // Single match case
-      const componentIndex = location.path[0] as number;
+      const [componentIndex] = location.path;
+      if (typeof componentIndex !== 'number') {
+        return target;
+      }
       const matchedComponent = target.value[componentIndex];
 
       if (matchedComponent && target.value.length > 1) {
@@ -1964,7 +2019,7 @@ export function extendSelector(
           return isWrapper;
         }
 
-        newComponents[componentIndex] = isWrapper as any;
+        newComponents[componentIndex] = isWrapper;
         const result = createValidatedCompoundSelectorWithErrors(newComponents, target, { target, find, extendWith });
         return result;
       }
@@ -2023,24 +2078,23 @@ function extendSelectorList(
     if (!isNode(template, N.ComplexSelector)) {
       return s;
     }
-    const t = template as ComplexSelector;
-    const first = t.value[0];
-    const second = t.value[1];
-    if (!(first instanceof Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) {
+    const first = template.value[0];
+    const second = template.value[1];
+    if (!isNode(first, N.Ampersand) || !first.hasFlag(F_IMPLICIT_AMPERSAND)) {
       return s;
     }
     // If the selector already starts with an implicit `&`, keep it.
     if (isNode(s, N.ComplexSelector)) {
-      const sf = (s as ComplexSelector).value[0];
-      if (sf instanceof Ampersand && sf.hasFlag(F_IMPLICIT_AMPERSAND)) {
+      const sf = s.value[0];
+      if (isNode(sf, N.Ampersand) && sf.hasFlag(F_IMPLICIT_AMPERSAND)) {
         return s;
       }
     }
     // Prefix with the same implicit `&` + combinator shape from the template.
     const prefixed = ComplexSelector.create([
-      (first as Ampersand).copy(true),
-      isNode(second, N.Combinator) ? (second as Combinator).copy(true) : Combinator.create(' ').inherit(second as any),
-      s.copy(true)
+      first.derive(),
+      isNode(second, N.Combinator) ? copyComplexComponentForPlacement(second) : Combinator.create(' ').inherit(first),
+      copySelectorForExtend(s)
     ]).inherit(s);
     return prefixed;
   };
@@ -2196,7 +2250,7 @@ function extendSelectorList(
         if (!s || !isNode(s, N.ComplexSelector)) {
           continue;
         }
-        const cs = s as ComplexSelector;
+        const cs = s;
         if (cs.value.length !== 3) {
           continue;
         }
@@ -2209,13 +2263,13 @@ function extendSelectorList(
           continue;
         }
         const arg = first.value.arg;
-        if (!arg || !isNode(arg as unknown as Selector, N.SelectorList)) {
+        if (!isNode(arg, N.SelectorList)) {
           continue;
         }
         candidates.push({
           idx: i,
           selector: cs,
-          parentArg: arg as SelectorList,
+          parentArg: arg,
           hasSelectorMatch: !!orderedMatchFlags[i],
           groupKey: `${second.valueOf()}|${arg.valueOf()}`
         });
@@ -2244,11 +2298,14 @@ function extendSelectorList(
             continue;
           }
           const updatedArg = SelectorList.create([
-            ...m.parentArg.value.map(s => s.copy(true) as Selector),
-            extendWith.copy(true) as Selector
+            ...m.parentArg.value.map(s => copySelectorForExtend(s)),
+            copySelectorForExtend(extendWith)
           ]).inherit(m.parentArg);
-          const updatedSel = m.selector.copy(true) as ComplexSelector;
-          const updatedPseudo = updatedSel.value[0] as PseudoSelector;
+          const updatedSel = copySelectorForExtend(m.selector);
+          if (!isNode(updatedSel, N.ComplexSelector) || !isNode(updatedSel.value[0], N.PseudoSelector)) {
+            throw new TypeError('Expected copied complex selector with pseudo head');
+          }
+          const updatedPseudo = updatedSel.value[0];
           updatedPseudo.value.arg = updatedArg;
           next[m.idx] = updatedSel;
           mutationCount++;
@@ -2297,7 +2354,7 @@ function extendSelectorList(
         continue;
       }
       const parentStr = parentSel.valueOf();
-      const combStr = (second as Combinator).valueOf();
+      const combStr = second.valueOf();
       if (sharedParent === null) {
         sharedParent = parentStr;
       }
@@ -2312,14 +2369,23 @@ function extendSelectorList(
     if (candidates.length >= 2 && sharedParent && sharedCombinator) {
       const insertionIdx = candidates[0]!.idx;
       const template = candidates[0]!.sel;
-      const first = template.value[0] as Ampersand;
-      const second = template.value[1] as Combinator;
-      const childBasics = candidates.map(c => c.sel.value[2] as SimpleSelector).map(b => b.copy(true) as any);
+      const first = template.value[0];
+      const second = template.value[1];
+      if (!isNode(first, N.Ampersand) || !isNode(second, N.Combinator)) {
+        throw new TypeError('Expected implicit ampersand factorization template');
+      }
+      const childBasics = candidates.map((c) => {
+        const child = c.sel.value[2];
+        if (!isNode(child, N.SimpleSelector)) {
+          throw new TypeError('Expected simple selector child');
+        }
+        return copySimpleSelectorsForPlacement([child])[0]!;
+      });
       const childList = SelectorList.create(childBasics).inherit(template);
       const childIs = new PseudoSelector({ name: ':is', arg: childList }).inherit(template);
       const combined = ComplexSelector.create([
-        first.copy(true),
-        second.copy(true),
+        first.derive(),
+        copyComplexComponentForPlacement(second),
         childIs
       ]).inherit(template);
 
@@ -2364,7 +2430,7 @@ function extendSelectorList(
         const first = cs.value[0];
         const second = cs.value[1];
         const third = cs.value[2];
-        if (!isNode(second, N.Combinator)) {
+        if (!isSelectorNode(first) || !isNode(second, N.Combinator) || !isSelectorNode(third)) {
           continue;
         }
         const groupKey = second.valueOf();
@@ -2372,9 +2438,9 @@ function extendSelectorList(
         list.push({
           idx: i,
           selector: cs,
-          left: first as Selector,
-          right: third as Selector,
-          combinator: second as Combinator
+          left: first,
+          right: third,
+          combinator: second
         });
         byCombinator.set(groupKey, list);
       }
@@ -2418,11 +2484,18 @@ function extendSelectorList(
         }
 
         const mkSide = (keys: string[], map: Map<string, Selector>, inheritFrom: Selector): Selector => {
+          const getMappedSelector = (key: string): Selector => {
+            const mapped = map.get(key);
+            if (!mapped) {
+              throw new TypeError('Expected mapped selector');
+            }
+            return mapped;
+          };
           if (keys.length === 1) {
-            return (map.get(keys[0]!) as Selector).copy(true) as Selector;
+            return copySelectorForExtend(getMappedSelector(keys[0]!));
           }
           const list = SelectorList.create(
-            keys.map(k => (map.get(k) as Selector).copy(true) as Selector)
+            keys.map(k => copySelectorForExtend(getMappedSelector(k)))
           ).inherit(inheritFrom);
           const pseudo = PseudoSelector.create({ name: ':is', arg: list }).inherit(inheritFrom);
           pseudo.generated = false;
@@ -2481,7 +2554,7 @@ function selectBestLocation(
   find: Selector,
   partial: boolean,
   hasMoreAfterIs: boolean,
-  extendWith: Selector
+  _extendWith: Selector
 ): ExtendLocation | ExtendErrorType {
   const getMatchScope = (loc: ExtendLocation): MatchScope => {
     if (loc.matchScope) {
@@ -2740,7 +2813,7 @@ function isNonAllWholeSelectorItemMatch(target: Selector, findValue: string): bo
   if (isNode(target, N.SelectorList)) {
     return target.value.some((s) => {
       try {
-        return (s as any)?.valueOf?.() === findValue;
+        return s.valueOf() === findValue;
       } catch {
         return false;
       }
@@ -2750,17 +2823,17 @@ function isNonAllWholeSelectorItemMatch(target: Selector, findValue: string): bo
   // OR-path match: if the *entire selector item* is a selector-arg pseudo like :is(...)
   // and one alternative equals the find selector, that's a valid whole-item match.
   if (isNode(target, N.PseudoSelector)) {
-    const arg: any = (target as any).value?.arg;
-    if (arg && isNode(arg, N.SelectorList)) {
-      return arg.value.some((s: any) => {
+    const arg = target.value.arg;
+    if (isNode(arg, N.SelectorList)) {
+      return arg.value.some((s) => {
         try {
-          return s?.valueOf?.() === findValue;
+          return s.valueOf() === findValue;
         } catch {
           return false;
         }
       });
     }
-    if (arg && typeof arg === 'object' && typeof arg.valueOf === 'function') {
+    if (isSelectorNode(arg)) {
       try {
         if (arg.valueOf() === findValue) {
           return true;
@@ -2831,7 +2904,7 @@ function handleFullExtend(
     const arg = target.value.arg;
     // Only extend arguments for :is() pseudo-selectors or when the find is NOT the complete pseudo-selector
     // For other pseudo-selectors like :where(), when the entire pseudo-selector is matched, create a selector list
-    if (arg && (arg as any).isSelector && target.value.name === ':is') {
+    if (isSelectorNode(arg) && target.value.name === ':is') {
       if (isNode(arg, N.SelectorList)) {
         // Add to existing selector list
         const newArg = createExtendedSelectorList([...arg.value, extendWith], arg);
@@ -2851,7 +2924,7 @@ function handleFullExtend(
         }
       } else {
         // Convert single selector to list and add extension
-        const newArg = createExtendedSelectorList([arg as Selector, extendWith], arg as Selector);
+        const newArg = createExtendedSelectorList([arg, extendWith], arg);
         if (typeof newArg === 'string') {
           return newArg;
         }
@@ -3270,18 +3343,18 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
  */
 function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Selector {
   // Create a copy of the selector
-  const selectorCopy = selector.copy();
+  const selectorCopy = copySelectorForExtend(selector);
 
   const ampersandResolvedValue = ampersand.getResolvedSelector()?.valueOf();
   // Find and remove the ampersand node
   for (const node of selectorCopy.nodes()) {
     if (node === ampersand || (isNode(node, N.Ampersand)
-      && (node as Ampersand).getResolvedSelector()?.valueOf() === ampersandResolvedValue)) {
+      && node.getResolvedSelector()?.valueOf() === ampersandResolvedValue)) {
       // We need to find the parent container and remove the ampersand
       const parent = findParentOfNode(selectorCopy, node);
       if (parent && (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector))) {
         // Remove from compound/complex selector
-        const idx = parent.value.indexOf(node as any);
+        const idx = parent.value.findIndex(child => child === node);
         if (idx >= 0) {
           parent.value.splice(idx, 1);
           // If we removed a leading ampersand in a complex selector, also remove a following combinator
@@ -3326,7 +3399,7 @@ function handleAmpersandBoundaryCrossing(
   // not :is(.a, .b) .replace, :is(.a, .b) .c
   if (isNode(selector, N.SelectorList)) {
     const parentSelector = parentSelectorResolved;
-    let parentWrapped: Selector = parentSelector.copy();
+    let parentWrapped: Selector = copySelectorForExtend(parentSelector);
     if (isNode(parentWrapped, N.SelectorList)) {
       parentWrapped = isSelectorPseudo(parentWrapped);
       parentWrapped.generated = true;
@@ -3335,24 +3408,24 @@ function handleAmpersandBoundaryCrossing(
     // "& .replace, & .c" -> ".replace, .c"
     const extractNestedFromItem = (item: Selector): Selector | null => {
       if (!isNode(item, N.ComplexSelector)) {
-        return item.copy();
+        return copySelectorForExtend(item);
       }
       const parts = item.value;
       if (parts.length === 0 || !isNode(parts[0], N.Ampersand)) {
-        return item.copy();
+        return copySelectorForExtend(item);
       }
       let start = 1;
       if (parts[start] && isNode(parts[start], N.Combinator)) {
         start += 1;
       }
-      const tail = parts.slice(start).filter(p => isNode(p as any, N.Selector) || isNode(p as any, N.Combinator));
+      const tail = parts.slice(start).filter(isComplexComponent);
       if (tail.length === 0) {
         return null;
       }
       if (tail.length === 1 && isNode(tail[0], N.Selector)) {
-        return (tail[0] as Selector).copy();
+        return copySelectorForExtend(tail[0]);
       }
-      return ComplexSelector.create(tail as any).inherit(item);
+      return ComplexSelector.create(tail).inherit(item);
     };
     let nestedItems: Selector[] = selector.value
       .map(extractNestedFromItem)
@@ -3382,7 +3455,7 @@ function handleAmpersandBoundaryCrossing(
 
     // Step 3: Mark for hoisting to root
     const hoisted = markSelectorForHoisting(extendedSelector);
-    const hoistedList = SelectorList.create([hoisted, extendWith.copy(true)]).inherit(hoisted);
+    const hoistedList = SelectorList.create([hoisted, copySelectorForExtend(extendWith)]).inherit(hoisted);
     hoistedList.hoistToRoot = true;
     return hoistedList;
   }
@@ -3406,15 +3479,18 @@ function handleAmpersandBoundaryCrossing(
  * @param targetNode - The node to find the parent of
  * @returns The parent container or null if not found
  */
-function findParentOfNode(root: Selector, targetNode: any): any {
+function findParentOfNode(
+  root: Selector,
+  targetNode: Node
+): CompoundSelector | ComplexSelector | SelectorList | PseudoSelector | null {
   for (const node of root.nodes()) {
-    if (isNode(node, N.CompoundSelector | N.ComplexSelector | N.SelectorList)) {
-      for (let i = 0; i < (node as CompoundSelector).value.length; i++) {
-        if ((node as CompoundSelector).value[i] === targetNode) {
-          return node;
-        }
-      }
-    } else if (isNode(node as Node, N.PseudoSelector) && (node as PseudoSelector).value.arg === targetNode) {
+    if (
+      (isNode(node, N.CompoundSelector) || isNode(node, N.ComplexSelector) || isNode(node, N.SelectorList))
+      && node.value.some(child => child === targetNode)
+    ) {
+      return node;
+    }
+    if (isNode(node, N.PseudoSelector) && node.value.arg === targetNode) {
       return node;
     }
   }
@@ -3477,9 +3553,9 @@ function markSelectorForHoisting(selector: Selector): Selector {
  * @throws ExtendError if validation fails
  */
 function createValidatedCompoundSelectorWithErrors(
-  components: any[],
+  components: SimpleSelector[],
   inheritFrom: Selector,
-  context?: {
+  _context?: {
     target?: Selector;
     find?: Selector;
     extendWith?: Selector;
@@ -3490,7 +3566,7 @@ function createValidatedCompoundSelectorWithErrors(
     return validation.errorType!;
   }
 
-  const compound = CompoundSelector.create(components as any);
+  const compound = CompoundSelector.create(components);
   return compound.inherit(inheritFrom);
 }
 
@@ -3738,7 +3814,6 @@ function applyExtensionAtPath(
   location?: ExtendLocation,
   contextSelector?: Selector
 ): Selector | ExtendErrorType {
-  const isArgMatch = path.includes('arg');
   // When at root compound with a contiguous slice to wrap, replace that slice with :is(matched, extendWith)
   if (path.length === 0 && isNode(current, N.CompoundSelector) && location?.contiguousCompoundRange) {
     const [start, end] = location.contiguousCompoundRange;
@@ -3751,9 +3826,9 @@ function applyExtensionAtPath(
     if (typeof wrapped === 'string') {
       return wrapped;
     }
-    const newValue = [
+    const newValue: SimpleSelector[] = [
       ...current.value.slice(0, start),
-      wrapped as SimpleSelector,
+      wrapped,
       ...current.value.slice(end)
     ];
     return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
@@ -3776,7 +3851,7 @@ function applyExtensionAtPath(
     for (let i = 0; i < current.value.length; i++) {
       if (indicesSet.has(i)) {
         if (!wrappedAdded) {
-          newValue.push(wrapped as SimpleSelector);
+          newValue.push(wrapped);
           wrappedAdded = true;
         }
       } else {
@@ -3798,7 +3873,10 @@ function applyExtensionAtPath(
     // For selector lists, we need special handling
     if (remainingPath.length === 0) {
       // We're targeting a specific item in the list
-      const index = nextSegment as number;
+      if (typeof nextSegment !== 'number') {
+        return current;
+      }
+      const index = nextSegment;
       const item = current.value[index];
 
       // Less parity: for targets like `:is(.a,.b):after` extending `.a`,
@@ -3811,30 +3889,30 @@ function applyExtensionAtPath(
         && item
         && isNode(item, N.SimpleSelector)
         && isNode(matchedNode, N.SimpleSelector)
-        && isNode(current.parent as any, N.PseudoSelector)
-        && (current.parent as PseudoSelector).value.name === ':is'
-        && isNode((current.parent as PseudoSelector).parent as any, N.CompoundSelector)
+        && isNode(current.parent, N.PseudoSelector)
+        && current.parent.value.name === ':is'
+        && isNode(current.parent.parent, N.CompoundSelector)
       ) {
-        const parentCompound = (current.parent as PseudoSelector).parent as CompoundSelector;
+        const parentCompound = current.parent.parent;
         const pseudoIndex = parentCompound.value.findIndex(n => n === current.parent);
         const trailing = pseudoIndex >= 0 ? parentCompound.value.slice(pseudoIndex + 1) : [];
         // Only force append-to-:is() for pseudo tails like `:is(.a,.b):after`.
         // For structural tails like `.a:is(.b,.c).d`, preserve positional wrap semantics.
-        const hasPseudoOnlyTail = trailing.length > 0 && trailing.every(n => isNode(n as any, N.PseudoSelector));
-      if (hasPseudoOnlyTail) {
-        const additions = (isNode(extendWith, N.PseudoSelector) && extendWith.value.name === ':is')
-          ? extractSelectorsFromIs(extendWith)
-          : [extendWith];
-        const newValue = [...current.value];
+        const hasPseudoOnlyTail = trailing.length > 0 && trailing.every(n => isNode(n, N.PseudoSelector));
+        if (hasPseudoOnlyTail) {
+          const additions = (isNode(extendWith, N.PseudoSelector) && extendWith.value.name === ':is')
+            ? extractSelectorsFromIs(extendWith)
+            : [extendWith];
+          const newValue = [...current.value];
           let changed = false;
-        for (const add of additions) {
-          if (!newValue.some(s => s.valueOf() === add.valueOf())) {
-            newValue.push(add);
-            changed = true;
+          for (const add of additions) {
+            if (!newValue.some(s => s.valueOf() === add.valueOf())) {
+              newValue.push(add);
+              changed = true;
+            }
           }
+          return changed ? SelectorList.create(copySelectorsForPlacement(newValue)).inherit(current) : current;
         }
-        return changed ? SelectorList.create(copySelectorsForPlacement(newValue)).inherit(current) : current;
-      }
       }
 
       // For wrap, wrap the matched list item in :is(matched, extendWith) rather than replacing with extendWith
@@ -3873,7 +3951,10 @@ function applyExtensionAtPath(
       }
     } else {
       // Navigate deeper into the list
-      const index = nextSegment as number;
+      if (typeof nextSegment !== 'number') {
+        return current;
+      }
+      const index = nextSegment;
       const newValue = [...current.value];
       const deepResult = applyExtensionAtPath(
         newValue[index]!, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
@@ -3887,7 +3968,10 @@ function applyExtensionAtPath(
   }
 
   if (isNode(current, N.CompoundSelector)) {
-    const index = nextSegment as number;
+    if (typeof nextSegment !== 'number') {
+      return current;
+    }
+    const index = nextSegment;
     const newValue = [...current.value];
     // When we recurse into a component that will be wrapped, pass this compound as context for element/ID validation.
     const childContext = remainingPath.length === 0 && extensionType === 'wrap' ? current : undefined;
@@ -3897,25 +3981,38 @@ function applyExtensionAtPath(
     if (typeof compoundChild === 'string') {
       return compoundChild;
     }
-    newValue[index] = compoundChild as SimpleSelector;
+    if (!isNode(compoundChild, N.SimpleSelector)) {
+      throw new TypeError('Expected simple selector result');
+    }
+    newValue[index] = compoundChild;
     return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
   }
 
   if (isNode(current, N.ComplexSelector)) {
-    const index = nextSegment as number;
+    if (typeof nextSegment !== 'number') {
+      return current;
+    }
+    const index = nextSegment;
     const newValue = [...current.value];
+    const currentChild = newValue[index];
+    if (!isSelectorNode(currentChild)) {
+      return current;
+    }
     const complexChild = applyExtensionAtPath(
-      newValue[index] as Selector, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
+      currentChild, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined
     );
     if (typeof complexChild === 'string') {
       return complexChild;
     }
-    newValue[index] = complexChild as any;
+    if (!isComplexComponent(complexChild)) {
+      throw new TypeError('Expected complex selector component result');
+    }
+    newValue[index] = complexChild;
     return ComplexSelector.create(copyComplexComponentsForPlacement(newValue)).inherit(current);
   }
 
   if (isNode(current, N.PseudoSelector) && nextSegment === 'arg') {
-    const arg = current.value.arg as Selector;
+    const arg = expectSelector(current.value.arg);
     // Special handling for pseudo-selector arguments
     if (remainingPath.length === 0) {
       // Direct match in the argument - create a list or extend existing list

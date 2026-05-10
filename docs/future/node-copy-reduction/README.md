@@ -301,19 +301,19 @@ as generic low-hanging fruit:
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper must return a selector-shaped node or throw.
 - `packages/core/src/tree/util/extend.ts` still owns generated selector-output
-  copy sites. That file has substantial pre-existing lint debt, so follow-up
-  work there should either keep to already-clean helper files or explicitly pay
-  the whole-file lint cost in the same checkpoint.
+  copy at the template-combinator placement boundary. Its generated-output
+  helper path is now whole-file lint-clean, so follow-up work should keep that
+  gate green.
 
 Do not present any of those as completed runtime-eval copy removal until a
 focused test proves the specific ownership boundary can move.
 Use `pnpm run verify:node-copy-frontier` to refresh the exact deep
 copy/clone-style call-site scan before choosing the next seam.
 
-If the next seam is generated selector output, treat `extend.ts` lint cleanup as
-part of the work. The current blocker is not just selector copying; the file
-does not pass whole-file ESLint, so a tiny copy-site edit there will not survive
-the staged commit gate.
+If the next seam is generated selector output, keep the `extend.ts` typed-helper
+cleanup intact. The file now passes whole-file ESLint; the remaining question is
+whether the final template-combinator placement copy is still a real ownership
+boundary or can be expressed through the shared generated-output helpers.
 
 Recent quality pass note: utility cleanups should stay focused on files whose
 whole-file lint debt can actually be paid in the same patch. `Context.getTree()`

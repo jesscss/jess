@@ -263,9 +263,9 @@ Current remaining clone/copy frontier:
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper now returns a selector-shaped node or throws.
 - `packages/core/src/tree/util/extend.ts` still contains generated selector
-  output `.copy(...)` calls and pre-existing whole-file lint debt. Treat that as
-  a distinct generated-output cleanup batch; do not mix it into ordinary eval
-  copy removal unless the checkpoint also pays the lint cost.
+  output `.copy(true)` at the template-combinator placement boundary. The
+  surrounding generated-output helpers are now typed enough for whole-file
+  ESLint to pass, so follow-up work should keep the file lint-clean.
 
 Run `pnpm run verify:node-copy-frontier` before picking the next node-copy seam.
 It intentionally scans only deep copy/clone-style call sites, not every
@@ -273,17 +273,14 @@ It intentionally scans only deep copy/clone-style call sites, not every
 
 Next generated-output checkpoint:
 
-- Start with `packages/core/src/tree/util/extend.ts`, not the import or callable
-  rules clone boundaries.
-- Current evidence: `pnpm run verify:node-copy-frontier` reports the remaining
-  `.copy(true)` sites in `extend.ts`; `pnpm exec eslint
-  packages/core/src/tree/util/extend.ts` currently reports 114 problems (108
-  errors, 6 warnings), mostly unsafe assertions plus one indentation block near
-  the tail.
-- The first honest slice should pay down a coherent typed helper area and leave
-  the whole file lint-clean, or move that helper into an already clean module.
-  Do not edit `extend.ts` for a tiny copy-site change unless the same checkpoint
-  also handles the file's lint gate.
+- The first `extend.ts` lint cleanup slice is complete: typed selector/component
+  guards replaced the high-risk unsafe assertion clusters around generated
+  output processing, and `pnpm exec eslint
+  packages/core/src/tree/util/extend.ts` passes.
+- Current evidence: `pnpm run verify:node-copy-frontier` reports one remaining
+  `.copy(true)` in `extend.ts`, at the template-combinator placement boundary.
+- The next honest generated-output slice should remove or justify that final
+  placement copy with focused selector/ampersand behavior tests.
 
 ## Work Loop
 
