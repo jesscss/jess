@@ -1,5 +1,6 @@
 import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -158,8 +159,7 @@ describe('Attribute Selector', () => {
     ]);
     context.root = node;
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toContain('.one [data="foo"]');
     expect(css).toContain('.two [data="bar"]');
