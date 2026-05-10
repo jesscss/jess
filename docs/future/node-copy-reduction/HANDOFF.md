@@ -35,6 +35,13 @@ it is for current direction and next seams, not a historical pass log.
   `Compiler.renderToResult(...)`, so the fixture baseline exercises the awaited
   eval/render API instead of compiling a tree and then calling
   `tree.toString({ context })` in the test harness.
+- Active public compiler coverage now proves `render(...)`, `renderString(...)`,
+  and `renderToResult(...)` preserve root-owned output such as first charset,
+  hoisted CSS imports, and final newline behavior through the render bridge.
+- `packages/core/src/tree/util/render-buffer.ts` has focused coverage for both
+  direct root rendering and the case where the source root resolves to an owned
+  root surface; the root serializer exception should stay limited to that
+  identity-backed case.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check now also fails on ordinary production `.copy()`

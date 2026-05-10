@@ -254,6 +254,10 @@ touching production code.
     the render bridge, so kept root output such as first `@charset`, hoisted CSS
     `@import`, and final newline policy stays owned by `Rules.toString(...)`
     while compile APIs can still await render.
+  - The root serializer exception is identity-based on either the resolved root
+    surface or the source root node. This covers owned root output surfaces
+    produced by `Rules.resolve(context)` without making `toString(...)` part of
+    the generic renderable-output contract.
 - `packages/core/src/tree/util/selector-utils.ts`
   - implicit selector-list construction now maps generated implicit-ampersand
     items into a fresh `SelectorList` instead of cloning the source selector
