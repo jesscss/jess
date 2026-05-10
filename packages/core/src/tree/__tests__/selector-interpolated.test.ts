@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import {
   any,
   attr,
+  BasicSelector,
   compound,
   el,
   Interpolated,
@@ -164,6 +165,37 @@ describe('InterpolatedSelector', () => {
       expect(value.parent).toBe(selectorNode);
     } finally {
       Interpolated.prototype.clone = originalClone;
+    }
+  });
+
+  it('reuses source-free selector leaves when whole interpolation becomes selector output', async () => {
+    const left = el('.a');
+    const right = el('.b');
+    const replacement = compound([left, right]);
+    const selectorNode = interpolatedSelector(interpolated({
+      source: INTERPOLATION_PLACEHOLDER,
+      replacements: [replacement]
+    }));
+    const originalClone = BasicSelector.prototype.clone;
+    let basicSelectorCloneCalls = 0;
+    BasicSelector.prototype.clone = function cloneForCounting(
+      this: BasicSelector,
+      ...args: Parameters<BasicSelector['clone']>
+    ): ReturnType<BasicSelector['clone']> {
+      basicSelectorCloneCalls++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const resolved = await selectorNode.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.a.b');
+      expect(basicSelectorCloneCalls).toBe(0);
+      expect(replacement.parent).toBe(selectorNode.value);
+      expect(left.parent).toBe(replacement);
+      expect(right.parent).toBe(replacement);
+    } finally {
+      BasicSelector.prototype.clone = originalClone;
     }
   });
 });

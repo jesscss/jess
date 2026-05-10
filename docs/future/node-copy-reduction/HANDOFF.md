@@ -116,6 +116,9 @@ Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before
 selector conversion.
+Whole-selector interpolation now uses the shared reusable-leaf copy boundary
+when the evaluated replacement is already a selector, so generated selector
+output owns a wrapper without cloning inert source-free selector leaves.
 The latest utility quality pass made `Context.getTree()` expose its no-tree
 unsupported-file case without a hidden `any`, removed catch/rethrow and stale
 commented import clone scaffolding there, and made import evaluation handle the

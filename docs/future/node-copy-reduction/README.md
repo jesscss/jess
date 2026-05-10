@@ -131,6 +131,10 @@ touching production code.
   - resolved interpolated wrappers now construct directly when replacement
     values change, and interpolated selector resolve no longer deep-clones the
     source interpolated value before resolving selector output
+  - whole-selector interpolation now uses the shared reusable-leaf copy
+    boundary when an evaluated replacement is already a selector, so generated
+    selector output owns a wrapper without cloning inert source-free selector
+    leaves
 - `packages/core/src/tree/control.ts`
   - `$for` aggregate/empty output wrappers are now constructed directly instead
     of shallow-cloning the loop body rules and clearing them
