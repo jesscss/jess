@@ -7,6 +7,8 @@ export type RenderBufferNode = {
 };
 
 export type RenderableOutput = {
+  type?: string;
+  toString?(options?: PrintOptions): string;
   toTrimmedString(options?: PrintOptions): string;
 };
 
@@ -190,7 +192,12 @@ export function renderNodeToString(
   // string output. Nodes with delayed-output semantics must write explicit
   // segments instead of growing a second AST.
   const prepared = prepareRenderPrintState(context, options);
-  const writeResolved = (resolved: RenderableOutput): string => resolved.toTrimmedString(prepared);
+  const writeResolved = (resolved: RenderableOutput): string => {
+    if (resolved.type === 'Rules' && resolved === context.root && resolved.toString) {
+      return resolved.toString(prepared);
+    }
+    return resolved.toTrimmedString(prepared);
+  };
   const resolved = node.resolve(context);
   return isThenable(resolved)
     ? (resolved as Promise<RenderableOutput>).then(writeResolved)
