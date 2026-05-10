@@ -193,6 +193,13 @@ touching production code.
     items into a fresh `SelectorList` instead of cloning the source selector
     list and replacing children, so source list children stay canonical while
     generated selector output still owns its emitted items
+- `packages/core/src/tree/util/cloning.ts`,
+  `packages/core/src/tree/util/extend.ts`, and
+  `packages/core/src/tree/util/extend-walk.ts`
+  - extend-generated selector output now has an owned-root/reusable-children
+    copy helper, so flagging `F_EXTENDED` / `F_EXTEND_TARGET` no longer
+    deep-clones matched selector items just to mutate flags; this keeps extend
+    output ownership explicit while preserving source selector parentage
 
 ## Current Todo Shape
 

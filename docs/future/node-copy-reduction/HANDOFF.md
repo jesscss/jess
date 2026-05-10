@@ -177,6 +177,12 @@ generated selector output rather than repairing shallow-wrapper replacement.
 implicit ampersand output by constructing a fresh `SelectorList` from mapped
 generated items instead of cloning the source list and replacing children, so
 source list children remain parented to the source list.
+Extend-generated selector output in `packages/core/src/tree/util/extend.ts`
+and `packages/core/src/tree/util/extend-walk.ts` now uses an owned-root /
+reusable-children copy helper from `packages/core/src/tree/util/cloning.ts`.
+That keeps flag mutation (`F_EXTENDED` / `F_EXTEND_TARGET`) on generated output
+surfaces without deep-cloning matched selector items or reusing the source item
+as the flagged node.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 

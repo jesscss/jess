@@ -109,7 +109,7 @@
  */
 
 import type { Rules } from '../rules.js';
-import { type Selector } from '../selector.js';
+import type { Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
 import { ComplexSelector } from '../selector-complex.js';
@@ -136,6 +136,7 @@ import {
   extendWithNeedsConflictValidation,
   wouldExtendChange
 } from './extend-walk.js';
+import { copyOwnedWithReusableLeaves } from './cloning.js';
 
 const { isArray } = Array;
 let extendOrderMap: WeakMap<Selector, number> | null = null;
@@ -428,7 +429,7 @@ function applyBatchedExtend(
         continue;
       }
       anyWholeMatch = true;
-      const c = sItem.clone(true) as Selector;
+      const c = copySelectorForExtend(sItem);
       c.addFlag(F_EXTENDED);
       // Parity with `createMatchedIs` in the non-batched extend path:
       // the original matched item is both `F_EXTENDED` (it stays visible
@@ -444,7 +445,7 @@ function applyBatchedExtend(
       originalItems.push(c);
       for (const extendWith of extendWithList) {
         if (extendWith.valueOf() !== itemVal) {
-          const ext = extendWith.clone(true) as Selector;
+          const ext = copySelectorForExtend(extendWith);
           ext.addFlag(F_EXTENDED);
           newItems.push(ext);
         }
@@ -509,6 +510,14 @@ function deduplicateSelectors(selectors: Selector[]): Selector[] {
   }
 
   return result;
+}
+
+function copySelectorForExtend(selector: Selector): Selector {
+  const copied = copyOwnedWithReusableLeaves(selector);
+  if (!isSelectorNode(copied)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return copied;
 }
 
 /**
@@ -2043,12 +2052,12 @@ function extendSelectorList(
     if (extended === selector) {
       orderedSelectors.push(
         keepOriginalInReference(selector)
-          ? markExtended(selector.clone(true))
-          : markExtendTarget(selector.clone(true))
+          ? markExtended(copySelectorForExtend(selector))
+          : markExtendTarget(copySelectorForExtend(selector))
       );
       orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
       if (comparison.hasWholeMatch && extendWith.valueOf() !== selector.valueOf()) {
-        newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+        newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, copySelectorForExtend(extendWith))));
       }
       continue;
     }
@@ -2080,23 +2089,23 @@ function extendSelectorList(
       if (extended.value.length === 0) {
         orderedSelectors.push(
           keepOriginalInReference(selector)
-            ? markExtended(selector.clone(true))
-            : markExtendTarget(selector.clone(true))
+            ? markExtended(copySelectorForExtend(selector))
+            : markExtendTarget(copySelectorForExtend(selector))
         );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
       } else if (extended.value.length === 1 && extended.value[0]!.valueOf() === extendWith.valueOf()) {
         orderedSelectors.push(
           keepOriginalInReference(selector)
-            ? markExtended(selector.clone(true))
-            : markExtendTarget(selector.clone(true))
+            ? markExtended(copySelectorForExtend(selector))
+            : markExtendTarget(copySelectorForExtend(selector))
         );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         if (extendWith.valueOf() !== selector.valueOf()) {
-          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, copySelectorForExtend(extendWith))));
         }
         appendedVariant = true;
       } else {
-        const first = extended.value[0]!.clone(true) as Selector;
+        const first = copySelectorForExtend(extended.value[0]!);
         orderedSelectors.push(keepOriginalInReference(selector) ? markExtended(first) : markExtendTarget(first));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         const template = extended.value[0] ?? selector;
@@ -2104,7 +2113,7 @@ function extendSelectorList(
           ...extended.value
             .slice(1)
             .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector)))
-            .map(s => s.clone(true))
+            .map(s => copySelectorForExtend(s))
         );
         appendedVariant = true;
       }
@@ -2115,23 +2124,23 @@ function extendSelectorList(
       if (fullMatchOfListItem) {
         orderedSelectors.push(
           keepOriginalInReference(selector)
-            ? markExtended(selector.clone(true))
-            : markExtendTarget(selector.clone(true))
+            ? markExtended(copySelectorForExtend(selector))
+            : markExtendTarget(copySelectorForExtend(selector))
         );
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         if (extendWith.valueOf() !== selector.valueOf()) {
-          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extendWith.clone(true))));
+          newSelectors.push(markExtended(maybePrefixNewSelectorWithImplicitParent(selector, copySelectorForExtend(extendWith))));
         }
         appendedVariant = true;
       } else {
-        orderedSelectors.push(markExtended(extended.clone(true)));
+        orderedSelectors.push(markExtended(copySelectorForExtend(extended)));
         orderedMatchFlags.push(comparison.hasWholeMatch || comparison.hasPartialMatch);
         appendedVariant = true;
       }
     }
 
     if (!appendedVariant && extended.valueOf() !== selector.valueOf()) {
-      const variant = markExtended(maybePrefixNewSelectorWithImplicitParent(selector, extended.clone(true)));
+      const variant = markExtended(maybePrefixNewSelectorWithImplicitParent(selector, copySelectorForExtend(extended)));
       newSelectors.push(variant);
     }
   }
@@ -2147,7 +2156,7 @@ function extendSelectorList(
     const processedArray = isArray(processed) ? processed : [processed];
     // See createExtendedSelectorList() for rationale: never include `target` as an adopted child
     // when we also inherit from it.
-    const safeArray = processedArray.map(s => (s === target ? s.clone(true) : s));
+    const safeArray = processedArray.map(s => (s === target ? copySelectorForExtend(s) : s));
     return SelectorList.create(safeArray).inherit(target);
   }
   // Exact-mode OR propagation:

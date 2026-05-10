@@ -100,3 +100,15 @@ export function copyWithReusableLeaves(node: Node): Node {
   copy.frozen = true;
   return copy;
 }
+
+export function copyOwnedWithReusableLeaves(node: Node): Node {
+  if (node.type === 'Comment') {
+    const nilNode = node.nil?.();
+    if (nilNode) {
+      return nilNode.inherit(node);
+    }
+  }
+  const copy = constructCopy(node, copyChild(node.value));
+  copy.frozen = true;
+  return copy;
+}

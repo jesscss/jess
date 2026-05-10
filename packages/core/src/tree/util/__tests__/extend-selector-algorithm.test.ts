@@ -62,6 +62,31 @@ describe('Extend Selector Tests', () => {
   });
 
   describe('Full match extend examples', () => {
+    it('derives selector-list extend output without cloning the matched source item', () => {
+      const target = sellist([el('.a'), el('.b')]);
+      const sourceItem = target.value[0]!;
+      expect(sourceItem.isSelector).toBe(true);
+      const originalClone = sourceItem.clone;
+      let sourceItemClones = 0;
+      sourceItem.clone = function cloneForCounting(
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        sourceItemClones++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const result = extendSelector(target, el('.a'), el('.c'), false);
+
+        expect(sourceItemClones).toBe(0);
+        expect(result.valueOf()).toBe('.a,.b,.c');
+        expect(target.value[0]).toBe(sourceItem);
+        expect(sourceItem.valueOf()).toBe('.a');
+      } finally {
+        sourceItem.clone = originalClone;
+      }
+    });
+
     it('should extend simple selector with simple target - example 1', () => {
       // Selector: .a, Target: .a (full), Extend with: .b
       // Result: .a, .b

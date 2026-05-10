@@ -59,8 +59,23 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
+import { copyOwnedWithReusableLeaves } from './cloning.js';
 
 const { isArray } = Array;
+
+function copySelectorForExtend(selector: Selector): Selector {
+  const copied = copyOwnedWithReusableLeaves(selector);
+  if (!isSelectorNode(copied)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return copied;
+}
+
+function isSelectorNode(value: unknown): value is Selector {
+  return !!value
+    && typeof value === 'object'
+    && (value as { isSelector?: unknown }).isSelector === true;
+}
 
 // ─────────────────────────────────────────────────
 // Find decomposition
@@ -902,7 +917,7 @@ function walkAlternativeTailAware(
 // ─────────────────────────────────────────────────
 
 function makeList(original: Selector, extendWith: Selector, _partial: boolean = false): Selector {
-  const a = original.clone(true) as Selector;
+  const a = copySelectorForExtend(original);
   a.addFlag(F_EXTENDED);
   // The original item *is* the extend target (it was matched). Tag it so
   // downstream filters (reference-mode compose filter) can distinguish it
@@ -914,7 +929,7 @@ function makeList(original: Selector, extendWith: Selector, _partial: boolean = 
   const extendItems = extractIsArgs(extendWith);
   const items: Selector[] = [a];
   for (const item of extendItems) {
-    const b = item.clone(true) as Selector;
+    const b = copySelectorForExtend(item);
     b.addFlag(F_EXTENDED);
     items.push(b);
   }
@@ -939,12 +954,12 @@ function extractIsArgs(selector: Selector): Selector[] {
 }
 
 function wrapInIs(matched: Selector, extendWith: Selector): Selector {
-  const a = matched.copy(true) as Selector;
+  const a = copySelectorForExtend(matched);
   a.addFlag(F_EXTEND_TARGET);
 
   const extendItems = extractIsArgs(extendWith);
   const extendCopies = extendItems.map((item) => {
-    const c = item.copy(true) as Selector;
+    const c = copySelectorForExtend(item);
     c.addFlag(F_EXTENDED);
     return c;
   });
@@ -960,7 +975,7 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
       return matched;
     }
 
-    const merged = [...existing.map(s => s.copy(true) as Selector), ...newItems];
+    const merged = [...existing.map(s => copySelectorForExtend(s)), ...newItems];
     const list = SelectorList.create(merged);
     const result = PseudoSelector.create({ name: ':is', arg: list }).inherit(matched);
     result.generated = true;
