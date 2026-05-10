@@ -104,6 +104,26 @@ describe('Call', () => {
     expect(rule.preEvaluated).toBe(false);
   });
 
+  it('writes resolved non-string call render output into flat buffers', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'empty',
+      fn: () => any('ok')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: ref({ key: 'empty' }, { type: 'function' }),
+      args: list([])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('ok');
+    expect(buffer.parts).toEqual(['ok']);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
   it('requires explicit segment handling for segmented buffers', () => {
     const buffer = createRenderBuffer('segmented');
     const rule = call({
