@@ -20,10 +20,12 @@ import {
   query,
   quoted,
   rules,
+  Ruleset,
   ruleset,
   sel,
   sellist,
-  spaced
+  spaced,
+  Declaration
 } from '../index.js';
 import { serializeTypes } from '../util/serialize-types.js';
 
@@ -214,6 +216,68 @@ describe('extend integration (eval -> toString)', () => {
     `);
   });
 
+  it('materializes selector-list parent extend records without cloning source-free leaves', async () => {
+    const parentA = el('.parent-a');
+    const parentB = el('.parent-b');
+    const originalAClone = parentA.clone;
+    const originalBClone = parentB.clone;
+    let sourceLeafClones = 0;
+    parentA.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalAClone>
+    ): ReturnType<typeof originalAClone> {
+      sourceLeafClones++;
+      return originalAClone.apply(this, args);
+    };
+    parentB.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalBClone>
+    ): ReturnType<typeof originalBClone> {
+      sourceLeafClones++;
+      return originalBClone.apply(this, args);
+    };
+
+    try {
+      const root = rules([
+        ruleset({
+          selector: el('.target'),
+          rules: rules([
+            decl({ name: 'background', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([parentA]), sel([parentB])]),
+          rules: rules([
+            ruleset({
+              selector: el('.child'),
+              rules: rules([
+                extend({
+                  target: el('.target'),
+                  flag: ExtendFlag.All
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const context = new Context({ collapseNesting: false });
+      const evald = await root.eval(context);
+      expect(sourceLeafClones).toBe(0);
+      const css = evald.toString({ context });
+
+      expect(css).toBeString(`
+        .target,
+        :is(.parent-a, .parent-b) .child {
+          background: red;
+        }
+      `);
+      expect(parentA.parent?.valueOf()).toBe('.parent-a');
+      expect(parentB.parent?.valueOf()).toBe('.parent-b');
+    } finally {
+      parentA.clone = originalAClone;
+      parentB.clone = originalBClone;
+    }
+  });
+
   it('extends attribute selectors without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
     // Represents:
     // .attributes {
@@ -280,21 +344,30 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
+    const isDeclarationNamed = (node: unknown, name: string): node is Declaration => (
+      node instanceof Declaration
+      && (node.value.name.valueOf?.() ?? node.value.name) === name
+    );
+    const isRulesetWithRules = (node: unknown): node is Ruleset => (
+      node instanceof Ruleset
+      && Array.isArray(node.value.rules.value)
+    );
+
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
-    const evaldRoot = evald as import('../rules.js').Rules;
-    const outerBb = evaldRoot.value.find(
-      (n: any) =>
-        n?.type === 'Ruleset'
-        && Array.isArray(n.value?.rules?.value)
-        && n.value.rules.value.some((r: any) => r?.type === 'Declaration' && (r.value?.name?.valueOf?.() ?? r.value?.name) === 'background')
-        && n.value.rules.value.some((r: any) => r?.type === 'Ruleset')
+    const outerBb = evald.value.find(
+      (node): node is Ruleset =>
+        isRulesetWithRules(node)
+        && node.value.rules.value.some(rule => isDeclarationNamed(rule, 'background'))
+        && node.value.rules.value.some(rule => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    const inner = (outerBb as any).value.rules.value.find(
-      (n: any) => n?.type === 'Ruleset' && n.value?.rules?.value?.some((d: any) => (d?.value?.name?.valueOf?.() ?? d?.value?.name) === 'color')
+    const inner = outerBb?.value.rules.value.find(
+      (node): node is Ruleset =>
+        isRulesetWithRules(node)
+        && node.value.rules.value.some(rule => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
-    const innerSelectorStr = typeof (inner as any).value?.selector?.valueOf === 'function' ? (inner as any).value.selector.valueOf() : '';
+    const innerSelectorStr = inner?.value.selector.valueOf() ?? '';
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');

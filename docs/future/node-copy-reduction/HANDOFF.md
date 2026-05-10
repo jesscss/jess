@@ -94,7 +94,9 @@ source preludes and rule bodies stay parented to the canonical at-rule.
 Ruleset registration/resolve prep now derives the wrapper with an owned selector
 surface, so source selectors stay parented to the canonical ruleset. Body rules
 remain the existing registration/eval surface because copying them changes
-mixin and scope behavior. Mixin interpolated-name registration prep also
+mixin and scope behavior. Ruleset `ownSelector` metadata also uses the shared
+owned/reusable selector copy boundary now, so selector-list metadata does not
+clone inert source-free selector leaves during registration prep. Mixin interpolated-name registration prep also
 derives an owned wrapper directly, so source dynamic names, params, guards, and
 body rules stay canonical. `Rules.resolve(context)` now uses the same explicit
 derived Rules surface instead of `clone(false)`, preserving function-registry
@@ -196,6 +198,10 @@ Implicit ampersand extend output now has the same shape: `Ampersand.derive()`
 constructs a new ampersand wrapper while preserving its live selector
 container, and extend placement copies use the owned/reusable helper instead of
 generic `.copy(true)` for compound/list replacement surfaces.
+Extend record materialization in `packages/core/src/tree/extend.ts` now uses
+the same owned/reusable selector boundary for generated selector-list surfaces,
+avoiding deep clones of inert source-free selector leaves while still owning
+the generated output container.
 The `createExtendedSelectorList()` self-parenting guard is now the placement
 copy itself: selector-list items are copied through `copySelectorsForPlacement`
 before adoption, so the old post-copy `s === inheritFrom ? s.clone(true)` guard

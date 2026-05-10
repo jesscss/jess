@@ -7,10 +7,12 @@ import { Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
 import { PseudoSelector } from './selector-pseudo.js';
+import { SelectorList } from './selector-list.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -234,13 +236,13 @@ export class Extend extends Node<ExtendValue> {
         ) {
           const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
             name: ':is',
-            arg: parentSel.copy(true)
+            arg: copySelectorForExtendRecord(parentSel, selectorBits)
           }), selectorBits);
           parentIs.generated = true;
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             parentIs,
             Combinator.create(' '),
-            ownSel.copy(true)
+            copySelectorForExtendRecord(ownSel, selectorBits)
           ]), selectorBits);
           usedParentListComposition = true;
         }
@@ -255,9 +257,9 @@ export class Extend extends Node<ExtendValue> {
             const parentSel = currentFrame.value?.selector;
             if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
               resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                parentSel.copy(true),
+                copySelectorForExtendRecord(parentSel, selectorBits),
                 Combinator.create(' '),
-                resolvedSel.copy(true)
+                copySelectorForExtendRecord(resolvedSel, selectorBits)
               ]), selectorBits);
             }
           }
@@ -289,8 +291,24 @@ function getRulesetOwnSelector(ruleset: Ruleset): Selector | undefined {
   return ownSelector instanceof Nil ? undefined : ownSelector;
 }
 
-function isSelectorNode(node: unknown): node is Selector {
-  return node instanceof Selector;
+function copySelectorForExtendRecord(
+  selector: Selector,
+  library: Selector['keySetLibrary']
+): Selector {
+  const copied = copyOwnedWithReusableLeaves(selector);
+  if (!isSelectorLike(copied)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return attachSelectorBitLibrary(copied, library ?? selector.keySetLibrary);
+}
+
+function isSelectorLike(value: unknown): value is Selector {
+  return value instanceof Selector
+    || (
+      !!value
+      && typeof value === 'object'
+      && (value as { isSelector?: unknown }).isSelector === true
+    );
 }
 
 function materializeImplicitAmpersands(
@@ -298,6 +316,7 @@ function materializeImplicitAmpersands(
   includeNonListImplicit: boolean
 ): Selector {
   const library = selector.keySetLibrary;
+  const copySelector = (node: Selector): Selector => copySelectorForExtendRecord(node, library);
   const materialize = (node: Selector): Selector => {
     if (isNode(node, N.Ampersand)) {
       const amp = node;
@@ -308,10 +327,10 @@ function materializeImplicitAmpersands(
           && !(resolved instanceof Nil)
           && (includeNonListImplicit || isNode(resolved, N.SelectorList))
         ) {
-          return materialize(attachSelectorBitLibrary(resolved.copy(true) as Selector, library));
+          return materialize(copySelector(resolved));
         }
       }
-      return attachSelectorBitLibrary(node.copy(true) as Selector, library);
+      return copySelector(node);
     }
 
     if (isNode(node, N.ComplexSelector)) {
@@ -327,30 +346,30 @@ function materializeImplicitAmpersands(
               && !(resolved instanceof Nil)
               && (includeNonListImplicit || isNode(resolved, N.SelectorList))
             ) {
-              const repl = materialize(attachSelectorBitLibrary(resolved.copy(true) as Selector, library));
+              const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.value.map(item => item.copy(true)));
+                parts.push(...repl.value.map(item => copySelector(item) as ComplexSelectorComponent));
               } else {
-                parts.push(repl.copy(true) as ComplexSelectorComponent);
+                parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
               continue;
             }
           }
         }
         const repl = materialize(part);
-        parts.push(repl.copy(true) as ComplexSelectorComponent);
+        parts.push(copySelector(repl) as ComplexSelectorComponent);
       }
       return attachSelectorBitLibrary(ComplexSelector.create(parts).inherit(node), library);
     }
 
-    const value = Reflect.get(node, 'value');
-    if (Array.isArray(value)) {
-      const cloned = attachSelectorBitLibrary(node.copy(true), library);
-      Reflect.set(cloned, 'value', value.map(item => isSelectorNode(item) ? materialize(item) : item));
-      return cloned;
+    if (isNode(node, N.SelectorList)) {
+      return attachSelectorBitLibrary(
+        SelectorList.create(node.value.map(item => materialize(item as Selector))).inherit(node),
+        library
+      );
     }
 
-    return attachSelectorBitLibrary(node.copy(true), library);
+    return copySelector(node);
   };
 
   return attachSelectorBitLibrary(materialize(selector), library);

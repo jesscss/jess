@@ -29,7 +29,7 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyOwnedWithReusableLeaves, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -48,6 +48,23 @@ export type RulesetValue = {
    */
   selectorBeforeExtend?: Selector | Nil;
 };
+
+function copySelectorForRulesetMetadata(selector: Selector): Selector {
+  const copied = copyOwnedWithReusableLeaves(selector);
+  if (!isSelectorLike(copied)) {
+    return selector.copy(true);
+  }
+  return copied;
+}
+
+function isSelectorLike(value: unknown): value is Selector {
+  return value instanceof Selector
+    || (
+      !!value
+      && typeof value === 'object'
+      && (value as { isSelector?: unknown }).isSelector === true
+    );
+}
 
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
@@ -1096,7 +1113,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
     this.attachSelectorBits(selector, selectorBits);
     const ownSelector = !(selector instanceof Nil)
-      ? ((selector as Selector).copy(true) as Selector)
+      ? copySelectorForRulesetMetadata(selector as Selector)
       : selector;
     this.attachSelectorBits(ownSelector, selectorBits);
     if (node.options) {

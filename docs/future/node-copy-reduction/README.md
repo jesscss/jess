@@ -105,6 +105,9 @@ touching production code.
     selectors stay parented to the canonical ruleset; body rules remain the
     existing registration/eval surface because copying them changes mixin and
     scope behavior
+  - ruleset `ownSelector` metadata now uses the shared owned/reusable selector
+    copy boundary, so selector-list metadata does not clone inert source-free
+    selector leaves during registration prep
 - `packages/core/src/tree/mixin.ts`
   - interpolated-name registration prep now derives an owned wrapper directly
     instead of shallow-cloning the source mixin before replacing the name, so
@@ -204,12 +207,16 @@ touching production code.
     selector copy helper, so source-free selector leaves are not cloned just to
     add the generated parent boundary
 - `packages/core/src/tree/util/cloning.ts`,
-  `packages/core/src/tree/util/extend.ts`, and
+  `packages/core/src/tree/extend.ts`,
+  `packages/core/src/tree/util/extend.ts`,
   `packages/core/src/tree/util/extend-walk.ts`
   - extend-generated selector output now has an owned-root/reusable-children
     copy helper, so flagging `F_EXTENDED` / `F_EXTEND_TARGET` no longer
     deep-clones matched selector items just to mutate flags; this keeps extend
     output ownership explicit while preserving source selector parentage
+  - materializing implicit ampersands for extend records now uses the same
+    owned/reusable selector boundary, so selector-list leaves are not cloned
+    just to build stored extend selectors
   - `walkAndExtend()` selector-list reconstruction now copies processed output
     for placement before creating the generated list, so unchanged source list
     items stay parented to the canonical source list and the old `clone(true)`
