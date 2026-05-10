@@ -148,6 +148,31 @@ describe('Rule', () => {
     expect(prepared.value.rules).toBe(body);
   });
 
+  it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
+    const selectorLeaf = el('.foo');
+    const originalClone = selectorLeaf.clone;
+    let selectorLeafClones = 0;
+    selectorLeaf.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      selectorLeafClones++;
+      return originalClone.apply(this, args);
+    };
+    const selector = sellist([sel([selectorLeaf])]);
+    const node = ruleset({
+      selector,
+      rules: rules([])
+    });
+
+    try {
+      expect(node.getHeaderString(getPrintOptions(), true)).toBe('.foo {\n');
+      expect(selectorLeafClones).toBe(0);
+      expect(selectorLeaf.parent?.valueOf()).toBe('.foo');
+    } finally {
+      selectorLeaf.clone = originalClone;
+    }
+  });
+
   it('restores eval frames when body eval throws', () => {
     const savedRulesetFrame = ruleset({
       selector: el('.saved'),

@@ -111,6 +111,9 @@ touching production code.
   - ruleset `ownSelector` metadata now uses the shared owned/reusable selector
     copy boundary, so selector-list metadata does not clone inert source-free
     selector leaves during registration prep
+  - comment-free header serialization now reuses that same owned/reusable
+    selector-copy boundary for its local print surface instead of deep-cloning
+    source-free selector leaves just to suppress selector trivia
 - `packages/core/src/tree/mixin.ts`
   - interpolated-name registration prep now derives an owned wrapper directly
     instead of shallow-cloning the source mixin before replacing the name, so

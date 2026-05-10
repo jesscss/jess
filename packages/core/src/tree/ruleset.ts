@@ -913,7 +913,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       return '';
     }
 
-    let renderSelector: Selector | Nil = withoutComments ? selector.copy(true) : selector;
+    let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) : selector;
     const referenceFilteredLocal = (
       options.referenceMode === true
       && options.referenceRenderEnabled === true
