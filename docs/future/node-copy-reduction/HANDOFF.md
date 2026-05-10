@@ -111,7 +111,10 @@ to attach the active selector frame. Appended framed ampersands (`&-foo`) now
 derive their generated selector output directly instead of deep-cloning and
 mutating the frame selector; selector-list append, template-merge append, and
 hoist-only output are covered separately so this does not change their
-semantics.
+semantics. Implicit selector-list ampersand wrapping now builds the generated
+`:is(...)` argument through the shared owned/reusable selector copy boundary,
+so inert source-free selector leaves are reused and canonical source parents
+are left alone.
 Interpolated value resolve now constructs a fresh interpolated wrapper only
 when replacement values actually change, and interpolated selector resolve
 uses that resolve path instead of cloning the source interpolated value before

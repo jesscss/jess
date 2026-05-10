@@ -3,11 +3,12 @@ import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
   Ampersand,
+  BasicSelector,
   type SimpleSelector, type Combinator
 } from '../index.js';
 import { Selector } from '../selector.js';
 import { Context } from '../../context.js';
-import { F_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 
 let context: Context;
@@ -173,6 +174,36 @@ describe('Ampersand', () => {
       expect(node.evaluated).toBe(false);
     } finally {
       Ampersand.prototype.clone = originalClone;
+    }
+  });
+
+  it('wraps implicit selector-list ampersands without cloning reusable selector leaves', () => {
+    const one = el('.one');
+    const two = el('.two');
+    const selectorList = sellist([sel([one]), sel([two])]);
+    const sourceOneParent = one.parent;
+    const sourceTwoParent = two.parent;
+    const node = amp({ selectorContainer: { selector: selectorList } });
+    node.addFlag(F_IMPLICIT_AMPERSAND);
+    const originalClone = BasicSelector.prototype.clone;
+    let basicSelectorCloneCalls = 0;
+    BasicSelector.prototype.clone = function cloneForCounting(
+      this: BasicSelector,
+      ...args: Parameters<BasicSelector['clone']>
+    ): ReturnType<BasicSelector['clone']> {
+      basicSelectorCloneCalls++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const resolved = node.getResolvedSelector();
+
+      expect(resolved?.toTrimmedString()).toBe(':is(.one, .two)');
+      expect(basicSelectorCloneCalls).toBe(0);
+      expect(one.parent).toBe(sourceOneParent);
+      expect(two.parent).toBe(sourceTwoParent);
+    } finally {
+      BasicSelector.prototype.clone = originalClone;
     }
   });
 

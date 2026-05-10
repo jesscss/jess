@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves, copyWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
   /**
@@ -277,7 +277,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   getResolvedSelector(): Selector | Nil | undefined {
     const selector = this._selectorContainer?.selector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
+      const arg = copyOwnedWithReusableLeaves(selector);
+      if (!isNode(arg, N.Selector)) {
+        throw new TypeError('Expected selector copy');
+      }
+      const wrapped = PseudoSelector.create({ name: ':is', arg });
       wrapped.generated = true;
       return wrapped;
     }

@@ -126,6 +126,9 @@ touching production code.
     selector; template merge forms still use their existing generated output
     path, and hoist-only ampersands still return the frame selector without
     append mutation
+  - implicit selector-list ampersand wrapping now copies the generated `:is()`
+    argument through the shared owned/reusable selector boundary, so source-free
+    selector leaves are not cloned just to build the wrapper
 - `packages/core/src/tree/interpolated.ts` and
   `packages/core/src/tree/selector-interpolated.ts`
   - resolved interpolated wrappers now construct directly when replacement
