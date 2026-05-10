@@ -50,6 +50,9 @@ it is for current direction and next seams, not a historical pass log.
   the AST/comment ownership model explicitly changes.
 - Treat selector expansion and extend-generated selector output as generated
   output ownership, not as the same class as shallow-wrapper replacement.
+- The preserve-rules-like call parent repair in `packages/core/src/tree/call.ts`
+  is still active. Removing it makes non-leaky detached-ruleset calls see caller
+  variables, so do not delete it without replacing that lexical-parent behavior.
 
 ## Work Loop
 

@@ -410,6 +410,10 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       return result;
     } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
+      // PreserveRulesLike variable calls intentionally evaluate from the
+      // detached ruleset's lexical parent. Removing this lets non-leaky calls
+      // see caller variables; see call.test.ts "does not let detached ruleset
+      // calls read caller scope in non-leaky mode".
       if (preservesRulesLikeVariableTarget) {
         const sourceParent = n.sourceNode?.parent;
         if (sourceParent) {
