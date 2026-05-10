@@ -140,7 +140,7 @@ describe('Compiler reuse', () => {
     expect(result.css).toBe(rendered);
   });
 
-  it('keeps safeRender on the canonical root serializer for root kept output', async () => {
+  it('renders root kept output through safeRender', async () => {
     const testFile = path.join(tempDir, 'root-output.less');
     fs.writeFileSync(testFile, '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }');
 
