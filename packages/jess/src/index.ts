@@ -46,7 +46,7 @@ const { isArray } = Array;
 type LessOptions = ReturnType<typeof getOptions>;
 type LessPluginCacheKey = string;
 type PluginFactoryCacheKey = string;
-type LazyPluginInterface = PluginInterface & { prewarm?: () => Promise<void> };
+type LazyPluginInterface = PluginInterface;
 type ProfileMemorySnapshot = {
   rss: number;
   heapTotal: number;
@@ -107,11 +107,21 @@ function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(',')}]`;
   }
-  const obj = value as Record<string, unknown>;
-  const entries = Object.keys(obj)
+  if (!isObjectRecord(value)) {
+    return JSON.stringify(value);
+  }
+  const entries = Object.keys(value)
     .sort()
-    .map(key => `${JSON.stringify(key)}:${stableStringify(obj[key])}`);
+    .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
   return `{${entries.join(',')}}`;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPluginInterface(value: unknown): value is PluginInterface {
+  return isObjectRecord(value) && typeof value.name === 'string';
 }
 
 let nextRenderProfileId = 0;
@@ -442,27 +452,25 @@ export class Compiler {
     let factoryPromise = this.configuredPluginFactoryCache.get(specifier);
     if (!factoryPromise) {
       factoryPromise = import(specifier).then((mod: Record<string, unknown>) => {
-        const pluginFactoryOrInstance = (mod?.default ?? mod?.lessCompatPlugin ?? mod?.plugin ?? mod) as
-          | ((...args: unknown[]) => unknown)
-          | Record<string, unknown>;
+        const pluginFactoryOrInstance = mod.default ?? mod.lessCompatPlugin ?? mod.plugin ?? mod;
         if (typeof pluginFactoryOrInstance === 'function') {
           return {
             name: specifier,
             create: (): PluginInterface => {
-              const plugin = pluginFactoryOrInstance() as Record<string, unknown>;
-              if (!plugin || typeof plugin !== 'object' || typeof plugin.name !== 'string') {
+              const plugin = pluginFactoryOrInstance();
+              if (!isPluginInterface(plugin)) {
                 throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
               }
-              return plugin as unknown as PluginInterface;
+              return plugin;
             }
           };
         }
-        if (!pluginFactoryOrInstance || typeof pluginFactoryOrInstance !== 'object' || typeof pluginFactoryOrInstance.name !== 'string') {
+        if (!isPluginInterface(pluginFactoryOrInstance)) {
           throw new Error(`Configured plugin "${specifier}" did not resolve to a valid plugin instance`);
         }
         return {
-          name: pluginFactoryOrInstance.name as string,
-          create: (): PluginInterface => pluginFactoryOrInstance as unknown as PluginInterface
+          name: pluginFactoryOrInstance.name,
+          create: (): PluginInterface => pluginFactoryOrInstance
         };
       });
       this.configuredPluginFactoryCache.set(specifier, factoryPromise);
@@ -484,18 +492,15 @@ export class Compiler {
       return pluginPromise;
     };
 
-    const base: Record<string | symbol, unknown> = {
+    const base: LazyPluginInterface = {
       name: specifier,
       prewarm: async () => {
         const plugin = await getPlugin();
-        const p = plugin as unknown as Record<string, unknown>;
-        if (typeof p.prewarm === 'function') {
-          await (p.prewarm as () => Promise<void>)();
-        }
+        await plugin.prewarm?.();
       }
     };
 
-    return new Proxy(base, {
+    return new Proxy<LazyPluginInterface>(base, {
       get(target, prop, receiver) {
         if (prop === 'name' && loadedPlugin?.name) {
           return loadedPlugin.name;
@@ -506,11 +511,10 @@ export class Compiler {
         if (!loadedPlugin) {
           return undefined;
         }
-        const lp = loadedPlugin as unknown as Record<string | symbol, unknown>;
-        const value = lp[prop];
-        return typeof value === 'function' ? (value as Function).bind(loadedPlugin) : value;
+        const value = Reflect.get(loadedPlugin, prop, loadedPlugin);
+        return typeof value === 'function' ? value.bind(loadedPlugin) : value;
       }
-    }) as unknown as LazyPluginInterface;
+    });
   }
 
   private getJsPluginFactory(
@@ -528,10 +532,19 @@ export class Compiler {
     let factoryPromise = this.jsPluginFactoryCache.get(key);
     if (!factoryPromise) {
       factoryPromise = import(pathToFileURL(resolvedSpecifier).href).then((mod: Record<string, unknown>) => {
-        const pluginFactory = (mod?.default ?? mod) as unknown as ((opts?: JavaScriptSandboxConfig) => PluginInterface);
+        const pluginFactory = mod.default ?? mod;
+        if (typeof pluginFactory !== 'function') {
+          throw new Error('@jesscss/plugin-js did not resolve to a plugin factory');
+        }
         return {
           name: 'js',
-          create: () => pluginFactory(jsConfig)
+          create: () => {
+            const plugin = pluginFactory(jsConfig);
+            if (!isPluginInterface(plugin)) {
+              throw new Error('@jesscss/plugin-js did not resolve to a valid plugin instance');
+            }
+            return plugin;
+          }
         };
       });
       this.jsPluginFactoryCache.set(key, factoryPromise);
@@ -573,10 +586,7 @@ export class Compiler {
       supportedExtensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
       prewarm: async () => {
         const plugin = await getPlugin();
-        const p = plugin as unknown as Record<string, unknown>;
-        if (typeof p.prewarm === 'function') {
-          await (p.prewarm as () => Promise<void>)();
-        }
+        await plugin.prewarm?.();
       },
       import: async (absoluteFilePath) => {
         const plugin = await getPlugin();
@@ -610,20 +620,26 @@ export class Compiler {
           pluginMap.set(plugin, this.createConfiguredPluginProxy(plugin));
           continue;
         }
-        const pluginInstance = plugin as Record<string, any>;
+        if (!isPluginInterface(plugin)) {
+          throw new Error('Configured plugin did not resolve to a valid plugin instance');
+        }
+        const pluginInstance = plugin;
         if (
-          pluginInstance?.name === 'less-compat'
+          pluginInstance.name === 'less-compat'
           && typeof pluginInstance?.constructor === 'function'
         ) {
           try {
-            const freshPlugin = new pluginInstance.constructor(pluginInstance.opts);
-            pluginMap.set(freshPlugin.name, freshPlugin as PluginInterface);
-            continue;
+            const opts = isObjectRecord(pluginInstance) ? pluginInstance.opts : undefined;
+            const freshPlugin: unknown = Reflect.construct(pluginInstance.constructor, [opts]);
+            if (isPluginInterface(freshPlugin)) {
+              pluginMap.set(freshPlugin.name, freshPlugin);
+              continue;
+            }
           } catch {
             // Fall through to using the provided plugin instance directly.
           }
         }
-        pluginMap.set(plugin.name, plugin as unknown as PluginInterface);
+        pluginMap.set(plugin.name, plugin);
       }
     }
 
@@ -647,7 +663,7 @@ export class Compiler {
   }
 
   private createContextFromResolved(resolved: ResolvedRenderConfig, plugins: PluginInterface[]): Context {
-    const contextOptions: Record<string, unknown> = {
+    const contextOptions: ContextOptions & Record<string, unknown> = {
       ...resolved.effectiveConfig.compile,
       ...resolved.activeOptions
     };
@@ -662,7 +678,7 @@ export class Compiler {
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
-    return new Context(contextOptions as ContextOptions, plugins);
+    return new Context(contextOptions, plugins);
   }
 
   private async prepareRender(
@@ -692,7 +708,7 @@ export class Compiler {
     return this.createContextFromResolved(resolved, plugins);
   }
 
-  private applyPreEvalVisitors(context: Context, tree: any, currentFilePath: string): any {
+  private applyPreEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
@@ -700,17 +716,16 @@ export class Compiler {
     const processed = new Set<unknown>();
     for (let pass = 0; pass < 2; pass++) {
       for (const plugin of context.plugins) {
-        const p = plugin as unknown as Record<string, unknown>;
-        if (typeof p.setContext === 'function') {
+        if (plugin.setContext) {
           try {
-            (p.setContext as (ctx: Context) => void)(context);
+            plugin.setContext(context);
           } catch {
             // ignore
           }
         }
-        if (typeof p.setCurrentFilePath === 'function') {
+        if (plugin.setCurrentFilePath) {
           try {
-            (p.setCurrentFilePath as (fp: string) => void)(currentFilePath);
+            plugin.setCurrentFilePath(currentFilePath);
           } catch {
             // ignore
           }
@@ -727,8 +742,8 @@ export class Compiler {
           if (pass === 1 && processed.has(visitor)) {
             continue;
           }
-          const result = current.accept ? current.accept(visitor) : current;
-          if (result) {
+          const result = current.accept(visitor);
+          if (result instanceof Rules) {
             current = result;
           }
           processed.add(visitor);
@@ -738,7 +753,7 @@ export class Compiler {
     return current;
   }
 
-  private applyPostEvalVisitors(context: Context, tree: any): any {
+  private applyPostEvalVisitors(context: Context, tree: Rules): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
@@ -753,8 +768,8 @@ export class Compiler {
         if (!visitor || typeof visitor.visit !== 'function') {
           continue;
         }
-        const result = current.accept ? current.accept(visitor) : current;
-        if (result) {
+        const result = current.accept(visitor);
+        if (result instanceof Rules) {
           current = result;
         }
       }
@@ -770,12 +785,15 @@ export class Compiler {
     const originalGetTree = context.getTree.bind(context);
     context.getTree = async (importPath: string, importOptions = {}) => {
       const result = await originalGetTree(importPath, importOptions);
+      if (!result.node) {
+        return result;
+      }
       const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
       const processedTree = this.applyPreEvalVisitors(context, result.node, resolvedPath);
       if (processedTree && processedTree !== result.node) {
         result.node = processedTree;
         if (result.resolvedPath) {
-          context.sourceTrees.set(result.resolvedPath, processedTree as Rules);
+          context.sourceTrees.set(result.resolvedPath, processedTree);
         }
       }
       return result;
@@ -784,10 +802,7 @@ export class Compiler {
 
   private async prewarmPlugins(context: Context) {
     for (const plugin of context.plugins) {
-      const p = plugin as unknown as Record<string, unknown>;
-      if (typeof p.prewarm === 'function') {
-        await (p.prewarm as () => Promise<void>)();
-      }
+      await plugin.prewarm?.();
     }
   }
 
@@ -813,37 +828,44 @@ export class Compiler {
           extension
         })
       );
+      const parsedNode = parsed.node;
+      if (!parsedNode) {
+        throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
+      }
       tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
-        this.applyPreEvalVisitors(context, parsed.node, filePath ?? '<input>')
+        this.applyPreEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
     } else {
       const loaded = await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
+      const loadedNode = loaded.node;
+      if (!loadedNode) {
+        throw new Error(`Failed to load ${filePath!}`);
+      }
       tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
-        this.applyPreEvalVisitors(context, loaded.node, filePath!)
+        this.applyPreEvalVisitors(context, loadedNode, filePath!)
       );
     }
 
-    const evald = await measureProfileAsync(profile, 'eval', () => tree.eval(context));
+    const evald = await measureProfileAsync(profile, 'eval', async () => tree.eval(context));
     return measureProfileSync(profile, 'applyPostEvalVisitors', () =>
       this.applyPostEvalVisitors(context, evald)
     );
   }
 
-  private renderTree(tree: any, context: Context, profile?: RenderProfile): string {
+  private async renderTree(tree: any, context: Context, profile?: RenderProfile): Promise<string> {
     const printOptions: PrintOptions = {
       collapseNesting: context.opts.collapseNesting,
       context
     };
 
-    let css = measureProfileSync(profile, 'render', () => tree.render(context, printOptions));
+    let css = await measureProfileAsync(profile, 'render', async () => tree.render(context, printOptions));
     css = measureProfileSync(profile, 'postProcessCss', () => {
       let nextCss = css;
       for (const plugin of context.plugins || []) {
-        const p = plugin as unknown as Record<string, unknown>;
-        if (typeof p.runPostProcessors === 'function') {
-          nextCss = (p.runPostProcessors as (css: string, opts: Record<string, unknown>) => string)(nextCss, {});
-        } else if (typeof p.postProcessCss === 'function') {
-          nextCss = (p.postProcessCss as (css: string, ctx: Context) => string)(nextCss, context);
+        if (plugin.runPostProcessors) {
+          nextCss = plugin.runPostProcessors(nextCss, {});
+        } else if (plugin.postProcessCss) {
+          nextCss = plugin.postProcessCss(nextCss, context);
         }
       }
       return nextCss;
@@ -898,7 +920,7 @@ export class Compiler {
     const { context, profile } = await this.prepareRender(filePath, options);
     try {
       const tree = await this.evaluateInput(context, { filePath }, profile);
-      const css = this.renderTree(tree, context, profile);
+      const css = await this.renderTree(tree, context, profile);
       finalizeRenderProfile(profile, {
         method: 'render',
         filePath,
@@ -933,7 +955,7 @@ export class Compiler {
 
     try {
       const evald = await this.evaluateInput(context, { filePath, source: content, language, extension }, profile);
-      const css = this.renderTree(evald, context, profile);
+      const css = await this.renderTree(evald, context, profile);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
@@ -983,7 +1005,7 @@ export class Compiler {
         language,
         extension
       }, profile);
-      const css = this.renderTree(evald, context, profile);
+      const css = await this.renderTree(evald, context, profile);
 
       const loadedUrls: string[] = [];
 
@@ -1152,14 +1174,14 @@ export class Compiler {
   dispose() {
     for (const plugin of this.jsPluginProxyCache.values()) {
       try {
-        plugin['dispose']?.();
+        void plugin.dispose?.();
       } catch {
         // ignore cleanup failures
       }
     }
     for (const plugin of this.lessPluginInstanceCache.values()) {
       try {
-        plugin['dispose']?.();
+        void plugin.dispose?.();
       } catch {
         // ignore cleanup failures
       }

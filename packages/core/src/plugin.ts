@@ -1,4 +1,5 @@
 import type { Rules } from './tree/rules.js';
+import type { Context } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -91,6 +92,16 @@ export interface PluginInterface {
   preEvalVisitor?: Visitor | Visitor[];
   /** Post-eval visitor(s) - called after node.eval() (alternative to visitor for clarity) */
   postEvalVisitor?: Visitor | Visitor[];
+
+  /** Optional lifecycle hooks used by lazy plugin loading. */
+  prewarm?(): void | Promise<void>;
+  dispose?(): void | Promise<void>;
+
+  /** Optional compiler hooks used by compatibility plugins. */
+  setContext?(context: Context): void;
+  setCurrentFilePath?(filePath: string): void;
+  runPostProcessors?(css: string, opts: Record<string, unknown>): string;
+  postProcessCss?(css: string, context: Context): string;
 }
 
 const { isArray } = Array;
