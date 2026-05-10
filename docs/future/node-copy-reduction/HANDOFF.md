@@ -180,6 +180,9 @@ generated selector output rather than repairing shallow-wrapper replacement.
 implicit ampersand output by constructing a fresh `SelectorList` from mapped
 generated items instead of cloning the source list and replacing children, so
 source list children remain parented to the source list.
+Implicit ampersand placement copies now use the shared owned/reusable selector
+copy helper, so source-free selector leaves are not cloned just to add the
+generated parent boundary.
 Extend-generated selector output in `packages/core/src/tree/util/extend.ts`
 and `packages/core/src/tree/util/extend-walk.ts` now uses an owned-root /
 reusable-children copy helper from `packages/core/src/tree/util/cloning.ts`.

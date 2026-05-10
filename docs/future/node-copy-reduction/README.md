@@ -197,6 +197,9 @@ touching production code.
     items into a fresh `SelectorList` instead of cloning the source selector
     list and replacing children, so source list children stay canonical while
     generated selector output still owns its emitted items
+  - implicit ampersand placement copies now use the shared owned/reusable
+    selector copy helper, so source-free selector leaves are not cloned just to
+    add the generated parent boundary
 - `packages/core/src/tree/util/cloning.ts`,
   `packages/core/src/tree/util/extend.ts`, and
   `packages/core/src/tree/util/extend-walk.ts`

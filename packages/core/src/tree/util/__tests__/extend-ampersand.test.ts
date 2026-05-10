@@ -1,4 +1,4 @@
-import { el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
+import { BasicSelector, el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../extend.js';
 import { addImplicitAmpersand } from '../selector-utils.js';
@@ -240,6 +240,34 @@ describe('Extend Ampersand Handling Tests', () => {
       expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.bb');
     } finally {
       sourceAmpersand.clone = originalClone;
+    }
+  });
+
+  it('reuses source-free selector leaves when adding an implicit ampersand', () => {
+    const parentContainer = { selector: el('.parent') };
+    const child = el('.child');
+    const originalClone = BasicSelector.prototype.clone;
+    let basicSelectorCloneCalls = 0;
+    BasicSelector.prototype.clone = function cloneForCounting(
+      this: BasicSelector,
+      ...args: Parameters<BasicSelector['clone']>
+    ): ReturnType<BasicSelector['clone']> {
+      basicSelectorCloneCalls++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const selector = addImplicitAmpersand(
+        child,
+        false,
+        { value: parentContainer }
+      );
+
+      expect(selector.valueOf()).toBe('.parent .child');
+      expect(basicSelectorCloneCalls).toBe(0);
+      expect(child.parent).toBeUndefined();
+    } finally {
+      BasicSelector.prototype.clone = originalClone;
     }
   });
 
