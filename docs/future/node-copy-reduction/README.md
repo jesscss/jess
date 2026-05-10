@@ -217,6 +217,9 @@ touching production code.
   - materializing implicit ampersands for extend records now uses the same
     owned/reusable selector boundary, so selector-list leaves are not cloned
     just to build stored extend selectors
+  - `Extend` is explicitly marked async-capable now, matching its existing
+    async selector-eval branch; sync and async extend record materialization
+    share the same owned/reusable selector boundary
   - `walkAndExtend()` selector-list reconstruction now copies processed output
     for placement before creating the generated list, so unchanged source list
     items stay parented to the canonical source list and the old `clone(true)`

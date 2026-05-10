@@ -1,4 +1,4 @@
-import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND } from './node.js';
+import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND, F_MAY_ASYNC } from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
@@ -51,7 +51,7 @@ export class Extend extends Node<ExtendValue> {
   constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
-    this.addFlag(F_NON_STATIC);
+    this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }
 
   override valueOf() {
@@ -157,13 +157,13 @@ export class Extend extends Node<ExtendValue> {
             ) {
               const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
                 name: ':is',
-                arg: parentSel.copy(true)
+                arg: copySelectorForExtendRecord(parentSel, selectorBits)
               }), selectorBits);
               parentIs.generated = true;
               resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
                 parentIs,
                 Combinator.create(' '),
-                ownSel.copy(true)
+                copySelectorForExtendRecord(ownSel, selectorBits)
               ]), selectorBits);
               usedParentListComposition = true;
             }
@@ -178,9 +178,9 @@ export class Extend extends Node<ExtendValue> {
                 const parentSel = currentFrame.value?.selector;
                 if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
                   resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                    parentSel.copy(true),
+                    copySelectorForExtendRecord(parentSel, selectorBits),
                     Combinator.create(' '),
-                    resolvedSel.copy(true)
+                    copySelectorForExtendRecord(resolvedSel, selectorBits)
                   ]), selectorBits);
                 }
               }

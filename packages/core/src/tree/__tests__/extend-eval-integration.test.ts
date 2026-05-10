@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import {
   any,
   amp,
+  Ampersand,
   attr,
   atrule,
   co,
@@ -15,6 +16,7 @@ import {
   extend,
   keyword,
   nil,
+  Node,
   paren,
   pseudo,
   query,
@@ -273,6 +275,74 @@ describe('extend integration (eval -> toString)', () => {
       expect(parentA.parent?.valueOf()).toBe('.parent-a');
       expect(parentB.parent?.valueOf()).toBe('.parent-b');
     } finally {
+      parentA.clone = originalAClone;
+      parentB.clone = originalBClone;
+    }
+  });
+
+  it('materializes async selector-list parent extend records without cloning source-free leaves', async () => {
+    const originalAmpersandEval = Ampersand.prototype.eval;
+    Ampersand.prototype.eval = function evalAsync(
+      context: Context
+    ) {
+      return Promise.resolve(Node.evalStatic(this, context));
+    };
+
+    const parentA = el('.parent-a');
+    const parentB = el('.parent-b');
+    const originalAClone = parentA.clone;
+    const originalBClone = parentB.clone;
+    let sourceLeafClones = 0;
+    parentA.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalAClone>
+    ): ReturnType<typeof originalAClone> {
+      sourceLeafClones++;
+      return originalAClone.apply(this, args);
+    };
+    parentB.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalBClone>
+    ): ReturnType<typeof originalBClone> {
+      sourceLeafClones++;
+      return originalBClone.apply(this, args);
+    };
+
+    try {
+      const root = rules([
+        ruleset({
+          selector: el('.target'),
+          rules: rules([
+            decl({ name: 'background', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: sellist([sel([parentA]), sel([parentB])]),
+          rules: rules([
+            ruleset({
+              selector: el('.child'),
+              rules: rules([
+                extend({
+                  target: el('.target'),
+                  flag: ExtendFlag.All
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const context = new Context({ collapseNesting: false });
+      const evald = await root.eval(context);
+      expect(sourceLeafClones).toBe(0);
+      expect(evald.toString({ context })).toBeString(`
+        .target,
+        :is(.parent-a, .parent-b) .child {
+          background: red;
+        }
+      `);
+      expect(parentA.parent?.valueOf()).toBe('.parent-a');
+      expect(parentB.parent?.valueOf()).toBe('.parent-b');
+    } finally {
+      Ampersand.prototype.eval = originalAmpersandEval;
       parentA.clone = originalAClone;
       parentB.clone = originalBClone;
     }

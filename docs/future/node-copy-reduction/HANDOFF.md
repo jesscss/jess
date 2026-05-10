@@ -201,7 +201,9 @@ generic `.copy(true)` for compound/list replacement surfaces.
 Extend record materialization in `packages/core/src/tree/extend.ts` now uses
 the same owned/reusable selector boundary for generated selector-list surfaces,
 avoiding deep clones of inert source-free selector leaves while still owning
-the generated output container.
+the generated output container. `Extend` is explicitly async-capable now,
+matching its existing async selector-eval branch, and the sync/async branches
+share that same selector copy boundary.
 The `createExtendedSelectorList()` self-parenting guard is now the placement
 copy itself: selector-list items are copied through `copySelectorsForPlacement`
 before adoption, so the old post-copy `s === inheritFrom ? s.clone(true)` guard
