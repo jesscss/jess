@@ -193,6 +193,30 @@ describe('Extend Selector Tests', () => {
       }
     });
 
+    it('processes generated :is() roots without calling generic PseudoSelector.copy()', () => {
+      const selector = is(sellist([el('.a'), el('.b')])) as PseudoSelector;
+      selector.generated = true;
+      const originalCopy = selector.copy.bind(selector);
+      let copyCalls = 0;
+      selector.copy = ((...args) => {
+        copyCalls++;
+        return originalCopy(...args);
+      }) as typeof selector.copy;
+
+      try {
+        const result = createProcessedSelector(selector, true);
+
+        expect(copyCalls).toBe(0);
+        expect(Array.isArray(result)).toBe(true);
+        if (!Array.isArray(result)) {
+          throw new Error('Expected processed selector array');
+        }
+        expect(result.map(item => item.valueOf())).toEqual(['.a', '.b']);
+      } finally {
+        selector.copy = originalCopy;
+      }
+    });
+
     it('should extend simple selector with simple target - example 1', () => {
       // Selector: .a, Target: .a (full), Extend with: .b
       // Result: .a, .b

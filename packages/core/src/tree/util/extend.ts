@@ -630,7 +630,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
     let needsCopy = isNode(el, N.PseudoSelector) || isNode(el, N.SelectorList)
       || isNode(el, N.CompoundSelector) || isNode(el, N.ComplexSelector) || isNode(el, N.Ampersand);
     if (needsCopy) {
-      el = expectSelector(el.copy());
+      el = copySelectorForExtend(el);
     }
     if (isNode(el, N.PseudoSelector)) {
       if (el.value.name === ':is') {
