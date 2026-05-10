@@ -168,17 +168,29 @@ export function renderNodeToBuffer(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): MaybePromise<string> {
-  // Track 5 bridge only: this adapts current node serializers to flat buffers.
-  // Nodes with delayed-output semantics must write explicit segments instead.
   if (buffer.kind !== 'flat') {
     throw new Error('renderNodeToBuffer(...) can only use the default bridge with flat RenderBuffer; segmented rendering needs explicit segment handling.');
   }
-  const prepared = prepareContextPrintState(context, options);
-  const writeResolved = (resolved: RenderableOutput): string => {
-    const text = resolved.toTrimmedString(prepared);
+  const rendered = renderNodeToString(node, context, options);
+  const writeRendered = (text: string): string => {
     writeRenderText(buffer, text);
     return text;
   };
+  return isThenable(rendered)
+    ? rendered.then(writeRendered)
+    : writeRendered(rendered);
+}
+
+export function renderNodeToString(
+  node: RenderBufferNode,
+  context: Context,
+  options?: PrintOptions
+): MaybePromise<string> {
+  // Track 5 bridge only: this adapts current node serializers to evaluated
+  // string output. Nodes with delayed-output semantics must write explicit
+  // segments instead of growing a second AST.
+  const prepared = prepareContextPrintState(context, options);
+  const writeResolved = (resolved: RenderableOutput): string => resolved.toTrimmedString(prepared);
   const resolved = node.resolve(context);
   return isThenable(resolved)
     ? (resolved as Promise<RenderableOutput>).then(writeResolved)

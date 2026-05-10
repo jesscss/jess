@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any } from '../index.js';
 import { Node } from '../node-base.js';
-import { createRenderBuffer, renderNodeToBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class AsyncResolvedNode extends Node<string> {
   override resolve() {
@@ -40,6 +40,13 @@ describe('renderNodeToBuffer', () => {
 
     await expect(renderNodeToBuffer(node, context, buffer)).resolves.toBe('resolved');
     expect(buffer.parts).toEqual(['resolved']);
+  });
+
+  it('renders async resolved output to strings without eval pre-materialization', async () => {
+    const context = new Context();
+    const node = new AsyncResolvedNode('source');
+
+    await expect(renderNodeToString(node, context)).resolves.toBe('resolved');
   });
 
   it('requires explicit implementations for segmented rendering', () => {
