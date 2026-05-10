@@ -274,6 +274,10 @@ touching production code.
   - legacy full-match extend paths now pass the source selector directly as
     inheritance metadata instead of shallow-cloning it first; generated
     selector-list placement copies remain the adoption boundary
+  - complex ampersand boundary replacement now uses the owned/reusable selector
+    helper instead of generic `selector.copy()`, clears stale bubbled
+    ampersand flags after substitution, and preserves the existing relative
+    partial-selector behavior proven by the focused ampersand tests
 
 ## Current Todo Shape
 
@@ -302,9 +306,10 @@ as generic low-hanging fruit:
   helper must return a selector-shaped node or throw.
 - `packages/core/src/tree/util/extend.ts` no longer has a deep `.copy(true)`
   generated-output frontier; the final template-combinator placement now uses
-  the shared owned/reusable complex-component helper. Its generated-output
-  helper path is whole-file lint-clean, so follow-up work should keep that gate
-  green.
+  the shared owned/reusable complex-component helper. Complex ampersand
+  boundary replacement also no longer calls generic `selector.copy()`. Its
+  generated-output helper path is whole-file lint-clean, so follow-up work
+  should keep that gate green.
 
 Do not present any of those as completed runtime-eval copy removal until a
 focused test proves the specific ownership boundary can move.
