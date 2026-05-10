@@ -226,15 +226,10 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
-        const resolvedContent = contentNode.resolve(context);
-        if (!isThenable(resolvedContent)) {
-          resolvedContent.toTrimmedString(prepared);
-          return w.getSince(mark);
-        }
-        return resolvedContent.then((resolved) => {
-          resolved.toTrimmedString(prepared);
-          return w.getSince(mark);
-        });
+        const renderedContent = renderNodeToString(contentNode, context, prepared);
+        return isThenable(renderedContent)
+          ? renderedContent.then(() => w.getSince(mark))
+          : w.getSince(mark);
       }
       return w.getSince(mark);
     };
