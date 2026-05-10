@@ -2968,9 +2968,6 @@ function handleFullExtend(
  * Preserves comments on original selectors, strips them from inheritance chain
  */
 function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSelector {
-  // Strip comments only from the inheritance chain to avoid duplication on the wrapper
-  const copyForInheritance = inheritFrom.copy();
-
   // Create selectorList with original selectors (preserving their comments)
   // Basic deduplication here to avoid obvious duplicates
   // Full normalization (flattening) will be handled by createProcessedSelector
@@ -2982,7 +2979,7 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
   const pseudoSelector = PseudoSelector.create({
     name: ':is',
     arg: selectorList
-  }).inherit(copyForInheritance) as PseudoSelector;
+  }).inherit(inheritFrom) as PseudoSelector;
   // Ensure downstream normalization can unwrap/merge this wrapper when appropriate.
   pseudoSelector.generated = true;
 

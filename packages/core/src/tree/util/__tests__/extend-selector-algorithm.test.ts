@@ -246,6 +246,27 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe(':is(.z,.visible)+:is(.z,.visible) .sub');
     });
 
+    it('wraps partial compound matches without copying the matched source component for inheritance', () => {
+      const matched = el('.class');
+      const originalCopy = matched.copy.bind(matched);
+      let copyCalls = 0;
+      matched.copy = ((...args) => {
+        copyCalls++;
+        return originalCopy(...args);
+      }) as typeof matched.copy;
+
+      try {
+        const selector = compound([el('.target'), matched]);
+        const result = extendSelector(selector, el('.class'), el('.visible'), true);
+
+        expect(copyCalls).toBe(0);
+        expect(result.valueOf()).toBe('.target:is(.class,.visible)');
+        expect(matched.parent).toBe(selector);
+      } finally {
+        matched.copy = originalCopy;
+      }
+    });
+
     it('characterization: self-extend on complex compound duplicates class in :is() wrapper', () => {
       // This mirrors import-reference.less self-extend shape for investigation:
       // `.class:extend(.class all)` on authored selectors with `.class` already present.
