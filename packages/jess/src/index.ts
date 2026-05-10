@@ -13,7 +13,8 @@ import {
   JessError,
   toDiagnostic,
   logger,
-  type Deprecation
+  type Deprecation,
+  renderNodeToString
 } from '@jesscss/core';
 import {
   getOptions,
@@ -858,7 +859,7 @@ export class Compiler {
       context
     };
 
-    let css = await measureProfileAsync(profile, 'render', async () => tree.render(context, printOptions));
+    let css = await measureProfileAsync(profile, 'render', async () => renderNodeToString(tree, context, printOptions));
     css = measureProfileSync(profile, 'postProcessCss', () => {
       let nextCss = css;
       for (const plugin of context.plugins || []) {
