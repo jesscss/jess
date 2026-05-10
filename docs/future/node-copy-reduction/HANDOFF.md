@@ -109,11 +109,12 @@ Reference-mode ruleset header filtering uses that boundary too when it only
 needs a local print surface; selectors that need visibility mutation still keep
 the defensive deep-copy path. The old unused hoisted implicit-ampersand
 materialization helper in `ruleset.ts` has been removed rather than preserved
-as dead deep-copy machinery. `Ruleset.copy(true)` now still owns rule/guard
-surfaces, but selector metadata goes through the owned/reusable selector copy
-boundary instead of deep-cloning inert source-free selector leaves. Mixin
-interpolated-name registration prep also derives an owned wrapper directly, so
-source dynamic names, params, guards, and body rules stay canonical.
+as dead deep-copy machinery. The ruleset-specific `copy()` override has also
+been removed because no production eval/render caller needed it; the generic
+Node API remains, but there is no special ruleset copy surface to optimize as a
+future model. Mixin interpolated-name registration prep also derives an owned
+wrapper directly, so source dynamic names, params, guards, and body rules stay
+canonical.
 `Rules.resolve(context)` now uses the same explicit
 derived Rules surface instead of `clone(false)`, preserving function-registry
 and live-slot ownership while forcing lazy registry re-indexing; derived

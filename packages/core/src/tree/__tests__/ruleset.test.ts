@@ -148,35 +148,6 @@ describe('Rule', () => {
     expect(prepared.value.rules).toBe(body);
   });
 
-  it('copies ruleset selector surfaces without cloning source-free selector leaves', () => {
-    const selectorLeaf = el('.foo');
-    const originalClone = selectorLeaf.clone;
-    let selectorLeafClones = 0;
-    selectorLeaf.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
-      selectorLeafClones++;
-      return originalClone.apply(this, args);
-    };
-    const selector = sellist([sel([selectorLeaf])]);
-    const node = ruleset({
-      selector,
-      rules: rules([])
-    });
-
-    try {
-      const copied = node.copy(true);
-
-      expect(copied).not.toBe(node);
-      expect(copied.value.selector).not.toBe(selector);
-      expect(String(copied.value.selector)).toBe('.foo');
-      expect(selectorLeafClones).toBe(0);
-      expect(selectorLeaf.parent?.valueOf()).toBe('.foo');
-    } finally {
-      selectorLeaf.clone = originalClone;
-    }
-  });
-
   it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
     const selectorLeaf = el('.foo');
     const originalClone = selectorLeaf.clone;
