@@ -157,4 +157,36 @@ describe('Compiler reuse', () => {
     expect(result.css).toContain('@import url("test.css");');
     expect(result.css).toContain('.a');
   });
+
+  it('keeps root output on public render APIs', async () => {
+    const source = '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }';
+    const testFile = path.join(tempDir, 'public-root-output.less');
+    fs.writeFileSync(testFile, source);
+
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const rendered = await compiler.render(testFile);
+    const renderedString = await compiler.renderString(source, {
+      filePath: testFile,
+      language: 'less',
+      extension: '.less'
+    });
+    const result = await compiler.renderToResult({
+      source,
+      filePath: testFile,
+      language: 'less',
+      extension: '.less'
+    });
+
+    for (const css of [rendered, renderedString, result.css]) {
+      expect(css).toContain('@charset "UTF-8";');
+      expect(css).toContain('@import url("test.css");');
+      expect(css).toContain('.a');
+    }
+  });
 });
