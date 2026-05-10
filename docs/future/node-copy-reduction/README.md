@@ -99,6 +99,9 @@ touching production code.
     surfaces directly instead of shallow-cloning and replacing name/body
     children, so source at-rule preludes and rules stay parented to the
     canonical at-rule after prep and `resolve(context)`
+  - comment-free header serialization now uses the same owned/reusable copy
+    helpers for the local name/prelude print surface, so source-free prelude
+    leaves are not cloned just to suppress header trivia
 - `packages/core/src/tree/ruleset.ts`
   - ruleset registration/resolve prep now derives the wrapper with an owned
     selector surface instead of shallow-cloning the source ruleset, so source

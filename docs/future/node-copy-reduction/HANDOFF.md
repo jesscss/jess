@@ -91,6 +91,9 @@ cloning the source reference.
 At-rule registration and resolve wrappers now use direct derived construction
 with owned/reusable child surfaces instead of shallow clone/replacement, so
 source preludes and rule bodies stay parented to the canonical at-rule.
+Comment-free at-rule header serialization now uses that same owned/reusable
+copy boundary for the local name/prelude print surface, so source-free prelude
+leaves are not cloned just to suppress header trivia.
 Ruleset registration/resolve prep now derives the wrapper with an owned selector
 surface, so source selectors stay parented to the canonical ruleset. Body rules
 remain the existing registration/eval surface because copying them changes

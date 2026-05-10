@@ -287,6 +287,31 @@ describe('AtRule', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('renders comment-free at-rule headers without cloning source-free prelude leaves', () => {
+    const preludeLeaf = any('screen', { role: 'keyword' });
+    const originalClone = preludeLeaf.clone;
+    let preludeLeafClones = 0;
+    preludeLeaf.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      preludeLeafClones++;
+      return originalClone.apply(this, args);
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([preludeLeaf]),
+      rules: rules([])
+    });
+
+    try {
+      expect(node.getHeaderString(getPrintOptions(), true)).toBe('@media screen {\n');
+      expect(preludeLeafClones).toBe(0);
+      expect(preludeLeaf.parent?.valueOf()).toBe('screen');
+    } finally {
+      preludeLeaf.clone = originalClone;
+    }
+  });
+
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),

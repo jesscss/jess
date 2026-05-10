@@ -376,13 +376,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let out = idt;
 
     if (withoutComments) {
-      const copiedName = name.copy(true);
-      if (!(copiedName instanceof Any) && !(copiedName instanceof Interpolated)) {
-        throw new TypeError('Expected at-rule name copy');
-      }
-      name = copiedName;
+      name = this.ownName(name);
       if (prelude) {
-        prelude = prelude.copy(true) as Node;
+        prelude = this.ownNode(prelude);
       }
     }
 
