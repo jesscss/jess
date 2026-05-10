@@ -28,6 +28,8 @@ it is for current direction and next seams, not a historical pass log.
   `packages/jess/test/less/all-less.test.ts`.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
+- The same frontier check now also fails on ordinary production `.copy()`
+  callers outside the base `Node.copy()` API/infrastructure.
 - `packages/core/src/tree/util/extend-walk.ts` is whole-file lint-clean.
 - `packages/core/src/tree/util/extend.ts` no longer has the deep `.copy(true)`
   generated-output frontier and no longer uses generic `selector.copy()` for

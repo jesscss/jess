@@ -19,7 +19,9 @@ const patterns = [
   /copyWithReusableLeaves\(\s*this\s*\)/u,
   /cloneWithReusableLeaves\(/u
 ];
+const ordinaryCopyPattern = /\.copy\(/u;
 const infrastructureFiles = new Set([
+  'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
 ]);
 const expectedRemaining = new Set();
@@ -43,6 +45,7 @@ function walk(dir) {
 }
 
 const matches = [];
+const ordinaryCopyMatches = [];
 for (const scanRoot of scanRoots) {
   const absoluteRoot = path.join(rootDir, scanRoot);
   if (!fs.existsSync(absoluteRoot)) {
@@ -54,6 +57,9 @@ for (const scanRoot of scanRoots) {
     source.split(/\r?\n/u).forEach((line, index) => {
       if (patterns.some(pattern => pattern.test(line))) {
         matches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (ordinaryCopyPattern.test(line)) {
+        ordinaryCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -70,6 +76,8 @@ const files = [...byFile.keys()].sort();
 const frontierFiles = files.filter(file => !infrastructureFiles.has(file));
 const unexpected = frontierFiles.filter(file => !expectedRemaining.has(file));
 const missingExpected = [...expectedRemaining].filter(file => !frontierFiles.includes(file));
+const unexpectedOrdinaryCopy = ordinaryCopyMatches
+  .filter(match => !infrastructureFiles.has(match.file));
 
 console.log('Node copy frontier scan');
 console.log('');
@@ -94,6 +102,16 @@ if (unexpected.length > 0) {
     for (const match of byFile.get(file) ?? []) {
       console.log(`  ${match.line}: ${match.text}`);
     }
+  }
+  process.exitCode = 1;
+}
+
+if (unexpectedOrdinaryCopy.length > 0) {
+  console.log('');
+  console.log('Unexpected ordinary production .copy() sites:');
+  for (const match of unexpectedOrdinaryCopy) {
+    console.log(`- ${match.file}`);
+    console.log(`  ${match.line}: ${match.text}`);
   }
   process.exitCode = 1;
 }

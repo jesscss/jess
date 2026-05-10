@@ -314,7 +314,9 @@ as generic low-hanging fruit:
 Do not present any of those as completed runtime-eval copy removal until a
 focused test proves the specific ownership boundary can move.
 Use `pnpm run verify:node-copy-frontier` to refresh the exact deep
-copy/clone-style call-site scan before choosing the next seam.
+copy/clone-style call-site scan before choosing the next seam. That check also
+guards against reintroducing ordinary production `.copy()` callers outside the
+base node-copy API/infrastructure.
 
 If the next seam is generated selector output, keep the `extend.ts` typed-helper
 cleanup intact. The file now passes whole-file ESLint and the deep-copy frontier
