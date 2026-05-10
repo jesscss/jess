@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, call, decl, dimension, list, num, op, paren, ref, rules, ruleset, type Rules as RulesClass, vardecl } from '../index.js';
 import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -311,11 +311,7 @@ describe('Operation', () => {
       })
     ]);
 
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
-
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toContain('.probe {');
     expect(css).toContain('margin: 20px;');
