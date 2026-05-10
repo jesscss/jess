@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { rules, ruleset, decl, sel, el, spaced } from '../index.js';
 import { Context } from '../../context.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 describe('Basic Ruleset Rendering', () => {
   let context: Context;
@@ -19,8 +20,7 @@ describe('Basic Ruleset Rendering', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString();
+    const css = await renderNodeToString(node, context);
 
     expect(css).toBeString(`
       .test {
@@ -39,8 +39,7 @@ describe('Basic Ruleset Rendering', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: false });
+    const css = await renderNodeToString(node, context, { collapseNesting: false });
 
     expect(css).toBeString(`
       .test {
