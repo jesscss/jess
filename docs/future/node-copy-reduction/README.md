@@ -8,6 +8,11 @@ startup.
 
 - Keep one canonical source tree as the default model.
 - Prefer lazy per-placement runtime state over routine copied or cloned trees.
+- The target compile path is not "eval creates a complete output tree, then
+  serialize that tree". Evaluation should move semantic state forward and
+  rendering should emit through contextual resolution, with small owned output
+  surfaces only where a rule, scope, import/reference, merge, or generated
+  selector placement truly needs one.
 - Do not treat `copy()`/`clone()` as the future evaluation model. The target is
   to remove them from normal eval flow for most cases, not to make every legacy
   copy path more elaborate.

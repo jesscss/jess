@@ -12,6 +12,8 @@ it is for current direction and next seams, not a historical pass log.
 - Prefer small, verifiable production changes.
 - Do not weaken tests or fixture expectations to make migration work look done.
 - Reduce and, where possible, eliminate copy/clone from normal eval flow.
+- Keep pushing compile toward contextual resolve/render emission, not a full
+  evaluated-tree materialization followed by whole-tree serialization.
 - Improving a legacy copy path is only a stopgap when callers still require an
   owned surface today.
 - Keep semantic wrapper surfaces when they carry real scope, registry,
