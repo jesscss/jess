@@ -216,15 +216,28 @@ describe('Extend Ampersand Handling Tests', () => {
       const amp1 = ampWithSelector(parentSelector);
       const amp2 = ampWithSelector(parentSelector);
       const selector = compound([amp1, amp2]); // &&
-
       const target = compound([el('.e'), el('.e')]); // .e.e
       const extendWith = el('.dbl');
+      const originalCopy = BasicSelector.prototype.copy;
+      let basicSelectorCopies = 0;
+      BasicSelector.prototype.copy = function copyForCounting(
+        this: BasicSelector,
+        ...args: Parameters<BasicSelector['copy']>
+      ): ReturnType<BasicSelector['copy']> {
+        basicSelectorCopies++;
+        return originalCopy.apply(this, args);
+      };
 
-      const result = extendSelector(selector, target, extendWith, true);
-      const output = result.toTrimmedString();
+      try {
+        const result = extendSelector(selector, target, extendWith, true);
+        const output = result.toTrimmedString();
 
-      expect(result.hoistToRoot).toBe(true);
-      expect(output).toBe('.e.e,\n.dbl');
+        expect(basicSelectorCopies).toBe(0);
+        expect(result.hoistToRoot).toBe(true);
+        expect(output).toBe('.e.e,\n.dbl');
+      } finally {
+        BasicSelector.prototype.copy = originalCopy;
+      }
     });
   });
 

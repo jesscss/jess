@@ -3327,7 +3327,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
 
   // Replace all matching ampersands
   for (const { node, parent } of nodesToReplace) {
-    replaceNodeInParent(parent, node, resolvedSelector.copy());
+    replaceNodeInParent(parent, node, copySelectorForExtend(resolvedSelector));
   }
 
   return selectorCopy;
