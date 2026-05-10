@@ -72,6 +72,7 @@ for (const match of matches) {
 const files = [...byFile.keys()].sort();
 const frontierFiles = files.filter(file => !infrastructureFiles.has(file));
 const unexpected = frontierFiles.filter(file => !expectedRemaining.has(file));
+const missingExpected = [...expectedRemaining].filter(file => !frontierFiles.includes(file));
 
 console.log('Node copy frontier scan');
 console.log('');
@@ -96,6 +97,15 @@ if (unexpected.length > 0) {
     for (const match of byFile.get(file) ?? []) {
       console.log(`  ${match.line}: ${match.text}`);
     }
+  }
+  process.exitCode = 1;
+}
+
+if (missingExpected.length > 0) {
+  console.log('');
+  console.log('Expected frontier entries with no remaining matches:');
+  for (const file of missingExpected) {
+    console.log(`- ${file}`);
   }
   process.exitCode = 1;
 }
