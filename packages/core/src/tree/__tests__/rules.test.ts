@@ -28,6 +28,7 @@ import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -292,11 +293,9 @@ describe('Rules', () => {
       })
     ]);
 
-    const evald = await root.eval(context);
-    context.root = evald as Rules;
-    context.rulesContext = evald as Rules;
+    const css = await renderNodeToString(root, context, { context });
 
-    expect(evald.toString({ context })).toBeString(`
+    expect(css).toBeString(`
       .a {
         width: 10px;
       }
@@ -325,9 +324,9 @@ describe('Rules', () => {
       })
     ]);
 
-    const evald = await root.eval(context);
+    const css = await renderNodeToString(root, context, { context });
 
-    expect(evald.toString({ context })).toBeString(`
+    expect(css).toBeString(`
       .same {
         color: red;
       }
