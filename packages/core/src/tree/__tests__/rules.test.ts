@@ -1118,6 +1118,33 @@ describe('Rules', () => {
         }).rejects.toThrowError('"one" is readonly');
       });
 
+      it('derives setDefined declarations without calling VarDeclaration.copy()', async () => {
+        const originalCopy = VarDeclaration.prototype.copy;
+        let copyCalls = 0;
+        VarDeclaration.prototype.copy = function copyForCounting(
+          ...args: Parameters<typeof originalCopy>
+        ): ReturnType<typeof originalCopy> {
+          copyCalls++;
+          return originalCopy.apply(this, args);
+        };
+        const assignment = vardecl(
+          { name: 'one', value: spaced([any('three'), any('px')]) },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          rules([assignment])
+        ]);
+
+        try {
+          await node.eval(context);
+
+          expect(copyCalls).toBe(0);
+        } finally {
+          VarDeclaration.prototype.copy = originalCopy;
+        }
+      });
+
       // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
       it.skip('fails to set if existing variable is in readonly rules', async () => {
         let node = rules([

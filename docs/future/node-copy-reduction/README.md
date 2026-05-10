@@ -29,6 +29,9 @@ touching production code.
     of `clone(false)`; the derived wrapper preserves function-registry and
     live-slot ownership while forcing lazy registry re-indexing, and preserves
     rules-like subclasses such as `Collection`
+  - `setDefined` insertion now derives the generated declaration through the
+    declaration-owned derivation path instead of calling generic
+    `VarDeclaration.copy()` during registration
   - guarded mixin dispatch now has local candidate accessors; those accessors
     are the next place to replace raw candidate field reads when an explicit
     ownership surface exists

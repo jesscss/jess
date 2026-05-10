@@ -44,6 +44,8 @@ source-free `@arguments`/rest containers; source-backed values and containers
 still use the defensive copy path. Static guards are
 proven copy-free; dynamic guards and default-guard probes still use an owned
 copy surface, but that surface reuses childless source-free scalar leaves.
+`setDefined` insertion now uses the declaration-owned derivation path instead
+of calling generic `VarDeclaration.copy()` during registration.
 Ruleset call and ordinary mixin body clones reuse childless source-free scalar leaves;
 the rules containers and non-leaf nodes still get owned eval surfaces, and
 direct comment children remain cloned/preserved for each output placement.

@@ -202,6 +202,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     });
   }
 
+  deriveWithOptions(options: Opts & DeclarationOptions): this {
+    const node = this.derive();
+    node.options = options;
+    return node;
+  }
+
   private withValue(value: Node): this {
     return this.withParts({
       name: this.copyNameForDerived(this.value.name),

@@ -2005,10 +2005,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           }
           const foundRules = result.parent;
 
-          // Create a new declaration with the same name but our value
-          const newDeclaration = node.copy();
-          newDeclaration.options = { ...newDeclaration.options };
-          newDeclaration.options.setDefined = undefined; // Remove setDefined flag
+          // Create a new declaration with the same name but our value.
+          const newDeclaration = node.deriveWithOptions({
+            ...node.options,
+            setDefined: undefined
+          });
 
           // Adopt the new declaration to the found Rules
           foundRules.adopt(newDeclaration);
