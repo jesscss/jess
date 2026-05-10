@@ -13,6 +13,7 @@ import {
   any,
   ExtendFlag
 } from '../../index.js';
+import { renderNodeToString } from '../render-buffer.js';
 
 describe('extend serialized target repro', () => {
   it('applies exact extend to the selector that gets serialized', async () => {
@@ -50,8 +51,7 @@ describe('extend serialized target repro', () => {
     ]);
 
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     const firstHeader = css.split('{')[0]?.trim() ?? '';
     expect(firstHeader).toContain('.rep_ace');
