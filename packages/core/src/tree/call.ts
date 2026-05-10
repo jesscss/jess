@@ -139,7 +139,7 @@ export class Call extends Node<CallValue, CallOptions> {
     args: List<Node> | undefined,
     context: Context,
     options: PrintOptions
-  ): string {
+  ): MaybePromise<string> {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     const mark = w.mark();
@@ -148,35 +148,58 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const normalizedArgs = args.value.filter(Boolean);
     const last = normalizedArgs.length - 1;
-    for (let i = 0; i <= last; i++) {
+    const serializeArgAt = (i: number): MaybePromise<string> => {
+      if (i > last) {
+        return w.getSince(mark);
+      }
       const arg = normalizedArgs[i]!;
+      const finishArg = (argMark: number): MaybePromise<string> => {
+        w.trimHorizontalStartSince(argMark);
+        w.trimHorizontalEndSince(argMark);
+        if (i < last) {
+          w.add(', ');
+        }
+        return serializeArgAt(i + 1);
+      };
       if (arg instanceof Paren && arg.options?.escaped) {
         w.add('(', arg);
         if (arg.value) {
           const innerMark = w.mark();
-          arg.value.render(context, printOptions);
-          w.trimHorizontalStartSince(innerMark);
-          w.trimHorizontalEndSince(innerMark);
+          const rendered = renderNodeToString(arg.value, context, printOptions);
+          const finishParen = (): MaybePromise<string> => {
+            w.trimHorizontalStartSince(innerMark);
+            w.trimHorizontalEndSince(innerMark);
+            w.add(')', arg);
+            if (i < last) {
+              w.add(', ');
+            }
+            return serializeArgAt(i + 1);
+          };
+          return isThenable(rendered)
+            ? rendered.then(finishParen)
+            : finishParen();
         }
         w.add(')', arg);
+        if (i < last) {
+          w.add(', ');
+        }
+        return serializeArgAt(i + 1);
       } else {
         const argMark = w.mark();
-        arg.render(context, printOptions);
-        w.trimHorizontalStartSince(argMark);
-        w.trimHorizontalEndSince(argMark);
+        const rendered = renderNodeToString(arg, context, printOptions);
+        return isThenable(rendered)
+          ? rendered.then(() => finishArg(argMark))
+          : finishArg(argMark);
       }
-      if (i < last) {
-        w.add(', ');
-      }
-    }
-    return w.getSince(mark);
+    };
+    return serializeArgAt(0);
   }
 
   private renderPlainFunctionCall(
     callNode: Call,
     context: Context,
     prepared: PrintOptions
-  ): string {
+  ): MaybePromise<string> {
     const w = getPrintOptions(prepared).writer!;
     const mark = w.mark();
     const { name, contentNode } = callNode.value;
@@ -193,27 +216,46 @@ export class Call extends Node<CallValue, CallOptions> {
     if (isCalc) {
       context.calcFrames++;
     }
-    try {
-      this.serializeRenderedArgs(callNode.value.args, context, prepared);
-    } finally {
+    const finishCall = (): MaybePromise<string> => {
       if (isCalc) {
         context.calcFrames--;
       }
-    }
-    w.add(')');
-    if (callNode.options?.markImportant) {
-      w.add(' !important');
-    }
-    if (contentNode) {
-      w.add(': ');
-      const resolvedContent = contentNode.resolve(context);
-      if (!isThenable(resolvedContent)) {
-        resolvedContent.toTrimmedString(prepared);
-      } else {
-        contentNode.toTrimmedString(prepared);
+      w.add(')');
+      if (callNode.options?.markImportant) {
+        w.add(' !important');
       }
+      if (contentNode) {
+        w.add(': ');
+        const resolvedContent = contentNode.resolve(context);
+        if (!isThenable(resolvedContent)) {
+          resolvedContent.toTrimmedString(prepared);
+          return w.getSince(mark);
+        }
+        return resolvedContent.then((resolved) => {
+          resolved.toTrimmedString(prepared);
+          return w.getSince(mark);
+        });
+      }
+      return w.getSince(mark);
+    };
+    let renderedArgs: MaybePromise<string>;
+    try {
+      renderedArgs = this.serializeRenderedArgs(callNode.value.args, context, prepared);
+    } catch (error) {
+      if (isCalc) {
+        context.calcFrames--;
+      }
+      throw error;
     }
-    return w.getSince(mark);
+    if (isThenable(renderedArgs)) {
+      return renderedArgs.then(finishCall, (error: unknown) => {
+        if (isCalc) {
+          context.calcFrames--;
+        }
+        throw error;
+      });
+    }
+    return finishCall();
   }
 
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
@@ -270,9 +312,13 @@ export class Call extends Node<CallValue, CallOptions> {
         };
         return isThenable(rendered) ? rendered.then(write) : write(rendered);
       }
-      const rendered = this.render(context, options);
-      writeRenderText(bufferOrOptions, rendered);
-      return rendered;
+      const prepared = prepareContextPrintState(context, options);
+      const rendered = this.renderPlainFunctionCall(this, context, prepared);
+      const write = (text: string): string => {
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      return isThenable(rendered) ? rendered.then(write) : write(rendered);
     }
     const canReuseActivePrintState = (
       bufferOrOptions?.context === context
@@ -288,7 +334,10 @@ export class Call extends Node<CallValue, CallOptions> {
       ? getPrintOptions(bufferOrOptions)
       : prepareContextPrintState(context, bufferOrOptions);
     if (typeof this.value.name === 'string') {
-      return this.renderPlainFunctionCall(this, context, prepared);
+      const rendered = this.renderPlainFunctionCall(this, context, prepared);
+      return isThenable(rendered)
+        ? super.render(context, bufferOrOptions)
+        : rendered;
     }
     const resolved = this.resolve(context);
     if (isThenable(resolved)) {
@@ -297,7 +346,10 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!isNode(resolved, N.Call) || !this.isPlainFunctionSurface(resolved.value.name)) {
       return resolved.toTrimmedString(prepared);
     }
-    return this.renderPlainFunctionCall(resolved, context, prepared);
+    const rendered = this.renderPlainFunctionCall(resolved, context, prepared);
+    return isThenable(rendered)
+      ? super.render(context, bufferOrOptions)
+      : rendered;
   }
 
   override resolve(context: Context): MaybePromise<Node> {

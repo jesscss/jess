@@ -30,6 +30,12 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   endColumn: image.length
 });
 
+class AsyncAny extends Any<string> {
+  override resolve() {
+    return Promise.resolve(any(this.value));
+  }
+}
+
 let context: Context;
 describe('Call', () => {
   beforeEach(() => {
@@ -100,6 +106,21 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('writes async CSS call arguments into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const arg = new AsyncAny('20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(10, 20, 30)');
+    expect(buffer.parts).toEqual(['rgb(10, 20, 30)']);
+    expect(arg.parent).toBe(rule.value.args);
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
   });
