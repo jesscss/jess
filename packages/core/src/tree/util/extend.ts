@@ -112,7 +112,7 @@ import type { Rules } from '../rules.js';
 import type { Selector } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList } from '../selector-list.js';
-import { ComplexSelector } from '../selector-complex.js';
+import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
@@ -958,12 +958,33 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
   return [selector];
 }
 
-function cloneSelectorsForPlacement(selectors: Selector[]): Selector[] {
+function copySelectorsForPlacement(selectors: Selector[]): Selector[] {
   return selectors.map(selector => copySelectorForExtend(selector));
 }
 
-function cloneNodesForPlacement<T extends Node>(nodes: T[]): T[] {
-  return nodes.map(node => copyOwnedWithReusableLeaves(node) as T);
+function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelector[] {
+  return nodes.map((node) => {
+    const copied = copyOwnedWithReusableLeaves(node);
+    if (!isNode(copied, N.SimpleSelector)) {
+      throw new TypeError('Expected simple selector copy');
+    }
+    return copied;
+  });
+}
+
+function copyComplexComponentsForPlacement(nodes: ComplexSelectorComponent[]): ComplexSelectorComponent[] {
+  return nodes.map((node) => {
+    const copied = copyOwnedWithReusableLeaves(node);
+    if (
+      !isNode(copied, N.SimpleSelector)
+      && !isNode(copied, N.CompoundSelector)
+      && !isNode(copied, N.Combinator)
+      && !isNode(copied, N.Ampersand)
+    ) {
+      throw new TypeError('Expected complex selector component copy');
+    }
+    return copied;
+  });
 }
 
 /**
@@ -1097,17 +1118,12 @@ function createExtendedSelectorList(selectors: Selector[], inheritFrom?: Selecto
     return processed;
   }
   const processedArray = isArray(processed) ? processed : [processed];
-  // IMPORTANT: Avoid self-parenting cycles:
-  // If `inheritFrom` is also included as an item in the selector list, the constructor will adopt it,
-  // reparenting `inheritFrom` to the new SelectorList, and then `.inherit(inheritFrom)` will read
-  // `inheritFrom.parent` (now the new list) and set `result.parent` to itself.
-  // Always clone any element that is the same object as `inheritFrom`.
-  const placedArray = cloneSelectorsForPlacement(processedArray);
-  const safeArray = inheritFrom
-    ? placedArray.map(s => (s === inheritFrom ? s.clone(true) : s))
-    : placedArray;
+  // Always place owned selector copies in the new list. If `inheritFrom` is
+  // also one of the input selectors, adopting the source object would reparent
+  // it before `.inherit(inheritFrom)` reads the parent chain.
+  const placedArray = copySelectorsForPlacement(processedArray);
 
-  const result = SelectorList.create(safeArray);
+  const result = SelectorList.create(placedArray);
   return inheritFrom ? result.inherit(inheritFrom) : result;
 }
 
@@ -2891,7 +2907,7 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
   // Full normalization (flattening) will be handled by createProcessedSelector
   // when the result is processed through createExtendedSelectorList
   const deduplicated = deduplicateSelectors(selectors);
-  const selectorList = SelectorList.create(cloneSelectorsForPlacement(deduplicated));
+  const selectorList = SelectorList.create(copySelectorsForPlacement(deduplicated));
 
   // Create PseudoSelector using the create factory method - same signature as constructor but marks as generated
   const pseudoSelector = PseudoSelector.create({
@@ -3744,7 +3760,7 @@ function applyExtensionAtPath(
       wrapped as SimpleSelector,
       ...current.value.slice(end)
     ];
-    return CompoundSelector.create(cloneNodesForPlacement(newValue)).inherit(current);
+    return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
   }
 
   // When at root compound with non-contiguous match indices, replace those indices with :is(matched, extendWith)
@@ -3771,7 +3787,7 @@ function applyExtensionAtPath(
         newValue.push(current.value[i]!);
       }
     }
-    return CompoundSelector.create(cloneNodesForPlacement(newValue)).inherit(current);
+    return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
   }
 
   if (path.length === 0) {
@@ -3821,7 +3837,7 @@ function applyExtensionAtPath(
             changed = true;
           }
         }
-        return changed ? SelectorList.create(cloneSelectorsForPlacement(newValue)).inherit(current) : current;
+        return changed ? SelectorList.create(copySelectorsForPlacement(newValue)).inherit(current) : current;
       }
       }
 
@@ -3833,7 +3849,7 @@ function applyExtensionAtPath(
           return wrapped;
         }
         newValue[index] = wrapped;
-        return SelectorList.create(cloneSelectorsForPlacement(newValue)).inherit(current);
+        return SelectorList.create(copySelectorsForPlacement(newValue)).inherit(current);
       }
       // For extend operations (replace/append), add to the list rather than replace the matched item
       if (extensionType === 'wrap') {
@@ -3856,7 +3872,7 @@ function applyExtensionAtPath(
             changed = true;
           }
         }
-        const result = changed ? SelectorList.create(cloneSelectorsForPlacement(newValue)).inherit(current) : current;
+        const result = changed ? SelectorList.create(copySelectorsForPlacement(newValue)).inherit(current) : current;
         return result;
       }
     } else {
@@ -3870,7 +3886,7 @@ function applyExtensionAtPath(
         return deepResult;
       }
       newValue[index] = deepResult;
-      return SelectorList.create(cloneSelectorsForPlacement(newValue)).inherit(current);
+      return SelectorList.create(copySelectorsForPlacement(newValue)).inherit(current);
     }
   }
 
@@ -3886,7 +3902,7 @@ function applyExtensionAtPath(
       return compoundChild;
     }
     newValue[index] = compoundChild as SimpleSelector;
-    return CompoundSelector.create(cloneNodesForPlacement(newValue)).inherit(current);
+    return CompoundSelector.create(copySimpleSelectorsForPlacement(newValue)).inherit(current);
   }
 
   if (isNode(current, N.ComplexSelector)) {
@@ -3899,7 +3915,7 @@ function applyExtensionAtPath(
       return complexChild;
     }
     newValue[index] = complexChild as any;
-    return ComplexSelector.create(cloneNodesForPlacement(newValue)).inherit(current);
+    return ComplexSelector.create(copyComplexComponentsForPlacement(newValue)).inherit(current);
   }
 
   if (isNode(current, N.PseudoSelector) && nextSegment === 'arg') {
@@ -3965,11 +3981,11 @@ function applyExtension(
     case 'append':
       // For append within a selector list context, we add to the current list
       if (isNode(current, N.SelectorList)) {
-        const newSelectors = cloneSelectorsForPlacement([...current.value, extendWith]);
+        const newSelectors = copySelectorsForPlacement([...current.value, extendWith]);
         return SelectorList.create(newSelectors).inherit(current);
       } else {
         // For append at the selector level, create a list with the current and extension
-        return SelectorList.create(cloneSelectorsForPlacement([current, extendWith]));
+        return SelectorList.create(copySelectorsForPlacement([current, extendWith]));
       }
 
     case 'wrap':

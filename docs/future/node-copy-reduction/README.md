@@ -208,6 +208,10 @@ touching production code.
     container required by nested Less output; extend placement copies now route
     through the owned/reusable helper so generated compound/list replacements
     do not adopt source ampersand nodes
+  - `createExtendedSelectorList()` now names that placement boundary directly
+    (`copySelectorsForPlacement`) and no longer carries the stale second
+    `s === inheritFrom ? s.clone(true)` guard; owned placement copies are the
+    self-parenting guard for selector-list output
 
 ## Current Todo Shape
 

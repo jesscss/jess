@@ -187,6 +187,11 @@ Implicit ampersand extend output now has the same shape: `Ampersand.derive()`
 constructs a new ampersand wrapper while preserving its live selector
 container, and extend placement copies use the owned/reusable helper instead of
 generic `.copy(true)` for compound/list replacement surfaces.
+The `createExtendedSelectorList()` self-parenting guard is now the placement
+copy itself: selector-list items are copied through `copySelectorsForPlacement`
+before adoption, so the old post-copy `s === inheritFrom ? s.clone(true)` guard
+has been removed. `extend-walk.ts` still has its own selector-list guard and
+should be handled as a separate generated-output seam.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 
