@@ -214,6 +214,11 @@ reusable-children copy helper from `packages/core/src/tree/util/cloning.ts`.
 That keeps flag mutation (`F_EXTENDED` / `F_EXTEND_TARGET`) on generated output
 surfaces without deep-cloning matched selector items or reusing the source item
 as the flagged node.
+Parent-boundary extend composition in
+`packages/core/src/tree/util/extend-roots.ts` now uses that same
+owned/reusable selector boundary when wrapping selector-list children and when
+copying fully-composed `extendWith` selectors, so crossing extends no longer
+deep-clone inert source-free selector leaves such as `.footer .footer-nav`.
 Implicit ampersand extend output now has the same shape: `Ampersand.derive()`
 constructs a new ampersand wrapper while preserving its live selector
 container, and extend placement copies use the owned/reusable helper instead of

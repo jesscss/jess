@@ -169,6 +169,24 @@ describe('extend integration (eval -> toString)', () => {
     //     &:extend(.header .header-nav all);
     //   }
     // }
+    const footer = el('.footer');
+    const footerNav = el('.footer-nav');
+    const originalFooterClone = footer.clone;
+    const originalFooterNavClone = footerNav.clone;
+    let extendingLeafClones = 0;
+    footer.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalFooterClone>
+    ): ReturnType<typeof originalFooterClone> {
+      extendingLeafClones++;
+      return originalFooterClone.apply(this, args);
+    };
+    footerNav.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalFooterNavClone>
+    ): ReturnType<typeof originalFooterNavClone> {
+      extendingLeafClones++;
+      return originalFooterNavClone.apply(this, args);
+    };
+
     const root = rules([
       ruleset({
         selector: el('.header'),
@@ -188,10 +206,10 @@ describe('extend integration (eval -> toString)', () => {
         ])
       }),
       ruleset({
-        selector: el('.footer'),
+        selector: footer,
         rules: rules([
           ruleset({
-            selector: el('.footer-nav'),
+            selector: footerNav,
             rules: rules([
               extend({
                 target: sel([el('.header'), co(' '), el('.header-nav')]),
@@ -203,19 +221,25 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    try {
+      const context = new Context({ collapseNesting: false });
+      const evald = await root.eval(context);
+      const css = evald.toString({ context });
 
-    expect(css).toBeString(`
-      .header .header-nav,
-      .footer .footer-nav {
-        background: red;
-        &:before {
-          background: blue;
+      expect(extendingLeafClones).toBe(0);
+      expect(css).toBeString(`
+        .header .header-nav,
+        .footer .footer-nav {
+          background: red;
+          &:before {
+            background: blue;
+          }
         }
-      }
-    `);
+      `);
+    } finally {
+      footer.clone = originalFooterClone;
+      footerNav.clone = originalFooterNavClone;
+    }
   });
 
   it('materializes selector-list parent extend records without cloning source-free leaves', async () => {

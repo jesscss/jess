@@ -233,12 +233,16 @@ touching production code.
     add the generated parent boundary
 - `packages/core/src/tree/util/cloning.ts`,
   `packages/core/src/tree/extend.ts`,
+  `packages/core/src/tree/util/extend-roots.ts`,
   `packages/core/src/tree/util/extend.ts`,
   `packages/core/src/tree/util/extend-walk.ts`
   - extend-generated selector output now has an owned-root/reusable-children
     copy helper, so flagging `F_EXTENDED` / `F_EXTEND_TARGET` no longer
     deep-clones matched selector items just to mutate flags; this keeps extend
     output ownership explicit while preserving source selector parentage
+  - parent-boundary extend composition uses the same helper for generated
+    selector-list wrappers and fully-composed `extendWith` selectors, so
+    crossing extends do not clone inert source-free leaves just to build output
   - materializing implicit ampersands for extend records now uses the same
     owned/reusable selector boundary, so selector-list leaves are not cloned
     just to build stored extend selectors
