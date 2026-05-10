@@ -248,6 +248,23 @@ list still owns placement copies before adoption.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 
+Current remaining clone/copy frontier:
+
+- `packages/core/src/tree/import-style.ts` still uses `cloneWithReusableLeaves`
+  for the first plain-import local `Rules` surface. That is an import-site
+  ownership boundary, not a generic stale deep clone.
+- `packages/core/src/tree/rules.ts` still uses `cloneWithReusableLeaves` for
+  callable rules output that must preserve direct comment children and own each
+  generated placement.
+- `packages/core/src/tree/util/extend.ts` still contains generated selector
+  output `.copy(...)` calls and pre-existing whole-file lint debt. Treat that as
+  a distinct generated-output cleanup batch; do not mix it into ordinary eval
+  copy removal unless the checkpoint also pays the lint cost.
+- `packages/core/src/tree/ruleset.ts` has a defensive `selector.copy(true)`
+  fallback after the owned/reusable selector helper. The normal path already
+  returns selector-shaped nodes, so remove or tighten that only with a real
+  failing proof, not a passing characterization test.
+
 ## Work Loop
 
 1. Pick one production seam from `README.md`.

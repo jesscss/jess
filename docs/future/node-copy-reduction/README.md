@@ -294,9 +294,21 @@ Use this as the active checklist for the next narrow batches:
    git history, not this startup handoff.
 
 Current scan note: outside clone infrastructure and key-set/bitset copies, the
-remaining production `clone()` calls are concentrated in selector/extend
-generation helpers. Treat those as generated-output work, not as automatic
-runtime-eval copy debt.
+remaining production deep-clone surfaces are explicit and should not be treated
+as generic low-hanging fruit:
+
+- `packages/core/src/tree/import-style.ts` still clones first-use plain imports
+  because that import site needs a local `Rules` surface during prep/eval.
+- `packages/core/src/tree/rules.ts` still clones callable rules for normal
+  mixin/ruleset output because direct comment children and per-placement output
+  ownership must survive repeated calls.
+- `packages/core/src/tree/util/extend.ts` still owns generated selector-output
+  copy sites. That file has substantial pre-existing lint debt, so follow-up
+  work there should either keep to already-clean helper files or explicitly pay
+  the whole-file lint cost in the same checkpoint.
+
+Do not present any of those as completed runtime-eval copy removal until a
+focused test proves the specific ownership boundary can move.
 
 Recent quality pass note: utility cleanups should stay focused on files whose
 whole-file lint debt can actually be paid in the same patch. `Context.getTree()`
