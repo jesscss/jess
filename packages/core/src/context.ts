@@ -238,7 +238,7 @@ export class Context {
    * can use this to lookup values. When evaluating inside a mixin/function,
    * this also enables live variable resolution ($~variable).
    */
-  rulesContext!: Rules;
+  rulesContext?: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
   /** Set so that we can do ruleset selector lookup for extend */
