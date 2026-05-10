@@ -36,6 +36,12 @@ class AsyncAny extends Any<string> {
   }
 }
 
+class RejectingAny extends Any<string> {
+  override resolve() {
+    return Promise.reject(new Error(this.value));
+  }
+}
+
 let context: Context;
 describe('Call', () => {
   beforeEach(() => {
@@ -123,6 +129,33 @@ describe('Call', () => {
     expect(arg.parent).toBe(rule.value.args);
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('writes async CSS call content into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const content = new AsyncAny('body-output');
+    const rule = call({
+      name: 'wrap',
+      args: list([]),
+      contentNode: content
+    });
+
+    expect(await rule.render(context, buffer)).toBe('wrap(): body-output');
+    expect(buffer.parts).toEqual(['wrap(): body-output']);
+    expect(content.parent).toBe(rule);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('restores calc render frames when async CSS call argument rendering rejects', async () => {
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: 'calc',
+      args: list([new RejectingAny('bad arg')])
+    });
+
+    await expect(rule.render(context, buffer)).rejects.toThrow('bad arg');
+    expect(context.calcFrames).toBe(0);
   });
 
   it('writes resolved non-string call render output into flat buffers', async () => {
