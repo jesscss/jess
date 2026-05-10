@@ -268,6 +268,20 @@ Run `pnpm run verify:node-copy-frontier` before picking the next node-copy seam.
 It intentionally scans only deep copy/clone-style call sites, not every
 `copyWithReusableLeaves(...)` owned-surface boundary.
 
+Next generated-output checkpoint:
+
+- Start with `packages/core/src/tree/util/extend.ts`, not the import or callable
+  rules clone boundaries.
+- Current evidence: `pnpm run verify:node-copy-frontier` reports the remaining
+  `.copy(true)` sites in `extend.ts`; `pnpm exec eslint
+  packages/core/src/tree/util/extend.ts` currently reports 114 problems (108
+  errors, 6 warnings), mostly unsafe assertions plus one indentation block near
+  the tail.
+- The first honest slice should pay down a coherent typed helper area and leave
+  the whole file lint-clean, or move that helper into an already clean module.
+  Do not edit `extend.ts` for a tiny copy-site change unless the same checkpoint
+  also handles the file's lint gate.
+
 ## Work Loop
 
 1. Pick one production seam from `README.md`.

@@ -315,6 +315,11 @@ focused test proves the specific ownership boundary can move.
 Use `pnpm run verify:node-copy-frontier` to refresh the exact deep
 copy/clone-style call-site scan before choosing the next seam.
 
+If the next seam is generated selector output, treat `extend.ts` lint cleanup as
+part of the work. The current blocker is not just selector copying; the file
+does not pass whole-file ESLint, so a tiny copy-site edit there will not survive
+the staged commit gate.
+
 Recent quality pass note: utility cleanups should stay focused on files whose
 whole-file lint debt can actually be paid in the same patch. `Context.getTree()`
 now avoids catch/rethrow and no longer hides unsupported-file no-tree results
