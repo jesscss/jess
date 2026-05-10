@@ -12,6 +12,9 @@ false status.
 - Work from repo evidence first.
 - Prefer small, verifiable production changes.
 - Do not weaken tests or fixture expectations to make migration work look done.
+- The goal is to reduce and, where possible, eliminate copy/clone from normal
+  eval flow. Improving a legacy copy path is only a stopgap when callers still
+  require an owned surface today.
 - Do not introduce broad new runtime abstractions without multiple focused
   proofs and a clear owner.
 - Do not use `sourceParent` to smuggle invocation scope.

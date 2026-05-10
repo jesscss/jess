@@ -1,12 +1,16 @@
 # Node Copy Reduction
 
-This folder is the active handoff for reducing routine node copying during eval.
-It should stay small enough to read at startup.
+This folder is the active handoff for reducing and, where possible, eliminating
+routine node copying during eval. It should stay small enough to read at
+startup.
 
 ## Direction
 
 - Keep one canonical source tree as the default model.
-- Prefer lazy per-placement runtime state over routine cloned trees.
+- Prefer lazy per-placement runtime state over routine copied or cloned trees.
+- Do not treat `copy()`/`clone()` as the future evaluation model. The target is
+  to remove them from normal eval flow for most cases, not to make every legacy
+  copy path more elaborate.
 - Use shallow wrapper owners only when they carry real local scope, registry, or
   output ownership.
 - Treat deep clone, materialization, and broad wrapper growth as debt unless a
@@ -263,10 +267,12 @@ touching production code.
 
 Use this as the active checklist for the next narrow batches:
 
-1. Continue eliminating shallow-clone-then-replace patterns that temporarily
-   reparent canonical source children.
-2. Prefer `copyWithReusableLeaves(...)` when a container still needs an owned
-   eval/output surface but childless source-free scalar leaves do not need
+1. Continue eliminating copy/clone from normal eval flow. Start with
+   shallow-clone-then-replace patterns that temporarily reparent canonical
+   source children.
+2. Prefer explicit derived wrappers or lazy runtime state. Use
+   `copyWithReusableLeaves(...)` only when a container still proves it needs an
+   owned eval/output surface and childless source-free scalar leaves do not need
    copies.
 3. Keep semantic wrapper surfaces where they carry real scope, registry,
    import/reference, merge, or output ownership.
