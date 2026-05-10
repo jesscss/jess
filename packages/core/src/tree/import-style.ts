@@ -14,7 +14,7 @@ import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
-import { cloneWithReusableLeaves } from './util/cloning.js';
+import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -648,7 +648,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // preparation/eval. Reusing the canonical source tree here lets the first
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
-          rules = cloneWithReusableLeaves(rules);
+          rules = this.deriveRulesSurface(rules, cloneChildrenWithReusableLeaves(rules.value));
         }
 
         // Compose caching semantics:

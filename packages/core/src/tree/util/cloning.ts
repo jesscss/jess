@@ -42,6 +42,10 @@ export function cloneWithReusableLeaves<T extends Node>(node: T): T {
   return node.clone(true, cloneChild);
 }
 
+export function cloneChildrenWithReusableLeaves<T extends Node>(nodes: readonly T[]): T[] {
+  return nodes.map(node => cloneWithReusableLeaves(node));
+}
+
 function copyChild(value: unknown): unknown {
   if (value instanceof Node) {
     return copyWithReusableLeaves(value);

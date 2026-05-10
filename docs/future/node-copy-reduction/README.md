@@ -143,9 +143,9 @@ touching production code.
     instead of shallow-cloning imported source rules, keeping the import
     placement surface explicit without treating clone as isolation machinery
   - compose/import output visibility wrappers now use `Rules.derive()` instead
-    of shallow `Rules.clone()`, and first-use import-local deep copies reuse
-    childless source-free scalar leaves through the shared clone helper while
-    keeping owned container copies and preserving direct comment children
+    of shallow `Rules.clone()`, and first-use import-local wrappers now derive
+    the root Rules surface directly while cloning only child output surfaces
+    through the shared reusable-leaf helper
 - `packages/core/src/tree/ampersand.ts`
   - framed ampersand resolution now constructs the framed wrapper directly
     instead of shallow-cloning the source ampersand just to attach the current
@@ -297,8 +297,6 @@ Current scan note: outside clone infrastructure and key-set/bitset copies, the
 remaining production deep-clone surfaces are explicit and should not be treated
 as generic low-hanging fruit:
 
-- `packages/core/src/tree/import-style.ts` still clones first-use plain imports
-  because that import site needs a local `Rules` surface during prep/eval.
 - `packages/core/src/tree/rules.ts` still clones callable rules for normal
   mixin/ruleset output because direct comment children and per-placement output
   ownership must survive repeated calls.

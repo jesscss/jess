@@ -1822,6 +1822,46 @@ describe('Style import', () => {
       }
     });
 
+    it('derives the first-use import-local Rules wrapper without cloning the source root', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedImportRoots = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.value.some(node => isNode(node, N.Ruleset))) {
+          clonedImportRoots++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        context.sourceTrees.set('imported-root.jess', rules([
+          ruleset({
+            selector: sellist([sel([el('.imported-root')])]),
+            rules: rules([
+              decl({ name: any('color'), value: any('red') })
+            ])
+          })
+        ]));
+
+        const node = rules([
+          style({
+            path: quoted(any('imported-root.jess'))
+          }, {
+            type: 'import'
+          })
+        ]);
+
+        const evald = await node.eval(context);
+
+        expect(evald.toString()).toContain('.imported-root');
+        expect(clonedImportRoots).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
     it('import type can be imported multiple times', async () => {
       context.sourceTrees.set('imported.jess', rules([
         ruleset({
