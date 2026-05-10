@@ -625,52 +625,6 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       && sel.value.some(c => Ruleset.needsVisibleSelectorClone(c));
   }
 
-  private static materializeHoistedImplicitAmpersands(sel: Selector | Nil): Selector | Nil {
-    if (!sel || sel instanceof Nil) {
-      return sel;
-    }
-    const materialize = (node: Selector): Selector => {
-      if (isNode(node, N.Ampersand)) {
-        if (node.hasFlag(F_IMPLICIT_AMPERSAND)) {
-          const resolved = node.getResolvedSelector();
-          if (resolved && !(resolved instanceof Nil)) {
-            return resolved.copy(true);
-          }
-        }
-        return node.copy(true) as Selector;
-      }
-      if (isNode(node, N.SelectorList)) {
-        return SelectorList.create(node.value.map(item => materialize(item))).inherit(node) as Selector;
-      }
-      if (isNode(node, N.ComplexSelector)) {
-        const parts: ComplexSelectorComponent[] = [];
-        for (const part of node.value) {
-          if (isNode(part, N.Ampersand)) {
-            if (part.hasFlag(F_IMPLICIT_AMPERSAND)) {
-              const resolved = part.getResolvedSelector();
-              if (resolved && !(resolved instanceof Nil)) {
-                const repl = materialize(resolved);
-                if (isNode(repl, N.ComplexSelector)) {
-                  parts.push(...repl.value.map(c => Ruleset._toComplexComponent(c.copy(true))));
-                } else {
-                  parts.push(Ruleset._toComplexComponent(repl));
-                }
-                continue;
-              }
-            }
-          }
-          parts.push(Ruleset._toComplexComponent(materialize(part)));
-        }
-        return ComplexSelector.create(parts).inherit(node) as Selector;
-      }
-      if (isNode(node, N.CompoundSelector)) {
-        return CompoundSelector.create(node.value.map(item => materialize(item))).inherit(node);
-      }
-      return node.copy(true) as Selector;
-    };
-    return materialize(sel);
-  }
-
   private static isBareAmpersandSelector(sel: Selector | Nil): boolean {
     const isBareAmpNode = (node: Selector): boolean => {
       return isNode(node, N.Ampersand)

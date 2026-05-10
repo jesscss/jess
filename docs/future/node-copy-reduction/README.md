@@ -117,6 +117,9 @@ touching production code.
   - reference-mode selector header filtering also uses the owned/reusable
     selector-copy boundary when it only needs a local print surface; selectors
     that need visibility mutation still keep the defensive deep-copy path
+  - the unused hoisted implicit-ampersand materialization helper has been
+    removed instead of modernized, because current header composition no longer
+    calls that older deep-copy path
 - `packages/core/src/tree/mixin.ts`
   - interpolated-name registration prep now derives an owned wrapper directly
     instead of shallow-cloning the source mixin before replacing the name, so
