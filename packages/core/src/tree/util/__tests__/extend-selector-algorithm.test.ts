@@ -1,5 +1,5 @@
-import { el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
-import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
+import { F_VISIBLE, el, sel, sellist, compound, is, co, pseudo, type Selector, PseudoSelector, type SelectorList } from '../../../index.js';
+import { extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector } from '../extend.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { getImplicitSelector } from '../selector-utils.js';
@@ -162,6 +162,34 @@ describe('Extend Selector Tests', () => {
         expect(templateCombinator.parent?.valueOf()).toBe('.a .b');
       } finally {
         templateCombinator.copy = originalCopy;
+      }
+    });
+
+    it('flattens generated :is() nesting without copying the inner selector through generic copy()', () => {
+      const prefix = is(sellist([el('.aa'), el('.bb')])) as PseudoSelector;
+      prefix.generated = true;
+      const invisibleSpace = co(' ');
+      invisibleSpace.removeFlag(F_VISIBLE);
+      const inner = el('.cc');
+      const originalCopy = inner.copy.bind(inner);
+      let innerCopies = 0;
+      inner.copy = ((...args) => {
+        innerCopies++;
+        return originalCopy(...args);
+      }) as typeof inner.copy;
+
+      try {
+        const selector = sel([prefix, invisibleSpace, is(sellist([inner, el('.dd')]))]);
+        const result = createProcessedSelector(selector, true);
+
+        expect(innerCopies).toBe(0);
+        expect(Array.isArray(result)).toBe(true);
+        if (!Array.isArray(result)) {
+          throw new Error('Expected processed selector array');
+        }
+        expect(result.map(item => item.valueOf())).toEqual(['.cc', '.dd']);
+      } finally {
+        inner.copy = originalCopy;
       }
     });
 

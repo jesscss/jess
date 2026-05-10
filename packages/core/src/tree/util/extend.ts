@@ -936,7 +936,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               push(next);
             } else if (outputPrefix.length === 0 && omitCombinator) {
               // Prefix/combinator dropped but not implicit (e.g. first was :is()): emit inner as-is.
-              push(expectSelector(innerSel.copy().inherit(el)));
+              push(copySelectorForExtend(innerSel).inherit(el));
             } else {
               const parts: ComplexSelectorComponent[] = [
                 ...outputPrefix,
