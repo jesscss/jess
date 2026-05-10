@@ -114,6 +114,9 @@ touching production code.
   - comment-free header serialization now reuses that same owned/reusable
     selector-copy boundary for its local print surface instead of deep-cloning
     source-free selector leaves just to suppress selector trivia
+  - reference-mode selector header filtering also uses the owned/reusable
+    selector-copy boundary when it only needs a local print surface; selectors
+    that need visibility mutation still keep the defensive deep-copy path
 - `packages/core/src/tree/mixin.ts`
   - interpolated-name registration prep now derives an owned wrapper directly
     instead of shallow-cloning the source mixin before replacing the name, so

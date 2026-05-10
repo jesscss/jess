@@ -716,7 +716,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
           continue;
         }
         seen.add(key);
-        kept.push(item.copy(true) as Selector);
+        kept.push(copySelectorForRulesetMetadata(item));
       }
     }
     if (!sawAddedSelector) {
@@ -729,7 +729,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
           continue;
         }
         seen.add(key);
-        kept.push(item.copy(true) as Selector);
+        kept.push(copySelectorForRulesetMetadata(item));
       }
     }
     if (kept.length === 0) {
@@ -1010,14 +1010,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     ) {
       options.referenceFilterTargets = true;
     }
-    if (
-      !(renderSelector instanceof Nil)
-      && (
-        options.referenceFilterTargets
-        || Ruleset.needsVisibleSelectorClone(renderSelector as Selector)
-      )
-    ) {
-      renderSelector = renderSelector.copy(true) as typeof renderSelector;
+    if (!(renderSelector instanceof Nil)) {
+      const needsVisibleSelectorClone = Ruleset.needsVisibleSelectorClone(renderSelector);
+      if (options.referenceFilterTargets || needsVisibleSelectorClone) {
+        renderSelector = needsVisibleSelectorClone
+          ? renderSelector.copy(true) as typeof renderSelector
+          : copySelectorForRulesetMetadata(renderSelector);
+      }
     }
     Ruleset.ensureSelectorVisible(renderSelector);
     const savedTrivia = options.trivia;

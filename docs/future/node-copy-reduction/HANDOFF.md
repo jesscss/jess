@@ -101,7 +101,10 @@ mixin and scope behavior. Ruleset `ownSelector` metadata also uses the shared
 owned/reusable selector copy boundary now, so selector-list metadata does not
 clone inert source-free selector leaves during registration prep. Comment-free
 ruleset header serialization uses the same local print-surface boundary instead
-of deep-cloning source-free selector leaves to suppress selector trivia. Mixin interpolated-name registration prep also
+of deep-cloning source-free selector leaves to suppress selector trivia.
+Reference-mode ruleset header filtering uses that boundary too when it only
+needs a local print surface; selectors that need visibility mutation still keep
+the defensive deep-copy path. Mixin interpolated-name registration prep also
 derives an owned wrapper directly, so source dynamic names, params, guards, and
 body rules stay canonical. `Rules.resolve(context)` now uses the same explicit
 derived Rules surface instead of `clone(false)`, preserving function-registry

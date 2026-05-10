@@ -1,6 +1,6 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC } from '../index.js';
 import { Context } from '../../context.js';
-import { F_VISIBLE } from '../node.js';
+import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
@@ -281,6 +281,40 @@ describe('Rule', () => {
 
     expect(header).toContain('.foo');
     expect(options.referenceFilterTargets).toBe(false);
+  });
+
+  it('filters reference-mode extended headers without cloning source-free selector leaves', () => {
+    const targetLeaf = el('.target');
+    const addedLeaf = el('.added');
+    const originalClone = addedLeaf.clone;
+    let addedLeafClones = 0;
+    addedLeaf.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      addedLeafClones++;
+      return originalClone.apply(this, args);
+    };
+    const target = sel([targetLeaf]);
+    target.addFlag(F_EXTEND_TARGET);
+    const added = sel([addedLeaf]);
+    added.addFlag(F_EXTENDED);
+    const node = ruleset({
+      selector: sellist([target, added]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      referenceMode: true,
+      referenceRenderEnabled: true
+    });
+
+    try {
+      expect(node.getHeaderString(options)).toBe('.added {\n');
+      expect(addedLeafClones).toBe(0);
+      expect(addedLeaf.parent?.valueOf()).toBe('.added');
+    } finally {
+      addedLeaf.clone = originalClone;
+    }
   });
 
   it('streams header selectors without capture scaffolding', () => {
