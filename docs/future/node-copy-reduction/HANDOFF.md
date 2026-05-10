@@ -31,6 +31,10 @@ it is for current direction and next seams, not a historical pass log.
 
 - `pnpm run verify:baseline` is green for core, parsers, and
   `packages/jess/test/less/all-less.test.ts`.
+- `packages/jess/test/less/all-less.test.ts` now renders through
+  `Compiler.renderToResult(...)`, so the fixture baseline exercises the awaited
+  eval/render API instead of compiling a tree and then calling
+  `tree.toString({ context })` in the test harness.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check now also fails on ordinary production `.copy()`
@@ -59,8 +63,8 @@ it is for current direction and next seams, not a historical pass log.
   is still active. Removing it makes non-leaky detached-ruleset calls see caller
   variables, so do not delete it without replacing that lexical-parent behavior.
 - `Node.render(context)` still has a legacy synchronous fallback for direct sync
-  callers. Top-level compile and flat render buffers should use the explicit
-  async render bridge, but plain CSS call buffers still need their local
+  callers. Top-level compile APIs and flat render buffers use the explicit
+  async render bridge. Plain CSS call buffers still need their local
   arg/content renderer so async child failures keep calc-frame cleanup instead
   of falling back to source text. New render bridges should share
   `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia

@@ -250,6 +250,10 @@ touching production code.
     existing serializers. It should stay small: if a node has delayed-output
     semantics, add explicit buffer/segment behavior rather than growing a
     second output-tree model in the bridge.
+  - Root `Rules` output now routes through the canonical root serializer inside
+    the render bridge, so kept root output such as first `@charset`, hoisted CSS
+    `@import`, and final newline policy stays owned by `Rules.toString(...)`
+    while compile APIs can still await render.
 - `packages/core/src/tree/util/selector-utils.ts`
   - implicit selector-list construction now maps generated implicit-ampersand
     items into a fresh `SelectorList` instead of cloning the source selector
@@ -317,11 +321,14 @@ Use this as the active checklist for the next narrow batches:
 3. Use `prepareRenderPrintState(...)` for render bridges that might run inside
    an active traversal; do not reopen ad hoc writer/frame/trivia reuse checks in
    individual nodes.
-4. Keep semantic wrapper surfaces where they carry real scope, registry,
+4. Keep `packages/jess/test/less/all-less.test.ts` on `renderToResult(...)` so
+   the Less fixture baseline exercises eval plus awaited render, not
+   compile-plus-`toString(...)` as a parallel whole-tree serialization path.
+5. Keep semantic wrapper surfaces where they carry real scope, registry,
    import/reference, merge, or output ownership.
-5. Audit remaining `clone()` call sites by node shape and prove changes with
+6. Audit remaining `clone()` call sites by node shape and prove changes with
    canonical-parent tests before changing them.
-6. Record only durable frontier changes here; old recovery details belong in
+7. Record only durable frontier changes here; old recovery details belong in
    git history, not this startup handoff.
 
 Current scan note: outside clone infrastructure and key-set/bitset copies, the
