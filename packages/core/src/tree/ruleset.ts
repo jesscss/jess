@@ -1167,8 +1167,19 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   override copy(deep?: boolean): this {
-    const node = super.copy(deep);
-    node.value.selector = this.value.selector.copy(true) as Selector | Nil;
+    const node = super.copy(false);
+    node.value.selector = this.value.selector instanceof Nil
+      ? this.value.selector
+      : copySelectorForRulesetMetadata(this.value.selector);
+    if (deep) {
+      node.value.rules = this.value.rules.copy(true) as Rules;
+      if (this.value.guard instanceof Node) {
+        node.value.guard = this.value.guard.copy(true) as Condition | Nil;
+      }
+      if (this.value.selectorBeforeExtend instanceof Selector) {
+        node.value.selectorBeforeExtend = copySelectorForRulesetMetadata(this.value.selectorBeforeExtend);
+      }
+    }
     return node;
   }
 

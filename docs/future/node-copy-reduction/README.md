@@ -117,6 +117,10 @@ touching production code.
   - reference-mode selector header filtering also uses the owned/reusable
     selector-copy boundary when it only needs a local print surface; selectors
     that need visibility mutation still keep the defensive deep-copy path
+  - `Ruleset.copy(true)` now keeps the wrapper and deep-owned rule/guard
+    surfaces but copies selector metadata through the owned/reusable selector
+    boundary, so source-free selector leaves are not cloned just because a
+    ruleset wrapper is being copied
   - the unused hoisted implicit-ampersand materialization helper has been
     removed instead of modernized, because current header composition no longer
     calls that older deep-copy path
