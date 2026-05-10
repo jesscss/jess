@@ -10,6 +10,7 @@ import { Selector } from '../selector.js';
 import { Context } from '../../context.js';
 import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -211,8 +212,7 @@ describe('Ampersand', () => {
     /** We need a root node to bubble rules */
     let node = wrapAmp([amp()]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
       .one.two {
@@ -227,9 +227,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp()])]);
     context = new Context({ collapseNesting: true });
 
-    let evald = await node.eval(context);
-
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
     expect(css).toBeString(`
       .one,
@@ -243,8 +241,7 @@ describe('Ampersand', () => {
   it('should order selectors when collapsing', async () => {
     let node = wrapAmp([amp(), el('h2')]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -258,8 +255,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp('')]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
       .one.two {
@@ -272,8 +268,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
       .one,
@@ -287,8 +282,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand has an appended value #1', async () => {
     let node = wrapAmp([amp('-1')]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -302,8 +296,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand has an appended value #2', async () => {
     let node = wrapAmpList([sel([amp('-1')])]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one,
       .two {
@@ -336,8 +329,7 @@ describe('Ampersand', () => {
       })
     ]);
     context = new Context({ collapseNesting: true });
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toContain('.fruit-quoted-apple');
     expect(css).toContain('.fruit-quoted-satsuma');
     expect(css).toContain('.fruit-quoted-banana');
@@ -366,8 +358,7 @@ describe('Ampersand', () => {
   it('should wrap inner lists in :is()', async () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
       .one,
@@ -381,8 +372,7 @@ describe('Ampersand', () => {
       }`
     );
     node = wrapAmpList([compound([amp(), el('.three')])]);
-    evald = await node.eval(context);
-    const css2 = evald.toString({ collapseNesting: true });
+    const css2 = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css2).toBeString(`
       .one,
       .two {
@@ -414,8 +404,7 @@ describe('Ampersand', () => {
       })
     ]);
     context = new Context({ collapseNesting: true });
-    const evald = await node.eval(context);
-    const css = evald.toString({ context, collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true });
     expect(css).toContain('* b[e]');
     expect(css).not.toContain(':is(* b)[e]');
   });
