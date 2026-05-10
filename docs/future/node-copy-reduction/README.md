@@ -90,10 +90,11 @@ touching production code.
   - source-backed `!important` flag leaves now use the same reusable-leaf copy
     path as other derived declaration parts instead of calling `clone(true)`
 - `packages/core/src/tree/call.ts`
-  - non-plain `Call.resolve()` now keeps an owned copied call surface while
-    reusing childless source-free scalar leaves; plain string CSS calls build
-    their evaluated output directly, copying only nested argument containers
-    that need their own eval surface
+  - non-plain `Call.resolve()` now derives a small owned call surface directly
+    instead of reconstructing the whole source `Call`; copied name/arg/content
+    containers still reuse childless source-free scalar leaves, and plain
+    string CSS calls build their evaluated output directly, copying only
+    nested argument containers that need their own eval surface
   - JS function argument isolation copies only when a local arg-list surface is
     needed; ordinary empty positional JS calls skip the arg-list copy, and
     copied positional/callback arg containers reuse source-free scalar leaves

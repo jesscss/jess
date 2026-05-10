@@ -95,6 +95,25 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(this);
   }
 
+  private deriveResolveSurface(): Call {
+    const name = typeof this.value.name === 'string'
+      ? this.value.name
+      : copyWithReusableLeaves(this.value.name);
+    const args = this.value.args
+      ? copyWithReusableLeaves(this.value.args)
+      : undefined;
+    const contentNode = this.value.contentNode
+      ? copyWithReusableLeaves(this.value.contentNode)
+      : undefined;
+    if (args !== undefined && !isNode(args, N.List)) {
+      throw new TypeError('Copied call arguments must remain a List');
+    }
+    return this.deriveCall(
+      { name, args, contentNode },
+      this._options ? { ...this._options } : undefined
+    );
+  }
+
   private derivePreserveRulesLikeReference(name: Node): Node {
     if (!isNode(name, N.Reference)) {
       return name;
@@ -279,11 +298,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    const copied = copyWithReusableLeaves(this);
-    if (!isNode(copied, N.Call)) {
-      throw new TypeError('Copied call must remain a Call');
-    }
-    return copied.eval(context) as MaybePromise<Node>;
+    return this.deriveResolveSurface().eval(context) as MaybePromise<Node>;
   }
 
   /** Recursively makes declarations important */

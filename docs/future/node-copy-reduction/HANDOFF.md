@@ -87,9 +87,10 @@ needed. Plain string CSS calls now build evaluated `resolve(context)` output dir
 deep-cloning the whole call first; nested argument containers still get a local
 copied eval surface when needed so source argument containers stay canonical.
 Non-plain `Call.resolve()` also uses the shared reusable-leaf traversal now:
-the copied call/list/sequence containers still own eval-time mutation, but
-childless source-free scalar leaves are reused and the original call-site
-parents are left alone. Optional fallback call output is derived directly
+it derives a small owned call surface directly instead of reconstructing the
+whole source `Call`; copied name/arg/content containers still own eval-time
+mutation, but childless source-free scalar leaves are reused and the original
+call-site parents are left alone. Optional fallback call output is derived directly
 instead of shallow-cloning the source call, and variable-reference call names
 that need `preserveRulesLike` use a derived reference wrapper instead of
 cloning the source reference.

@@ -563,6 +563,45 @@ describe('Call', () => {
     }
   });
 
+  it('derives referenced JS function calls without reconstructing the source call', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'echo',
+      fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    class CountingCall extends Call {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Call>) {
+        super(...args);
+        if (CountingCall.countConstructions) {
+          CountingCall.constructedCopies++;
+        }
+      }
+    }
+
+    const originalArgs = list([any('red')]);
+    const rule = new CountingCall({
+      name: ref({ key: 'echo' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    CountingCall.countConstructions = true;
+    try {
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(CountingCall.constructedCopies).toBe(0);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingCall.countConstructions = false;
+    }
+  });
+
   it('keeps source fallback call args canonical when optional function evaluation falls back', async () => {
     const originalClone = Call.prototype.clone;
     let clonedCalls = 0;
