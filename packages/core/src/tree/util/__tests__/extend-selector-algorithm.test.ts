@@ -87,6 +87,26 @@ describe('Extend Selector Tests', () => {
       }
     });
 
+    it('extends selector lists without cloning the source list for inheritance', () => {
+      const target = sellist([el('.a'), el('.b')]);
+      const originalClone = target.clone.bind(target);
+      let cloneCalls = 0;
+      target.clone = ((...args) => {
+        cloneCalls++;
+        return originalClone(...args);
+      }) as typeof target.clone;
+
+      try {
+        const result = extendSelector(target, el('.a'), el('.c'), false);
+
+        expect(cloneCalls).toBe(0);
+        expect(result.valueOf()).toBe('.a,.b,.c');
+        expect(target.valueOf()).toBe('.a,.b');
+      } finally {
+        target.clone = originalClone;
+      }
+    });
+
     it('should extend simple selector with simple target - example 1', () => {
       // Selector: .a, Target: .a (full), Extend with: .b
       // Result: .a, .b

@@ -204,6 +204,9 @@ touching production code.
     for placement before creating the generated list, so unchanged source list
     items stay parented to the canonical source list and the old `clone(true)`
     self-parenting guard is gone
+  - `extend-walk.ts` is whole-file lint-clean now; keep future generated-output
+    cleanup there on typed selector/component helpers instead of reintroducing
+    `any` assertions
 - `packages/core/src/tree/ampersand.ts`,
   `packages/core/src/tree/util/cloning.ts`, and
   `packages/core/src/tree/util/extend.ts`

@@ -194,6 +194,9 @@ has been removed. `walkAndExtend()` selector-list reconstruction now follows
 the same placement-copy rule: processed output is copied before generated list
 adoption, so unchanged source-list items keep their canonical source parent and
 the old `s === list ? s.clone(true)` guard is gone.
+`extend-walk.ts` is now whole-file lint-clean; keep follow-up edits there on
+the typed selector/component helper path instead of reintroducing `any`
+assertions.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 
