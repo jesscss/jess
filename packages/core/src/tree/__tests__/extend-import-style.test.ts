@@ -6,6 +6,7 @@ import {
   el,
   sellist,
   extend,
+  ExtendFlag,
   quoted,
   any,
   decl,
@@ -16,12 +17,14 @@ import {
   compound,
   type Rules,
   type Selector,
-  Node
+  Node,
+  Ruleset
 } from '../index.js';
 import { Context } from '../../context.js';
 import { ruleset } from '../index.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -66,9 +69,7 @@ describe('Style import extend behavior', () => {
           ])
         })
       ]);
-
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -116,9 +117,7 @@ describe('Style import extend behavior', () => {
           type: 'import'
         })
       ]);
-
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -160,9 +159,7 @@ describe('Style import extend behavior', () => {
           ])
         })
       ]);
-
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -354,7 +351,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.z'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       })
@@ -371,7 +368,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.z'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       })
@@ -428,7 +425,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.z'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       }),
@@ -437,7 +434,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.class'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       })
@@ -470,7 +467,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.class'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       })
@@ -487,7 +484,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.class'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       })
@@ -511,7 +508,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.z'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       }),
@@ -520,7 +517,7 @@ describe('Style import extend behavior', () => {
         rules: rules([
           extend({
             target: el('.class'),
-            flag: 'all' as any
+            flag: ExtendFlag.All
           })
         ])
       })
@@ -554,9 +551,7 @@ describe('Style import extend behavior', () => {
           ])
         })
       ]);
-
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .child {
           color: red;
@@ -602,7 +597,7 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      const css = (await node.eval(context)).toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toContain('.child {');
       expect(css).toContain('.desc {');
       expect(css).toContain('color: green;');
@@ -626,7 +621,7 @@ describe('Style import extend behavior', () => {
           path: quoted(any('referenced-implicit-ref-no-leak.jess'))
         }, {
           type: 'import',
-          importOptions: { _dedupe: true } as any
+          importOptions: { _dedupe: true }
         }),
         ruleset({
           selector: sellist([sel([el('.outside')])]),
@@ -636,7 +631,7 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      const css = (await node.eval(context)).toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .outside {
           color: blue;
@@ -660,7 +655,7 @@ describe('Style import extend behavior', () => {
           path: quoted(any('referenced-implicit-ref-extendable.jess'))
         }, {
           type: 'import',
-          importOptions: { _dedupe: true } as any
+          importOptions: { _dedupe: true }
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
@@ -673,7 +668,7 @@ describe('Style import extend behavior', () => {
         })
       ]);
 
-      const css = (await node.eval(context)).toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .child {
           color: red;
@@ -690,7 +685,7 @@ describe('Style import extend behavior', () => {
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
-      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      const css = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
       expect(css).toContain('.visible {');
       expect(css).toContain('.c {');
       expect(css).toContain('&:hover {');
@@ -706,7 +701,7 @@ describe('Style import extend behavior', () => {
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
-      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      const css = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
       expect(css).toContain('.visible .c {');
       expect(css).toContain('.visible:hover {');
       expect(css).toContain('.only-with-visible + .visible,');
@@ -736,7 +731,7 @@ describe('Style import extend behavior', () => {
         })
       ]));
 
-      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      const css = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
       expect(css).toContain('.visible {');
       expect(css).not.toContain('.visible .visible {');
     });
@@ -747,7 +742,7 @@ describe('Style import extend behavior', () => {
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
-      const css = (await createReferenceExtendNode().eval(localContext)).toString({ context: localContext });
+      const css = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
       expect(css).toContain('.visible {');
       expect(css).not.toContain('.visible .visible {');
     });
@@ -758,7 +753,11 @@ describe('Style import extend behavior', () => {
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       const referencedTree = createReferencedZTree();
       localContext.sourceTrees.set(referencedPath, referencedTree);
-      const firstRuleset = referencedTree.value[0] as { value: { selector: Selector } };
+      const firstRuleset = referencedTree.value[0];
+      expect(firstRuleset).toBeInstanceOf(Ruleset);
+      if (!(firstRuleset instanceof Ruleset)) {
+        throw new Error('Expected first referenced child to be a ruleset');
+      }
       const storedSelector = firstRuleset.value.selector;
 
       const evald = await createReferenceExtendNode().eval(localContext);
@@ -777,7 +776,7 @@ describe('Style import extend behavior', () => {
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-self-class.jess');
       localContext.sourceTrees.set(referencedPath, createSelfClassTree());
 
-      const css = (await createReferenceSelfClassExtendNode().eval(localContext)).toString({ context: localContext });
+      const css = await renderNodeToString(createReferenceSelfClassExtendNode(), localContext, { context: localContext });
       expect(css).toContain('.visible {');
       expect(css).toContain('.visible {');
       expect(css).toContain('.visible .c {');
@@ -792,7 +791,7 @@ describe('Style import extend behavior', () => {
         const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
         localContext.sourceTrees.set(referencedPath, createReferencedZTree());
         const node = reference ? createReferenceExtendNode() : createNonReferenceExtendNode();
-        return (await node.eval(localContext)).toString({ context: localContext });
+        return renderNodeToString(node, localContext, { context: localContext });
       };
 
       it('snapshot: non-reference import with collapseNesting=false', async () => {
@@ -911,7 +910,7 @@ describe('Style import extend behavior', () => {
         const referencedPath = resolve(process.cwd(), 'referenced-import-self-extend-duplicate.jess');
         localContext.sourceTrees.set(referencedPath, createSelfExtendDuplicateTree());
         const node = reference ? createReferenceSelfExtendDuplicateNode() : createNonReferenceSelfExtendDuplicateNode();
-        return (await node.eval(localContext)).toString({ context: localContext });
+        return renderNodeToString(node, localContext, { context: localContext });
       };
 
       it('snapshot: non-reference self-extend duplicate selector shape', async () => {
@@ -945,7 +944,7 @@ describe('Style import extend behavior', () => {
           resolve(process.cwd(), 'referenced-import-reference-shape.jess'),
           createReferencedZTree()
         );
-        const css = (await createMultiReferenceImportsNode().eval(localContext)).toString({ context: localContext });
+        const css = await renderNodeToString(createMultiReferenceImportsNode(), localContext, { context: localContext });
         expect(css).toMatchInlineSnapshot(`
           "input[type="text"].class#id[attr=i32]:not(.one) {
             color: inherit;
