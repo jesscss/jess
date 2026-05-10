@@ -197,6 +197,9 @@ the old `s === list ? s.clone(true)` guard is gone.
 `extend-walk.ts` is now whole-file lint-clean; keep follow-up edits there on
 the typed selector/component helper path instead of reintroducing `any`
 assertions.
+Legacy full-match extend paths no longer shallow-clone the source selector just
+to supply inheritance metadata to `createExtendedSelectorList()`; the generated
+list still owns placement copies before adoption.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 

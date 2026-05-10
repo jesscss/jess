@@ -107,6 +107,33 @@ describe('Extend Selector Tests', () => {
       }
     });
 
+    it('extends legacy full-match targets without cloning them for inheritance', () => {
+      const target = el('.a');
+      const originalClone = target.clone.bind(target);
+      let cloneCalls = 0;
+      target.clone = ((...args) => {
+        cloneCalls++;
+        return originalClone(...args);
+      }) as typeof target.clone;
+
+      try {
+        const result = extendSelector(
+          target,
+          el('.a'),
+          el('.c'),
+          false,
+          false,
+          true
+        );
+
+        expect(cloneCalls).toBe(0);
+        expect(result.valueOf()).toBe('.a,.c');
+        expect(target.valueOf()).toBe('.a');
+      } finally {
+        target.clone = originalClone;
+      }
+    });
+
     it('should extend simple selector with simple target - example 1', () => {
       // Selector: .a, Target: .a (full), Extend with: .b
       // Result: .a, .b

@@ -538,14 +538,14 @@ function wrapMatchInIs(
   // Self-extends on the exact same matched component are visibility-only;
   // avoid generating :is(.x,.x) wrappers and preserve the original shape.
   if (computed.length === 1 && computed[0]!.valueOf() === matched.valueOf()) {
-    return matched.copy(true) as Selector;
+    return copySelectorForExtend(matched);
   }
-  const matchedForList = matched.copy(true) as Selector;
+  const matchedForList = copySelectorForExtend(matched);
   if (context?.find && context.find.valueOf() !== context.extendWith?.valueOf()) {
     matchedForList.addFlag(F_EXTEND_TARGET);
   }
   const extendWithForList = computed.map((item) => {
-    const out = item.copy(true) as Selector;
+    const out = copySelectorForExtend(item);
     out.addFlag(F_EXTENDED);
     return out;
   });
@@ -2823,9 +2823,7 @@ function handleFullExtend(
 
   // If target is already a selector list, add to it
   if (isNode(target, N.SelectorList)) {
-    // Use clone to preserve comments
-    const copyForInheritance = target.clone();
-    return createExtendedSelectorList([...target.value, extendWith], copyForInheritance);
+    return createExtendedSelectorList([...target.value, extendWith], target);
   }
 
   // If target is a pseudo-selector with selector arguments, check if we should extend arguments or create selector list
@@ -2880,14 +2878,12 @@ function handleFullExtend(
   // handleCompoundFullExtend is only for special cases like extending within :is() pseudo-selectors
   if (isNode(target, N.CompoundSelector)) {
     // Order: target (ruleset owner) first, then extendWith. Same as SelectorList append and circular ref.
-    const copyForInheritance = target.clone();
-    return createExtendedSelectorList([target, extendWith], copyForInheritance);
+    return createExtendedSelectorList([target, extendWith], target);
   }
 
   // Order: target (ruleset owner) first, then extendWith. So .e gets [.e, .d], .z gets [.z, .x], and
   // when we later append (e.g. .y to [.z, .x]) we get [.z, .x, .y] — one consistent path.
-  const copyForInheritance = target.clone();
-  return createExtendedSelectorList([target, extendWith], copyForInheritance);
+  return createExtendedSelectorList([target, extendWith], target);
 }
 
 // Removed unused function: handleCompoundFullExtend
@@ -2943,7 +2939,7 @@ function createValidatedIsWrapperWithErrors(
     extendWith?: Selector;
   }
 ): PseudoSelector | ExtendErrorType {
-  const decoratedSelectors = selectors.map(selector => selector.copy(true) as Selector);
+  const decoratedSelectors = selectors.map(selector => copySelectorForExtend(selector));
   if (context?.find && context?.extendWith && context.find.valueOf() !== context.extendWith.valueOf()) {
     const first = decoratedSelectors[0];
     if (first) {

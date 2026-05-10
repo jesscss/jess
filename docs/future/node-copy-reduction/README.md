@@ -219,6 +219,9 @@ touching production code.
     (`copySelectorsForPlacement`) and no longer carries the stale second
     `s === inheritFrom ? s.clone(true)` guard; owned placement copies are the
     self-parenting guard for selector-list output
+  - legacy full-match extend paths now pass the source selector directly as
+    inheritance metadata instead of shallow-cloning it first; generated
+    selector-list placement copies remain the adoption boundary
 
 ## Current Todo Shape
 
