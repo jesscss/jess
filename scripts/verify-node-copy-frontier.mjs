@@ -24,7 +24,6 @@ const infrastructureFiles = new Set([
 const expectedRemaining = new Set([
   'packages/core/src/tree/import-style.ts',
   'packages/core/src/tree/rules.ts',
-  'packages/core/src/tree/ruleset.ts',
   'packages/core/src/tree/util/extend.ts'
 ]);
 

@@ -51,19 +51,20 @@ export type RulesetValue = {
 
 function copySelectorForRulesetMetadata(selector: Selector): Selector {
   const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorLike(copied)) {
-    return selector.copy(true);
+  if (isRulesetSelectorMetadata(copied)) {
+    return copied;
   }
-  return copied;
+  throw new TypeError('Expected selector metadata copy to remain selector-like');
 }
 
-function isSelectorLike(value: unknown): value is Selector {
+function isRulesetSelectorMetadata(value: unknown): value is Selector {
   return value instanceof Selector
     || (
       !!value
       && typeof value === 'object'
       && (value as { isSelector?: unknown }).isSelector === true
-    );
+    )
+    || value instanceof Node;
 }
 
 type RulesetOptions = NodeOptions & {

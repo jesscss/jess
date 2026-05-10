@@ -302,6 +302,9 @@ as generic low-hanging fruit:
 - `packages/core/src/tree/rules.ts` still clones callable rules for normal
   mixin/ruleset output because direct comment children and per-placement output
   ownership must survive repeated calls.
+- `packages/core/src/tree/ruleset.ts` no longer has the defensive
+  `selector.copy(true)` fallback after the owned/reusable selector helper; the
+  helper must return a selector-shaped node or throw.
 - `packages/core/src/tree/util/extend.ts` still owns generated selector-output
   copy sites. That file has substantial pre-existing lint debt, so follow-up
   work there should either keep to already-clean helper files or explicitly pay
