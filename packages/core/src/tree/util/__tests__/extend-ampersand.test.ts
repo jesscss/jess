@@ -1,4 +1,4 @@
-import { BasicSelector, el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
+import { BasicSelector, SelectorList, el, sel, sellist, compound, is, co, comment, amp } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../extend.js';
 import { addImplicitAmpersand } from '../selector-utils.js';
@@ -93,6 +93,33 @@ describe('Extend Ampersand Handling Tests', () => {
   });
 
   describe('Expected outputs - boundary crossing', () => {
+    it('hoists ampersand boundary output without calling generic SelectorList.copy()', () => {
+      const originalCopy = SelectorList.prototype.copy;
+      let selectorListCopies = 0;
+      SelectorList.prototype.copy = function copyForCounting(
+        this: SelectorList,
+        ...args: Parameters<SelectorList['copy']>
+      ): ReturnType<SelectorList['copy']> {
+        selectorListCopies++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const parentSelector = el('.foo');
+        const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
+        const target = compound([el('.foo'), el('.bar')]);
+        const extendWith = el('.a');
+
+        const result = extendSelector(selector, target, extendWith, true);
+
+        expect(selectorListCopies).toBe(0);
+        expect(result.hoistToRoot).toBe(true);
+        expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
+      } finally {
+        SelectorList.prototype.copy = originalCopy;
+      }
+    });
+
     it('should extend .foo &.bar across boundary to create .foo.bar, .extended', () => {
       // Original: .foo { &.bar { color: red; } }
       // Target: .foo.bar (matches resolved form of &.bar)

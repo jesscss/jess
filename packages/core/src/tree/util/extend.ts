@@ -3519,8 +3519,7 @@ function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
  * @returns Selector marked for hoisting
  */
 function markSelectorForHoisting(selector: Selector): Selector {
-  // Clone the selector and set hoistToRoot option
-  const hoistedSelector = selector.copy();
+  const hoistedSelector = copySelectorForExtend(selector);
   hoistedSelector.hoistToRoot = true;
   return hoistedSelector;
 }
