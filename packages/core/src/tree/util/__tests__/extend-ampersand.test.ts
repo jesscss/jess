@@ -93,6 +93,30 @@ describe('Extend Ampersand Handling Tests', () => {
   });
 
   describe('Expected outputs - boundary crossing', () => {
+    it('replaces boundary-crossing ampersands without calling generic copy on the source selector', () => {
+      const parentSelector = el('.foo');
+      const selector = compound([ampWithSelector(parentSelector), el('.bar')]);
+      const originalCopy = selector.copy.bind(selector);
+      let selectorCopies = 0;
+      selector.copy = ((...args) => {
+        selectorCopies++;
+        return originalCopy(...args);
+      }) as typeof selector.copy;
+
+      try {
+        const target = compound([el('.foo'), el('.bar')]);
+        const extendWith = el('.a');
+
+        const result = extendSelector(selector, target, extendWith, true);
+
+        expect(selectorCopies).toBe(0);
+        expect(result.hoistToRoot).toBe(true);
+        expect(result.toTrimmedString()).toBe('.foo.bar,\n.a');
+      } finally {
+        selector.copy = originalCopy;
+      }
+    });
+
     it('hoists ampersand boundary output without calling generic SelectorList.copy()', () => {
       const originalCopy = SelectorList.prototype.copy;
       let selectorListCopies = 0;

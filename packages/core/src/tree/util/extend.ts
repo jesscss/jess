@@ -3298,8 +3298,9 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
     return selector;
   }
 
-  // Create a copy of the selector
-  const selectorCopy = selector.copy();
+  const selectorCopy = isNode(selector, N.CompoundSelector)
+    ? copySelectorForExtend(selector)
+    : selector.copy();
   let resolvedSelector: Selector = resolved.copy();
 
   // If the resolved selector is a SelectorList, wrap it in :is() so it can be used as a single
