@@ -77,8 +77,7 @@ describe('Jess restricted script runtime integration', () => {
         ]
       }
     });
-    const { tree, context } = await compiler.compile(lessPath);
-    const css = tree.toString({ context });
+    const { css } = await compiler.renderToResult(lessPath);
     // In Node (Vitest): process.env.HOME is available → LEAKED or actual path
     // In Deno: process undefined → DENIED
     expect(css).toMatch(/value: (LEAKED|DENIED|\/[^\s]+)/);
