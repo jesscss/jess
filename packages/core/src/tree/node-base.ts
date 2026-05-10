@@ -1194,6 +1194,12 @@ export abstract class Node<
   /**
    * Renders evaluated output for this node through the context-owned print
    * state. This is the live-binding render path, not a source serializer.
+   *
+   * This legacy string overload is intentionally synchronous. Nodes whose
+   * contextual resolution is async must use the buffer/async render bridge
+   * until the top-level compile path owns async render directly. For now, the
+   * sync overload keeps the old source-serializer fallback so legacy sync
+   * formatting paths can continue while they are converted.
    */
   render(context: Context, options?: PrintOptions): string {
     const canReuseActivePrintState = (
