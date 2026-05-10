@@ -55,10 +55,11 @@ it is for current direction and next seams, not a historical pass log.
 - The preserve-rules-like call parent repair in `packages/core/src/tree/call.ts`
   is still active. Removing it makes non-leaky detached-ruleset calls see caller
   variables, so do not delete it without replacing that lexical-parent behavior.
-- `Node.render(context)` still has a legacy synchronous fallback for async
-  resolution because CSS function formatting paths call child render
-  synchronously. Convert those callers to the explicit async/buffer path before
-  removing the fallback or routing top-level compile through source render.
+- `Node.render(context)` still has a legacy synchronous fallback for direct sync
+  callers. Top-level compile and flat render buffers should use the explicit
+  async render bridge, but plain CSS call buffers still need their local
+  arg/content renderer so async child failures keep calc-frame cleanup instead
+  of falling back to source text.
 - The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
   remains the public compatibility hook name, but internally that phase is
   treated as pre-render: visitors run after eval and before serialization.

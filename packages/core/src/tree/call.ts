@@ -303,6 +303,8 @@ export class Call extends Node<CallValue, CallOptions> {
       if (typeof this.value.name !== 'string') {
         return renderNodeToBuffer(this, context, bufferOrOptions, options);
       }
+      // Plain CSS calls render args/content explicitly so async child failures
+      // keep calc-frame cleanup instead of falling back to source text.
       const prepared = prepareContextPrintState(context, options);
       const rendered = this.renderPlainFunctionCall(this, context, prepared);
       const write = (text: string): string => {
