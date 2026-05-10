@@ -9,7 +9,7 @@ import type { Class, AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
   getPrintOptions,
-  prepareContextPrintState
+  prepareRenderPrintState
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -1202,19 +1202,7 @@ export abstract class Node<
    * formatting paths can continue while they are converted.
    */
   render(context: Context, options?: PrintOptions): string {
-    const canReuseActivePrintState = (
-      options?.context === context
-      && (
-        options.writer !== undefined
-        || options.inFrames !== undefined
-        || options.treeFrames !== undefined
-        || options.lastRenderedFrames !== undefined
-        || options.frameHeaders !== undefined
-      )
-    );
-    const prepared = canReuseActivePrintState
-      ? getPrintOptions(options)
-      : prepareContextPrintState(context, options);
+    const prepared = prepareRenderPrintState(context, options);
     const resolved = this.resolve(context);
     if (!isThenable(resolved)) {
       return resolved.toTrimmedString(prepared);

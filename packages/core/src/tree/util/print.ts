@@ -184,6 +184,22 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   return resolved;
 }
 
+export function prepareRenderPrintState(context: Context, options?: PrintOptions): FinalPrintOptions {
+  const canReuseActivePrintState = (
+    options?.context === context
+    && (
+      options.writer !== undefined
+      || options.inFrames !== undefined
+      || options.treeFrames !== undefined
+      || options.lastRenderedFrames !== undefined
+      || options.frameHeaders !== undefined
+    )
+  );
+  return canReuseActivePrintState
+    ? getPrintOptions(options)
+    : prepareContextPrintState(context, options);
+}
+
 export function prepareContextPrintState(context: Context, seed?: PrintOptions): FinalPrintOptions {
   const state = context.printState;
 

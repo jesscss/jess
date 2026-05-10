@@ -4,8 +4,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { prepareContextPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
@@ -305,7 +304,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const prepared = prepareContextPrintState(context, options);
+      const prepared = prepareRenderPrintState(context, options);
       const rendered = this.renderPlainFunctionCall(this, context, prepared);
       const write = (text: string): string => {
         writeRenderText(bufferOrOptions, text);
@@ -313,19 +312,7 @@ export class Call extends Node<CallValue, CallOptions> {
       };
       return isThenable(rendered) ? rendered.then(write) : write(rendered);
     }
-    const canReuseActivePrintState = (
-      bufferOrOptions?.context === context
-      && (
-        bufferOrOptions.writer !== undefined
-        || bufferOrOptions.inFrames !== undefined
-        || bufferOrOptions.treeFrames !== undefined
-        || bufferOrOptions.lastRenderedFrames !== undefined
-        || bufferOrOptions.frameHeaders !== undefined
-      )
-    );
-    const prepared = canReuseActivePrintState
-      ? getPrintOptions(bufferOrOptions)
-      : prepareContextPrintState(context, bufferOrOptions);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (typeof this.value.name === 'string') {
       const rendered = this.renderPlainFunctionCall(this, context, prepared);
       return isThenable(rendered)
