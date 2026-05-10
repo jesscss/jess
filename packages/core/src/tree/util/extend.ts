@@ -2508,7 +2508,7 @@ function extendSelectorList(
         const rightSide = mkSide(rightOrder, rightMap, template.right);
         const combined = ComplexSelector.create([
           leftSide,
-          template.combinator.copy(true),
+          copyComplexComponentForPlacement(template.combinator),
           rightSide
         ]).inherit(template.selector);
 

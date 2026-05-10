@@ -300,10 +300,11 @@ as generic low-hanging fruit:
 - `packages/core/src/tree/ruleset.ts` no longer has the defensive
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper must return a selector-shaped node or throw.
-- `packages/core/src/tree/util/extend.ts` still owns generated selector-output
-  copy at the template-combinator placement boundary. Its generated-output
-  helper path is now whole-file lint-clean, so follow-up work should keep that
-  gate green.
+- `packages/core/src/tree/util/extend.ts` no longer has a deep `.copy(true)`
+  generated-output frontier; the final template-combinator placement now uses
+  the shared owned/reusable complex-component helper. Its generated-output
+  helper path is whole-file lint-clean, so follow-up work should keep that gate
+  green.
 
 Do not present any of those as completed runtime-eval copy removal until a
 focused test proves the specific ownership boundary can move.
@@ -311,9 +312,10 @@ Use `pnpm run verify:node-copy-frontier` to refresh the exact deep
 copy/clone-style call-site scan before choosing the next seam.
 
 If the next seam is generated selector output, keep the `extend.ts` typed-helper
-cleanup intact. The file now passes whole-file ESLint; the remaining question is
-whether the final template-combinator placement copy is still a real ownership
-boundary or can be expressed through the shared generated-output helpers.
+cleanup intact. The file now passes whole-file ESLint and the deep-copy frontier
+scan is clear; future work should audit ordinary `.copy()` calls by ownership
+purpose rather than treating every remaining local copy as the same class of
+problem.
 
 Recent quality pass note: utility cleanups should stay focused on files whose
 whole-file lint debt can actually be paid in the same patch. `Context.getTree()`

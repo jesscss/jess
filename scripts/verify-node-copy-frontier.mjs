@@ -21,9 +21,7 @@ const patterns = [
 const infrastructureFiles = new Set([
   'packages/core/src/tree/util/cloning.ts'
 ]);
-const expectedRemaining = new Set([
-  'packages/core/src/tree/util/extend.ts'
-]);
+const expectedRemaining = new Set();
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });

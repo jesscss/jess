@@ -262,10 +262,10 @@ Current remaining clone/copy frontier:
 - `packages/core/src/tree/ruleset.ts` no longer has the defensive
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper now returns a selector-shaped node or throws.
-- `packages/core/src/tree/util/extend.ts` still contains generated selector
-  output `.copy(true)` at the template-combinator placement boundary. The
-  surrounding generated-output helpers are now typed enough for whole-file
-  ESLint to pass, so follow-up work should keep the file lint-clean.
+- `packages/core/src/tree/util/extend.ts` no longer has a deep `.copy(true)`
+  generated-output frontier. The final template-combinator placement boundary
+  now uses the same owned/reusable complex-component helper as the surrounding
+  generated selector output.
 
 Run `pnpm run verify:node-copy-frontier` before picking the next node-copy seam.
 It intentionally scans only deep copy/clone-style call sites, not every
@@ -277,10 +277,12 @@ Next generated-output checkpoint:
   guards replaced the high-risk unsafe assertion clusters around generated
   output processing, and `pnpm exec eslint
   packages/core/src/tree/util/extend.ts` passes.
-- Current evidence: `pnpm run verify:node-copy-frontier` reports one remaining
-  `.copy(true)` in `extend.ts`, at the template-combinator placement boundary.
-- The next honest generated-output slice should remove or justify that final
-  placement copy with focused selector/ampersand behavior tests.
+- Current evidence: `pnpm run verify:node-copy-frontier` reports no remaining
+  production deep copy/clone-style frontier outside clone infrastructure.
+- The next honest copy-reduction slice should move beyond deep-copy scans and
+  audit ordinary `.copy()` sites by ownership purpose. Start with `extend.ts`
+  only if the specific site is tied to generated selector output and has focused
+  selector behavior tests.
 
 ## Work Loop
 

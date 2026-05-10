@@ -134,6 +134,37 @@ describe('Extend Selector Tests', () => {
       }
     });
 
+    it('dedistributes exact cartesian selector output without calling Combinator.copy()', () => {
+      const templateCombinator = co(' ');
+      const originalCopy = templateCombinator.copy.bind(templateCombinator);
+      let copyCalls = 0;
+      templateCombinator.copy = ((...args) => {
+        copyCalls++;
+        return originalCopy(...args);
+      }) as typeof templateCombinator.copy;
+
+      try {
+        const target = sellist([
+          sel([el('.a'), templateCombinator, el('.b')]),
+          sel([el('.a'), co(' '), el('.d')]),
+          sel([el('.c'), co(' '), el('.b')])
+        ]);
+
+        const result = extendSelector(
+          target,
+          sel([el('.c'), co(' '), el('.b')]),
+          sel([el('.c'), co(' '), el('.d')]),
+          false
+        );
+
+        expect(copyCalls).toBe(0);
+        expect(result.valueOf()).toBe(':is(.a,.c) :is(.b,.d)');
+        expect(templateCombinator.parent?.valueOf()).toBe('.a .b');
+      } finally {
+        templateCombinator.copy = originalCopy;
+      }
+    });
+
     it('should extend simple selector with simple target - example 1', () => {
       // Selector: .a, Target: .a (full), Extend with: .b
       // Result: .a, .b
