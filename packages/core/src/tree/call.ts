@@ -15,6 +15,7 @@ import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
   isRenderBuffer,
+  renderNodeToBuffer,
   renderNodeToString,
   type RenderBuffer,
   writeRenderText
@@ -300,12 +301,7 @@ export class Call extends Node<CallValue, CallOptions> {
         throw new Error('Call segmented rendering needs explicit segment handling.');
       }
       if (typeof this.value.name !== 'string') {
-        const rendered = renderNodeToString(this, context, options);
-        const write = (text: string): string => {
-          writeRenderText(bufferOrOptions, text);
-          return text;
-        };
-        return isThenable(rendered) ? rendered.then(write) : write(rendered);
+        return renderNodeToBuffer(this, context, bufferOrOptions, options);
       }
       const prepared = prepareContextPrintState(context, options);
       const rendered = this.renderPlainFunctionCall(this, context, prepared);
