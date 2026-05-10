@@ -175,13 +175,15 @@ live-slot `ScopeFrame` for that iteration, while childless source-free scalar
 leaves inside that body are reused through the shared reusable-leaf traversal
 without calling `Rules.clone()`. Source-free scalar `$for` iteration values
 bind without being copied or cloned first. `packages/core/src/tree/sequence.ts`
-now routes `Sequence.operate('+')` through the shared reusable-leaf traversal
-for both operands, so sequence/list addition does not reparent source children
-and does not clone childless source-free scalar leaves. Sequence changed-value
-eval/resolve wrappers are also constructed directly now instead of cloning
-before replacing the value array. `packages/core/src/tree/list.ts`
-now does the same for `List.operate('+')`, so list/list and list/scalar
-addition keep source children canonical while reusing inert scalar leaves.
+now derives `Sequence.operate('+')` output directly and routes operand children
+through the shared reusable-leaf traversal, so sequence/list addition does not
+reconstruct the source sequence, reparent source children, or clone childless
+source-free scalar leaves. Sequence changed-value eval/resolve wrappers are
+also constructed directly now instead of cloning before replacing the value
+array. `packages/core/src/tree/list.ts` now does the same for
+`List.operate('+')`, so list/list and list/scalar addition do not reconstruct
+the source list while keeping source children canonical and reusing inert
+scalar leaves.
 `packages/core/src/tree/operation.ts` now builds preserved operation wrappers
 directly from final operands instead of shallow-cloning before replacement, so
 unchanged source operands remain parented to the source operation when a

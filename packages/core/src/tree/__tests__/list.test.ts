@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { TreeContext, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { TreeContext, List, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import { Node } from '../node.js';
@@ -230,6 +230,37 @@ describe('List', () => {
     expect(`${result}`).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(right.parent).toBeUndefined();
+  });
+
+  it('derives list addition output without reconstructing the source list', () => {
+    class CountingList extends List {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof List>) {
+        super(...args);
+        if (CountingList.countConstructions) {
+          CountingList.constructedCopies++;
+        }
+      }
+    }
+
+    const leftChild = any('left');
+    const rightChild = any('right');
+    const left = new CountingList([leftChild]);
+    const right = list([rightChild]);
+
+    CountingList.countConstructions = true;
+    try {
+      const result = left.operate(right, '+', context);
+
+      expect(result.toTrimmedString()).toBe('left, right');
+      expect(CountingList.constructedCopies).toBe(0);
+      expect(leftChild.parent).toBe(left);
+      expect(rightChild.parent).toBe(right);
+    } finally {
+      CountingList.countConstructions = false;
+    }
   });
 
   it('reuses childless source-free scalar leaves during list addition copies', () => {

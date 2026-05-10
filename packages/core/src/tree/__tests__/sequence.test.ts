@@ -1,4 +1,4 @@
-import { Node, any, list, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Sequence, any, list, num, ref, rules, seq, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
@@ -183,6 +183,37 @@ describe('Sequence', () => {
     expect(`${result}`).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
+  });
+
+  it('derives sequence addition output without reconstructing the source sequence', () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const leftChild = any('left');
+    const rightChild = any('right');
+    const left = new CountingSequence([leftChild]);
+    const right = seq([rightChild]);
+
+    CountingSequence.countConstructions = true;
+    try {
+      const result = left.operate(right, '+', context);
+
+      expect(result.toTrimmedString()).toBe('left right');
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(leftChild.parent).toBe(left);
+      expect(rightChild.parent).toBe(right);
+    } finally {
+      CountingSequence.countConstructions = false;
+    }
   });
 
   it('reuses childless source-free scalar leaves during sequence addition copies', () => {

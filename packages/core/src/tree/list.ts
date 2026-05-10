@@ -59,6 +59,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
+  private deriveAdditionList(): List<Node> {
+    return new List<Node>(
+      this.value.map(value => copyWithReusableLeaves(value)),
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+  }
+
   private renderListSyntax(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
@@ -145,10 +154,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const newList = copyWithReusableLeaves(this);
-    if (!(newList instanceof List)) {
-      throw new TypeError('Copied list must remain a List');
-    }
+    const newList = this.deriveAdditionList();
     if (b instanceof List) {
       newList.value.push(...b.value.map(value => copyWithReusableLeaves(value)));
     } else {

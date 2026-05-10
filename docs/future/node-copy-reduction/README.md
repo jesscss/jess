@@ -178,15 +178,17 @@ touching production code.
   - source-free scalar `$for` iteration values bind directly without copy or
     clone; the iteration wrapper remains the ownership surface
 - `packages/core/src/tree/sequence.ts`
-  - `Sequence.operate('+')` now copies both sides through the shared
-    reusable-leaf traversal, so source children keep their canonical parents
-    and childless source-free scalar leaves are reused
+  - `Sequence.operate('+')` now derives its output sequence directly and copies
+    operand children through the shared reusable-leaf traversal, so source
+    children keep their canonical parents and childless source-free scalar
+    leaves are reused without reconstructing the source sequence
   - changed-value eval/resolve now constructs the derived sequence directly
     instead of cloning the source sequence before replacing its value array
 - `packages/core/src/tree/list.ts`
-  - `List.operate('+')` now uses the same reusable-leaf traversal for both
-    operands, so list addition no longer reparents source children and still
-    reuses childless source-free scalar leaves
+  - `List.operate('+')` now derives its output list directly and uses the same
+    reusable-leaf traversal for operand children, so list addition no longer
+    reparents source children and still reuses childless source-free scalar
+    leaves without reconstructing the source list
 - `packages/core/src/tree/operation.ts`
   - preserved operation wrappers now construct the derived operation directly
     from final operands instead of shallow-cloning first, so unchanged source

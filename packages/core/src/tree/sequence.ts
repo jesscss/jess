@@ -48,6 +48,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     ).inherit(this);
   }
 
+  private deriveAdditionSequence(): Sequence {
+    return new Sequence(
+      this.value.map(value => copyWithReusableLeaves(value)),
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+  }
+
   private evaluateValues(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node[]> {
     const values = new Array<Node>(this.value.length);
     const maybe = serialForEach(this.value.map((n, i) => [n, i] as const), ([n, i]) => {
@@ -166,10 +175,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (op !== '+') {
       throw new Error(`Sequence operation "${op}" not supported`);
     }
-    const newSequence = copyWithReusableLeaves(this);
-    if (!(newSequence instanceof Sequence)) {
-      throw new TypeError('Copied sequence must remain a Sequence');
-    }
+    const newSequence = this.deriveAdditionSequence();
     if (b instanceof List) {
       return new List([
         newSequence,
