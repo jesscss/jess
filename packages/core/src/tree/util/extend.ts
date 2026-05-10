@@ -3429,9 +3429,8 @@ function handleAmpersandBoundaryCrossing(
       .map(extractNestedFromItem)
       .filter((s): s is Selector => !!s);
 
-    // Ensure we have at least one nested item
     if (nestedItems.length === 0) {
-      nestedItems = selector.value.map(item => item.copy());
+      return selector;
     }
     // Wrap the inner SelectorList in :is() to match Less expectations
     const innerList = SelectorList.create(nestedItems);
