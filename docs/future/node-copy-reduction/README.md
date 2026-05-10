@@ -47,10 +47,10 @@ touching production code.
   - static guards are proven copy-free; dynamic guards and default-guard probes
     still use a copied eval surface, but that surface now reuses childless
     source-free scalar leaves
-  - ruleset-call and ordinary mixin body clones now reuse childless source-free
-    scalar leaves through the shared clone helper; the rules containers and
-    non-leaf nodes still get owned eval surfaces, while direct comment children
-    remain cloned/preserved for each output placement
+  - ruleset-call and ordinary mixin output now derives the root `Rules`
+    wrapper directly and clones only child output surfaces through the shared
+    reusable-leaf helper; direct comment children remain cloned/preserved for
+    each output placement
   - detached-ruleset unlock is covered by a regression test proving it does not
     deep-clone body leaves before evaluating the unlocked surface, and now
     derives the unlock wrapper instead of shallow-cloning the source rules
@@ -297,9 +297,6 @@ Current scan note: outside clone infrastructure and key-set/bitset copies, the
 remaining production deep-clone surfaces are explicit and should not be treated
 as generic low-hanging fruit:
 
-- `packages/core/src/tree/rules.ts` still clones callable rules for normal
-  mixin/ruleset output because direct comment children and per-placement output
-  ownership must survive repeated calls.
 - `packages/core/src/tree/ruleset.ts` no longer has the defensive
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper must return a selector-shaped node or throw.

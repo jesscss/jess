@@ -22,7 +22,6 @@ const infrastructureFiles = new Set([
   'packages/core/src/tree/util/cloning.ts'
 ]);
 const expectedRemaining = new Set([
-  'packages/core/src/tree/rules.ts',
   'packages/core/src/tree/util/extend.ts'
 ]);
 

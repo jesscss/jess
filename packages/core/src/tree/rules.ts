@@ -43,7 +43,7 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, cloneWithReusableLeaves, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, cloneChildrenWithReusableLeaves, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
@@ -3761,7 +3761,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!deep) {
         return sourceRules.derive();
       }
-      return cloneWithReusableLeaves(sourceRules);
+      return sourceRules.derive(cloneChildrenWithReusableLeaves(sourceRules.value));
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];

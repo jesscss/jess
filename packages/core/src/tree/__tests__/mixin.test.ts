@@ -178,6 +178,50 @@ describe('Mixin', () => {
       `);
     });
 
+    it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedMixinRoots = 0;
+      const mixinBody = rules([
+        comment('/**/'),
+        decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) })
+      ]);
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this === mixinBody) {
+          clonedMixinRoots++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          vardecl({ name: 'accent', value: any('red') }),
+          mixin({
+            name: any('.commented'),
+            rules: mixinBody
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = evald.toString({ context });
+
+        expect(css).toContain('/**/');
+        expect(css).toContain('color: red;');
+        expect(clonedMixinRoots).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
     it('should call a ruleset as a mixin (no parens)', async () => {
       // Create a ruleset that can be used as a mixin: .my-mixin { color: red; }
       const mixinRuleset = ruleset({

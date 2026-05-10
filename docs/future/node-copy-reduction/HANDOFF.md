@@ -216,6 +216,10 @@ First-use import-local `Rules` wrappers in
 import source root, with only child output surfaces cloned through the
 reusable-leaf helper. That keeps the import site local during prep/eval without
 calling `Rules.clone()` on the source root.
+Callable rules output in `packages/core/src/tree/rules.ts` now uses the same
+shape: derive the output `Rules` wrapper directly, then clone only child output
+surfaces through the reusable-leaf helper. This preserves direct comment
+children per placement without cloning the source `Rules` root.
 Extend-generated selector output in `packages/core/src/tree/util/extend.ts`
 and `packages/core/src/tree/util/extend-walk.ts` now uses an owned-root /
 reusable-children copy helper from `packages/core/src/tree/util/cloning.ts`.
@@ -255,9 +259,6 @@ from `packages/core/src/tree/util/cloning.ts`.
 
 Current remaining clone/copy frontier:
 
-- `packages/core/src/tree/rules.ts` still uses `cloneWithReusableLeaves` for
-  callable rules output that must preserve direct comment children and own each
-  generated placement.
 - `packages/core/src/tree/ruleset.ts` no longer has the defensive
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper now returns a selector-shaped node or throws.
@@ -275,8 +276,7 @@ Next generated-output checkpoint:
 - Start with `packages/core/src/tree/util/extend.ts`, not the import or callable
   rules clone boundaries.
 - Current evidence: `pnpm run verify:node-copy-frontier` reports the remaining
-  `cloneWithReusableLeaves` site in `rules.ts` and the remaining `.copy(true)`
-  sites in `extend.ts`; `pnpm exec eslint
+  `.copy(true)` sites in `extend.ts`; `pnpm exec eslint
   packages/core/src/tree/util/extend.ts` currently reports 114 problems (108
   errors, 6 warnings), mostly unsafe assertions plus one indentation block near
   the tail.
