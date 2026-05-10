@@ -6,7 +6,8 @@ const rootDir = path.resolve(import.meta.dirname, '..');
 const scanRoots = [
   'packages/core/src',
   'packages/jess/src',
-  'packages/parser/src'
+  'packages/less-parser/src',
+  'packages/scss-parser/src'
 ];
 const ignoredSegments = new Set([
   '__tests__',
