@@ -12,6 +12,11 @@ export type RenderableOutput = {
   toTrimmedString(options?: PrintOptions): string;
 };
 
+type RootRenderableOutput = RenderableOutput & {
+  type: 'Rules';
+  toString(options?: PrintOptions): string;
+};
+
 export type SelectorRef = {
   valueOf(): string;
 };
@@ -193,7 +198,7 @@ export function renderNodeToString(
   // segments instead of growing a second AST.
   const prepared = prepareRenderPrintState(context, options);
   const writeResolved = (resolved: RenderableOutput): string => {
-    if (resolved.type === 'Rules' && resolved === context.root && resolved.toString) {
+    if (isRootRulesOutput(node, resolved, context)) {
       return resolved.toString(prepared);
     }
     return resolved.toTrimmedString(prepared);
@@ -202,6 +207,16 @@ export function renderNodeToString(
   return isThenable(resolved)
     ? (resolved as Promise<RenderableOutput>).then(writeResolved)
     : writeResolved(resolved);
+}
+
+function isRootRulesOutput(
+  node: RenderBufferNode,
+  resolved: RenderableOutput,
+  context: Context
+): resolved is RootRenderableOutput {
+  return resolved.type === 'Rules'
+    && (resolved === context.root || node === context.root)
+    && typeof resolved.toString === 'function';
 }
 
 export function pushRenderSegment(buffer: SegmentedRenderBuffer, segment: Exclude<Segment, string>): void {

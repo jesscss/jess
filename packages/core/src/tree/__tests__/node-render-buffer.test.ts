@@ -90,6 +90,17 @@ describe('renderNodeToBuffer', () => {
     expect(renderNodeToString(root, context, { context })).toBe('@charset "utf-8";\n@import "theme.css";\n');
   });
 
+  it('uses the canonical root serializer when the source root resolves to an owned root surface', () => {
+    const context = new Context();
+    const root = rules([]);
+    const resolvedRoot = rules([]);
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    root.resolve = () => resolvedRoot;
+
+    expect(renderNodeToString(root, context, { context })).toBe('@charset "utf-8";\n');
+  });
+
   it('reuses active print state instead of resetting it', () => {
     const context = new Context();
     const writer = new OutputWriter();
