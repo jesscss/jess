@@ -90,7 +90,10 @@ export interface PluginInterface {
   visitor?: Visitor | Visitor[];
   /** Pre-eval visitor(s) - called before node.eval() during the preEval phase */
   preEvalVisitor?: Visitor | Visitor[];
-  /** Post-eval visitor(s) - called after node.eval() (alternative to visitor for clarity) */
+  /**
+   * Compatibility hook name for visitors that run after eval and immediately
+   * before render serialization.
+   */
   postEvalVisitor?: Visitor | Visitor[];
 
   /** Optional lifecycle hooks used by lazy plugin loading. */

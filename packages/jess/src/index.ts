@@ -753,7 +753,7 @@ export class Compiler {
     return current;
   }
 
-  private applyPostEvalVisitors(context: Context, tree: Rules): Rules {
+  private applyPreRenderVisitors(context: Context, tree: Rules): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
@@ -847,8 +847,8 @@ export class Compiler {
     }
 
     const evald = await measureProfileAsync(profile, 'eval', async () => tree.eval(context));
-    return measureProfileSync(profile, 'applyPostEvalVisitors', () =>
-      this.applyPostEvalVisitors(context, evald)
+    return measureProfileSync(profile, 'applyPreRenderVisitors', () =>
+      this.applyPreRenderVisitors(context, evald)
     );
   }
 

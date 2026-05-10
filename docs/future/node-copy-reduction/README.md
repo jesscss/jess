@@ -100,6 +100,9 @@ touching production code.
     containers still reuse childless source-free scalar leaves, and plain
     string CSS calls build their evaluated output directly, copying only
     nested argument containers that need their own eval surface
+  - flat render-buffer output for plain CSS calls now renders arguments through
+    the async render bridge, so async child resolution does not force the
+    legacy synchronous source-serialization fallback on that path
   - JS function argument isolation copies only when a local arg-list surface is
     needed; ordinary empty positional JS calls skip the arg-list copy, and
     copied positional/callback arg containers reuse source-free scalar leaves

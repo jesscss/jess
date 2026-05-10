@@ -59,6 +59,9 @@ it is for current direction and next seams, not a historical pass log.
   resolution because CSS function formatting paths call child render
   synchronously. Convert those callers to the explicit async/buffer path before
   removing the fallback or routing top-level compile through source render.
+- The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
+  remains the public compatibility hook name, but internally that phase is
+  treated as pre-render: visitors run after eval and before serialization.
 
 ## Work Loop
 
