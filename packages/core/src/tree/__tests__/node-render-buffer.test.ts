@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any } from '../index.js';
 import { Node } from '../node-base.js';
+import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class AsyncResolvedNode extends Node<string> {
@@ -11,6 +12,12 @@ class AsyncResolvedNode extends Node<string> {
 
   override toTrimmedString() {
     return 'source';
+  }
+}
+
+class RejectingNode extends Node<string> {
+  override resolve() {
+    return Promise.reject(new Error('nope'));
   }
 }
 
@@ -42,11 +49,29 @@ describe('renderNodeToBuffer', () => {
     expect(buffer.parts).toEqual(['resolved']);
   });
 
+  it('does not write rejected async output into flat buffers', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = new RejectingNode('source');
+
+    await expect(renderNodeToBuffer(node, context, buffer)).rejects.toThrow('nope');
+    expect(buffer.parts).toEqual([]);
+  });
+
   it('renders async resolved output to strings without eval pre-materialization', async () => {
     const context = new Context();
     const node = new AsyncResolvedNode('source');
 
     await expect(renderNodeToString(node, context)).resolves.toBe('resolved');
+  });
+
+  it('renders through the provided writer when string output is requested', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const node = any('writer-output');
+
+    expect(renderNodeToString(node, context, { writer })).toBe('writer-output');
+    expect(writer.toString()).toBe('writer-output');
   });
 
   it('requires explicit implementations for segmented rendering', () => {
