@@ -6,6 +6,7 @@ import { Context } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -50,8 +51,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -80,8 +80,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -112,8 +111,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .same {
@@ -145,8 +143,7 @@ describe('CSS Nesting Collapse', () => {
     });
     const node = rules([first, second]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true, trivia });
+    const css = await renderNodeToString(node, context, { collapseNesting: true, trivia });
 
     expect(css).toBeString(`
       .same {
@@ -181,8 +178,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -213,9 +209,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent.container {
@@ -246,8 +240,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent,
@@ -276,8 +269,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -305,8 +297,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -334,8 +325,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -367,8 +357,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       #foo-foo > .bar .baz {
@@ -413,8 +402,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       mi-test-c-1 > .bar .baz {
@@ -449,8 +437,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -481,8 +468,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ context, writer, collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
 
     expect(css).toBeString(`
       @media (max-width: 768px) {
@@ -508,8 +494,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ context, writer, collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -534,8 +519,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ context, writer, collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
 
     expect(css).toBe('');
     expect(writer.captures).toBe(0);
@@ -563,8 +547,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -607,8 +590,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -656,8 +638,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -711,8 +692,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -766,8 +746,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .container {
