@@ -884,7 +884,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               const origAmp = originalFirst as Ampersand;
               const resolved = origAmp.getResolvedSelector();
               const parentSel = resolved ?? undefined;
-              let amp = origAmp.clone(false) as Ampersand;
+              let amp = origAmp.derive();
               if (!origAmp.getStoredSelector() && parentSel) {
                 amp = Ampersand.create({ selectorContainer: { selector: parentSel.copy(true) } });
               }
@@ -892,7 +892,7 @@ export function createProcessedSelector(selectors: Selector | Selector[], root?:
               amp.removeFlag(F_VISIBLE);
               const combCopy = maybeCombinator.copy(true) as any;
               combCopy.removeFlag(F_VISIBLE);
-              const parts: any[] = [amp, combCopy, innerSel.copy(), ...suffixAfterIs];
+              const parts: any[] = [amp, combCopy, copySelectorForExtend(innerSel as Selector), ...suffixAfterIs];
               const next = ComplexSelector.create(parts).inherit(el);
               push(next);
             } else if (outputPrefix.length === 0 && omitCombinator) {
@@ -959,11 +959,11 @@ function extractSelectorsFromIs(selector: Selector): Selector[] {
 }
 
 function cloneSelectorsForPlacement(selectors: Selector[]): Selector[] {
-  return selectors.map(selector => selector.copy(true) as Selector);
+  return selectors.map(selector => copySelectorForExtend(selector));
 }
 
 function cloneNodesForPlacement<T extends Node>(nodes: T[]): T[] {
-  return nodes.map(node => node.copy(true) as T);
+  return nodes.map(node => copyOwnedWithReusableLeaves(node) as T);
 }
 
 /**
@@ -3744,7 +3744,7 @@ function applyExtensionAtPath(
       wrapped as SimpleSelector,
       ...current.value.slice(end)
     ];
-    return CompoundSelector.create(newValue).inherit(current);
+    return CompoundSelector.create(cloneNodesForPlacement(newValue)).inherit(current);
   }
 
   // When at root compound with non-contiguous match indices, replace those indices with :is(matched, extendWith)
@@ -3771,7 +3771,7 @@ function applyExtensionAtPath(
         newValue.push(current.value[i]!);
       }
     }
-    return CompoundSelector.create(newValue).inherit(current);
+    return CompoundSelector.create(cloneNodesForPlacement(newValue)).inherit(current);
   }
 
   if (path.length === 0) {

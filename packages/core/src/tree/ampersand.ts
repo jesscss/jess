@@ -512,6 +512,22 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return newNode;
   }
 
+  derive(): Ampersand {
+    const node = new Ampersand(
+      {
+        appendValue: this.value.appendValue,
+        selectorContainer: this._selectorContainer
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length === 0 ? undefined : this.location,
+      this.treeContext
+    ).inherit(this);
+    if (this._storedSelector) {
+      node._storedSelector = this._storedSelector;
+    }
+    return node;
+  }
+
   /** @todo - move to ToModuleVisitor */
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.amp()', this.location)

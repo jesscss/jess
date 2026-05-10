@@ -209,23 +209,38 @@ describe('Extend Ampersand Handling Tests', () => {
     expect(output).not.toContain('&&');
   });
 
-  it('keeps copied implicit ampersands connected to the live parent selector container', () => {
+  it('derives copied implicit ampersands without cloning the source ampersand', () => {
     const parentContainer = { selector: el('.aa') };
     const selector = addImplicitAmpersand(
       el('.dd'),
       false,
       { value: parentContainer }
     );
+    const sourceAmpersand = [...selector.nodes(true)].find((node): node is Ampersand => node instanceof Ampersand)!;
+    const originalClone = sourceAmpersand.clone;
+    let sourceAmpersandClones = 0;
+    sourceAmpersand.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      sourceAmpersandClones++;
+      return originalClone.apply(this, args);
+    };
 
-    const result = extendSelector(selector, el('.dd'), el('.ee'), true);
-    const ampersands = [...result.nodes(true)].filter((node): node is Ampersand => node instanceof Ampersand);
+    try {
+      const result = extendSelector(selector, el('.dd'), el('.ee'), true);
+      const ampersands = [...result.nodes(true)].filter((node): node is Ampersand => node instanceof Ampersand);
 
-    expect(ampersands.length).toBeGreaterThan(0);
-    expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.aa');
+      expect(sourceAmpersandClones).toBe(0);
+      expect(ampersands.length).toBeGreaterThan(0);
+      expect(ampersands).not.toContain(sourceAmpersand);
+      expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.aa');
 
-    parentContainer.selector = el('.bb');
+      parentContainer.selector = el('.bb');
 
-    expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.bb');
+      expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.bb');
+    } finally {
+      sourceAmpersand.clone = originalClone;
+    }
   });
 
   it('preserves stored ampersand selector snapshots separately from live selector resolution', () => {

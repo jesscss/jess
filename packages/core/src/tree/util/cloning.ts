@@ -86,12 +86,32 @@ function constructCopy(node: Node, value: unknown): Node {
   return copy.inherit(node);
 }
 
+function deriveAmpersand(node: Node): Node | undefined {
+  if (node.type !== 'Ampersand') {
+    return undefined;
+  }
+  const derive: unknown = Reflect.get(node, 'derive');
+  if (typeof derive !== 'function') {
+    return undefined;
+  }
+  const derived = derive.call(node);
+  if (derived instanceof Node) {
+    return derived;
+  }
+  return undefined;
+}
+
 export function copyWithReusableLeaves(node: Node): Node {
   if (node.type === 'Comment') {
     const nilNode = node.nil?.();
     if (nilNode) {
       return nilNode.inherit(node);
     }
+  }
+  const derivedAmpersand = deriveAmpersand(node);
+  if (derivedAmpersand) {
+    derivedAmpersand.frozen = true;
+    return derivedAmpersand;
   }
   if (canReuseLeaf(node)) {
     return reuseLeaf(node);
@@ -107,6 +127,11 @@ export function copyOwnedWithReusableLeaves(node: Node): Node {
     if (nilNode) {
       return nilNode.inherit(node);
     }
+  }
+  const derivedAmpersand = deriveAmpersand(node);
+  if (derivedAmpersand) {
+    derivedAmpersand.frozen = true;
+    return derivedAmpersand;
   }
   const copy = constructCopy(node, copyChild(node.value));
   copy.frozen = true;

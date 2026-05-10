@@ -183,6 +183,10 @@ reusable-children copy helper from `packages/core/src/tree/util/cloning.ts`.
 That keeps flag mutation (`F_EXTENDED` / `F_EXTEND_TARGET`) on generated output
 surfaces without deep-cloning matched selector items or reusing the source item
 as the flagged node.
+Implicit ampersand extend output now has the same shape: `Ampersand.derive()`
+constructs a new ampersand wrapper while preserving its live selector
+container, and extend placement copies use the owned/reusable helper instead of
+generic `.copy(true)` for compound/list replacement surfaces.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 

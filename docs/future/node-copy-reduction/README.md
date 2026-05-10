@@ -200,6 +200,14 @@ touching production code.
     copy helper, so flagging `F_EXTENDED` / `F_EXTEND_TARGET` no longer
     deep-clones matched selector items just to mutate flags; this keeps extend
     output ownership explicit while preserving source selector parentage
+- `packages/core/src/tree/ampersand.ts`,
+  `packages/core/src/tree/util/cloning.ts`, and
+  `packages/core/src/tree/util/extend.ts`
+  - implicit ampersand extend output now derives ampersand wrappers directly
+    instead of cloning the source ampersand, while preserving the live selector
+    container required by nested Less output; extend placement copies now route
+    through the owned/reusable helper so generated compound/list replacements
+    do not adopt source ampersand nodes
 
 ## Current Todo Shape
 
