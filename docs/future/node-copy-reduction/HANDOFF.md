@@ -108,8 +108,9 @@ clone inert source-free selector leaves during registration prep. Comment-free
 ruleset header serialization uses the same local print-surface boundary instead
 of deep-cloning source-free selector leaves to suppress selector trivia.
 Reference-mode ruleset header filtering uses that boundary too when it only
-needs a local print surface; selectors that need visibility mutation still keep
-the defensive deep-copy path. The old unused hoisted implicit-ampersand
+needs a local print surface; render-local selector visibility forcing now uses
+the same owned/reusable boundary instead of deep-cloning reusable selector
+leaves. The old unused hoisted implicit-ampersand
 materialization helper in `ruleset.ts` has been removed rather than preserved
 as dead deep-copy machinery. The ruleset-specific `copy()` override has also
 been removed because no production eval/render caller needed it; the generic

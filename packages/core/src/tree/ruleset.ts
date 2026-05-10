@@ -967,9 +967,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (!(renderSelector instanceof Nil)) {
       const needsVisibleSelectorClone = Ruleset.needsVisibleSelectorClone(renderSelector);
       if (options.referenceFilterTargets || needsVisibleSelectorClone) {
-        renderSelector = needsVisibleSelectorClone
-          ? renderSelector.copy(true) as typeof renderSelector
-          : copySelectorForRulesetMetadata(renderSelector);
+        renderSelector = copySelectorForRulesetMetadata(renderSelector);
       }
     }
     Ruleset.ensureSelectorVisible(renderSelector);

@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -340,11 +340,25 @@ describe('Rule', () => {
     const options = getPrintOptions({
       writer: new OutputWriter()
     });
+    const originalClone = BasicSelector.prototype.clone;
+    let basicSelectorCloneCalls = 0;
+    BasicSelector.prototype.clone = function cloneForCounting(
+      this: BasicSelector,
+      ...args: Parameters<BasicSelector['clone']>
+    ): ReturnType<BasicSelector['clone']> {
+      basicSelectorCloneCalls++;
+      return originalClone.apply(this, args);
+    };
 
-    const header = node.getHeaderString(options);
+    try {
+      const header = node.getHeaderString(options);
 
-    expect(header).toContain('.foo');
-    expect(selector.hasFlag(F_VISIBLE)).toBe(false);
+      expect(header).toContain('.foo');
+      expect(basicSelectorCloneCalls).toBe(0);
+      expect(selector.hasFlag(F_VISIBLE)).toBe(false);
+    } finally {
+      BasicSelector.prototype.clone = originalClone;
+    }
   });
 
   it('serializeRulesContainer keeps reference render flags render-local', () => {

@@ -118,6 +118,9 @@ touching production code.
   - ruleset `ownSelector` metadata now uses the shared owned/reusable selector
     copy boundary, so selector-list metadata does not clone inert source-free
     selector leaves during registration prep
+  - render-local ruleset header selector visibility forcing uses that same
+    owned/reusable boundary, so source-free selector leaves are not cloned just
+    to make the print surface visible
   - comment-free header serialization now reuses that same owned/reusable
     selector-copy boundary for its local print surface instead of deep-cloning
     source-free selector leaves just to suppress selector trivia
