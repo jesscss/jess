@@ -190,8 +190,10 @@ generic `.copy(true)` for compound/list replacement surfaces.
 The `createExtendedSelectorList()` self-parenting guard is now the placement
 copy itself: selector-list items are copied through `copySelectorsForPlacement`
 before adoption, so the old post-copy `s === inheritFrom ? s.clone(true)` guard
-has been removed. `extend-walk.ts` still has its own selector-list guard and
-should be handled as a separate generated-output seam.
+has been removed. `walkAndExtend()` selector-list reconstruction now follows
+the same placement-copy rule: processed output is copied before generated list
+adoption, so unchanged source-list items keep their canonical source parent and
+the old `s === list ? s.clone(true)` guard is gone.
 The unused `freezeChildren`/`cloneOrReuseLeaf` helper surface has been removed
 from `packages/core/src/tree/util/cloning.ts`.
 

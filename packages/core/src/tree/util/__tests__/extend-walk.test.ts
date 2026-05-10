@@ -53,12 +53,23 @@ describe('walkAndExtend full mode', () => {
   });
 
   it('inside SelectorList → extends matching items', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target = sellist([el('.a'), el('.b')]);
     const result = walkAndExtend(target, el('.a'), el('.c'), false);
     const val = result.valueOf();
     expect(val).toContain('.a');
     expect(val).toContain('.b');
     expect(val).toContain('.c');
+  });
+
+  it('keeps unchanged selector-list source items parented to the source list', () => {
+    const target = sellist([el('.a'), el('.b')]);
+    const unchanged = target.value[1]!;
+
+    const result = walkAndExtend(target, el('.a'), el('.c'), false);
+
+    expect(result.valueOf()).toBe('.a,.b,.c');
+    expect(target.value[1]).toBe(unchanged);
+    expect(unchanged.parent).toBe(target);
   });
 
   it('inside CompoundSelector → does NOT extend (full mode rejects component matches)', () => {
@@ -91,12 +102,24 @@ describe('walkAndExtend full mode', () => {
   });
 
   it('matches within SelectorList :is() arg → extends the matching item', () => {
-    const target = is(sellist([el('.a'), el('.b')]) as unknown as Selector);
+    const target = is(sellist([el('.a'), el('.b')]));
     const result = walkAndExtend(target, el('.a'), el('.c'), false);
     const val = result.valueOf();
     expect(val).toContain('.a');
     expect(val).toContain('.b');
     expect(val).toContain('.c');
+  });
+
+  it('keeps unchanged :is() selector-list alternatives parented to the source argument list', () => {
+    const arg = sellist([el('.a'), el('.b')]);
+    const unchanged = arg.value[1]!;
+    const target = is(arg);
+
+    const result = walkAndExtend(target, el('.a'), el('.c'), false);
+
+    expect(result.valueOf()).toBe(':is(.a,.b,.c)');
+    expect(arg.value[1]).toBe(unchanged);
+    expect(unchanged.parent).toBe(arg);
   });
 });
 
@@ -138,7 +161,7 @@ describe('walkAndExtend partial mode', () => {
   });
 
   it('inside SelectorList → extends each matching item', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target = sellist([el('.a'), el('.b')]);
     const result = walkAndExtend(target, el('.a'), el('.c'), true);
     const val = result.valueOf();
     expect(val).toContain('.a');
@@ -214,7 +237,7 @@ describe('walkAndExtend compound find (Phase 2)', () => {
     const target = sellist([
       compound([el('.a'), el('.b')]),
       el('.x')
-    ]) as unknown as Selector;
+    ]);
     const find = compound([el('.a'), el('.b')]);
     const result = walkAndExtend(target, find, el('.c'), false);
     const val = result.valueOf();
@@ -270,7 +293,7 @@ describe('walkAndExtend vs extendSelector equivalence', () => {
     },
     {
       name: 'full: SelectorList(.a, .b) extending .a with .c',
-      target: () => sellist([el('.a'), el('.b')]) as unknown as Selector,
+      target: () => sellist([el('.a'), el('.b')]),
       find: () => el('.a'),
       extendWith: () => el('.c'),
       partial: false
@@ -338,7 +361,7 @@ describe('wouldExtendChange', () => {
   });
 
   it('returns true for match inside SelectorList', () => {
-    const target = sellist([el('.a'), el('.b')]) as unknown as Selector;
+    const target = sellist([el('.a'), el('.b')]);
     expect(wouldExtendChange(target, el('.a'), el('.c'), false)).toBe(true);
   });
 

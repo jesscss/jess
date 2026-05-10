@@ -200,6 +200,10 @@ touching production code.
     copy helper, so flagging `F_EXTENDED` / `F_EXTEND_TARGET` no longer
     deep-clones matched selector items just to mutate flags; this keeps extend
     output ownership explicit while preserving source selector parentage
+  - `walkAndExtend()` selector-list reconstruction now copies processed output
+    for placement before creating the generated list, so unchanged source list
+    items stay parented to the canonical source list and the old `clone(true)`
+    self-parenting guard is gone
 - `packages/core/src/tree/ampersand.ts`,
   `packages/core/src/tree/util/cloning.ts`, and
   `packages/core/src/tree/util/extend.ts`

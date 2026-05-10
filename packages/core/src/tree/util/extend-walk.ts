@@ -71,6 +71,10 @@ function copySelectorForExtend(selector: Selector): Selector {
   return copied;
 }
 
+function copySelectorsForPlacement(selectors: Selector[]): Selector[] {
+  return selectors.map(selector => copySelectorForExtend(selector));
+}
+
 function isSelectorNode(value: unknown): value is Selector {
   return !!value
     && typeof value === 'object'
@@ -579,8 +583,7 @@ function walkSelectorList(
     return list;
   }
   const processedArray = isArray(processed) ? processed : [processed];
-  const safe = processedArray.map(s => (s === list ? s.clone(true) : s));
-  return SelectorList.create(safe).inherit(list) as Selector;
+  return SelectorList.create(copySelectorsForPlacement(processedArray)).inherit(list) as Selector;
 }
 
 function walkComplexSelector(
