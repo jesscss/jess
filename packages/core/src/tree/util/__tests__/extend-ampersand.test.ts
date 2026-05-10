@@ -200,15 +200,27 @@ describe('Extend Ampersand Handling Tests', () => {
       const parentSelector = el('.container');
       const ampersandWithSelector = ampWithSelector(parentSelector);
       const selector = sel([co('>'), compound([ampersandWithSelector, el('.item')])]);
+      const originalCopy = selector.copy.bind(selector);
+      let selectorCopies = 0;
+      selector.copy = ((...args) => {
+        selectorCopies++;
+        return originalCopy(...args);
+      }) as typeof selector.copy;
 
-      const target = compound([el('.container'), el('.item')]);
-      const extendWith = el('.new-item');
+      try {
+        const target = compound([el('.container'), el('.item')]);
+        const extendWith = el('.new-item');
 
-      const result = extendSelector(selector, target, extendWith, true);
-      const output = result.toTrimmedString();
+        const result = extendSelector(selector, target, extendWith, true);
+        expect(result).not.toBe('NOT_FOUND');
+        const output = result.toTrimmedString();
 
-      expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
-      expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
+        expect(selectorCopies).toBe(0);
+        expect(result.hoistToRoot).toBeFalsy(); // Changed: ampersand already resolved, no boundary detected
+        expect(output).toBe(' > :is(.container.item, .new-item)'); // Updated: modern :is() syntax instead of separate selectors
+      } finally {
+        selector.copy = originalCopy;
+      }
     });
 
     it('should resolve authored && to the doubled parent selector for exact extends', () => {

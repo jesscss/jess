@@ -122,7 +122,7 @@ import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
-import { F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { isDisjoint, isSubsetOf } from './bitset.js';
 import {
   selectorCompare,
@@ -1433,8 +1433,14 @@ export function extendSelector(
         && ampersandCrossingInfo.reason === 'resolved-only'
         && isNode(originalFind, N.SimpleSelector)
       );
-      if (shouldSkipResolvedOnlySimpleBoundary) {
-        // Keep exact simple-selector extends on nested rules in normal flow.
+      const shouldSkipRelativePartialBoundary = Boolean(
+        partial
+        && ampersandCrossingInfo.reason === 'resolved-only'
+        && isNode(originalTarget, N.ComplexSelector)
+        && isNode(originalTarget.value[0], N.Combinator)
+      );
+      if (shouldSkipResolvedOnlySimpleBoundary || shouldSkipRelativePartialBoundary) {
+        // Keep local extends on nested/relative selectors in normal flow.
         // Forcing amp-boundary hoisting here flattens authored nesting unexpectedly.
       } else {
         const hasWholeSelectorLocation = searchResult.locations.some((loc: any) =>
@@ -3298,9 +3304,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
     return selector;
   }
 
-  const selectorCopy = isNode(selector, N.CompoundSelector)
-    ? copySelectorForExtend(selector)
-    : selector.copy();
+  const selectorCopy = copySelectorForExtend(selector);
   let resolvedSelector: Selector = copySelectorForExtend(resolved);
 
   // If the resolved selector is a SelectorList, wrap it in :is() so it can be used as a single
@@ -3330,6 +3334,7 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
     replaceNodeInParent(parent, node, copySelectorForExtend(resolvedSelector));
   }
 
+  clearStaleAmpersandFlags(selectorCopy);
   return selectorCopy;
 }
 
@@ -3504,13 +3509,39 @@ function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
   if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
     for (let i = 0; i < parent.value.length; i++) {
       if (parent.value[i] === oldNode) {
-        parent.value[i] = newNode;
+        parent.set(i, newNode);
+        parent.invalidateCache?.();
         break;
       }
     }
   } else if (isNode(parent, N.PseudoSelector) && parent.value.arg === oldNode) {
-    parent.value.arg = newNode;
+    parent.set(null, { ...parent.value, arg: newNode });
+    parent.invalidateCache?.();
   }
+}
+
+function clearStaleAmpersandFlags(selector: Selector): void {
+  for (const node of selector.nodes()) {
+    if (isNode(node, N.Ampersand) || !node.hasFlag(F_AMPERSAND)) {
+      continue;
+    }
+    if (!containsAmpersand(node)) {
+      node.removeFlag(F_AMPERSAND);
+    }
+  }
+  if (!containsAmpersand(selector)) {
+    selector.removeFlag(F_AMPERSAND);
+  }
+  selector.invalidateCache?.();
+}
+
+function containsAmpersand(root: Node): boolean {
+  for (const node of root.nodes()) {
+    if (node !== root && isNode(node, N.Ampersand)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
