@@ -18,6 +18,10 @@ startup.
   copy path more elaborate.
 - Use shallow wrapper owners only when they carry real local scope, registry, or
   output ownership.
+- Keep render state ownership explicit. Fresh render traversals should reset
+  context-owned print state, while nested render bridges should reuse the
+  active writer/frame/trivia state through `prepareRenderPrintState(...)`
+  instead of recreating that decision at each call site.
 - Treat deep clone, materialization, and broad wrapper growth as debt unless a
   focused proof shows they are still required.
 - Fix structural ownership bugs where they are created, not by filtering output
@@ -103,6 +107,9 @@ touching production code.
   - flat render-buffer output for plain CSS calls now renders arguments and
     content through the async render bridge, so async child resolution does not
     force the legacy synchronous source-serialization fallback on that path
+  - plain CSS call render paths share the central render print-state prep
+    helper, so nested arg/content rendering keeps the active writer/frame/trivia
+    state without each call path owning its own state-reset heuristic
   - JS function argument isolation copies only when a local arg-list surface is
     needed; ordinary empty positional JS calls skip the arg-list copy, and
     copied positional/callback arg containers reuse source-free scalar leaves
@@ -234,6 +241,15 @@ touching production code.
 - `packages/core/src/tree/util/serialize-helper.ts`
   - serialization still has text-preview and frame-stack coupling that should
     eventually move to explicit node/output ownership decisions
+- `packages/core/src/tree/util/print.ts` and
+  `packages/core/src/tree/util/render-buffer.ts`
+  - `prepareRenderPrintState(...)` is the shared boundary between fresh
+    render traversals and nested render bridges. Keep new render/eval string
+    bridges on that helper so they do not fork print-state reset/reuse logic.
+  - `renderNodeToString(...)` remains a bridge from contextual resolution to
+    existing serializers. It should stay small: if a node has delayed-output
+    semantics, add explicit buffer/segment behavior rather than growing a
+    second output-tree model in the bridge.
 - `packages/core/src/tree/util/selector-utils.ts`
   - implicit selector-list construction now maps generated implicit-ampersand
     items into a fresh `SelectorList` instead of cloning the source selector
@@ -298,11 +314,14 @@ Use this as the active checklist for the next narrow batches:
    `copyWithReusableLeaves(...)` only when a container still proves it needs an
    owned eval/output surface and childless source-free scalar leaves do not need
    copies.
-3. Keep semantic wrapper surfaces where they carry real scope, registry,
+3. Use `prepareRenderPrintState(...)` for render bridges that might run inside
+   an active traversal; do not reopen ad hoc writer/frame/trivia reuse checks in
+   individual nodes.
+4. Keep semantic wrapper surfaces where they carry real scope, registry,
    import/reference, merge, or output ownership.
-4. Audit remaining `clone()` call sites by node shape and prove changes with
+5. Audit remaining `clone()` call sites by node shape and prove changes with
    canonical-parent tests before changing them.
-5. Record only durable frontier changes here; old recovery details belong in
+6. Record only durable frontier changes here; old recovery details belong in
    git history, not this startup handoff.
 
 Current scan note: outside clone infrastructure and key-set/bitset copies, the

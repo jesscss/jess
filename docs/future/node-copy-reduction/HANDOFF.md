@@ -18,6 +18,9 @@ it is for current direction and next seams, not a historical pass log.
   owned surface today.
 - Keep semantic wrapper surfaces when they carry real scope, registry,
   import/reference, merge, or output ownership.
+- Keep render bridge state ownership centralized. Fresh render traversals reset
+  context-owned print state; nested bridges reuse active writer/frame/trivia
+  state through `prepareRenderPrintState(...)`.
 - Treat `Context.rulesContext`, `ScopeFrame.fallbackFrame`, deep clone, and
   materialization as suspect surfaces, not automatic bugs.
 - When a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer
@@ -59,7 +62,9 @@ it is for current direction and next seams, not a historical pass log.
   callers. Top-level compile and flat render buffers should use the explicit
   async render bridge, but plain CSS call buffers still need their local
   arg/content renderer so async child failures keep calc-frame cleanup instead
-  of falling back to source text.
+  of falling back to source text. New render bridges should share
+  `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
+  reuse heuristics.
 - The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
   remains the public compatibility hook name, but internally that phase is
   treated as pre-render: visitors run after eval and before serialization.
