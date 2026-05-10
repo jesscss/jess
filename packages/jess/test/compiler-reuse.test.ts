@@ -110,7 +110,7 @@ describe('Compiler reuse', () => {
     expect(firstPlugin).not.toBe(secondPlugin);
   });
 
-  it('uses the same post-processing path for render and renderToResult', async () => {
+  it('uses the same post-processing path for render, safeRender, and renderToResult', async () => {
     const testFile = path.join(tempDir, 'post.less');
     const source = '.a { color: red; }';
     fs.writeFileSync(testFile, source);
@@ -134,9 +134,11 @@ describe('Compiler reuse', () => {
     });
 
     const rendered = await compiler.render(testFile);
+    const safe = await compiler.safeRender(testFile);
     const result = await compiler.renderToResult({ source, filePath: testFile, language: 'less', extension: '.less' });
 
     expect(rendered).toContain('postprocessed');
+    expect(safe.css).toBe(rendered);
     expect(result.css).toBe(rendered);
   });
 });

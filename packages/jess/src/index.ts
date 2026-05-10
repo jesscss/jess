@@ -853,7 +853,7 @@ export class Compiler {
     );
   }
 
-  private async renderTree(tree: any, context: Context, profile?: RenderProfile): Promise<string> {
+  private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
     const printOptions: PrintOptions = {
       collapseNesting: context.opts.collapseNesting,
       context
@@ -1074,7 +1074,7 @@ export class Compiler {
   }
 
   async safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-    tree: any | null;
+    tree: Rules | null;
     context: Context;
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
@@ -1143,18 +1143,13 @@ export class Compiler {
     warnings: WarningDiagnostic[];
   }> {
     try {
-      const { tree, errors, warnings } = await this.safeCompile(filePath, options);
+      const { tree, context, errors, warnings } = await this.safeCompile(filePath, options);
 
       if (!tree) {
         return { css: null, errors, warnings };
       }
 
-      const printOptions: PrintOptions = {
-        collapseNesting: tree.context?.opts.collapseNesting,
-        context: tree.context
-      };
-
-      const css = tree.toString(printOptions);
+      const css = await this.renderTree(tree, context);
       return { css, errors, warnings };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
