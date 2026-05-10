@@ -110,7 +110,7 @@ describe('Compiler reuse', () => {
     expect(firstPlugin).not.toBe(secondPlugin);
   });
 
-  it('uses the same post-processing path for render, safeRender, and renderToResult', async () => {
+  it('uses the same post-processing path for render and renderToResult', async () => {
     const testFile = path.join(tempDir, 'post.less');
     const source = '.a { color: red; }';
     fs.writeFileSync(testFile, source);
@@ -134,11 +134,27 @@ describe('Compiler reuse', () => {
     });
 
     const rendered = await compiler.render(testFile);
-    const safe = await compiler.safeRender(testFile);
     const result = await compiler.renderToResult({ source, filePath: testFile, language: 'less', extension: '.less' });
 
     expect(rendered).toContain('postprocessed');
-    expect(safe.css).toBe(rendered);
     expect(result.css).toBe(rendered);
+  });
+
+  it('keeps safeRender on the canonical root serializer for root kept output', async () => {
+    const testFile = path.join(tempDir, 'root-output.less');
+    fs.writeFileSync(testFile, '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }');
+
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const result = await compiler.safeRender(testFile);
+
+    expect(result.css).toContain('@charset "UTF-8";');
+    expect(result.css).toContain('@import url("test.css");');
+    expect(result.css).toContain('.a');
   });
 });

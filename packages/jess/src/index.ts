@@ -1149,7 +1149,14 @@ export class Compiler {
         return { css: null, errors, warnings };
       }
 
-      const css = await this.renderTree(tree, context);
+      const printOptions: PrintOptions = {
+        collapseNesting: context.opts.collapseNesting,
+        context
+      };
+
+      // Keep the safe API on the canonical root serializer until the render
+      // bridge owns root-level kept output such as @charset and CSS @imports.
+      const css = tree.toString(printOptions);
       return { css, errors, warnings };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
