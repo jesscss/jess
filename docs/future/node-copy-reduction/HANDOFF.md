@@ -265,6 +265,10 @@ Current remaining clone/copy frontier:
   returns selector-shaped nodes, so remove or tighten that only with a real
   failing proof, not a passing characterization test.
 
+Run `pnpm run verify:node-copy-frontier` before picking the next node-copy seam.
+It intentionally scans only deep copy/clone-style call sites, not every
+`copyWithReusableLeaves(...)` owned-surface boundary.
+
 ## Work Loop
 
 1. Pick one production seam from `README.md`.

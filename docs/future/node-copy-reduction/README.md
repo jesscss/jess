@@ -309,6 +309,8 @@ as generic low-hanging fruit:
 
 Do not present any of those as completed runtime-eval copy removal until a
 focused test proves the specific ownership boundary can move.
+Use `pnpm run verify:node-copy-frontier` to refresh the exact deep
+copy/clone-style call-site scan before choosing the next seam.
 
 Recent quality pass note: utility cleanups should stay focused on files whose
 whole-file lint debt can actually be paid in the same patch. `Context.getTree()`
