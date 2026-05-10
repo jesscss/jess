@@ -3,7 +3,7 @@ import type { IToken } from 'chevrotain';
 import { Any } from '../../../index.js';
 import { Context } from '../../../context.js';
 import { consumeTrivia, createTriviaMap, emitTriviaTokens } from '../trivia.js';
-import { OutputWriter, getPrintOptions } from '../print.js';
+import { OutputWriter, getPrintOptions, prepareRenderPrintState } from '../print.js';
 
 const token = (image: string, name = 'WS'): IToken => ({
   image,
@@ -26,6 +26,47 @@ class CountingWriter extends OutputWriter {
 }
 
 describe('TriviaMap serialization', () => {
+  it('resets context print state for fresh render traversals', () => {
+    const context = new Context();
+    const staleWriter = new OutputWriter();
+    context.printState.writer = staleWriter;
+    context.printState.frameHeaders = ['.stale'];
+
+    const prepared = prepareRenderPrintState(context, { context, compress: true });
+
+    expect(prepared).toBe(context.printState);
+    expect(prepared.writer).not.toBe(staleWriter);
+    expect(prepared.frameHeaders).toEqual([]);
+    expect(prepared.compress).toBe(true);
+  });
+
+  it('reuses explicit active render print state for nested render bridges', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const options = { context, writer, frameHeaders: ['.active'] };
+
+    const prepared = prepareRenderPrintState(context, options);
+
+    expect(prepared).toBe(options);
+    expect(prepared.writer).toBe(writer);
+    expect(prepared.frameHeaders).toEqual(['.active']);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('does not treat print state from another context as active', () => {
+    const context = new Context();
+    const otherContext = new Context();
+    const writer = new OutputWriter();
+    const options = { context: otherContext, writer };
+
+    const prepared = prepareRenderPrintState(context, options);
+
+    expect(prepared).toBe(context.printState);
+    expect(prepared).not.toBe(options);
+    expect(prepared.context).toBe(context);
+    expect(prepared.writer).toBe(writer);
+  });
+
   it('keeps explicit writer print states detached from context print state', () => {
     const context = new Context();
     const writer = new OutputWriter();
