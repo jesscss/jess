@@ -35,7 +35,7 @@ describe('Declaration', () => {
   });
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') });
-    expect(`${rule}`).toBe('color: #eee');
+    expect(rule.toTrimmedString()).toBe('color: #eee');
   });
 
   it('does not allocate options when serializing a default declaration', () => {
@@ -329,7 +329,7 @@ describe('Declaration', () => {
 
       const evald = await node.resolve(context);
 
-      expect(`${evald}`).toBe('color: red !important');
+      expect(evald.toTrimmedString()).toBe('color: red !important');
       expect(clonedImportantFlags).toBe(0);
       expect(important.parent).toBe(node);
     } finally {

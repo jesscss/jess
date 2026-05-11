@@ -14,7 +14,7 @@ describe('Nil', () => {
     const node = nil();
 
     expect(node.toTrimmedString()).toBe('');
-    expect(`${node}`).toBe('');
+    expect(node.toString()).toBe('');
   });
 
   it('renders nil values through render(context) as empty output', () => {

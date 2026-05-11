@@ -53,7 +53,7 @@ describe('Call', () => {
       name: 'rgb',
       args: list([num(100), num(100), num(100)])
     });
-    expect(`${rule}`).toBe('rgb(100, 100, 100)');
+    expect(rule.toTrimmedString()).toBe('rgb(100, 100, 100)');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
@@ -89,7 +89,7 @@ describe('Call', () => {
       name: ref('rgb', { fallbackValue: true }),
       args: list([num(100), num(100), num(100)])
     });
-    expect(`${rule}`).toBe('$rgb?(100, 100, 100)');
+    expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100)');
   });
 
   it('renders CSS calls through render(context)', () => {
@@ -350,7 +350,7 @@ describe('Call', () => {
       name: ref('my-mixin', { type: 'mixin' }),
       args: list([num(100), num(100), num(100)])
     });
-    expect(`${rule}`).toBe('$ > my-mixin(100, 100, 100)');
+    expect(rule.toTrimmedString()).toBe('$ > my-mixin(100, 100, 100)');
   });
 
   it('keeps detached collection calls on the collection surface', async () => {
@@ -385,7 +385,7 @@ describe('Call', () => {
 
       const result = await call({ name: ref('themeMap', { type: 'variable' }) }).eval(context);
       expect(isNode(result, N.Collection)).toBe(true);
-      expect(`${result}`).toContain('background-color');
+      expect(result.toTrimmedString()).toContain('background-color');
       expect(collectionClones).toBe(0);
     } finally {
       Rules.prototype.clone = originalClone;

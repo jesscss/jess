@@ -48,18 +48,18 @@ describe('Selector', () => {
         co('>'),
         el('#bar')
       ]);
-      expect(`${rule}`).toBe('.foo > #bar');
+      expect(rule.toTrimmedString()).toBe('.foo > #bar');
       rule = sel([
         el('.foo'),
         el('#bar')
       ]);
-      expect(`${rule}`).toBe('.foo#bar');
+      expect(rule.toTrimmedString()).toBe('.foo#bar');
       rule = sel([
         el('.foo'),
         co(' '),
         el('#bar')
       ]);
-      expect(`${rule}`).toBe('.foo #bar');
+      expect(rule.toTrimmedString()).toBe('.foo #bar');
     });
 
     it('renders selector sequences through render(context)', () => {
