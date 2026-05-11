@@ -914,7 +914,7 @@ describe('extend integration (eval -> toString)', () => {
     expect(typeof postEvalSerialized).toBe('string');
     expect(postEvalSerialized).toMatchSnapshot();
 
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
     // Large parsed-shape parity test: keep deterministic string checks without regex/snapshot churn.
     expect(css).toContain(`  .ma,
   .mb,
