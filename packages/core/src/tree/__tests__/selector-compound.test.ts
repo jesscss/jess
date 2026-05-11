@@ -124,7 +124,7 @@ describe('Compound Selector', () => {
 
     const resolved = await selector.resolve(context);
 
-    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(resolved.toTrimmedString()).toBe('a[data=foo]');
     expect(selector.evaluated).toBe(false);
     expect(selector.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -153,7 +153,7 @@ describe('Compound Selector', () => {
     const sourceAttr = selector.value[1]!;
     const resolved = await selector.resolve(context);
 
-    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(resolved.render(context)).toBe('a[data=foo]');
     expect(sourceElement.parent).toBe(selector);
     expect(sourceAttr.parent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$capture-attr]');
