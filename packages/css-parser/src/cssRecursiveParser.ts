@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 /**
  * CssRecursiveParser — Chevrotain EmbeddedActionsParser-based CSS parser
  *
@@ -553,11 +554,21 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     }
     if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
-        case 'pi': numValue = Math.PI; break;
-        case 'infinity': numValue = Infinity; break;
-        case '-infinity': numValue = -Infinity; break;
-        case 'e': numValue = Math.E; break;
-        case 'nan': numValue = NaN; break;
+        case 'pi':
+          numValue = Math.PI;
+          break;
+        case 'infinity':
+          numValue = Infinity;
+          break;
+        case '-infinity':
+          numValue = -Infinity;
+          break;
+        case 'e':
+          numValue = Math.E;
+          break;
+        case 'nan':
+          numValue = NaN;
+          break;
       }
       return getNumber(numValue!);
     }

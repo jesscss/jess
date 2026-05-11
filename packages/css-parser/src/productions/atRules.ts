@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { IOrAlt, IToken } from 'chevrotain';
 import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecursiveParser.js';
@@ -493,9 +494,9 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 if (!RECORDING_PHASE) {
                   let location = $.endRule();
                   return new Declaration({
-                      name: new Any(ident.image, { role: 'property' }),
-                      value: value
-                    }, undefined, location, this.context);
+                    name: new Any(ident.image, { role: 'property' }),
+                    value: value
+                  }, undefined, location, this.context);
                 }
               }
             },

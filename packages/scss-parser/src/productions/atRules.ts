@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // SCSS at-rule production rules for ScssRecursiveParser
 // Converted from lines 1184-3096 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';

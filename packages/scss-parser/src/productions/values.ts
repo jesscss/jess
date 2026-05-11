@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Value-related production rules for ScssRecursiveParser
 // Converted from Chevrotain-based productions.ts
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';

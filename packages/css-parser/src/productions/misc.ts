@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { IToken } from 'chevrotain';
 import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecursiveParser.js';
@@ -534,9 +535,9 @@ export function importPostlude(this: C, T: TokenMap): ProductionRule {
         let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
         nodes!.push(
           new Call({
-              name: 'layer',
-              args: new List([value])
-            }, undefined, location, this.context)
+            name: 'layer',
+            args: new List([value])
+          }, undefined, location, this.context)
         );
       }
     });
@@ -567,9 +568,9 @@ export function importPostlude(this: C, T: TokenMap): ProductionRule {
         let location: LocationInfo = [startOffset, startLine!, startColumn!, endOffset!, endLine!, endColumn!];
         nodes!.push(
           new Call({
-              name: 'supports',
-              args: new List([value])
-            }, undefined, location, this.context)
+            name: 'supports',
+            args: new List([value])
+          }, undefined, location, this.context)
         );
       }
     });

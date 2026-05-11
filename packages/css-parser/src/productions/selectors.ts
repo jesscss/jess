@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
 import type { IToken, IOrAlt } from 'chevrotain';

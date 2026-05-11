@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { Lexer } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import type { RuleContext, ScssParserConfig, ScssRecursiveParser, TokenMap as ScssTokenMap } from '../scssRecursiveParser.js';
