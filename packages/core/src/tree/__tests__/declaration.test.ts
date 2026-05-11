@@ -5,6 +5,7 @@ import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -547,8 +548,7 @@ describe('Declaration', () => {
       decl({ name: any('background-position'), value: any('45\n-23') })
     ]);
 
-    const evald = await node.eval(context);
-    expect(evald.toString()).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       background: the,
                     great,
                     wall;
