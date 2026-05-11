@@ -37,6 +37,7 @@ import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -1813,9 +1814,8 @@ describe('Style import', () => {
           })
         ]);
 
-        const evald = await node.eval(context);
-
-        expect(evald.toString()).toContain('color: red;');
+        const css = await renderNodeToString(node, context);
+        expect(css).toContain('color: red;');
         expect(clonedRedLeaves).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
@@ -1853,9 +1853,8 @@ describe('Style import', () => {
           })
         ]);
 
-        const evald = await node.eval(context);
-
-        expect(evald.toString()).toContain('.imported-root');
+        const css = await renderNodeToString(node, context);
+        expect(css).toContain('.imported-root');
         expect(clonedImportRoots).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
