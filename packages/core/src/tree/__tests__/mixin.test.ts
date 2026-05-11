@@ -1673,7 +1673,7 @@ describe('Mixin', () => {
         context.root = root;
 
         const evald = await root.eval(context);
-        const css = evald.toString();
+        const css = await evald.render(context);
 
         expect(css).toBeString(`
           .test {
