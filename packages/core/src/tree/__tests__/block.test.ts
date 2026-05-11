@@ -99,7 +99,7 @@ describe('Block', () => {
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await blockNode.resolve(context);
 
-    expect(`${resolved}`).toBe('{foo}');
+    expect(resolved.toTrimmedString()).toBe('{foo}');
     expect(blockNode.evaluated).toBe(false);
     expect(blockNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -120,7 +120,7 @@ describe('Block', () => {
     const sourceValue = blockNode.value;
     const resolved = await blockNode.resolve(context);
 
-    expect(`${resolved}`).toBe('{foo}');
+    expect(resolved.render(context)).toBe('{foo}');
     expect(sourceValue.parent).toBe(blockNode);
     expect(blockNode.toTrimmedString()).toBe('{$value}');
   });
