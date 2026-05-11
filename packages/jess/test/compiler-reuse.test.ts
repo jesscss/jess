@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { Any, type Declaration } from '@jesscss/core';
 
 describe('Compiler reuse', () => {
   let tempDir: string;
@@ -138,6 +139,29 @@ describe('Compiler reuse', () => {
 
     expect(rendered).toContain('postprocessed');
     expect(result.css).toBe(rendered);
+  });
+
+  it('runs postEvalVisitor before render serialization', async () => {
+    const source = '@tone: red;\n.a { color: @tone; }';
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'pre-render-visitor-test',
+          postEvalVisitor: {
+            declaration(node: Declaration) {
+              if (node.value.name.valueOf() === 'color') {
+                node.set('value', new Any('blue', { role: 'keyword' }));
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    const css = await compiler.renderString(source, { language: 'less' });
+
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('color: red');
   });
 
   it('renders root kept output through safeRender', async () => {

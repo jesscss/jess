@@ -14,6 +14,7 @@ import {
   toDiagnostic,
   logger,
   type Deprecation,
+  type Visitor,
   renderNodeToString
 } from '@jesscss/core';
 import {
@@ -43,6 +44,10 @@ export type ConfigOptions = StylesConfig & {
 };
 
 const { isArray } = Array;
+
+function isVisitor(value: unknown): value is Visitor {
+  return typeof value === 'object' && value !== null;
+}
 
 type LessOptions = ReturnType<typeof getOptions>;
 type LessPluginCacheKey = string;
@@ -737,7 +742,7 @@ export class Compiler {
         }
         const visitors = Array.isArray(pre) ? pre : [pre];
         for (const visitor of visitors) {
-          if (!visitor || typeof visitor.visit !== 'function') {
+          if (!isVisitor(visitor)) {
             continue;
           }
           if (pass === 1 && processed.has(visitor)) {
@@ -766,7 +771,7 @@ export class Compiler {
       }
       const visitors = Array.isArray(post) ? post : [post];
       for (const visitor of visitors) {
-        if (!visitor || typeof visitor.visit !== 'function') {
+        if (!isVisitor(visitor)) {
           continue;
         }
         const result = current.accept(visitor);
