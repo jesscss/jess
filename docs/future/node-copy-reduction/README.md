@@ -117,6 +117,13 @@ touching production code.
     cloning the source call before mutating name/options/args
   - variable-reference callable names that need `preserveRulesLike` now get a
     derived reference wrapper instead of cloning the source reference
+- `packages/jess/src/index.ts`
+  - `render(...)`, `renderString(...)`, `renderToResult(...)`, and
+    `safeRender(...)` all exercise the awaited eval/render path instead of
+    requiring callers to compile a whole evaluated tree and serialize it later
+  - `safeCompile(...)` remains an explicit compatibility/debug API for callers
+    that need a tree surface, but it should not be used as the implementation
+    shortcut for normal CSS output
 - `packages/core/src/tree/at-rule.ts`
   - at-rule registration/resolve wrappers now construct owned/reusable child
     surfaces directly instead of shallow-cloning and replacing name/body

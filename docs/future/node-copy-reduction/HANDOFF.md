@@ -41,6 +41,10 @@ it is for current direction and next seams, not a historical pass log.
 - Active public compiler coverage now proves `render(...)`, `renderString(...)`,
   and `renderToResult(...)` preserve root-owned output such as first charset,
   hoisted CSS imports, and final newline behavior through the render bridge.
+- `safeRender(...)` now owns its eval/render path directly instead of calling
+  `safeCompile(...)` and then serializing that compiled tree surface. Keep
+  safe diagnostic collection on the render path without restoring the old
+  compile-tree handoff.
 - Less function helper serialization in `packages/fns` now routes non-raw node
   values through `node.render(context)` when a render context exists. `Quoted`
   and `Any` remain raw value exceptions because Less string/function helpers
