@@ -987,9 +987,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const imported = evald.at(0) as Rules;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(imported).toBe(importedRules);
-      expect(imported.toString()).toContain('.box');
+      expect(css).toContain('.box');
     });
 
     it('keeps additive non-variable "with" configs on a child rules surface', async () => {
@@ -1028,13 +1029,14 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
       const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
       expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-      expect(composedRules.toString()).toContain('.base');
-      expect(composedRules.toString()).toContain('.addon');
-      expect(composedRules.toString()).toContain('color: black');
+      expect(css).toContain('.base');
+      expect(css).toContain('.addon');
+      expect(css).toContain('color: black');
     });
 
     it('keeps variable-only additive "with" configs on the imported rules surface', async () => {
@@ -1065,6 +1067,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
@@ -1072,8 +1075,8 @@ describe('Style import', () => {
       expect(injectedVar).toBeDefined();
       const injectedVarValue = await injectedVar!.value.value.eval(context);
       expect(`${injectedVarValue}`).toBe('purple');
-      expect(composedRules.toString()).toContain('.base');
-      expect(composedRules.toString()).toContain('color: purple');
+      expect(css).toContain('.base');
+      expect(css).toContain('color: purple');
     });
 
     it('keeps variable-only additive "with" configs visible to imported guarded mixins', async () => {
