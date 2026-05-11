@@ -287,9 +287,9 @@ describe('Mixin', () => {
 
         const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
         callerRules.adopt(mixinCall);
-        const result = await mixinCall.eval(context);
+        const css = await renderNodeToString(root, context, { context });
 
-        expect(result.toString()).toContain('color: red;');
+        expect(css).toContain('color: red;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
