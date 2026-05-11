@@ -164,9 +164,8 @@ describe('Mixin', () => {
       const root = rules([mixinDef, firstRuleset, secondRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-
-      expect(evald.toString({ context })).toBeString(`
+      const css = await renderNodeToString(root, context, { context });
+      expect(css).toBeString(`
         .first {
           /**/
           color: red;
@@ -1031,9 +1030,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('marker: red;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('marker: red;');
         expect(shallowMarkerBodyClones).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -1072,9 +1070,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toBe('');
+        const css = await renderNodeToString(root, context);
+        expect(css).toBe('');
         expect(scalarCopies).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
@@ -1113,8 +1110,7 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = evald.toString();
+        const css = await renderNodeToString(root, context);
 
         expect(css).toContain('color: red;');
         expect(css).toContain('border-color: blue;');
@@ -1158,9 +1154,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('color: red;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
         expect(scalarCopies).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
@@ -1200,9 +1195,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toBe('');
+        const css = await renderNodeToString(root, context);
+        expect(css).toBe('');
         expect(scalarCopies).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
