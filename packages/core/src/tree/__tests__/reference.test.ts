@@ -16,42 +16,42 @@ describe('reference', () => {
 
     it('should serialize a variable reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable' });
-      expect(`${node}`).toBe('$foo');
+      expect(node.toTrimmedString()).toBe('$foo');
     });
 
     it('should serialize a declaration reference', () => {
       let node = ref({ key: 'foo' }, { type: 'declaration' });
-      expect(`${node}`).toBe('$.foo');
+      expect(node.toTrimmedString()).toBe('$.foo');
     });
 
     it('should serialize an optional reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable', fallbackValue: true });
-      expect(`${node}`).toBe('$foo?');
+      expect(node.toTrimmedString()).toBe('$foo?');
     });
 
     it('should serialize a mixin reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin' });
-      expect(`${node}`).toBe('$ > foo');
+      expect(node.toTrimmedString()).toBe('$ > foo');
     });
 
     it('should serialize a mixin-ruleset reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin-ruleset' });
-      expect(`${node}`).toBe('$ > *foo');
+      expect(node.toTrimmedString()).toBe('$ > *foo');
     });
 
     it('should serialize a number index', () => {
       let node = ref({ key: 0 }, { type: 'index' });
-      expect(`${node}`).toBe('$[0]');
+      expect(node.toTrimmedString()).toBe('$[0]');
     });
 
     it('should serialize a string (variable) index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('$[foo]');
+      expect(node.toTrimmedString()).toBe('$[foo]');
     });
 
     it('should serialize a quoted (property) index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
-      expect(`${node}`).toBe('$["foo"]');
+      expect(node.toTrimmedString()).toBe('$["foo"]');
     });
   });
 
@@ -89,7 +89,7 @@ describe('reference', () => {
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const resolved = await refNode.resolve(context);
 
-      expect(`${resolved}`).toBe('red');
+      expect(resolved.toTrimmedString()).toBe('red');
       expect(refNode.evaluated).toBe(false);
       expect(refNode.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
@@ -119,7 +119,7 @@ describe('reference', () => {
       const refNode = ref({ key: 'source' }, { type: 'variable' });
       const resolved = await refNode.resolve(context);
 
-      expect(`${resolved}`).toBe('one, foo');
+      expect(resolved.render(context)).toBe('one, foo');
       expect(value.toTrimmedString()).toBe('one, $item');
       expect(refNode.toTrimmedString()).toBe('$source');
     });
@@ -192,7 +192,7 @@ describe('reference', () => {
       );
       const resolved = await refNode.resolve(context);
 
-      expect(`${resolved}`).toBe('one, foo');
+      expect(resolved.render(context)).toBe('one, foo');
       expect(fallback.toTrimmedString()).toBe('one, $item');
       expect(refNode.toTrimmedString()).toBe('$missing');
     });
@@ -221,7 +221,7 @@ describe('reference', () => {
         );
         const resolved = await refNode.resolve(context);
 
-        expect(`${resolved}`).toBe('red');
+        expect(resolved.toTrimmedString()).toBe('red');
         expect(scalarCopies).toBe(0);
         expect(refNode.toTrimmedString()).toBe('$missing');
       } finally {
@@ -253,7 +253,7 @@ describe('reference', () => {
         );
         const resolved = await refNode.resolve(context);
 
-        expect(`${resolved}`).toBe('red');
+        expect(resolved.toTrimmedString()).toBe('red');
         expect(scalarClones).toBe(0);
         expect(fallback.toTrimmedString()).toBe('red');
       } finally {
@@ -283,7 +283,7 @@ describe('reference', () => {
         );
         const resolved = await refNode.resolve(context);
 
-        expect(`${resolved}`).toBe('red');
+        expect(resolved.toTrimmedString()).toBe('red');
         expect(listClones).toBe(0);
         expect(fallback.toTrimmedString()).toBe('red');
       } finally {
