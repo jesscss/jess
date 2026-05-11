@@ -395,8 +395,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       .attributes {
@@ -514,8 +513,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       :is(.ext1, .all) .ext2 {
@@ -575,8 +573,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
     expect(css).toBeString(`
       .a {
         color: black;
@@ -635,8 +632,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       .a {
@@ -695,8 +691,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       .a {
@@ -972,8 +967,7 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
     const context = new Context({ collapseNesting: true });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
     expect(css).toBeString(`
       .a {
         color: black;
@@ -1031,8 +1025,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: true });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       .a {
@@ -1084,8 +1077,7 @@ describe('extend integration (eval -> toString)', () => {
         })
       ]);
       const context = new Context({ collapseNesting: false });
-      const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(root, context, { context });
       // Less: .b:extend(.a) inside @media does NOT copy .a's declarations into .b. Root .a unchanged; .b has only its own decls.
       expect(css).toBeString(`
         .a {
@@ -1123,8 +1115,7 @@ describe('extend integration (eval -> toString)', () => {
         })
       ]);
       const context = new Context({ collapseNesting: false });
-      const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(root, context, { context });
       expect(css).toBeString(`
         @media screen {
           .b,
@@ -1162,8 +1153,7 @@ describe('extend integration (eval -> toString)', () => {
         })
       ]);
       const context = new Context({ collapseNesting: false });
-      const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(root, context, { context });
       expect(css).toBeString(`
         @media screen {
           .b,
@@ -1229,8 +1219,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: true });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       .header .header-nav,
