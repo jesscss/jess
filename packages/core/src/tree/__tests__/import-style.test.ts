@@ -681,6 +681,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
@@ -695,7 +696,7 @@ describe('Style import', () => {
       expect(`${injectedVarValue}`).toBe('purple');
 
       // Test 2: Verify computed values based on injected variables are correct
-      expect(composedRules.toString()).toContain('color: purple');
+      expect(css).toContain('color: purple');
     });
 
     it('can inject variables with "set" type', async () => {
@@ -726,6 +727,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
 
@@ -739,7 +741,7 @@ describe('Style import', () => {
       expect(`${injectedVarValue}`).toBe('orange');
 
       // Test 2: Verify computed values based on injected variables are correct
-      expect(composedRules.toString()).toContain('color: orange');
+      expect(css).toContain('color: orange');
     });
 
     it('updates computed variables with "with" type - scope lookup', async () => {
@@ -1321,12 +1323,13 @@ describe('Style import', () => {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
         const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const css = await renderNodeToString(node, context, { context });
 
         expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
         expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-        expect(composedRules.toString()).toContain('.base');
-        expect(composedRules.toString()).toContain('.addon');
+        expect(css).toContain('.base');
+        expect(css).toContain('.addon');
         expect(clonedLibraryRules).toBe(0);
 
         const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
