@@ -1362,8 +1362,9 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const css = await renderNodeToString(root, context);
-        expect(css).toContain('margin: red 10px;');
+        const evald = await root.eval(context);
+
+        expect(evald.toString()).toContain('margin: red 10px;');
         expect(scalarCopies).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
@@ -1475,9 +1476,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('margin: red 10px;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
@@ -1519,9 +1519,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('margin: red 10px;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
@@ -1565,9 +1564,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('margin: red 10px;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
