@@ -586,8 +586,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       nav {
         @starting-style {
           padding: 10px 8px 6px 4px;
@@ -632,8 +631,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       aside {
         @starting-style {
           padding: 10px 20px 30px 40px;
@@ -682,8 +680,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       aside {
         @starting-style {
           padding: 10px 20px 30px 40px;
