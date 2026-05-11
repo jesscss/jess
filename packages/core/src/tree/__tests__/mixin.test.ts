@@ -1319,8 +1319,9 @@ describe('Mixin', () => {
         context.root = root;
 
         const evald = await root.eval(context);
+        const css = await evald.render(context);
 
-        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(css).toContain('margin: red 10px;');
         expect(scalarCopies).toBe(0);
       } finally {
         Any.prototype.copy = originalCopy;
@@ -1617,8 +1618,9 @@ describe('Mixin', () => {
         context.root = root;
 
         const evald = await root.eval(context);
+        const css = await evald.render(context);
 
-        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(css).toContain('margin: red 10px;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
@@ -2403,8 +2405,9 @@ describe('Mixin', () => {
       ]);
       context.root = root;
       const evald = await root.eval(context);
+      const css = await evald.render(context);
 
-      expect(evald.toString()).toBeString(`
+      expect(css).toBeString(`
         .a {
           color: red;
           args: red;
