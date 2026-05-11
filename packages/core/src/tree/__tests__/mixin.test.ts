@@ -581,8 +581,9 @@ describe('Mixin', () => {
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
         callerRules.adopt(detachedCall);
         const result = await detachedCall.eval(context);
+        const css = await result.render(context);
 
-        expect(result.toString()).toContain('color: red;');
+        expect(css).toContain('color: red;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
