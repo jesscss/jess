@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
-import { createRenderBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { createTriviaMap } from '../util/trivia.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
@@ -140,7 +140,7 @@ describe('Comment', () => {
 `);
   });
 
-  it('uses context-owned trivia for cloned nodes with source offsets', () => {
+  it('uses context-owned trivia for cloned nodes with source offsets', async () => {
     const empty = rules([]);
     empty._location = [100, 1, 1, 100, 1, 1];
     const visible = decl({ name: any('color'), value: any('red') });
@@ -159,7 +159,7 @@ describe('Comment', () => {
     });
     context.opts.trivia = trivia;
 
-    expect(rules([container]).toString({ context })).toBe(`.a {
+    expect(await renderNodeToString(rules([container]), context, { context })).toBe(`.a {
   /**/
   color: red;
 }
