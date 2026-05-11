@@ -131,7 +131,7 @@ describe('Style import', () => {
       // The imported ruleset should be able to reference the parent variable
       // The declaration should already be evaluated as part of the ruleset evaluation
       const importedDecl = (importedRuleset as any).value.rules.at(0);
-      expect(`${importedDecl}`).toBe('color: red');
+      expect(importedDecl.toTrimmedString()).toBe('color: red');
     });
 
     it('compose type cannot see parent rules variables', async () => {
@@ -166,7 +166,7 @@ describe('Style import', () => {
       // It should use the fallback value instead
       const composedDecl = (composedRuleset as any).value.rules.at(0);
       const resolved = await composedDecl.eval(context);
-      expect(`${resolved}`).toBe('color: blue');
+      expect(resolved.toTrimmedString()).toBe('color: blue');
     });
 
     it('restores compose extend root when imported rules eval throws', async () => {
@@ -221,7 +221,7 @@ describe('Style import', () => {
 
       const composedDecl = (composedRuleset as any).value.rules.at(0);
       const resolved = await composedDecl.eval(context);
-      expect(`${resolved}`).toBe('color: blue');
+      expect(resolved.toTrimmedString()).toBe('color: blue');
     });
 
     it('import type variables are visible to parent', async () => {
@@ -247,7 +247,7 @@ describe('Style import', () => {
       const parentRuleset = evald.at(1);
       const parentDecl = (parentRuleset as any).value.rules.at(0);
       const resolved = await parentDecl.eval(context);
-      expect(`${resolved}`).toBe('color: green');
+      expect(resolved.toTrimmedString()).toBe('color: green');
     });
 
     it('import type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
@@ -284,7 +284,7 @@ describe('Style import', () => {
         const parentRuleset = evald.at(1);
         const parentDecl = (parentRuleset as any).value.rules.at(0);
         const resolved = await parentDecl.eval(context);
-        expect(`${resolved}`).toBe('color: green');
+        expect(resolved.toTrimmedString()).toBe('color: green');
         expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;
@@ -317,7 +317,7 @@ describe('Style import', () => {
       const parentDecl = (parentRuleset as any).value.rules.at(0);
       const resolved = await parentDecl.eval(context);
       // Should use composedVar from the compose
-      expect(`${resolved}`).toBe('color: purple');
+      expect(resolved.toTrimmedString()).toBe('color: purple');
     });
 
     it('compose type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
@@ -356,7 +356,7 @@ describe('Style import', () => {
         const parentRuleset = evald.at(1);
         const parentDecl = (parentRuleset as any).value.rules.at(0);
         const resolved = await parentDecl.eval(context);
-        expect(`${resolved}`).toBe('color: purple');
+        expect(resolved.toTrimmedString()).toBe('color: purple');
         expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;
@@ -393,7 +393,7 @@ describe('Style import', () => {
       const parentRuleset = evald.at(1);
       const mixinCall = (parentRuleset as any).value.rules.at(0);
       const resolved = await mixinCall.eval(context);
-      expect(`${resolved}`).toContainString('color: blue');
+      expect(resolved.toTrimmedString()).toContainString('color: blue');
     });
 
     it('compose type mixins are visible to parent', async () => {
@@ -426,7 +426,7 @@ describe('Style import', () => {
       const parentRuleset = evald.at(1);
       const mixinCall = (parentRuleset as any).value.rules.at(0);
       const resolved = await mixinCall.eval(context);
-      expect(`${resolved}`).toContainString('color: yellow');
+      expect(resolved.toTrimmedString()).toContainString('color: yellow');
     });
 
     it('reference import makes mixins optional', async () => {
@@ -460,7 +460,7 @@ describe('Style import', () => {
       const parentRuleset1 = evald1.at(1);
       const mixinCall1 = (parentRuleset1 as any).value.rules.at(0);
       const resolved1 = await mixinCall1.eval(context);
-      expect(`${resolved1}`).toContainString('color: white');
+      expect(resolved1.toTrimmedString()).toContainString('color: white');
     });
   });
 
@@ -487,7 +487,7 @@ describe('Style import', () => {
       const importedRules = evald.at(0) as Rules;
       const importedRuleset = importedRules.at(0);
       expect(importedRuleset).toBeDefined();
-      expect(`${importedRuleset}`).toContainString('.imported');
+      expect(importedRuleset.toTrimmedString()).toContainString('.imported');
     });
 
     it('reference import makes rulesets optional', async () => {
@@ -564,7 +564,7 @@ describe('Style import', () => {
       expect(varDecl).toBeDefined();
       // The variable lookup should return the local variable (index 1) which wins over the imported variable (index 0)
       // because local variables in the current Rules are treated as having the highest index (Number.MAX_SAFE_INTEGER)
-      expect(`${varDecl}`).toBe('$importedVar: modified');
+      expect(varDecl.toTrimmedString()).toBe('$importedVar: modified');
     });
 
     it.skip('readonly can be overridden for compose', async () => {
@@ -589,7 +589,7 @@ describe('Style import', () => {
       const varDecl = getVarWithContext(context, evald, 'composedVar');
 
       // Should have modified value because readonly was overridden
-      expect(`${varDecl}`).toBe('$composedVar: modified');
+      expect(varDecl.toTrimmedString()).toBe('$composedVar: modified');
     });
 
     it('readonly can be set for import', async () => {
@@ -648,7 +648,7 @@ describe('Style import', () => {
       const evaldConsumer = await consumer.eval(context);
       const downstreamLookup = getVarWithContext(context, evaldConsumer, 'forwardedVar');
       expect(downstreamLookup).toBeDefined();
-      expect(`${downstreamLookup}`).toBe('$forwardedVar: ok');
+      expect(downstreamLookup.toTrimmedString()).toBe('$forwardedVar: ok');
     });
   });
 
@@ -693,7 +693,7 @@ describe('Style import', () => {
       // We can verify the value by evaluating the variable's value property
       const injectedVarValueNode = injectedVar!.value.value;
       const injectedVarValue = await injectedVarValueNode.eval(context);
-      expect(`${injectedVarValue}`).toBe('purple');
+      expect(injectedVarValue.toTrimmedString()).toBe('purple');
 
       // Test 2: Verify computed values based on injected variables are correct
       expect(css).toContain('color: purple');
@@ -738,7 +738,7 @@ describe('Style import', () => {
       // We can verify the value by evaluating the variable's value property
       const injectedVarValueNode = injectedVar!.value.value;
       const injectedVarValue = await injectedVarValueNode.eval(context);
-      expect(`${injectedVarValue}`).toBe('orange');
+      expect(injectedVarValue.toTrimmedString()).toBe('orange');
 
       // Test 2: Verify computed values based on injected variables are correct
       expect(css).toContain('color: orange');
@@ -775,13 +775,13 @@ describe('Style import', () => {
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
       const baseColorValue = await baseColor!.value.value.eval(context);
-      expect(`${baseColorValue}`).toBe('blue');
+      expect(baseColorValue.toTrimmedString()).toBe('blue');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
       const derivedColorValue = await derivedColor!.value.value.eval(context);
-      expect(`${derivedColorValue}`).toBe('blue');
+      expect(derivedColorValue.toTrimmedString()).toBe('blue');
     });
 
     it('updates computed variables with "with" type - linear lookup', async () => {
@@ -815,13 +815,13 @@ describe('Style import', () => {
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
       const baseColorValue = await baseColor!.value.value.eval(context);
-      expect(`${baseColorValue}`).toBe('green');
+      expect(baseColorValue.toTrimmedString()).toBe('green');
 
       // Verify derivedColor reflects the injected value (linear lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
       const derivedColorValue = await derivedColor!.value.value.eval(context);
-      expect(`${derivedColorValue}`).toBe('green');
+      expect(derivedColorValue.toTrimmedString()).toBe('green');
     });
 
     it('updates computed variables with "set" type - scope lookup', async () => {
@@ -855,13 +855,13 @@ describe('Style import', () => {
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
       const baseColorValue = await baseColor!.value.value.eval(context);
-      expect(`${baseColorValue}`).toBe('yellow');
+      expect(baseColorValue.toTrimmedString()).toBe('yellow');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
       const derivedColorValue = await derivedColor!.value.value.eval(context);
-      expect(`${derivedColorValue}`).toBe('yellow');
+      expect(derivedColorValue.toTrimmedString()).toBe('yellow');
     });
 
     it('updates computed variables with "set" type - linear lookup', async () => {
@@ -899,7 +899,7 @@ describe('Style import', () => {
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
       const baseColorValue = await baseColor!.value.value.eval(context);
-      expect(`${baseColorValue}`).toBe('cyan');
+      expect(baseColorValue.toTrimmedString()).toBe('cyan');
 
       // Verify derivedColor reflects the injected value (linear lookup)
       // derivedColor is in the composed rules (flattened structure)
@@ -909,7 +909,7 @@ describe('Style import', () => {
       // The value should already be evaluated during the import evaluation
       // and should have used the injected baseColor
       const derivedColorValue = await derivedColor!.value.value.eval(context);
-      expect(`${derivedColorValue}`).toBe('cyan');
+      expect(derivedColorValue.toTrimmedString()).toBe('cyan');
     });
 
     it('keeps replacement "set" configs visible to imported detached ruleset variable closures', async () => {
@@ -1076,7 +1076,7 @@ describe('Style import', () => {
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
       const injectedVarValue = await injectedVar!.value.value.eval(context);
-      expect(`${injectedVarValue}`).toBe('purple');
+      expect(injectedVarValue.toTrimmedString()).toBe('purple');
       expect(css).toContain('.base');
       expect(css).toContain('color: purple');
     });
@@ -1335,7 +1335,7 @@ describe('Style import', () => {
         const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
         expect(derivedColor).toBeDefined();
         const derivedColorValue = await derivedColor!.value.value.eval(context);
-        expect(`${derivedColorValue}`).toBe('teal');
+        expect(derivedColorValue.toTrimmedString()).toBe('teal');
       } finally {
         RulesClass.prototype.clone = originalClone;
       }
@@ -2036,7 +2036,7 @@ describe('Style import', () => {
       if (!isNode(wrappedImport.value[0], N.AtRule)) {
         throw new Error('Expected inline wrapped import child to be AtRule');
       }
-      expect(`${wrappedImport.value[0].value.name}`).toBe('@layer');
+      expect(wrappedImport.value[0].value.name.toTrimmedString()).toBe('@layer');
       const supportsRules = wrappedImport.value[0].value.rules;
       expect(supportsRules).toBeInstanceOf(RulesClass);
       if (!(supportsRules instanceof RulesClass)) {
@@ -2046,7 +2046,7 @@ describe('Style import', () => {
       if (!isNode(supportsRules.value[0], N.AtRule)) {
         throw new Error('Expected @layer child to be AtRule');
       }
-      expect(`${supportsRules.value[0].value.name}`).toBe('@supports');
+      expect(supportsRules.value[0].value.name.toTrimmedString()).toBe('@supports');
       const mediaRules = supportsRules.value[0].value.rules;
       expect(mediaRules).toBeInstanceOf(RulesClass);
       if (!(mediaRules instanceof RulesClass)) {
@@ -2056,7 +2056,7 @@ describe('Style import', () => {
       if (!isNode(mediaRules.value[0], N.AtRule)) {
         throw new Error('Expected @supports child to be AtRule');
       }
-      expect(`${mediaRules.value[0].value.name}`).toBe('@media');
+      expect(mediaRules.value[0].value.name.toTrimmedString()).toBe('@media');
 
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@layer theme');
@@ -2129,7 +2129,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const resolvedFromInterpolatedImport = getVarWithContext(context, evald, 'interpolationResolved');
       expect(resolvedFromInterpolatedImport).toBeDefined();
-      expect(`${resolvedFromInterpolatedImport}`).toBe('$interpolationResolved: ok');
+      expect(resolvedFromInterpolatedImport.toTrimmedString()).toBe('$interpolationResolved: ok');
     });
 
     it('import-interpolation: reclassifies interpolated .css imports as literal CSS @import', async () => {
@@ -2207,7 +2207,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const declaration = evald.at(1) as any;
       const resolved = await declaration.eval(context);
-      expect(`${resolved}`).toBe('value: 42');
+      expect(resolved.toTrimmedString()).toBe('value: 42');
     });
 
     it('import-reference: reference-imported vars remain readable inside later nested rulesets', async () => {
@@ -2228,7 +2228,7 @@ describe('Style import', () => {
       const rulesetNode = evald.at(1) as any;
       const declaration = rulesetNode.value.rules.at(0);
       const resolved = await declaration.eval(context);
-      expect(`${resolved}`).toBe('value: 42');
+      expect(resolved.toTrimmedString()).toBe('value: 42');
     });
 
     it('import-reference: reference-imported mixins remain callable', async () => {
@@ -3034,7 +3034,7 @@ describe('Style import', () => {
       const evald = await node.eval(remoteContext);
       const declaration = evald.at(1) as any;
       const resolved = await declaration.eval(remoteContext);
-      expect(`${resolved}`).toBe('value: 42');
+      expect(resolved.toTrimmedString()).toBe('value: 42');
     });
 
     it('import.less: optional missing imports do not throw and produce empty rules', async () => {
