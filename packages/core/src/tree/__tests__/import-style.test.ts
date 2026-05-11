@@ -2665,8 +2665,8 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toBeString(`
         #used-namespaced-mixin {
           was: included;
         }
@@ -2701,8 +2701,8 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toBeString(`
         #used-namespaced-mixin {
           was: included;
         }
@@ -2748,8 +2748,8 @@ describe('Style import', () => {
           })
         ]);
 
-        const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        const css = await renderNodeToString(node, context, { context });
+        expect(css).toBeString(`
           #used-namespaced-mixin {
             was: included;
           }
@@ -2832,8 +2832,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(localContext);
-      const out = evald.toString({ context: localContext });
+      const out = await renderNodeToString(node, localContext, { context: localContext });
       expect(out).toBeString(`
         show-all-content {
           /*
@@ -2887,8 +2886,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const out = evald.toString({ context });
+      const out = await renderNodeToString(node, context, { context });
       expect(out).toContain('call-mixin-with-import-by-reference-inside');
       expect(out).toContain('the-only-property: nothing-below-this;');
       expect(out).not.toContain('shall-be-invisible: less;');
@@ -2956,8 +2954,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(localContext);
-      const out = evald.toString({ context: localContext });
+      const out = await renderNodeToString(node, localContext, { context: localContext });
       expect(out).toBeString(`
         .b {
           color: red;
