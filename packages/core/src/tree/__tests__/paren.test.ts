@@ -111,7 +111,7 @@ describe('Paren', () => {
     const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await parenNode.resolve(context);
 
-    expect(`${resolved}`).toBe('(foo)');
+    expect(resolved.toTrimmedString()).toBe('(foo)');
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -135,7 +135,7 @@ describe('Paren', () => {
     const sourceValue = parenNode.value;
     const resolved = await parenNode.resolve(context);
 
-    expect(`${resolved}`).toBe('(one, foo)');
+    expect(resolved.render(context)).toBe('(one, foo)');
     expect(parenNode.toTrimmedString()).toBe('(one, $value)');
     expect(sourceValue?.parent).toBe(parenNode);
   });
