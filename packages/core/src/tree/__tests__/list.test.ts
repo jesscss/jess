@@ -180,7 +180,7 @@ describe('List', () => {
     ]);
     const resolved = await listNode.resolve(context);
 
-    expect(`${resolved}`).toBe('1 2 3, four');
+    expect(resolved.toTrimmedString()).toBe('1 2 3, four');
     expect(listNode.evaluated).toBe(false);
     expect(listNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -203,7 +203,7 @@ describe('List', () => {
     ]);
     const resolved = await listNode.resolve(context);
 
-    expect(`${resolved}`).toBe('one, four');
+    expect(resolved.render(context)).toBe('one, four');
     expect(listNode.toTrimmedString()).toBe('one, $item');
   });
 
@@ -215,7 +215,7 @@ describe('List', () => {
 
     const result = left.operate(right, '+', context);
 
-    expect(`${result}`).toBe('left, right');
+    expect(result.toTrimmedString()).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
   });
@@ -227,7 +227,7 @@ describe('List', () => {
 
     const result = left.operate(right, '+', context);
 
-    expect(`${result}`).toBe('left, right');
+    expect(result.toTrimmedString()).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(right.parent).toBeUndefined();
   });
@@ -279,7 +279,7 @@ describe('List', () => {
     try {
       const result = list([any('left')]).operate(list([any('right')]), '+', context);
 
-      expect(`${result}`).toBe('left, right');
+      expect(result.toTrimmedString()).toBe('left, right');
       expect(scalarClones).toBe(0);
     } finally {
       Node.prototype.clone = originalClone;
@@ -288,7 +288,7 @@ describe('List', () => {
 
   it('should serialize to a list', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
-    expect(`${rule}`).toBe('1 2 3, four');
+    expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
   // it('should serialize to a module', () => {
   //   let rule = list([spaced([any('1'), any('2'), any('3')]), any('four')])
