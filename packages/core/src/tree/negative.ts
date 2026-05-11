@@ -9,13 +9,6 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
-/**
- * The negative sign before a node
- */
-export interface Negative extends Node<Node> {
-  eval(context: Context): MaybePromise<Node>;
-}
-
 export class Negative extends Node<Node> {
   private renderNegativeSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);

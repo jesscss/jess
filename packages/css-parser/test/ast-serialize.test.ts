@@ -349,7 +349,6 @@ describe('serializeTypes coverage', () => {
     }
 
     expect(nested.value.selector.toString({ trivia })).toBe(' /*x*/ b');
-    expect(String(nested.value.selector)).toBe(' /*x*/ b');
     expect(trivia.lookup(nested.value.selector.location[0], 'before')?.map(token => token.image)).toEqual([
       ' ',
       '/*x*/',

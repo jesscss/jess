@@ -2,6 +2,7 @@ import '@ungap/set-methods';
 // export * from './scope'
 export * from './tree/index.js';
 export * from './context.js';
+export { TreeContext } from './context.js';
 export * from './logger.js';
 export * from './logger/deprecation-processing.js';
 export * from './plugin.js';

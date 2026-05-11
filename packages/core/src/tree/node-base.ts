@@ -17,7 +17,6 @@ import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
 import { isPlainObject } from './util/collections.js';
-export type { TreeContext };
 
 const { isArray } = Array;
 

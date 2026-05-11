@@ -40,6 +40,7 @@ import {
   VarDeclaration,
   While,
   type AssignmentType,
+  type LocationInfo,
   type Node,
   type Rules as RulesType,
   type Selector
@@ -262,12 +263,20 @@ function parseScssNameNode(
 }
 
 function createNullParentAmpersand(context: any, selector?: Selector): Ampersand {
-  return new Ampersand(
-    { template: new Nil(undefined, undefined, selector?.location, context) },
+  const location = selector?.location.length === 6 ? selector.location : undefined;
+  const nil = new Nil(undefined, undefined, location, context);
+  const amp = new Ampersand(
+    { selectorContainer: { selector: nil } },
     undefined,
-    selector?.location,
+    location,
     context
   );
+  amp.adopt(nil);
+  return amp;
+}
+
+function getNodeLocation(node: Node): LocationInfo | undefined {
+  return node.location.length === 6 ? node.location : undefined;
 }
 
 function prefixAtRootSelector(selector: Selector, context: any): Selector {
@@ -275,7 +284,7 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
     const list = new SelectorList(
       (selector as SelectorList).value.map(item => prefixAtRootSelector(item as Selector, context)),
       undefined,
-      selector.location,
+      getNodeLocation(selector),
       context
     );
     return list as Selector;
@@ -286,13 +295,13 @@ function prefixAtRootSelector(selector: Selector, context: any): Selector {
     const complex = new ComplexSelector(
       [amp, ...(selector as ComplexSelector).value] as any,
       undefined,
-      selector.location,
+      getNodeLocation(selector),
       context
     );
     return complex as Selector;
   }
 
-  const complex = new ComplexSelector([amp, selector] as any, undefined, selector.location, context);
+  const complex = new ComplexSelector([amp, selector] as any, undefined, getNodeLocation(selector), context);
   return complex as Selector;
 }
 
@@ -306,23 +315,25 @@ function lowerPlainAtRootRules(rules: RulesType, context: any): void {
       return ruleset;
     }
 
-    if (node instanceof AtRule && node.rules) {
-      lowerPlainAtRootRules(node.rules as RulesType, context);
+    if (node instanceof AtRule && node.value.rules) {
+      lowerPlainAtRootRules(node.value.rules as RulesType, context);
       return node;
     }
 
     if (node instanceof If) {
-      for (const body of node.bodies) {
-        lowerPlainAtRootRules(body as RulesType, context);
-      }
-      if (node.elseBranch) {
-        lowerPlainAtRootRules(node.elseBranch as RulesType, context);
+      for (const branch of node.value.branches) {
+        lowerPlainAtRootRules(branch.rules as RulesType, context);
       }
       return node;
     }
 
-    if (node instanceof For || node instanceof While) {
-      lowerPlainAtRootRules(node.rules as RulesType, context);
+    if (node instanceof For) {
+      lowerPlainAtRootRules(node.value.rules as RulesType, context);
+      return node;
+    }
+
+    if (node instanceof While) {
+      lowerPlainAtRootRules(node.value.rules as RulesType, context);
       return node;
     }
 
@@ -590,8 +601,7 @@ export function scssUseAtRule(this: P, T: TokenMap) {
     return new StyleImport(
       {
         path: pathNode,
-        withNode: withRules,
-        withType: withRules ? 'set' : undefined
+        with: withRules ? { node: withRules, type: 'set' } : undefined
       },
       {
         type: 'compose',
@@ -754,8 +764,7 @@ export function scssForwardAtRule(this: P, T: TokenMap) {
     return new StyleImport(
       {
         path: pathNode,
-        withNode: withRules,
-        withType: withRules ? 'set' : undefined
+        with: withRules ? { node: withRules, type: 'set' } : undefined
       },
       {
         type: 'compose',

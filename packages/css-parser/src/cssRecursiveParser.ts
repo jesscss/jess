@@ -7,11 +7,11 @@
  * - Token category matching via categoryMatchesMap for gate predicates
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
-import type { TokenType, ParserMethod } from '@chevrotain/types';
+import type { IToken, TokenType, ParserMethod } from 'chevrotain';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { IParseResult, LocationInfo, OptionalLocation, TriviaMap } from '@jesscss/core';
+import type { IParseResult, LocationInfo, TriviaMap } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -276,9 +276,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       const claimed = {
         ...token,
         image: token.image.slice(-1),
-        startOffset: token.endOffset,
-        startColumn: token.endColumn,
-        startLine: token.endLine
+        startOffset: token.endOffset ?? token.startOffset,
+        startColumn: token.endColumn ?? token.startColumn,
+        startLine: token.endLine ?? token.startLine
       };
       const image = token.image.slice(0, -1);
       if (image.length === 0) {
@@ -385,7 +385,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     ];
   }
 
-  getLocationFromNodes(nodes: Array<IToken | { location?: OptionalLocation }>): LocationInfo | undefined {
+  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
     let startOffset = Infinity, startLine = Infinity, startColumn = Infinity;
     let endOffset = -Infinity, endLine = -Infinity, endColumn = -Infinity;
     let found = false;

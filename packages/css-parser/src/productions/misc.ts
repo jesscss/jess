@@ -1,5 +1,5 @@
 // Methods to be mixed into CssRecursiveParser
-import type { IToken } from '@chevrotain/types';
+import type { IToken } from 'chevrotain';
 import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecursiveParser.js';
 import { EMPTY_ALT } from 'chevrotain';
 import {

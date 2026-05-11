@@ -1,6 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
-import type { IToken } from '@chevrotain/types';
+import type { IOrAlt, IToken } from 'chevrotain';
 import {
   Node, Any, Declaration, CustomDeclaration, Sequence, List, Block,
   Quoted, Call, Url, Paren, Operation,
@@ -9,7 +9,7 @@ import {
 
 type C = CssRecursiveParser;
 
-type AltContext = (ctx?: RuleContext) => Array<import('@chevrotain/types').IOrAlt<any>>;
+type AltContext = (ctx?: RuleContext) => Array<IOrAlt<any>>;
 type ProductionRule = (ctx?: RuleContext) => Node | undefined;
 
 export function declaration(this: C, T: TokenMap, alt?: AltContext) {

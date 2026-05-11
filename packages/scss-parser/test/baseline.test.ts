@@ -22,7 +22,7 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse('.a { x: ("regular": 400, "medium": 500); }');
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
-    const treeStr = String(result.tree);
+    const treeStr = result.tree.toString();
     // Should serialize via Collection as braced rules with semicolons.
     expect(treeStr).toContain('regular: 400;');
     expect(treeStr).toContain('medium: 500;');
@@ -34,7 +34,7 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse('.a { x: map.get($font-weights, "medium"); }');
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
-    const treeStr = String(result.tree);
+    const treeStr = result.tree.toString();
     // The desugaring uses Reference access. This is a structural smoke test.
     expect(treeStr).toContain('font-weights');
     expect(treeStr).toContain('medium');
@@ -57,7 +57,7 @@ describe('scss-parser (baseline)', () => {
         expect(isNode(call.value.name, N.Reference)).toBe(true);
         if (isNode(call.value.name, N.Reference)) {
           expect(call.value.name.options.type).toBe('mixin');
-          expect(String(call.value.name.value.key)).toBe('content');
+          expect(call.value.name.value.key).toBe('content');
         }
       }
     }
@@ -77,7 +77,7 @@ describe('scss-parser (baseline)', () => {
         expect(isNode(call.value.name, N.Reference)).toBe(true);
         if (isNode(call.value.name, N.Reference)) {
           expect(call.value.name.options.type).toBe('mixin');
-          expect(String(call.value.name.value.key)).toBe('content');
+          expect(call.value.name.value.key).toBe('content');
         }
         expect(call.value.args?.value).toHaveLength(2);
       }
@@ -117,7 +117,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    const out = String(result.tree);
+    const out = result.tree.toString();
     expect(out).toContain('$if (');
     expect(out).toContain('$else if (');
     expect(out).toContain('$else');
@@ -129,7 +129,7 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`@if $a == $b { .x { y: 1; } }`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    const out = String(result.tree);
+    const out = result.tree.toString();
     expect(out).toContain('$if');
     expect(out).toContain('=');
     expect(out).not.toContain('==');
@@ -158,7 +158,7 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`@if $a != $b { .x { y: 1; } }`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    const out = String(result.tree);
+    const out = result.tree.toString();
     expect(out).toContain('$if');
     expect(out).toContain('not');
     expect(out).toContain('=');
@@ -459,7 +459,7 @@ describe('scss-parser (baseline)', () => {
     const root = result.tree;
     expect(isNode(root, N.Rules)).toBe(true);
     if (isNode(root, N.Rules)) {
-      const forwards = root.value.filter(n => n.type === 'StyleImport') as any[];
+      const forwards = root.value.filter(n => isNode(n, N.StyleImport));
       expect(forwards.length).toBeGreaterThanOrEqual(2);
       const show = forwards.find(n => Array.isArray(n.options?.importOptions?.forwardShow));
       const hide = forwards.find(n => Array.isArray(n.options?.importOptions?.forwardHide));
@@ -630,7 +630,7 @@ describe('scss-parser (baseline)', () => {
     const result = parser.parse(`@include ns.foo();`);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(String(result.tree)).toContain('$ns > foo()');
+    expect(result.tree.toString()).toContain('$ns > foo()');
     assertValidTree(result.tree);
   });
 
@@ -644,8 +644,8 @@ describe('scss-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
     expect(serializeTypes(result.tree)).toContainString('(Mixin');
-    const out = normalizeOutput(String(result.tree));
-    expect(out).toContain('$ > wrap (red)');
+    const out = normalizeOutput(result.tree.toString());
+    expect(out).toContain('$ > wrap(red)');
     expect(out).toContain('.child');
     expect(out).toContain('z-index: $n;');
     assertValidTree(result.tree);
@@ -671,8 +671,8 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    const out = normalizeOutput(String(result.tree));
-    expect(out).toContain('$for ( $ a of $list )');
+    const out = normalizeOutput(result.tree.toString());
+    expect(out).toContain('$for ( $ a of $list)');
     assertValidTree(result.tree);
   });
 
@@ -685,7 +685,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(normalizeOutput(String(result.tree))).toContain('$for ([ $ a, $ b ] of $list )');
+    expect(normalizeOutput(result.tree.toString())).toContain('$for ([ $ a, $ b] of $list)');
     assertValidTree(result.tree);
   });
 
@@ -698,7 +698,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(normalizeOutput(String(result.tree))).toContain('$for ( $ i of 1 to 3)');
+    expect(normalizeOutput(result.tree.toString())).toContain('$for ( $ i of 1 to 3)');
     assertValidTree(result.tree);
   });
 
@@ -711,7 +711,7 @@ describe('scss-parser (baseline)', () => {
     `);
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.map(e => e.message)).toEqual([]);
-    expect(normalizeOutput(String(result.tree))).toContain('$for ( $ i of 1 to <3)');
+    expect(normalizeOutput(result.tree.toString())).toContain('$for ( $ i of 1 to <3)');
     assertValidTree(result.tree);
   });
 
@@ -832,7 +832,7 @@ describe('scss-parser (baseline)', () => {
         expect(isNode(call.value.name, N.Reference)).toBe(true);
         if (isNode(call.value.name, N.Reference)) {
           expect(call.value.name.options.type).toBe('mixin');
-          expect(isNode(call.value.name.value.key as any, N.Interpolated)).toBe(true);
+          expect(isNode(call.value.name.value.key, N.Interpolated)).toBe(true);
         }
       }
     }
@@ -849,7 +849,7 @@ describe('scss-parser (baseline)', () => {
       const mixin = result.tree.value[0];
       expect(isNode(mixin, N.Mixin)).toBe(true);
       if (isNode(mixin, N.Mixin)) {
-        expect(isNode(mixin.value.name as any, N.Interpolated)).toBe(true);
+        expect(isNode(mixin.value.name, N.Interpolated)).toBe(true);
       }
     }
     assertValidTree(result.tree);
@@ -940,7 +940,7 @@ describe('scss-parser (baseline)', () => {
     // Diagnostic at-rules should be parsed as Log nodes in the AST
     expect(serializeTypes(result.tree)).toContainString('(Log');
     // They should serialize to empty strings (not supported in Jess syntax)
-    const out = String(result.tree);
+    const out = result.tree.toString();
     expect(out).not.toContain('@debug');
     expect(out).not.toContain('@warn');
     expect(out).not.toContain('@error');

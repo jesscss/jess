@@ -4,7 +4,7 @@ import type {
   IMultiModeLexerDefinition,
   TokenPattern,
   CustomPatternMatcherFunc
-} from '@chevrotain/types';
+} from 'chevrotain';
 import {
   Lexer,
   createToken

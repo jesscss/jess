@@ -1,6 +1,6 @@
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
-import type { IToken, IOrAlt } from '@chevrotain/types';
+import type { IToken, IOrAlt } from 'chevrotain';
 import {
   Node, Any, BasicSelector, Ampersand, CompoundSelector, ComplexSelector,
   type ComplexSelectorValue, Combinator, type Combinators, SelectorList,

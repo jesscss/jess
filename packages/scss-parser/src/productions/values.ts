@@ -18,7 +18,7 @@ import {
   type Node,
   List,
   Nil,
-  Negative,
+  negative,
   Num,
   Operation,
   type Operator,
@@ -79,8 +79,8 @@ function wrapOuterExpressionIfNeeded($: P, node: Node, ctx: RuleContext | undefi
         calcFrames: getCalcFrames(ctx)
       },
       node.value[1],
-      node.left,
-      node.right
+      node.value[0],
+      node.value[2]
     );
     if (shouldOperate) {
       return new Expression(node, { parens: true }, location ?? (node.location as LocationInfo | undefined), $.context);
@@ -485,7 +485,7 @@ export function expressionValue(this: P, T: TokenMap) {
       node = $.processValueToken(node as IToken, ctx);
     }
     if (minus) {
-      return new Negative(node as Node, undefined, location, $.context);
+      return negative(node as Node, undefined, location);
     }
     return node as Node;
   };
@@ -728,7 +728,7 @@ export function parenValue(this: P, T: TokenMap) {
       return wrapOuterExpressionIfNeeded($, operation, exprCtx, location);
     }
 
-    return new Paren(value, { delimiter: 'paren' }, location, $.context);
+    return new Paren(value, undefined, location, $.context);
   };
 }
 

@@ -33,7 +33,8 @@ function getCallReferenceKey(name: unknown): string {
 // import type { OutputCollector } from '../output'
 
 export type ParenOptions = {
-  escaped: boolean;
+  escaped?: boolean;
+  delimiter?: 'paren' | 'square';
 };
 
 const isOpOrExpression = (node: Node): node is Operation | Expression => {
@@ -110,7 +111,9 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     if (escapeChar) {
       w.add(escapeChar, this);
     }
-    w.add('(');
+    const open = this._options?.delimiter === 'square' ? '[' : '(';
+    const close = this._options?.delimiter === 'square' ? ']' : ')';
+    w.add(open);
     let value = this.value;
     if (value) {
       if (value instanceof Node) {
@@ -119,7 +122,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         w.add(String(value), this);
       }
     }
-    w.add(')');
+    w.add(close);
     return w.getSince(mark);
   }
 

@@ -15,7 +15,6 @@ import {
   Sequence,
   VarDeclaration,
   type LocationInfo,
-  type OptionalLocation,
   type Node,
   type Selector
 } from '@jesscss/core';
@@ -126,8 +125,8 @@ export function processScssStringInterpolation(
 
     const parsed = parseInterpolationExpression(match.content.trim());
     const simpleRef = asSingleVariableReference(parsed);
-    if (simpleRef && typeof simpleRef.key === 'string') {
-      replacements.push(new Reference({ key: simpleRef.key }, { type: 'variable', role: 'ident' }, location, context));
+    if (simpleRef && typeof simpleRef.value.key === 'string') {
+      replacements.push(new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, context));
     } else if (isNode(parsed, N.Reference)) {
       replacements.push(new Expression(parsed, undefined, location, context));
     } else {
@@ -153,13 +152,15 @@ export function asSingleVariableReference(n: Node): Reference | undefined {
   if (
     isNode(node, N.Reference)
     && node.options?.type === 'variable'
-    && !(node as Reference).target
-    && typeof (node as Reference).key === 'string'
+    && !(node as Reference).value.target
+    && typeof (node as Reference).value.key === 'string'
   ) {
     return node as Reference;
   }
   return undefined;
 }
+
+type OptionalLocation = LocationInfo | undefined;
 
 export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: OptionalLocation): VarDeclaration {
   const decl = new VarDeclaration(
@@ -181,8 +182,8 @@ export function toNameInterpolationReplacement(
   location?: OptionalLocation
 ): Node {
   const simpleRef = asSingleVariableReference(expr);
-  if (simpleRef && typeof simpleRef.key === 'string') {
-    return new Reference({ key: simpleRef.key }, { type: 'variable', role: 'ident' }, location, parser.context);
+  if (simpleRef && typeof simpleRef.value.key === 'string') {
+    return new Reference({ key: simpleRef.value.key }, { type: 'variable', role: 'ident' }, location, parser.context);
   }
   const tmpName = parser.nextTempVarName();
   parser.enqueuePendingNode(makePrivateTempVarDecl(parser, tmpName, expr, location));
@@ -352,8 +353,8 @@ export function isScriptUsePath(path: string): boolean {
 }
 
 export function quotedLike(original: Quoted, nextValue: string, context: ScssRecursiveParser['context']): Quoted {
-  const quote = original.quote ?? '"';
-  const escaped = original.escaped;
+  const quote = original.options?.quote ?? '"';
+  const escaped = original.options?.escaped;
   const loc: LocationInfo | undefined = Array.isArray(original.location) && original.location.length === 6
     ? (original.location as LocationInfo)
     : undefined;

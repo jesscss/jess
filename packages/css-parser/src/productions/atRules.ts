@@ -1,5 +1,5 @@
 // Methods to be mixed into CssRecursiveParser
-import type { IToken } from '@chevrotain/types';
+import type { IOrAlt, IToken } from 'chevrotain';
 import type { CssRecursiveParser, RuleContext, TokenMap, Rule } from '../cssRecursiveParser.js';
 import { tokenMatcher } from '../cssRecursiveParser.js';
 import { EMPTY_ALT } from 'chevrotain';
@@ -25,7 +25,7 @@ function resolvePreludeRule($: C, preludeRule: PreludeRule): Rule | undefined {
   return preludeRule;
 }
 
-export type AltContext = (ctx?: RuleContext) => Array<import('@chevrotain/types').IOrAlt<any>>;
+export type AltContext = (ctx?: RuleContext) => Array<IOrAlt<any>>;
 type ProductionRule = (ctx?: RuleContext) => Node | Node[] | undefined;
 
 export function atRule(this: C, T: TokenMap, alt?: AltContext) {
