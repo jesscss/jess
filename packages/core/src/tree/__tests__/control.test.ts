@@ -429,7 +429,7 @@ describe('Control Nodes', () => {
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.value).toEqual([]);
     expect(loopOutput.scopeFrame).toBeUndefined();
-    expect(`${evald}`).toBe('');
+    expect(await renderNodeToString(root, new Context())).toBe('');
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
@@ -459,9 +459,9 @@ describe('Control Nodes', () => {
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
 
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context);
 
-      expect(`${evald}`).toBe('');
+      expect(css).toBe('');
       expect(shallowMarkerBodyClones).toBe(0);
     } finally {
       Rules.prototype.clone = originalClone;
@@ -485,7 +485,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput.scopeFrame).toBeUndefined();
     expect(firstChild).not.toBeInstanceOf(Rules);
-    expect(`${evald}`).toContain('item: a');
+    expect(await renderNodeToString(root, new Context())).toContain('item: a');
   });
 
   it('builds $for iteration eval surfaces without calling Rules.clone()', async () => {
@@ -512,9 +512,9 @@ describe('Control Nodes', () => {
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
 
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context);
 
-      expect(`${evald}`).toContain('item: a');
+      expect(css).toContain('item: a');
       expect(clonedLoopRules).toBe(0);
       expect(itemDecl.parent).toBe(loopRules);
     } finally {
@@ -539,8 +539,9 @@ describe('Control Nodes', () => {
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.value).toHaveLength(2);
     expect(loopOutput.scopeFrame).toBeUndefined();
-    expect(`${evald}`).toContain('item: a');
-    expect(`${evald}`).toContain('item: b');
+    const css = await renderNodeToString(root, new Context());
+    expect(css).toContain('item: a');
+    expect(css).toContain('item: b');
   });
 
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
