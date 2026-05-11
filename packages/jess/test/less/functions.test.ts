@@ -56,7 +56,7 @@ const makeTmpDir = () => {
   return dir;
 };
 
-describe.todo('Functions', () => {
+describe('Functions', () => {
   afterEach(() => {
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -69,7 +69,7 @@ describe.todo('Functions', () => {
     }
   });
 
-  describe.todo('Built-in Color Functions', () => {
+  describe('Built-in Color Functions', () => {
     it('should support Less harness custom functions through less-compat registry setup', async () => {
       const compilerWithCompatFunctions = new Compiler({
         compile: {
@@ -95,7 +95,7 @@ describe.todo('Functions', () => {
       fs.writeFileSync(lessPath, lessCode, 'utf8');
 
       const { tree, context } = await compilerWithCompatFunctions.compile(lessPath);
-      const css = tree.toString({ context });
+      const css = await tree.render(context);
       expect(css).toContain('color: #660000');
       expect(css).toContain('width: 16');
       expect(css).toContain('border-width: 5');
@@ -134,7 +134,7 @@ describe.todo('Functions', () => {
       });
 
       const { tree, context } = await secondCompiler.compile(secondLessPath);
-      const css = tree.toString({ context });
+      const css = await tree.render(context);
       expect(css).toContain('color: #660000');
       expect(css).toContain('width: 16');
       expect(css).toContain('border-width: 5');
