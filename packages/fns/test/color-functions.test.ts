@@ -14,6 +14,18 @@ import hsl from '../src/less/hsl.js';
 import hsla from '../src/less/hsla.js';
 import argb from '../src/less/argb.js';
 
+type InternalFunction = {
+  call(thisArg: unknown): unknown;
+};
+
+function getInternalFunction(fn: object): InternalFunction {
+  const internal = Reflect.get(fn, '_internal');
+  if (typeof internal !== 'function') {
+    throw new TypeError('Expected defineFunction proxy to expose _internal');
+  }
+  return internal;
+}
+
 describe('Color Functions', () => {
   describe('RGB Function', () => {
     it('should handle absolute RGB values', async () => {
@@ -361,6 +373,34 @@ describe('Color Functions', () => {
       expect(result.toTrimmedString()).toBe('#1affeeaa');
     });
 
+    it('should generate argb output without cloning the input color', async () => {
+      const originalClone = Color.prototype.clone;
+      let cloneCalls = 0;
+      Color.prototype.clone = function countCloneCalls(
+        this: Color,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        cloneCalls++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const context = new Context();
+        const input = new Color({
+          rgb: [255, 238, 170],
+          alpha: 0.1
+        });
+        const before = input.toTrimmedString();
+        const result = await callWithContext(context, argb, input);
+
+        expect(result.toTrimmedString()).toBe('#1affeeaa');
+        expect(input.toTrimmedString()).toBe(before);
+        expect(cloneCalls).toBe(0);
+      } finally {
+        Color.prototype.clone = originalClone;
+      }
+    });
+
     it('should force functional hsla output when passed a hex color', async () => {
       const context = new Context();
       const result = await callWithContext(context, hsla, new Color('#5F59'));
@@ -506,7 +546,7 @@ describe('Color Functions', () => {
         };
 
         // Call the internal function directly
-        const rgbInternal = (rgb as any)._internal;
+        const rgbInternal = getInternalFunction(rgb);
         const result = await rgbInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -547,7 +587,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const rgbInternal = (rgb as any)._internal;
+        const rgbInternal = getInternalFunction(rgb);
         const result = await rgbInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -590,7 +630,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const rgbInternal = (rgb as any)._internal;
+        const rgbInternal = getInternalFunction(rgb);
         const result = await rgbInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -619,7 +659,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const hslInternal = (hsl as any)._internal;
+        const hslInternal = getInternalFunction(hsl);
         const result = await hslInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -654,7 +694,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const hslInternal = (hsl as any)._internal;
+        const hslInternal = getInternalFunction(hsl);
         const result = await hslInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -695,7 +735,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const hslInternal = (hsl as any)._internal;
+        const hslInternal = getInternalFunction(hsl);
         const result = await hslInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);

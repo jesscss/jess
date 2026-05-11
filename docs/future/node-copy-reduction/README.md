@@ -271,6 +271,11 @@ touching production code.
     value rendering on the eval/render path instead of calling source
     serializers directly. `Quoted` and `Any` stay raw because Less string and
     asset helpers consume their literal value forms.
+- `packages/fns/src/less/argb.ts`
+  - `argb()` now constructs its generated ARGB color directly instead of
+    cloning the input color and mutating the clone's `value.node`; the input
+    color remains unchanged and no `Color.clone()` call is needed for this
+    generated output.
 - `packages/jess/src/index.ts`
   - `postEvalVisitor` is a compatibility hook name for pre-render visitors:
     compiler tests prove it runs after eval and before serialization, and
