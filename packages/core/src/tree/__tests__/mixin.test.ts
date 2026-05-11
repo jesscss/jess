@@ -980,7 +980,7 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       expect(Reflect.has(result, 'sourceParent')).toBe(false);
-      const css = result.toString();
+      const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
       expect(css).toContain('sub-scope-only: inside;');
