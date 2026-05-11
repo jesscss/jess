@@ -35,6 +35,9 @@ it is for current direction and next seams, not a historical pass log.
   `Compiler.renderToResult(...)`, so the fixture baseline exercises the awaited
   eval/render API instead of compiling a tree and then calling
   `tree.toString({ context })` in the test harness.
+- The remaining Less helper tests that compare generated CSS now call public
+  render APIs (`render(...)`, `renderString(...)`, or `renderToResult(...)`)
+  instead of compiling a tree and manually serializing it.
 - Active public compiler coverage now proves `render(...)`, `renderString(...)`,
   and `renderToResult(...)` preserve root-owned output such as first charset,
   hoisted CSS imports, and final newline behavior through the render bridge.

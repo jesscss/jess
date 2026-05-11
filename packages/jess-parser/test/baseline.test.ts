@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Parser } from '../src/index.js';
-import { isNode, N } from '@jesscss/core';
+import { isNode, N, serializeTypes } from '@jesscss/core';
 import { assertValidTree } from './assert-valid-tree.js';
 
 describe('jess-parser (baseline)', () => {
@@ -24,7 +24,7 @@ describe('jess-parser (baseline)', () => {
     assertValidTree(result.tree);
     // VarDeclarations are invisible in CSS output by design; check AST directly
     const rules = isNode(result.tree, N.Rules) ? result.tree : null;
-    expect(rules?.data.some(n => isNode(n, N.VarDeclaration))).toBe(true);
+    expect(rules?.value.some(n => isNode(n, N.VarDeclaration))).toBe(true);
   });
 
   it('parses dollar expression in value', () => {
@@ -33,7 +33,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$foo');
+    expect(result.tree.toString()).toContain('$foo');
   });
 
   it('parses dollar expression with property access', () => {
@@ -42,8 +42,8 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$foo');
-    expect(String(result.tree)).toContain('bar');
+    expect(result.tree.toString()).toContain('$foo');
+    expect(result.tree.toString()).toContain('bar');
   });
 
   it('parses dollar expression with function call', () => {
@@ -52,7 +52,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$foo');
+    expect(result.tree.toString()).toContain('$foo');
   });
 
   it('parses dollar expression with array access', () => {
@@ -61,7 +61,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$foo');
+    expect(result.tree.toString()).toContain('$foo');
   });
 
   it('parses parenthesized dollar expression', () => {
@@ -70,7 +70,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$(1 + 1)');
+    expect(result.tree.toString()).toContain('$(1 + 1)');
   });
 
   it('parses mixin definition', () => {
@@ -81,7 +81,7 @@ describe('jess-parser (baseline)', () => {
     assertValidTree(result.tree);
     // Mixins are invisible in CSS output by design; check AST directly
     const rules = isNode(result.tree, N.Rules) ? result.tree : null;
-    expect(rules?.data.some(n => isNode(n, N.Mixin))).toBe(true);
+    expect(rules?.value.some(n => isNode(n, N.Mixin))).toBe(true);
   });
 
   it('parses mixin call expression', () => {
@@ -90,7 +90,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$ > .mixin()');
+    expect(result.tree.toString()).toContain('$ > .mixin()');
   });
 
   it('parses $if conditional', () => {
@@ -99,7 +99,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$if');
+    expect(result.tree.toString()).toContain('$if');
   });
 
   it('parses $if with $else', () => {
@@ -111,8 +111,8 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$if');
-    expect(String(result.tree)).toContain('$else');
+    expect(result.tree.toString()).toContain('$if');
+    expect(result.tree.toString()).toContain('$else');
   });
 
   it('parses @-compose', () => {
@@ -121,8 +121,14 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('@-compose');
-    expect(String(result.tree)).toContain('./theme.jess');
+    expect(serializeTypes(result.tree)).toContainString('(StyleImport');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.StyleImport));
+    expect(isNode(imported, N.StyleImport)).toBe(true);
+    if (isNode(imported, N.StyleImport)) {
+      expect(imported.options.type).toBe('compose');
+      expect(imported.value.path.valueOf()).toBe('./theme.jess');
+    }
   });
 
   it('parses @-compose with namespace', () => {
@@ -131,8 +137,13 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('@-compose');
-    expect(String(result.tree)).toContain('theme');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.StyleImport));
+    expect(isNode(imported, N.StyleImport)).toBe(true);
+    if (isNode(imported, N.StyleImport)) {
+      expect(imported.options.type).toBe('compose');
+      expect(imported.options.namespace).toBe('theme');
+    }
   });
 
   it('parses @-from with namespace', () => {
@@ -141,8 +152,13 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('@-from');
-    expect(String(result.tree)).toContain('import * as tokens');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(imported, N.JsImport)).toBe(true);
+    if (isNode(imported, N.JsImport)) {
+      expect(imported.value.path.valueOf()).toBe('./tokens.js');
+      expect(imported.options.namespace).toBe('tokens');
+    }
   });
 
   it('parses @-from with named imports (parens)', () => {
@@ -151,9 +167,13 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('@-from');
-    expect(String(result.tree)).toContain('primary');
-    expect(String(result.tree)).toContain('secondary');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(imported, N.JsImport)).toBe(true);
+    if (isNode(imported, N.JsImport)) {
+      expect(imported.value.imports).toContain('primary');
+      expect(imported.value.imports).toContain('secondary');
+    }
   });
 
   it('parses @-from with named imports (braces)', () => {
@@ -162,8 +182,12 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('@-from');
-    expect(String(result.tree)).toContain('primary');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(imported, N.JsImport)).toBe(true);
+    if (isNode(imported, N.JsImport)) {
+      expect(imported.value.imports).toContain('primary');
+    }
   });
 
   it('parses @-export', () => {
@@ -172,8 +196,13 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('@-export');
-    expect(String(result.tree)).toContain('./theme.jess');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.StyleImport));
+    expect(isNode(imported, N.StyleImport)).toBe(true);
+    if (isNode(imported, N.StyleImport)) {
+      expect(imported.options.importOptions?.forward).toBe(true);
+      expect(imported.value.path.valueOf()).toBe('./theme.jess');
+    }
   });
 
   it('parses collection', () => {
@@ -184,10 +213,10 @@ describe('jess-parser (baseline)', () => {
     assertValidTree(result.tree);
     // VarDeclarations are invisible in CSS output; verify collection via AST
     const rules = isNode(result.tree, N.Rules) ? result.tree : null;
-    const varDecl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    const varDecl = rules?.value.find(n => isNode(n, N.VarDeclaration));
     expect(isNode(varDecl, N.VarDeclaration)).toBe(true);
     if (isNode(varDecl, N.VarDeclaration)) {
-      expect(isNode(varDecl.data.value, N.Collection)).toBe(true);
+      expect(isNode(varDecl.value.value, N.Collection)).toBe(true);
     }
   });
 
@@ -199,10 +228,10 @@ describe('jess-parser (baseline)', () => {
     assertValidTree(result.tree);
     // Mixins are invisible in CSS output; verify guard via AST
     const rules = isNode(result.tree, N.Rules) ? result.tree : null;
-    const mixin = rules?.data.find(n => isNode(n, N.Mixin));
+    const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
     if (isNode(mixin, N.Mixin)) {
-      expect(mixin.data.guard).toBeDefined();
+      expect(mixin.value.guard).toBeDefined();
     }
   });
 
@@ -212,7 +241,7 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$ > #ns > .mixin()');
+    expect(result.tree.toString()).toContain('$ > #ns > .mixin()');
   });
 
   it('parses dollar expression at root level', () => {
@@ -221,6 +250,6 @@ describe('jess-parser (baseline)', () => {
     expect(result.lexerResult.errors.length).toBe(0);
     expect(result.errors.length).toBe(0);
     assertValidTree(result.tree);
-    expect(String(result.tree)).toContain('$foo');
+    expect(result.tree.toString()).toContain('$foo');
   });
 });
