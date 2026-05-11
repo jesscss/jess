@@ -2,6 +2,7 @@ import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Any }
 import { percentOf, toNumber, splitSequence, normalizeHue } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
 import { collectRawDimensions } from '../util/raw-color-args.js';
+import { formatColorOutput } from '../util/color-output.js';
 
 function hueChannelFromNode(node: unknown, hueValue: number): number | [number, string] {
   if (!(node instanceof Dimension)) {
@@ -200,30 +201,22 @@ const hsl = defineFunction(
       clampedHslColor.value.node = undefined;
       return clampedHslColor;
     } else if (args.length === 1 && args[0] instanceof Color) {
-      // [Color] - clone the color and set format to HSL
+      // [Color] - output the color in HSL format
       const [inputColor] = args;
-      const cloned = inputColor.clone();
-      cloned.options.format = ColorFormat.HSL;
-      cloned.options.modernSyntax = modernSyntax;
-      cloned.value.node = undefined;
-      return cloned;
+      return formatColorOutput(inputColor, ColorFormat.HSL, modernSyntax);
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
-      // [Color, Dimension?] - clone color, set format to HSL, and optionally set alpha
+      // [Color, Dimension?] - output the color in HSL format and optionally set alpha
       const [inputColor] = args;
-      const cloned = inputColor.clone();
-      cloned.options.format = ColorFormat.HSL;
-      cloned.options.modernSyntax = modernSyntax;
-      cloned.value.node = undefined;
-
+      let alphaChannel = inputColor.value.alpha;
       if (args[1] !== undefined) {
         // callWithContext can still surface unitless numeric nodes here, so
         // coerce the overload the same way the numeric branches do.
         const alpha = coerceNumericArg(args[1]);
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
-        cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
+        alphaChannel = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
       }
 
-      return cloned;
+      return formatColorOutput(inputColor, ColorFormat.HSL, modernSyntax, alphaChannel);
     } else {
       throw new Error('Invalid arguments for hsl function');
     }

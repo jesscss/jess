@@ -276,6 +276,12 @@ touching production code.
     cloning the input color and mutating the clone's `value.node`; the input
     color remains unchanged and no `Color.clone()` call is needed for this
     generated output.
+- `packages/fns/src/util/color-output.ts`
+  - `rgb(color)` / `rgb(color, alpha)` and `hsl(color)` /
+    `hsl(color, alpha)` now share a generated color-output helper instead of
+    cloning the input color and mutating its format, node, and alpha fields.
+    Focused tests prove the output is a separate color instance and the
+    overloads make zero `Color.clone()` calls.
 - `packages/fns/src/util/relative-color.ts`
   - Relative-color channel substitution now constructs generated
     `Call`/`Operation`/`List`/`Sequence` wrappers directly instead of cloning
@@ -373,6 +379,10 @@ Current scan note: outside clone infrastructure and key-set/bitset copies, the
 remaining production deep-clone surfaces are explicit and should not be treated
 as generic low-hanging fruit:
 
+- `packages/fns/src/less/extract.ts` still returns an owned, trivia-detached
+  result surface for the extracted item. That should eventually move to a
+  reusable-leaf copy helper or function-result ownership API, but it is not the
+  same routine clone-and-mutate pattern removed from color output.
 - `packages/core/src/tree/ruleset.ts` no longer has the defensive
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper must return a selector-shaped node or throw.

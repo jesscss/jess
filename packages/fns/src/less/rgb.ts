@@ -9,6 +9,7 @@ import {
 import { percentOf, toNumber, splitSequence } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateRGBChannelReference } from '../util/relative-color.js';
 import { collectRawDimensions } from '../util/raw-color-args.js';
+import { formatColorOutput } from '../util/color-output.js';
 
 function alphaChannelFromNode(node: unknown, alphaValue: number): number | [number, string] {
   if (!(node instanceof Dimension)) {
@@ -65,6 +66,14 @@ function getRawRgbChannels(
   ];
 }
 
+function coerceRgbNumber(arg: unknown): number {
+  const number = Number(arg);
+  if (Number.isNaN(number)) {
+    throw new Error('Invalid arguments for rgb function');
+  }
+  return number;
+}
+
 const rgb = defineFunction(
   'rgb',
   async function(this: FunctionThis, ...args: any[]) {
@@ -76,8 +85,6 @@ const rgb = defineFunction(
         // Evaluate the origin color
         const originColor = await evaluateOriginColor(relativeData.originColor, this.context);
 
-        // Extract channel values from origin color
-        const [originR, originG, originB] = originColor._rgb;
         const originAlpha = originColor._alpha;
 
         // Evaluate channel references
@@ -178,10 +185,10 @@ const rgb = defineFunction(
     // Handle overloaded signatures - check Dimension signature first (most common)
     if (args.length >= 3 && !(args[0] instanceof Color)) {
       // [Dimension, Dimension, Dimension, Dimension?] - r, g, b, optional alpha
-      let r: number = args[0] as number;
-      let g: number = args[1] as number;
-      let b: number = args[2] as number;
-      let alpha: number = args[3] !== undefined ? (args[3] as number) : 1;
+      let r = coerceRgbNumber(args[0]);
+      let g = coerceRgbNumber(args[1]);
+      let b = coerceRgbNumber(args[2]);
+      let alpha = args[3] !== undefined ? coerceRgbNumber(args[3]) : 1;
       const [rawR, rawG, rawB] = getRawRgbChannels(this?.rawArgs, r, g, b);
       const alphaChannel = getRawAlphaChannel(this?.rawArgs, alpha, args[3] !== undefined);
 
@@ -196,29 +203,21 @@ const rgb = defineFunction(
 
       return color;
     } else if (args.length === 1 && args[0] instanceof Color) {
-      // [Color] - clone the color and set format to RGB
-      const inputColor = args[0] as Color;
-      const cloned = inputColor.clone();
-      cloned.options.format = ColorFormat.RGB;
-      cloned.options.modernSyntax = modernSyntax;
-      cloned.value.node = undefined;
-      return cloned;
+      // [Color] - output the color in RGB format
+      const inputColor = args[0];
+      return formatColorOutput(inputColor, ColorFormat.RGB, modernSyntax);
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
-      // [Color, Dimension?] - clone color, set format to RGB, and optionally set alpha
-      const inputColor = args[0] as Color;
-      const cloned = inputColor.clone();
-      cloned.options.format = ColorFormat.RGB;
-      cloned.options.modernSyntax = modernSyntax;
-      cloned.value.node = undefined;
-
+      // [Color, Dimension?] - output the color in RGB format and optionally set alpha
+      const inputColor = args[0];
+      let alphaChannel = inputColor.value.alpha;
       if (args[1] !== undefined) {
         // args[1] is already converted by percentOf(1), toNumber() conversion plugins
-        const alpha = args[1] as number;
+        const alpha = coerceRgbNumber(args[1]);
         const normalizedAlpha = Math.max(0, Math.min(1, alpha));
-        cloned.value.alpha = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
+        alphaChannel = getRawAlphaChannel(this?.rawArgs, normalizedAlpha, args[1] !== undefined);
       }
 
-      return cloned;
+      return formatColorOutput(inputColor, ColorFormat.RGB, modernSyntax, alphaChannel);
     } else {
       throw new Error('Invalid arguments for rgb function');
     }
