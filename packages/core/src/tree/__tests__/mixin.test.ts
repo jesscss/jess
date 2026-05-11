@@ -2533,9 +2533,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('color: red;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
         expect(guardCopies).toBe(0);
       } finally {
         Bool.prototype.copy = originalCopy;
@@ -2611,9 +2610,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('color: red;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
@@ -2914,9 +2912,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-
-        expect(evald.toString()).toContain('color: red;');
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
