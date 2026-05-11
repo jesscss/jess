@@ -2,6 +2,7 @@ import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node,
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -131,8 +132,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -211,8 +211,7 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = evald.toString({ context });
+        const css = await renderNodeToString(root, context, { context });
 
         expect(css).toContain('/**/');
         expect(css).toContain('color: red;');
@@ -243,8 +242,7 @@ describe('Mixin', () => {
       const root = rules([mixinRuleset, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .my-mixin {
@@ -326,8 +324,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -370,8 +367,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -446,8 +442,7 @@ describe('Mixin', () => {
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       // @hover-background = @background = blue
       // Jess preserves CSS nesting: &:hover stays nested, not compiled to .table-primary:hover
@@ -510,8 +505,7 @@ describe('Mixin', () => {
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-hover');
       expect(css).toContain('&:hover');
@@ -547,8 +541,7 @@ describe('Mixin', () => {
       const root = rules([tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('background-color: blue');
@@ -680,8 +673,7 @@ describe('Mixin', () => {
       const root = rules([tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('.table-hover');
@@ -721,8 +713,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('background-color: blue');
@@ -765,8 +756,7 @@ describe('Mixin', () => {
       const mainRoot = rules([importedRoot, component]);
       context.root = mainRoot;
 
-      const evald = await mainRoot.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(mainRoot, context);
 
       expect(css).toBeString(`
         .component {
@@ -808,8 +798,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .btn-primary {
@@ -867,8 +856,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.heightIsSet');
       expect(css).toContain('height: 1024px;');
@@ -897,8 +885,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.tiny-scope');
       expect(css).toContain('color: blue;');
@@ -939,8 +926,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
@@ -1251,8 +1237,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -1754,8 +1739,7 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = evald.toString();
+        const css = await renderNodeToString(root, context);
 
         expect(css).toBeString(`
           .test {
@@ -2390,8 +2374,7 @@ describe('Mixin', () => {
 
       expect(found).toHaveLength(3);
 
-      const evald = await tree.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(tree, context, { context });
 
       expect(css).toContain('#guarded-caller {');
       expect(css).toContain('guarded: namespace;');
@@ -2520,8 +2503,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -2696,8 +2678,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -2737,8 +2718,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: black;');
@@ -2812,8 +2792,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: black;');
@@ -2890,8 +2869,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -3009,8 +2987,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: black;');
@@ -3060,8 +3037,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .match {
@@ -3110,8 +3086,7 @@ describe('Mixin', () => {
       const root = rules([baseMixin, wrapperMixin, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -3166,8 +3141,7 @@ describe('Mixin', () => {
       const root = rules([redMixin, blueMixin, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -3206,8 +3180,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -3283,8 +3256,7 @@ describe('Mixin', () => {
         })
       ]);
       context.opts.collapseNesting = true;
-      let evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
           color: cyan;
@@ -3342,8 +3314,7 @@ describe('Mixin', () => {
           ])
         })
       ]);
-      let evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .rule {
           background-color: cyan;
@@ -3374,8 +3345,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .foo {
@@ -3437,8 +3407,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one :is(.foo)');
       expect(css).toContain('.two :is(.bar)');
@@ -3488,8 +3457,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toContain('.one {\n  width: calc(20 * 1px * 1em);');
       expect(css).toContain('.two {\n  width: calc(30 * 1px * 1em);');
@@ -3542,8 +3510,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .foo');
       expect(css).toContain('.two .bar');
@@ -3599,8 +3566,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .base.foo');
       expect(css).toContain('.two .base.bar');
@@ -3657,8 +3623,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .base .foo');
       expect(css).toContain('.two .base .bar');
@@ -3719,8 +3684,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .foo');
       expect(css).toContain('.two .bar');
@@ -3773,8 +3737,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: (foo);');
       expect(css).toContain('.two {\n  value: (bar);');
@@ -3820,8 +3783,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: "foo";');
       expect(css).toContain('.two {\n  value: "bar";');
@@ -3867,8 +3829,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: foo tail;');
       expect(css).toContain('.two {\n  value: bar tail;');
@@ -3914,8 +3875,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: foo;');
       expect(css).toContain('.two {\n  value: bar;');
@@ -3966,8 +3926,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  prop-foo: ok;');
       expect(css).toContain('.two {\n  prop-bar: ok;');
@@ -4051,8 +4010,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
       expect(css).toContain('.one {\n  value: foo;\n}');
       expect(css).toContain('.two {\n  value: bar;\n}');
       expect(css).not.toContain('.inner-foo()');
@@ -4096,8 +4054,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one-suffix');
       expect(css).toContain('.two-suffix');
@@ -4142,8 +4099,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  color: red;\n}');
       expect(css).toContain('.two {\n  color: red;\n}');
@@ -4195,8 +4151,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: false });
+      const css = await renderNodeToString(node, context, { collapseNesting: false });
 
       expect(css).toContain('.one {\n  @media screen {\n    value: screen;');
       expect(css).toContain('.two {\n  @media print {\n    value: print;');
@@ -4239,8 +4194,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .b .bb {
@@ -4336,8 +4290,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(root, context, { collapseNesting: true });
 
       expect(css).toBeString(`
         .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
@@ -4390,8 +4343,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -4427,8 +4379,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -4464,8 +4415,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -4507,8 +4457,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -4545,8 +4494,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -4583,8 +4531,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -4644,8 +4591,7 @@ describe('Mixin', () => {
       const root = rules([mixinWithoutRest, mixinWithRest, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -4788,8 +4734,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('gender: "Outer";');
@@ -4844,8 +4789,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(root, context, { collapseNesting: true });
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('.person {\n}');
@@ -4901,8 +4845,7 @@ describe('Mixin', () => {
       context.root = root;
       context.opts.collapseNesting = true;
 
-      const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(root, context, { context });
 
       expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
       expect(css).not.toContain('mi-test-d .person {\n}');
@@ -4963,8 +4906,7 @@ describe('Mixin', () => {
       context.root = tree;
       context.opts.collapseNesting = true;
 
-      const evald = await tree.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(tree, context, { context });
 
       expect(css).toBeString(`
         .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
