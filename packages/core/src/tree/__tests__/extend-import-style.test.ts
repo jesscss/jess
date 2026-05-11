@@ -760,9 +760,8 @@ describe('Style import extend behavior', () => {
       }
       const storedSelector = firstRuleset.value.selector;
 
-      const evald = await createReferenceExtendNode().eval(localContext);
-      const css = evald.toString({ context: localContext });
-      const cssAgain = evald.toString({ context: localContext });
+      const css = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
+      const cssAgain = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
 
       expect(css).toContain('.visible {');
       expect(cssAgain).toBe(css);
