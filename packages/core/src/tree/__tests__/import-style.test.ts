@@ -1395,7 +1395,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
       const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
@@ -1487,7 +1487,7 @@ describe('Style import', () => {
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
       const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
@@ -1550,7 +1550,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
       expect(css).toContain('.base');
@@ -1628,8 +1628,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.addon');
       expect(css).toContain('.dark {');
@@ -1688,8 +1687,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.addon');
       expect(css).toContain('.consumer {');
