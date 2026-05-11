@@ -276,6 +276,12 @@ touching production code.
     cloning the input color and mutating the clone's `value.node`; the input
     color remains unchanged and no `Color.clone()` call is needed for this
     generated output.
+- `packages/fns/src/util/relative-color.ts`
+  - Relative-color channel substitution now constructs generated
+    `Call`/`Operation`/`List`/`Sequence` wrappers directly instead of cloning
+    source expression containers and mutating their children. The source
+    channel expression stays canonical while the generated calc expression owns
+    the substituted channel values.
 - `packages/jess/src/index.ts`
   - `postEvalVisitor` is a compatibility hook name for pre-render visitors:
     compiler tests prove it runs after eval and before serialization, and
