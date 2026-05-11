@@ -4,6 +4,7 @@ import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -20,7 +21,7 @@ describe('Rule', () => {
   beforeEach(() => {
     context = new Context();
   });
-  it('should serialize to CSS', () => {
+  it('should serialize to CSS', async () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),
       rules: rules([
@@ -29,7 +30,7 @@ describe('Rule', () => {
       ])
     });
     let nodes = rules([node, node]);
-    expect(`${nodes}`).toBeString(`
+    expect(nodes.toTrimmedString()).toBeString(`
       foo {
         border: 1px solid black;
         color: #eee;
@@ -39,7 +40,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('keeps authored literal and interpolated sibling rulesets separate without collapse', () => {
+  it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([el('.foo')])]),
@@ -62,7 +63,7 @@ describe('Rule', () => {
       })
     ]);
 
-    expect(`${node}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       .foo {
         a: 1;
       }
