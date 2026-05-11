@@ -46,11 +46,10 @@ describe.todo('Bootstrap 4 OOM regression', () => {
     const start = performance.now();
 
     try {
-      const { tree, context } = await compiler.compile(bootstrapFile, {
+      const css = await compiler.render(bootstrapFile, {
         suppressWarnings: true,
         breakOnError: false
       });
-      const css = tree.toString({ collapseNesting: context.opts.collapseNesting, context });
       expect(css.length).toBeGreaterThan(0);
     } catch (err: any) {
       const ms = performance.now() - start;

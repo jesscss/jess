@@ -33,8 +33,7 @@ async function compileBootstrapFile(file: string): Promise<string> {
   const tmpFile = path.join(bsRoot, `__test_${file}.less`);
   fs.writeFileSync(tmpFile, `${preamble}\n@import "${file}";`);
   try {
-    const result = await compiler.compile(tmpFile, { suppressWarnings: true, breakOnError: false });
-    return result.tree.toString({ collapseNesting: result.context.opts.collapseNesting, context: result.context });
+    return await compiler.render(tmpFile, { suppressWarnings: true, breakOnError: false });
   } finally {
     try {
       fs.unlinkSync(tmpFile);

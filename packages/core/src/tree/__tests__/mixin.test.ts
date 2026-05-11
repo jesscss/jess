@@ -4934,7 +4934,7 @@ describe('Mixin', () => {
           decl({ name: 'background-color', value: any('white') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
         myMixin() {
           color: black;
           background-color: white;
@@ -4954,7 +4954,7 @@ describe('Mixin', () => {
           decl({ name: 'background-color', value: any('white') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) {
           color: black;
           background-color: white;
@@ -4975,7 +4975,7 @@ describe('Mixin', () => {
           decl({ name: 'background-color', value: any('white') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) when ($($a) = $($b)) {
           color: black;
           background-color: white;

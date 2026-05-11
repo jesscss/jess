@@ -55,8 +55,8 @@ describe.todo('debug extend pipeline', () => {
       }
     });
 
-    const lessOnlyCompiled = await lessOnly.compile(lessPath, { outputFile: testCase.expectedFile });
-    const withCompatCompiled = await withCompat.compile(lessPath, { outputFile: testCase.expectedFile });
+    const lessOnlyRender = await lessOnly.render(lessPath, { outputFile: testCase.expectedFile });
+    const withCompatRender = await withCompat.render(lessPath, { outputFile: testCase.expectedFile });
     const lessOnlyRendered = await lessOnly.renderString(source, {
       filePath: lessPath,
       config: testCase.config
@@ -65,16 +65,12 @@ describe.todo('debug extend pipeline', () => {
       filePath: lessPath,
       config: testCase.config
     });
-    const allLessStyleCompiled = await allLessStyle.compile(lessPath, { outputFile: testCase.expectedFile });
+    const allLessStyleRender = await allLessStyle.render(lessPath, { outputFile: testCase.expectedFile });
 
-    const lessOnlyCompileCss = lessOnlyCompiled.tree.toString({ context: lessOnlyCompiled.context });
-    const withCompatCompileCss = withCompatCompiled.tree.toString({ context: withCompatCompiled.context });
-    const allLessStyleCompileCss = allLessStyleCompiled.tree.toString({ context: allLessStyleCompiled.context });
-
-    expect.soft(lessOnlyCompileCss).toBe(expected);
-    expect.soft(withCompatCompileCss).toBe(expected);
+    expect.soft(lessOnlyRender).toBe(expected);
+    expect.soft(withCompatRender).toBe(expected);
     expect.soft(lessOnlyRendered).toBe(expected);
     expect.soft(withCompatRendered).toBe(expected);
-    expect.soft(allLessStyleCompileCss).toBe(expected);
+    expect.soft(allLessStyleRender).toBe(expected);
   });
 });
