@@ -117,7 +117,7 @@ describe('url', () => {
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
     const resolved = await urlNode.resolve(context);
 
-    expect(`${resolved}`).toBe('url("image.png")');
+    expect(resolved.toTrimmedString()).toBe('url("image.png")');
     expect(urlNode.evaluated).toBe(false);
     expect(urlNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -137,7 +137,7 @@ describe('url', () => {
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
     const resolved = await urlNode.resolve(context);
 
-    expect(`${resolved}`).toBe('url("image.png")');
+    expect(resolved.render(context)).toBe('url("image.png")');
     expect(urlNode.toTrimmedString()).toBe('url("$asset")');
   });
 });
