@@ -567,7 +567,7 @@ describe('Extend Roots Registry', () => {
       expect(evald).toBeDefined();
 
       // Root .base unchanged (no merge across @media). Extend only alters selectors; .child keeps only its own decls.
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .base {
           color: red;
@@ -612,7 +612,7 @@ describe('Extend Roots Registry', () => {
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .base {
           color: red;
@@ -657,7 +657,7 @@ describe('Extend Roots Registry', () => {
       const evald = await node.eval(context);
       expect(evald).toBeDefined();
 
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .base {
           color: red;
