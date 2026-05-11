@@ -30,6 +30,7 @@ import {
   Declaration
 } from '../index.js';
 import { serializeTypes } from '../util/serialize-types.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 describe('extend integration (eval -> toString)', () => {
   it('exact extend matches a single OR-branch (does not require all branches)', async () => {
@@ -73,8 +74,7 @@ describe('extend integration (eval -> toString)', () => {
     ]);
 
     const context = new Context({ collapseNesting: false });
-    const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toBeString(`
       :is(.replace.replace, .c.replace + .replace) .replace,
@@ -124,8 +124,7 @@ describe('extend integration (eval -> toString)', () => {
     // Step 0
     {
       const context = new Context({ collapseNesting: false });
-      const evald = await makeRoot(false).eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(makeRoot(false), context, { context });
       expect(css).toBeString(`
         .replace.replace,
         .c.replace + .replace {
@@ -140,8 +139,7 @@ describe('extend integration (eval -> toString)', () => {
     // Step 1 (expected Less output, from `tests-unit/extend-selector/extend-selector.css`)
     {
       const context = new Context({ collapseNesting: false });
-      const evald = await makeRoot(true).eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(makeRoot(true), context, { context });
       expect(css).toBeString(`
         :is(.replace, .rep_ace):is(.replace, .rep_ace),
         .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
@@ -223,8 +221,7 @@ describe('extend integration (eval -> toString)', () => {
 
     try {
       const context = new Context({ collapseNesting: false });
-      const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(root, context, { context });
 
       expect(extendingLeafClones).toBe(0);
       expect(css).toBeString(`
@@ -286,9 +283,8 @@ describe('extend integration (eval -> toString)', () => {
       ]);
 
       const context = new Context({ collapseNesting: false });
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context, { context });
       expect(sourceLeafClones).toBe(0);
-      const css = evald.toString({ context });
 
       expect(css).toBeString(`
         .target,
@@ -355,9 +351,9 @@ describe('extend integration (eval -> toString)', () => {
       ]);
 
       const context = new Context({ collapseNesting: false });
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context, { context });
       expect(sourceLeafClones).toBe(0);
-      expect(evald.toString({ context })).toBeString(`
+      expect(css).toBeString(`
         .target,
         :is(.parent-a, .parent-b) .child {
           background: red;
