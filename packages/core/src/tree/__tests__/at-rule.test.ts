@@ -15,6 +15,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -340,8 +341,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -387,8 +387,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -453,8 +452,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -519,8 +517,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -556,8 +553,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         [popover]:popover-open {
@@ -583,8 +579,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         .box {
@@ -622,8 +617,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @keyframes "textscale" {
@@ -669,8 +663,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @supports (property: value) {
@@ -701,8 +694,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @font-face {
@@ -743,8 +735,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @media screen {
@@ -813,8 +804,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @supports (property: value) {
@@ -893,8 +883,7 @@ describe('AtRule', () => {
 
       const rootRules = rules([mixinDef, callSite]);
       context.root = rootRules;
-      const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(rootRules, context);
 
       expect(css).toBeString(`
         .a {
@@ -962,9 +951,9 @@ describe('AtRule', () => {
 
       const explicitRoot = createMixinRoot([dimension([100, 'px'])]);
       context.root = explicitRoot;
-      const explicitEvald = await explicitRoot.eval(context);
+      const explicitCss = await renderNodeToString(explicitRoot, context);
 
-      expect(explicitEvald.toString()).toBeString(`
+      expect(explicitCss).toBeString(`
         .a {
           background: black;
           @media handheld {
@@ -979,9 +968,9 @@ describe('AtRule', () => {
       const defaultContext = new Context();
       const defaultRoot = createMixinRoot();
       defaultContext.root = defaultRoot;
-      const defaultEvald = await defaultRoot.eval(defaultContext);
+      const defaultCss = await renderNodeToString(defaultRoot, defaultContext);
 
-      expect(defaultEvald.toString()).toBeString(`
+      expect(defaultCss).toBeString(`
         .a {
           background: black;
           @media handheld {
@@ -1027,8 +1016,7 @@ describe('AtRule', () => {
       ]);
 
       context.root = node;
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media print {
@@ -1065,8 +1053,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media all and (tv) {
@@ -1104,8 +1091,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media screen and (min-width: 61px) {
@@ -1146,8 +1132,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media screen and (color), projection and (color) {
@@ -1215,8 +1200,7 @@ describe('AtRule', () => {
 
       const rootRules = rules([navJustifiedMixin, callSite]);
       context.root = rootRules;
-      const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(rootRules, context);
 
       expect(css).toBeString(`
         .menu {
@@ -1274,8 +1258,7 @@ describe('AtRule', () => {
 
       const rootRules = rules([navJustified, menu]);
       context.root = rootRules;
-      const evald = await rootRules.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(rootRules, context, { context });
 
       expect(css).toBeString(`
         @media (min-width: 480px) {
@@ -2417,9 +2400,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      /** This represents already eval'd nodes */
-      const evald = await node.eval(context);
-      const serialized = evald.toString({ context });
+      const serialized = await renderNodeToString(node, context, { context });
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`
