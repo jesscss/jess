@@ -232,8 +232,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    const evald = await root.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(root, context)).toBeString(`
       --comment: /* // Not commented out // */;
     `);
   });
@@ -301,8 +300,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       color: red !important;
     `);
   });
@@ -380,8 +378,7 @@ describe('Declaration', () => {
       }, { assign: '+:' })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       background-color: red, foo;
     `);
   });
@@ -407,9 +404,9 @@ describe('Declaration', () => {
     };
 
     try {
-      const evald = await node.eval(context);
+      const css = await renderNodeToString(node, context);
 
-      expect(`${evald}`).toBeString(`
+      expect(css).toBeString(`
         background-color: red, foo;
       `);
       expect(scalarCopies).toBe(0);
@@ -434,8 +431,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       background-color: red, foo;
       background: red, foo;
     `);
@@ -465,8 +461,7 @@ describe('Declaration', () => {
     const child = parent.value[2]!;
     child.parent = parent;
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       background-color: red, foo;
       background: red, foo;
     `);
@@ -492,8 +487,7 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.MergeList })
     ]);
 
-    const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       src: base;
       src: one two, three;
     `);
@@ -530,9 +524,9 @@ describe('Declaration', () => {
     };
 
     try {
-      const evald = await node.eval(context);
+      const css = await renderNodeToString(node, context);
 
-      expect(`${evald}`).toBeString(`
+      expect(css).toBeString(`
         src: one, two, three;
       `);
       expect(srcValueCopies).toBe(0);
