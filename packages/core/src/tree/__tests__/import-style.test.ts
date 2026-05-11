@@ -2256,8 +2256,8 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toBeString(`
         .out {
           color: red;
         }
@@ -2300,8 +2300,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.consumer {');
       expect(css).toContain('background-color: blue;');
@@ -2344,8 +2343,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.consumer {');
       expect(css).toContain('background-color: blue;');
@@ -2403,8 +2401,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -2480,8 +2477,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -2530,8 +2526,8 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      expect(`${evald}`).toContain('@keyframes some-name');
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toContain('@keyframes some-name');
     });
 
     it('import-reference: reference-imported mixins still hoist nested media output', async () => {
@@ -2574,8 +2570,8 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      expect(evald.toString({ context })).toBeString(`
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toBeString(`
         .out {
           color: green;
           test: 340px;
@@ -2630,8 +2626,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.consumer {');
       expect(css).toContain('color: red;');
