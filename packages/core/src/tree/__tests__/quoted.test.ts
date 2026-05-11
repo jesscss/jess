@@ -123,7 +123,7 @@ describe('quoted', () => {
     const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
     const resolved = await quotedNode.resolve(context);
 
-    expect(`${resolved}`).toBe('"hello"');
+    expect(resolved.toTrimmedString()).toBe('"hello"');
     expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -150,7 +150,7 @@ describe('quoted', () => {
     const sourceValue = quotedNode.value;
     const resolved = await quotedNode.resolve(context);
 
-    expect(`${resolved}`).toBe('"say-one, hello"');
+    expect(resolved.render(context)).toBe('"say-one, hello"');
     expect(sourceValue.parent).toBe(quotedNode);
     expect(quotedNode.toTrimmedString()).toBe('"say-one, $message"');
   });
