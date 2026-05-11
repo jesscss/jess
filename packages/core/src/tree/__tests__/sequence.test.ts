@@ -56,7 +56,7 @@ describe('Sequence', () => {
 
     const resolved = await rule.resolve(context);
 
-    expect(`${resolved}`).toBe('10');
+    expect(resolved.toTrimmedString()).toBe('10');
     expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
   });
 
@@ -125,7 +125,7 @@ describe('Sequence', () => {
     ]);
     const resolved = await sequenceNode.resolve(context);
 
-    expect(`${resolved}`).toBe('10 20 30');
+    expect(resolved.toTrimmedString()).toBe('10 20 30');
     expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -153,7 +153,7 @@ describe('Sequence', () => {
     ]);
     const resolved = await node.resolve(context);
 
-    expect(`${resolved}`).toBe('0 one, foo 2');
+    expect(resolved.render(context)).toBe('0 one, foo 2');
     expect(child.parent).toBe(node);
     expect(child.toTrimmedString()).toBe('one, $item');
     expect(node.toTrimmedString()).toBe('0 one, $item 2');
@@ -167,7 +167,7 @@ describe('Sequence', () => {
 
     const result = left.operate(right, '+', context);
 
-    expect(`${result}`).toBe('left right');
+    expect(result.toTrimmedString()).toBe('left right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
   });
@@ -180,7 +180,7 @@ describe('Sequence', () => {
 
     const result = left.operate(right, '+', context);
 
-    expect(`${result}`).toBe('left, right');
+    expect(result.toTrimmedString()).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
   });
@@ -232,7 +232,7 @@ describe('Sequence', () => {
     try {
       const result = seq([any('left')]).operate(seq([any('right')]), '+', context);
 
-      expect(`${result}`).toBe('left right');
+      expect(result.toTrimmedString()).toBe('left right');
       expect(scalarClones).toBe(0);
     } finally {
       Node.prototype.clone = originalClone;
@@ -241,7 +241,7 @@ describe('Sequence', () => {
 
   it('should serialize to a single value', () => {
     let rule = seq([num(10), num(20), num(30)]);
-    expect(`${rule}`).toBe('10 20 30');
+    expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
   it('streams sequence items without capture scaffolding', () => {
