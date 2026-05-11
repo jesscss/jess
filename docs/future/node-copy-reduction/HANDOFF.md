@@ -41,6 +41,14 @@ it is for current direction and next seams, not a historical pass log.
 - Active public compiler coverage now proves `render(...)`, `renderString(...)`,
   and `renderToResult(...)` preserve root-owned output such as first charset,
   hoisted CSS imports, and final newline behavior through the render bridge.
+- Less function helper serialization in `packages/fns` now routes non-raw node
+  values through `node.render(context)` when a render context exists. `Quoted`
+  and `Any` remain raw value exceptions because Less string/function helpers
+  intentionally consume their literal function arguments.
+- Compiler coverage proves the compatibility hook named `postEvalVisitor` runs
+  after eval and before render serialization, including plain typed visitor
+  objects such as `{ declaration(...) { ... } }`, not only objects with a
+  generic `visit(...)` method.
 - `packages/core/src/tree/util/render-buffer.ts` has focused coverage for both
   direct root rendering and the case where the source root resolves to an owned
   root surface; the root serializer exception should stay limited to that
@@ -82,6 +90,7 @@ it is for current direction and next seams, not a historical pass log.
 - The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
   remains the public compatibility hook name, but internally that phase is
   treated as pre-render: visitors run after eval and before serialization.
+  Do not reintroduce a post-string-output visitor phase under this name.
 
 ## Work Loop
 

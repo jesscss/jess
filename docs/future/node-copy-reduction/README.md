@@ -258,6 +258,16 @@ touching production code.
     surface or the source root node. This covers owned root output surfaces
     produced by `Rules.resolve(context)` without making `toString(...)` part of
     the generic renderable-output contract.
+- `packages/fns/src/util/serialize-node.ts`
+  - Less function helper serialization now uses `node.render(context)` for
+    ordinary node values when a render context exists, keeping function helper
+    value rendering on the eval/render path instead of calling source
+    serializers directly. `Quoted` and `Any` stay raw because Less string and
+    asset helpers consume their literal value forms.
+- `packages/jess/src/index.ts`
+  - `postEvalVisitor` is a compatibility hook name for pre-render visitors:
+    compiler tests prove it runs after eval and before serialization, and
+    typed visitor objects do not need a generic `visit(...)` method to run.
 - `packages/core/src/tree/util/selector-utils.ts`
   - implicit selector-list construction now maps generated implicit-ampersand
     items into a fresh `SelectorList` instead of cloning the source selector
@@ -328,11 +338,14 @@ Use this as the active checklist for the next narrow batches:
 4. Keep `packages/jess/test/less/all-less.test.ts` on `renderToResult(...)` so
    the Less fixture baseline exercises eval plus awaited render, not
    compile-plus-`toString(...)` as a parallel whole-tree serialization path.
-5. Keep semantic wrapper surfaces where they carry real scope, registry,
+5. Keep `postEvalVisitor` as a pre-render visitor hook despite the compatibility
+   name; visitors should see evaluated nodes before serialization, not final CSS
+   strings.
+6. Keep semantic wrapper surfaces where they carry real scope, registry,
    import/reference, merge, or output ownership.
-6. Audit remaining `clone()` call sites by node shape and prove changes with
+7. Audit remaining `clone()` call sites by node shape and prove changes with
    canonical-parent tests before changing them.
-7. Record only durable frontier changes here; old recovery details belong in
+8. Record only durable frontier changes here; old recovery details belong in
    git history, not this startup handoff.
 
 Current scan note: outside clone infrastructure and key-set/bitset copies, the
