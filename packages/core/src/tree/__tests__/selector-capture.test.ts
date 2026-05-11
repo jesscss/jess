@@ -67,7 +67,7 @@ describe('SelectorCapture', () => {
     const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
     const resolved = await captureNode.resolve(context);
 
-    expect(`${resolved}`).toBe('.foo');
+    expect(resolved.toTrimmedString()).toBe('.foo');
     expect(captureNode.evaluated).toBe(false);
     expect(captureNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -94,7 +94,7 @@ describe('SelectorCapture', () => {
     ]));
     const resolved = await captureNode.resolve(context);
 
-    expect(`${resolved}`).toBe('a[data=foo]');
+    expect(resolved.render(context)).toBe('a[data=foo]');
     expect(captureNode.toTrimmedString()).toBe('*[a[data=$capture-attr]]');
   });
 });
