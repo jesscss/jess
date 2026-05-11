@@ -125,7 +125,7 @@ describe('Complex selector', () => {
 
       const resolved = await selector.resolve(context);
 
-      expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(resolved.toTrimmedString()).toBe('a[data=foo] > .foo');
       expect(selector.evaluated).toBe(false);
       expect(selector.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
@@ -159,7 +159,7 @@ describe('Complex selector', () => {
       const sourceChild = selector.value[2]!;
       const resolved = await selector.resolve(context);
 
-      expect(`${resolved}`).toBe('a[data=foo] > .foo');
+      expect(resolved.render(context)).toBe('a[data=foo] > .foo');
       expect(sourceCompound.parent).toBe(selector);
       expect(sourceCombinator.parent).toBe(selector);
       expect(sourceChild.parent).toBe(selector);
