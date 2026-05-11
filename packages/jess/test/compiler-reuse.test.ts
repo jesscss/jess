@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { Any, type Declaration } from '@jesscss/core';
+import { Any, type Declaration, type VarDeclaration } from '@jesscss/core';
 
 describe('Compiler reuse', () => {
   let tempDir: string;
@@ -150,6 +150,29 @@ describe('Compiler reuse', () => {
           postEvalVisitor: {
             declaration(node: Declaration) {
               if (node.value.name.valueOf() === 'color') {
+                node.set('value', new Any('blue', { role: 'keyword' }));
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    const css = await compiler.renderString(source, { language: 'less' });
+
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('color: red');
+  });
+
+  it('runs typed preEvalVisitor before variable resolution', async () => {
+    const source = '@tone: red;\n.a { color: @tone; }';
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'pre-eval-visitor-test',
+          preEvalVisitor: {
+            varDeclaration(node: VarDeclaration) {
+              if (node.value.name.valueOf() === 'tone') {
                 node.set('value', new Any('blue', { role: 'keyword' }));
               }
             }
