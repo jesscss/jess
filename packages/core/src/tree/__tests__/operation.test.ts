@@ -99,7 +99,7 @@ describe('Operation', () => {
     ]);
     const resolved = await operationNode.resolve(context);
 
-    expect(`${resolved}`).toBe('30');
+    expect(resolved.toTrimmedString()).toBe('30');
     expect(operationNode.evaluated).toBe(false);
     expect(operationNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -127,7 +127,7 @@ describe('Operation', () => {
     const [leftOperand, , rightOperand] = operationNode.value;
     const resolved = await operationNode.resolve(context);
 
-    expect(`${resolved}`).toBe('one, foo, two');
+    expect(resolved.render(context)).toBe('one, foo, two');
     expect(operationNode.toTrimmedString()).toBe('one, $item + two');
     expect(leftOperand.parent).toBe(operationNode);
     expect(rightOperand.parent).toBe(operationNode);

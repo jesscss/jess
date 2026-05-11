@@ -75,7 +75,7 @@ describe('Negative', () => {
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
     const resolved = await negativeNode.resolve(context);
 
-    expect(`${resolved}`).toBe('-20');
+    expect(resolved.toTrimmedString()).toBe('-20');
     expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
