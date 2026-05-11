@@ -191,7 +191,7 @@ describe('Rules', () => {
 
       const resolved = await root.resolve(context);
 
-      expect(`${resolved}`).toContain('color: red;');
+      expect(resolved.toTrimmedString()).toContain('color: red;');
       expect(clonedRules).toBe(0);
       expect(root.evaluated).toBe(false);
     } finally {
@@ -344,7 +344,7 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getProp(node, 'foo')}`).toBe('foo: bar');
+        expect(getProp(node, 'foo')?.toTrimmedString()).toBe('foo: bar');
       });
 
       it('can do a normal get / set of variables', async () => {
@@ -352,7 +352,7 @@ describe('Rules', () => {
           vardecl({ name: 'foo', value: any('bar') })
         ]);
         node = await node.eval(context);
-        expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
       it('find(declaration, key, undefined) picks VarDeclaration or Declaration by source order', async () => {
@@ -378,7 +378,7 @@ describe('Rules', () => {
           vardecl({ name: 'foo', value: any('two') })
         ]);
         node = await node.eval(context);
-        expect(`${getVar(node, 'foo')}`).toBe('$foo: two');
+        expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: two');
       });
 
       it.skip('will not set if defined', async () => {
@@ -391,7 +391,7 @@ describe('Rules', () => {
         node = await node.eval(context);
         /** This won't have been resolved, so we need to evaluate it. */
         let result = await getVar(node, 'first')!.eval(context);
-        expect(`${result}`).toBe('$first: one');
+        expect(result.toTrimmedString()).toBe('$first: one');
       });
 
       // it('will skip normalization', () => {
@@ -462,7 +462,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(inherited, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
       it('inherits values when set after', async () => {
@@ -473,7 +473,7 @@ describe('Rules', () => {
         node.push(vardecl({ name: 'foo', value: any('bar') }));
 
         node = await node.eval(context);
-        expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(inherited, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
       it('peeks into optional child scope', async () => {
@@ -488,7 +488,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        expect(`${getVar(node, 'one')}`).toBe('$one: two');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: two');
       });
 
       it('fails to get private child scope', async () => {
@@ -519,7 +519,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        expect(`${getVar(node, 'one')}`).toBe('$one: one');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: one');
       });
 
       it('returns optional value when no public value found', async () => {
@@ -538,9 +538,9 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find optional value since no public value exists
-        expect(`${getVar(node, 'one')}`).toBe('$one: optional-value');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: optional-value');
         // Should find public value
-        expect(`${getVar(node, 'two')}`).toBe('$two: public-value');
+        expect(getVar(node, 'two')?.toTrimmedString()).toBe('$two: public-value');
       });
 
       it('handles optional values with mixed positions and start parameter', async () => {
@@ -566,14 +566,14 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find the last public value (third), not optional values
-        expect(`${getVar(node, 'var')}`).toBe('$var: third');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
         const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
-          expect(`${result}`).toBe('$var: second');
+          expect(result?.toTrimmedString()).toBe('$var: second');
         }
       });
 
@@ -599,9 +599,9 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find public value, not optional nested value
-        expect(`${getVar(node, 'nested')}`).toBe('$nested: public-nested');
+        expect(getVar(node, 'nested')?.toTrimmedString()).toBe('$nested: public-nested');
         // Should find public value, not optional deep value
-        expect(`${getVar(node, 'deep')}`).toBe('$deep: public-deep');
+        expect(getVar(node, 'deep')?.toTrimmedString()).toBe('$deep: public-deep');
       });
 
       it('selects last optional value when multiple optionals found and no public', async () => {
@@ -631,7 +631,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find the last optional value by source order (comparePosition)
-        expect(`${getVar(node, 'var')}`).toBe('$var: optional-third');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: optional-third');
       });
 
       it('handles optional values with start parameter in different Rules', async () => {
@@ -650,7 +650,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Find the last public value
-        expect(`${getVar(node, 'var')}`).toBe('$var: root-third');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
         const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
@@ -658,7 +658,7 @@ describe('Rules', () => {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
           // Should find root-second (before start), not optional value
-          expect(`${result}`).toBe('$var: root-second');
+          expect(result?.toTrimmedString()).toBe('$var: root-second');
         }
       });
 
@@ -678,7 +678,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find the last public value, ignoring optional values
-        expect(`${getVar(node, 'var')}`).toBe('$var: public-2');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: public-2');
       });
 
       it('handles optional values in Rules with different indices from parent', async () => {
@@ -699,14 +699,14 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find parent-2 (last public), not child-optional
-        expect(`${getVar(node, 'var')}`).toBe('$var: parent-2');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: parent-2');
 
         // Test lookup from within child Rules - should find its own value
         // Optional declarations are fallback-only and should not overtake public declarations
         // that are reachable in the lookup chain.
         const childVar = getVar(childRules, 'var');
         expect(childVar).toBeDefined();
-        expect(`${childVar}`).toBe('$var: parent-2');
+        expect(childVar?.toTrimmedString()).toBe('$var: parent-2');
       });
 
       it('handles multiple optional Rules with declarations at different positions', async () => {
@@ -733,11 +733,11 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find public-a, ignoring optional-a-1
-        expect(`${getVar(node, 'a')}`).toBe('$a: public-a');
+        expect(getVar(node, 'a')?.toTrimmedString()).toBe('$a: public-a');
         // Should find public-b, ignoring optional-b-1 and optional-b-2
-        expect(`${getVar(node, 'b')}`).toBe('$b: public-b');
+        expect(getVar(node, 'b')?.toTrimmedString()).toBe('$b: public-b');
         // Should find optional-c since no public c exists
-        expect(`${getVar(node, 'c')}`).toBe('$c: optional-c');
+        expect(getVar(node, 'c')?.toTrimmedString()).toBe('$c: optional-c');
       });
 
       it('nested rulesets inherit nearer parent vars over globals in Less mode', async () => {
@@ -782,7 +782,7 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
         const scope3Rules = scope3.value.rules;
-        expect(`${getVar(scope3Rules, 'z', { start: 0 })}`).toBe('$z: black');
+        expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = scope3Rules.find('declaration', 'z', 'VarDeclaration', {
           filter: () => true,
           context,
@@ -790,11 +790,11 @@ describe('Rules', () => {
           searchParents: true,
           start: 0
         });
-        expect(`${scope3Found}`).toBe('$z: black');
+        expect(scope3Found?.toTrimmedString()).toBe('$z: black');
         const border = expectDeclarationNode(scope3Rules.at(0));
         context.rulesContext = scope3Rules;
         const evald = await border.eval(context);
-        expect(`${evald}`).toBe('border-color: black');
+        expect(evald.toTrimmedString()).toBe('border-color: black');
       });
 
       it('preserves start when searching later child rules', async () => {
@@ -818,7 +818,7 @@ describe('Rules', () => {
         root = await root.eval(context);
         const color = expectDeclarationNode(root.at(1));
         const evald = await color.eval(context);
-        expect(`${evald}`).toBe('color: blue');
+        expect(evald.toTrimmedString()).toBe('color: blue');
       });
 
       it('still sees later same-scope vars in Less mode', async () => {
@@ -840,7 +840,7 @@ describe('Rules', () => {
         root = await root.eval(context);
         const width = expectDeclarationNode(root.at(0));
         const evald = await width.eval(context);
-        expect(`${evald}`).toBe('total-width: 96em');
+        expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
 
       it('still sees later parent-scope vars from inside nested rulesets in Less mode', async () => {
@@ -872,7 +872,7 @@ describe('Rules', () => {
         const width = expectDeclarationNode(grid.value.rules.at(0));
         context.rulesContext = grid.value.rules;
         const evald = await width.eval(context);
-        expect(`${evald}`).toBe('total-width: 96em');
+        expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
 
       it('shadows variables #1', async () => {
@@ -885,7 +885,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         let inherited = node.at(1);
-        expect(`${getVar(expectRulesNode(inherited), 'one')}`).toBe('$one: three');
+        expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
       it('shadows variables #2', async () => {
@@ -899,7 +899,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         let inherited = node.at(1);
-        expect(`${getVar(expectRulesNode(inherited), 'one')}`).toBe('$one: three');
+        expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
       it.skip('sets existing variables', async () => {
@@ -913,8 +913,8 @@ describe('Rules', () => {
         node = await node.eval(context);
         // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
-        expect(`${getVar(node, 'one')}`).toBe('$one: three');
-        expect(`${getVar(expectRulesNode(inherited), 'one')}`).toBe('$one := three');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: three');
+        expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one := three');
       });
 
       it.skip('demonstrates setDefined behavior like Sass !global', async () => {
@@ -944,16 +944,16 @@ describe('Rules', () => {
         let firstRule = expectRulesNode(node.at(1)); // First rule (background)
         let firstDecl = expectDeclarationNode(firstRule.at(0));
         let firstResult = await firstDecl.eval(context);
-        expect(`${firstResult}`).toBe('background: red');
+        expect(firstResult.toTrimmedString()).toBe('background: red');
 
         // The last rule should also use the updated value (blue)
         let lastRule = expectRulesNode(node.at(3)); // Last rule (border-color)
         let lastDecl = expectDeclarationNode(lastRule.at(0));
         let lastResult = await lastDecl.eval(context);
-        expect(`${lastResult}`).toBe('border-color: blue');
+        expect(lastResult.toTrimmedString()).toBe('border-color: blue');
 
         // The root should have the updated value
-        expect(`${getVar(node, 'color')}`).toBe('$color: blue');
+        expect(getVar(node, 'color')?.toTrimmedString()).toBe('$color: blue');
       });
 
       it.skip('demonstrates Sass !global behavior with mixins - mixin resolves variables at include time', async () => {
@@ -1045,7 +1045,7 @@ describe('Rules', () => {
 
         // First declaration: color: $color
         let boxDecl1 = await boxRules.at(0)!.eval(context);
-        expect(`${boxDecl1}`).toBe('color: red');
+        expect(boxDecl1.toTrimmedString()).toBe('color: red');
 
         // Second: mixin call
         let boxMixinCall = boxRules.at(1);
@@ -1060,7 +1060,7 @@ describe('Rules', () => {
         let boxMixinRules = boxMixinResult;
         expect(boxMixinRules.value.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
-        expect(`${boxMixinDecl}`).toBe('color: red');
+        expect(boxMixinDecl.toTrimmedString()).toBe('color: red');
 
         // Find the .box3 ruleset (index 4)
         let box3Ruleset = node.at(4);
@@ -1078,7 +1078,7 @@ describe('Rules', () => {
 
         // First declaration: color: $color
         let box3Decl1 = await box3Rules.at(0)!.eval(context);
-        expect(`${box3Decl1}`).toBe('color: blue');
+        expect(box3Decl1.toTrimmedString()).toBe('color: blue');
 
         // Second: mixin call
         let box3MixinCall = box3Rules.at(1);
@@ -1094,14 +1094,14 @@ describe('Rules', () => {
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With live resolution ($~color), the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
-        expect(`${box3MixinDecl}`).toBe('color: blue');
+        expect(box3MixinDecl.toTrimmedString()).toBe('color: blue');
 
         // The root should have the updated value
         let rootColor = getVar(node, 'color');
         if (!rootColor) {
           throw new Error('Expected color variable to be defined');
         }
-        expect(`${rootColor}`).toBe('$color: blue');
+        expect(rootColor.toTrimmedString()).toBe('$color: blue');
       });
 
       it('fails to set if existing variable is readonly', async () => {
@@ -1245,9 +1245,9 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: one');
-        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
+        expect(getVar(node, 'one', { start: node.at(1)?.index })?.toTrimmedString()).toBe('$one: one');
+        expect(getVar(node, 'one', { start: node.at(2)?.index })?.toTrimmedString()).toBe('$one: two');
+        expect(getVar(node, 'one', { start: 10 })?.toTrimmedString()).toBe('$one: three');
       });
 
       it('won\'t find variables in sub-rules of local rules', async () => {
@@ -1269,11 +1269,11 @@ describe('Rules', () => {
 
         // child1.jess should see child2.jess's vars because it owns the `@use`
         const childRules = expectRulesNode(node.at(0));
-        expect(`${getVar(childRules, 'one')}`).toBe('$one: two');
+        expect(getVar(childRules, 'one')?.toTrimmedString()).toBe('$one: two');
         // child1.jess can still see its own vars
-        expect(`${getVar(childRules, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(childRules, 'foo')?.toTrimmedString()).toBe('$foo: bar');
         // root.jess can see child1.jess's vars but not child2.jess's
-        expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
         expect(getVar(node, 'one')).toBeUndefined();
       });
     });
@@ -1309,6 +1309,6 @@ describe('Rules', () => {
       })
     ]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+    expect(await renderNodeToString(evald, context)).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
   });
 });

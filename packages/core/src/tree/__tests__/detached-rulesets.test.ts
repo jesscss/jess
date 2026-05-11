@@ -45,7 +45,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
       const found = getVar(context, inherited, 'foo');
 
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$foo: bar');
+      expect(found?.toTrimmedString()).toBe('$foo: bar');
     });
   });
 
@@ -79,7 +79,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       // Should find the private one — same-scope lookups are not blocked by private visibility
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$private-var: private-value');
+      expect(found?.toTrimmedString()).toBe('$private-var: private-value');
     });
 
     it('should NOT find private variables when searching from outside the Rules', async () => {
@@ -132,7 +132,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       // Should find the public one (optional ones are only returned if no public ones exist)
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$var: public-value');
+      expect(found?.toTrimmedString()).toBe('$var: public-value');
     });
 
     it('should find private variables from same scope (private only blocks outside-in)', async () => {
@@ -155,7 +155,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       // Same-scope lookup: private does NOT block. Should find the private one.
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$var: private-value');
+      expect(found?.toTrimmedString()).toBe('$var: private-value');
     });
 
     it('should return optional variable when no public variable exists', async () => {
@@ -177,7 +177,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       // Should return the optional one since no public one exists
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$var: optional-value');
+      expect(found?.toTrimmedString()).toBe('$var: optional-value');
     });
   });
 
@@ -207,7 +207,7 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       // Should find the middle one (closest in parent chain)
       expect(found).toBeDefined();
-      expect(`${found}`).toBe('$a: middle-value');
+      expect(found?.toTrimmedString()).toBe('$a: middle-value');
     });
   });
 });
