@@ -28,6 +28,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -782,8 +783,7 @@ describe('Control Nodes', () => {
     ]);
     context.root = root;
 
-    const evald = await root.eval(context);
-    const css = evald.toString();
+    const css = await renderNodeToString(root, context);
 
     expect(css).toBeString(`
       .a {
