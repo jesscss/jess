@@ -2,6 +2,7 @@ import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, c
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 let context: Context;
 
 describe('reference', () => {
@@ -329,7 +330,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
       `);
     });
@@ -346,7 +347,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: red;
         bar: red;
       `);
@@ -378,7 +379,7 @@ describe('reference', () => {
       try {
         const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
 
-        expect(`${resolved}`).toBe('red');
+        expect(resolved.toTrimmedString()).toBe('red');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
@@ -410,7 +411,7 @@ describe('reference', () => {
       try {
         const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
 
-        expect(`${resolved}`).toBe('red');
+        expect(resolved.toTrimmedString()).toBe('red');
         expect(listClones).toBe(0);
         expect(sourceValue.toTrimmedString()).toBe('red');
       } finally {
@@ -431,7 +432,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
       `);
     });
@@ -448,7 +449,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
         foo: red;
       `);
@@ -474,7 +475,7 @@ describe('reference', () => {
       const child = node.value[2]!;
       child.parent = node;
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         background-color: red, foo;
         background: red, foo;
       `);
@@ -526,7 +527,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
       `);
     });
@@ -547,7 +548,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: blue;
       `);
@@ -569,7 +570,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: red;
       `);
@@ -591,7 +592,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: red;
       `);
@@ -613,7 +614,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: blue;
       `);
@@ -640,7 +641,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red red;
       `);
     });
@@ -779,7 +780,7 @@ describe('reference', () => {
           })
         ]);
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           bar: blue;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -818,7 +819,7 @@ describe('reference', () => {
           })
         ]);
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           bar: blue;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -861,7 +862,7 @@ describe('reference', () => {
         node.getScopeFrame();
 
         node = await node.eval(context);
-        expect(`${node}`).toBeString(`
+        expect(await renderNodeToString(node, context)).toBeString(`
           bar: red;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -897,7 +898,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         color: red;
       `);
     });
@@ -943,7 +944,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         color: red;
       `);
       expect(retryCounts.get('dependent')).toBe(2);
@@ -971,7 +972,7 @@ describe('reference', () => {
 
       const evald = await node.evalNode(context);
 
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         color: final;
       `);
       expect(node.preEvaluated).toBe(true);
@@ -1008,7 +1009,7 @@ describe('reference', () => {
         dynamicDecl.set('name', any('x'));
 
         const resolved = await node.at(1)!.eval(context);
-        expect(`${resolved}`).toBe('bar: red');
+        expect(resolved.toTrimmedString()).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
@@ -1128,7 +1129,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           color: white;
         }
@@ -1153,7 +1154,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .\\123 {
           a: ok;
         }
@@ -1181,7 +1182,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         #\\31a {
           a: ok;
         }
@@ -1211,7 +1212,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .a.\\32b {
           a: ok;
         }
@@ -1286,7 +1287,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -1337,7 +1338,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -1388,7 +1389,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -1452,7 +1453,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -1527,7 +1528,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: red;
           }
@@ -1565,7 +1566,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toContain('@keyframes some-name');
+      expect(await renderNodeToString(evald, context)).toContain('@keyframes some-name');
     });
 
     it('should resolve a mixin-ruleset call keyed by a compound selector path array', async () => {
@@ -1597,7 +1598,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
           b: 1;
         }
@@ -1647,7 +1648,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
             b: 1;
           }
@@ -1687,7 +1688,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         #foo-foo {
           > .bar.baz {
             c: c;
@@ -1736,7 +1737,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           #foo-foo {
             > .bar.baz {
               c: c;
@@ -1835,7 +1836,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: cyan;
         }
@@ -1899,7 +1900,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: cyan;
           }
@@ -1978,7 +1979,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: cyan;
           }
@@ -2046,7 +2047,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: cyan;
           }
@@ -2126,7 +2127,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: red;
           }
