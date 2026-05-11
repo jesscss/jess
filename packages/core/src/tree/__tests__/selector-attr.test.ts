@@ -81,7 +81,7 @@ describe('Attribute Selector', () => {
     });
     const resolved = await attrNode.resolve(context);
 
-    expect(`${resolved}`).toBe('[data=foo]');
+    expect(resolved.toTrimmedString()).toBe('[data=foo]');
     expect(attrNode.evaluated).toBe(false);
     expect(attrNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -106,7 +106,7 @@ describe('Attribute Selector', () => {
     const sourceValue = attrNode.value.value;
     const resolved = await attrNode.resolve(context);
 
-    expect(`${resolved}`).toBe('[data=foo]');
+    expect(resolved.render(context)).toBe('[data=foo]');
     expect(sourceValue?.parent).toBe(attrNode);
     expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
