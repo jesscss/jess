@@ -562,9 +562,9 @@ describe('Control Nodes', () => {
 
     try {
       const root = rules([makeLoop(makePattern(['value', 'key', 'index']), list([new Any('a'), new Any('b')]))]);
-      const evald = await root.eval(context);
-      expect(`${evald}`).toContain('item: a');
-      expect(`${evald}`).toContain('item: b');
+      const css = await renderNodeToString(root, context);
+      expect(css).toContain('item: a');
+      expect(css).toContain('item: b');
       expect(registryHits).toEqual([]);
     } finally {
       Rules.prototype.find = originalFind;
@@ -577,10 +577,10 @@ describe('Control Nodes', () => {
     const loopRules = rules([itemDecl]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
 
-    const evald = await root.eval(context);
+    const css = await renderNodeToString(root, context);
 
-    expect(`${evald}`).toContain('item: a');
-    expect(`${evald}`).toContain('item: b');
+    expect(css).toContain('item: a');
+    expect(css).toContain('item: b');
     expect(itemDecl.parent).toBe(loopRules);
   });
 
@@ -604,11 +604,11 @@ describe('Control Nodes', () => {
         decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context);
 
-      expect(`${evald}`).toContain('color: red');
-      expect(`${evald}`).toContain('item: a');
-      expect(`${evald}`).toContain('item: b');
+      expect(css).toContain('color: red');
+      expect(css).toContain('item: a');
+      expect(css).toContain('item: b');
       expect(scalarClones).toBe(0);
     } finally {
       Any.prototype.clone = originalClone;
@@ -645,10 +645,10 @@ describe('Control Nodes', () => {
         decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context);
 
-      expect(`${evald}`).toContain('item: a');
-      expect(`${evald}`).toContain('item: b');
+      expect(css).toContain('item: a');
+      expect(css).toContain('item: b');
       expect(scalarCopies).toBe(0);
       expect(scalarClones).toBe(0);
     } finally {
