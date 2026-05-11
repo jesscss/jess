@@ -192,30 +192,32 @@ describe('Dimension', () => {
     beforeEach(() => {
       context.opts.unitMode = 'preserve';
     });
-    it('should create calc() when adding incompatible units', () => {
+    it('should create calc() when adding incompatible units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'rem']);
       const result = left.operate(right, '+', context);
-      const output = result.toString();
+      const output = await result.render(context);
       // Uncomment to see actual output:
       // console.log('10px + 2rem =', output);
       expect(output).toContain('calc');
       expect(output).toContain('px');
       expect(output).toContain('rem');
     });
-    it('should create calc() when dividing a number by a unit', () => {
+    it('should create calc() when dividing a number by a unit', async () => {
       let left = num(10);
       let right = dimension([2, 'px']);
       const result = left.operate(right, '/', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
+      const output = await result.render(context);
+      expect(output).toContain('calc');
+      expect(output).toContain('px');
     });
-    it('should create calc() when multiplying double units', () => {
+    it('should create calc() when multiplying double units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
       const result = left.operate(right, '*', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
+      const output = await result.render(context);
+      expect(output).toContain('calc');
+      expect(output).toContain('px');
     });
     it('should throw on divide by zero (preserve mode still throws)', () => {
       let left = dimension([10, 'px']);
@@ -227,42 +229,46 @@ describe('Dimension', () => {
       let right = dimension([2, 'px']);
       expect(left.operate(right, '/', context).toString()).toBe('5');
     });
-    it('should create calc() when dividing incompatible units', () => {
+    it('should create calc() when dividing incompatible units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 's']);
       const result = left.operate(right, '/', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('s');
+      const output = await result.render(context);
+      expect(output).toContain('calc');
+      expect(output).toContain('px');
+      expect(output).toContain('s');
     });
-    it('should create calc() when multiplying incompatible units', () => {
+    it('should create calc() when multiplying incompatible units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'em']);
       const result = left.operate(right, '*', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('em');
+      const output = await result.render(context);
+      expect(output).toContain('calc');
+      expect(output).toContain('px');
+      expect(output).toContain('em');
     });
     it('should throw when comparing incompatible units (same as strict)', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'rem']);
       expect(() => left.compare(right, context)).toThrow('Incompatible units');
     });
-    it('should create calc() for compatible units multiplication', () => {
+    it('should create calc() for compatible units multiplication', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'cm']);
       const result = left.operate(right, '*', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('cm');
+      const output = await result.render(context);
+      expect(output).toContain('calc');
+      expect(output).toContain('px');
+      expect(output).toContain('cm');
     });
-    it('should create calc() for compatible units division (different units)', () => {
+    it('should create calc() for compatible units division (different units)', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'cm']);
       const result = left.operate(right, '/', context);
-      expect(result.toString()).toContain('calc');
-      expect(result.toString()).toContain('px');
-      expect(result.toString()).toContain('cm');
+      const output = await result.render(context);
+      expect(output).toContain('calc');
+      expect(output).toContain('px');
+      expect(output).toContain('cm');
     });
   });
   // it('should serialize to a module', () => {
