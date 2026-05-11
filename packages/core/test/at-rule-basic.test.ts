@@ -1,5 +1,6 @@
 import { rules, sel, el, decl, any, ruleset, atrule } from '../src/index.js';
 import { Context } from '../src/context.js';
+import { renderNodeToString } from '../src/tree/util/render-buffer.js';
 
 describe('Basic At-Rule Serialization', () => {
   let context: Context;
@@ -30,8 +31,7 @@ describe('Basic At-Rule Serialization', () => {
       })
     ]);
 
-    const evald = await tree.eval(context);
-    const css = evald.toString();
+    const css = await renderNodeToString(tree, context);
 
     expect(css).toBeString(`
       .parent {
@@ -67,8 +67,7 @@ describe('Basic At-Rule Serialization', () => {
       })
     ]);
 
-    const evald = await tree.eval(context);
-    const css = evald.toString();
+    const css = await renderNodeToString(tree, context);
 
     expect(css).toBeString(`
       .parent {
