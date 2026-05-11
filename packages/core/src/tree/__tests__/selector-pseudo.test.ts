@@ -122,7 +122,7 @@ describe('PseudoSelector', () => {
     });
     const resolved = await pseudoNode.resolve(context);
 
-    expect(`${resolved}`).toBe(':is(.foo, .bar)');
+    expect(resolved.toTrimmedString()).toBe(':is(.foo, .bar)');
     expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -146,7 +146,7 @@ describe('PseudoSelector', () => {
     const sourceArg = pseudoNode.value.arg;
     const resolved = await pseudoNode.resolve(context);
 
-    expect(`${resolved}`).toBe(':is(.foo, .bar)');
+    expect(resolved.render(context)).toBe(':is(.foo, .bar)');
     expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });
