@@ -2563,9 +2563,9 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context);
 
-      expect(evald.toString()).toContain('color: red;');
+      expect(css).toContain('color: red;');
       expect(guard.evaluated).toBe(false);
       expect(guard.preEvaluated).toBe(false);
     });
