@@ -1430,9 +1430,9 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
+        const css = await renderNodeToString(root, context);
 
-        expect(evald.toString()).toContain('margin: red 10px;');
+        expect(css).toContain('margin: red 10px;');
         expect(scalarClones).toBe(0);
       } finally {
         Any.prototype.clone = originalClone;
