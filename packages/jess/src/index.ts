@@ -1147,28 +1147,61 @@ export class Compiler {
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
   }> {
-    try {
-      const { tree, context, errors, warnings } = await this.safeCompile(filePath, options);
+    const { context, profile } = await this.prepareRender(filePath, {
+      ...options,
+      breakOnError: false,
+      suppressWarnings: options?.suppressWarnings ?? false
+    });
 
-      if (!tree) {
-        return { css: null, errors, warnings };
+    try {
+      const tree = await this.evaluateInput(context, { filePath }, profile);
+      const css = await this.renderTree(tree, context, profile);
+
+      finalizeRenderProfile(profile, {
+        method: 'safeRender',
+        filePath,
+        errors: context.errors.length,
+        warnings: context.warnings.length
+      });
+      return {
+        css,
+        errors: [...context.errors],
+        warnings: [...context.warnings]
+      };
+    } catch (err: unknown) {
+      const errors: ErrorDiagnostic[] = [...context.errors];
+      const warnings: WarningDiagnostic[] = [...context.warnings];
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (err instanceof JessError) {
+        const diagnostic = toDiagnostic(err);
+        if ('errors' in diagnostic) {
+          errors.push(diagnostic);
+        } else {
+          warnings.push(diagnostic);
+        }
+      } else {
+        errors.push({
+          code: 'internal/unknown',
+          phase: 'eval',
+          message: errMsg || 'Unknown error',
+          reason: errMsg || 'An unexpected error occurred during rendering.',
+          fix: 'Check the file and ensure it is valid.',
+          filePath,
+          line: 1,
+          column: 1
+        });
       }
 
-      const css = await this.renderTree(tree, context);
-      return { css, errors, warnings };
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const errors: ErrorDiagnostic[] = [{
-        code: 'internal/unknown',
-        phase: 'eval',
-        message: errMsg || 'Unknown error',
-        reason: errMsg || 'An unexpected error occurred during rendering.',
-        fix: 'Check the file and ensure it is valid.',
+      finalizeRenderProfile(profile, {
+        method: 'safeRender',
         filePath,
-        line: 1,
-        column: 1
-      }];
-      return { css: null, errors, warnings: [] };
+        errors: errors.length,
+        warnings: warnings.length,
+        failed: true,
+        errorMessage: errMsg
+      });
+      return { css: null, errors, warnings };
     }
   }
 

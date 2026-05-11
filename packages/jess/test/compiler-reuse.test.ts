@@ -182,6 +182,29 @@ describe('Compiler reuse', () => {
     expect(result.css).toContain('.a');
   });
 
+  it('safeRender owns render without delegating through safeCompile', async () => {
+    const testFile = path.join(tempDir, 'safe-render.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    class RenderOnlyCompiler extends Compiler {
+      override async safeCompile(): Promise<never> {
+        throw new Error('safeRender should not call safeCompile');
+      }
+    }
+
+    const compiler = new RenderOnlyCompiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const result = await compiler.safeRender(testFile);
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('color: red');
+  });
+
   it('keeps root output on public render APIs', async () => {
     const source = '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }';
     const testFile = path.join(tempDir, 'public-root-output.less');
