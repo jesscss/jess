@@ -67,7 +67,7 @@ describe('Expression', () => {
     const nodeToResolve = expr(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await nodeToResolve.resolve(context);
 
-    expect(`${resolved}`).toBe('foo');
+    expect(resolved.toTrimmedString()).toBe('foo');
     expect(nodeToResolve.evaluated).toBe(false);
     expect(nodeToResolve.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
@@ -90,18 +90,18 @@ describe('Expression', () => {
     ]));
     const resolved = await nodeToResolve.resolve(context);
 
-    expect(`${resolved}`).toBe('one, foo');
+    expect(resolved.render(context)).toBe('one, foo');
     expect(nodeToResolve.toTrimmedString()).toBe('$(one, $value)');
   });
 
   it('should serialize an expression', () => {
     let rule = expr(any('foo'));
-    expect(`${rule}`).toBe('$(foo)');
+    expect(rule.toTrimmedString()).toBe('$(foo)');
   });
 
   it('should serialize an expression consistently', () => {
     let rule = expr(any('foo'));
-    expect(`${rule}`).toBe('$(foo)');
+    expect(rule.toTrimmedString()).toBe('$(foo)');
   });
 
   // it('should serialize to a module', () => {
