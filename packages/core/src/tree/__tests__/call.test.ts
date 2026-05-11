@@ -7,7 +7,7 @@ import { paren } from '../paren.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { defineFunction } from '../../define-function.js';
 
 class CountingWriter extends OutputWriter {
@@ -832,8 +832,8 @@ describe('Call', () => {
 
     context.root = root;
 
-    const evald = await root.eval(context);
-    expect(String(evald)).toContain('color: dark;');
+    const css = await renderNodeToString(root, context, { context });
+    expect(css).toContain('color: dark;');
   });
 
   // it('should serialize to a module', () => {
