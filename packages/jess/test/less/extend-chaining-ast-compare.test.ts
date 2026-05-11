@@ -36,6 +36,7 @@ import {
   sellist,
   sel,
   Context,
+  type Rules,
   isNode,
   N
 } from '@jesscss/core';
@@ -95,9 +96,8 @@ describe.todo('extend-chaining AST: parsed vs constructed (serializeTypes compar
     const { node } = await context.getTree(extendChainingLess);
     await node.eval(context);
     const accessible = context.extendRoots.getAccessibleRoots(context.root!);
-    const el = (await import('@jesscss/core')).el;
     const maKeySet = el('.ma').keySet;
-    let foundInRoot: unknown = null;
+    let foundInRoot: Rules | null = null;
     for (const root of accessible) {
       const found = root.find('ruleset', maKeySet);
       if (found && found.length > 0) {
@@ -117,15 +117,14 @@ describe.todo('extend-chaining AST: parsed vs constructed (serializeTypes compar
     const { node } = await context.getTree(extendChainingLess);
     await node.eval(context);
     const mbExtend = context.extends?.find(
-      (e: [unknown, unknown]) => String((e as [unknown, unknown])[1]?.valueOf?.() ?? '') === '.mb'
-    ) as [unknown, unknown, unknown, unknown, unknown] | undefined;
+      ([, selectorWithExtend]) => String(selectorWithExtend.valueOf()) === '.mb'
+    );
     expect(mbExtend).toBeDefined();
     const [target, selectorWithExtend, , extendRoot] = mbExtend!;
-    const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot as import('@jesscss/core').Rules);
-    const singleTarget = target as { keySet: Set<string> };
-    let rulesetSet: unknown[] = [];
+    const accessibleRoots = context.extendRoots.getAccessibleRoots(extendRoot);
+    const rulesetSet = [];
     for (const searchRoot of accessibleRoots) {
-      const found = searchRoot.find('ruleset', singleTarget.keySet);
+      const found = searchRoot.find('ruleset', target.keySet);
       if (found && found.length > 0) {
         rulesetSet.push(...found);
       }
@@ -142,16 +141,16 @@ describe.todo('extend-chaining AST: parsed vs constructed (serializeTypes compar
     const { node } = await context.getTree(extendChainingLess);
     await node.eval(context);
     const targetName = '.mb';
-    const mbExtend = context.extends?.find((extendEntry: unknown[]) => {
+    const mbExtend = context.extends?.find((extendEntry) => {
       const target = extendEntry[0];
-      const targetStr = typeof target?.valueOf === 'function' ? String(target.valueOf()) : '';
+      const targetStr = String(target.valueOf());
       return targetStr.includes(targetName);
-    }) as [unknown, unknown, unknown, import('@jesscss/core').Rules, unknown] | undefined;
+    });
     expect(mbExtend).toBeDefined();
     const extendRoot = mbExtend![3];
     expect(extendRoot).not.toBeUndefined();
     expect(extendRoot).not.toBe(context.root);
-    const parent = (extendRoot as import('@jesscss/core').Rules).parent;
+    const parent = extendRoot.parent;
     expect(parent).toBeDefined();
     expect(isNode(parent, N.AtRule)).toBe(true);
   });
