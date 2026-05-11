@@ -32,6 +32,7 @@ import { CompoundSelector } from '../../selector-compound.js';
 import { Context } from '../../../context.js';
 import { walkAndExtend, wouldExtendChange } from '../extend-walk.js';
 import { extendSelector } from '../extend.js';
+import { renderNodeToString } from '../render-buffer.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -278,8 +279,7 @@ describe('OOM stress: full eval pipeline', () => {
 
     let css = '';
     const ms = await timeAsyncMs(async () => {
-      const evald = await node.eval(context);
-      css = evald.toString();
+      css = await renderNodeToString(node, context, { context });
     });
 
     console.info(`100-ruleset extend eval took ${ms.toFixed(1)}ms`);
