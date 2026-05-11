@@ -1,6 +1,7 @@
 import { dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { type Operator } from '../util/calculate.js';
 
 let context: Context;
 
@@ -8,6 +9,17 @@ describe('Dimension', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  async function renderOperate(
+    left: ReturnType<typeof dimension>,
+    right: ReturnType<typeof dimension>,
+    operator: Operator,
+    opContext = context
+  ): Promise<string> {
+    const result = left.operate(right, operator, opContext);
+    return result.render(opContext);
+  }
+
   describe('serialization', () => {
     /** @todo? */
     // it.only('should make a dimension from a string', () => {
@@ -63,97 +75,97 @@ describe('Dimension', () => {
   });
 
   describe('addition/subtraction', () => {
-    it('should add the same units', () => {
+    it('should add the same units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([20, 'px']);
-      expect(left.operate(right, '+').toString()).toBe('30px');
+      await expect(renderOperate(left, right, '+')).resolves.toBe('30px');
     });
 
-    it('should subtract the same units', () => {
+    it('should subtract the same units', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([20, 'px']);
-      expect(left.operate(right, '-').toString()).toBe('-10px');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
     });
 
-    it('should use left-hand units in non-strict mode', () => {
+    it('should use left-hand units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([20, 'rem']);
-      expect(left.operate(right, '-').toString()).toBe('-10px');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
     });
 
-    it('should use left-hand units when right has no unit', () => {
+    it('should use left-hand units when right has no unit', async () => {
       let left = dimension([10, 'px']);
       let right = num(20);
-      expect(left.operate(right, '-').toString()).toBe('-10px');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
     });
 
-    it('should use right-hand units when left has no unit', () => {
+    it('should use right-hand units when left has no unit', async () => {
       let left = num(10);
       let right = dimension([20, 'px']);
-      expect(left.operate(right, '-').toString()).toBe('-10px');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
     });
   });
 
   describe('multiplication', () => {
-    it('should multiply', () => {
+    it('should multiply', async () => {
       let left = dimension([10, 'px']);
       let right = num(2);
-      expect(left.operate(right, '*').toString()).toBe('20px');
+      await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
     });
-    it('should multiply', () => {
+    it('should multiply', async () => {
       let left = num(10);
       let right = dimension([2, 'px']);
-      expect(left.operate(right, '*').toString()).toBe('20px');
+      await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
     });
-    it('should ignore double units in non-strict mode', () => {
+    it('should ignore double units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      expect(left.operate(right, '*').toString()).toBe('20px');
+      await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
     });
   });
 
   describe('division', () => {
-    it('should divide', () => {
+    it('should divide', async () => {
       let left = dimension([10, 'px']);
       let right = num(2);
-      expect(left.operate(right, '/').toString()).toBe('5px');
+      await expect(renderOperate(left, right, '/')).resolves.toBe('5px');
     });
-    it('should divide number by unit (non-strict)', () => {
+    it('should divide number by unit (non-strict)', async () => {
       let left = num(10);
       let right = dimension([2, 'px']);
-      expect(left.operate(right, '/').toString()).toBe('5px');
+      await expect(renderOperate(left, right, '/')).resolves.toBe('5px');
     });
-    it('should not cancel units in non-strict mode', () => {
+    it('should not cancel units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      expect(left.operate(right, '/').toString()).toBe('5px');
+      await expect(renderOperate(left, right, '/')).resolves.toBe('5px');
     });
-    it('should cancel units in strict mode', () => {
+    it('should cancel units in strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
       context.opts.unitMode = 'strict';
-      expect(left.operate(right, '/', context).toString()).toBe('5');
+      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
     });
   });
 
   describe('conversions', () => {
-    it('should convert lengths', () => {
+    it('should convert lengths', async () => {
       let left = dimension([1, 'cm']);
       let right = dimension([2, 'mm']);
-      expect(left.operate(right, '+').toString()).toBe('1.2cm');
-      expect(left.operate(right, '-').toString()).toBe('0.8cm');
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.2cm');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('0.8cm');
     });
-    it('should convert duration', () => {
+    it('should convert duration', async () => {
       let left = dimension([1, 's']);
       let right = dimension([1, 'ms']);
-      expect(left.operate(right, '+').toString()).toBe('1.001s');
-      expect(left.operate(right, '-').toString()).toBe('0.999s');
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.001s');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('0.999s');
     });
-    it('should convert angle', () => {
+    it('should convert angle', async () => {
       let left = dimension([1, 'rad']);
       let right = dimension([1, 'deg']);
       // I assume this is correct
-      expect(left.operate(right, '+').toString()).toBe('1.01745329rad');
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.01745329rad');
     });
   });
 
@@ -181,10 +193,10 @@ describe('Dimension', () => {
       let right = num(0);
       expect(() => left.operate(right, '/', context)).toThrow();
     });
-    it('should cancel units during division', () => {
+    it('should cancel units during division', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      expect(left.operate(right, '/', context).toString()).toBe('5');
+      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
     });
   });
 
@@ -224,10 +236,10 @@ describe('Dimension', () => {
       let right = num(0);
       expect(() => left.operate(right, '/', context)).toThrow();
     });
-    it('should cancel units during division (same as strict)', () => {
+    it('should cancel units during division (same as strict)', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      expect(left.operate(right, '/', context).toString()).toBe('5');
+      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
     });
     it('should create calc() when dividing incompatible units', async () => {
       let left = dimension([10, 'px']);
