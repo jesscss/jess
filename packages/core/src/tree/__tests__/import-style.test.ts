@@ -1979,8 +1979,9 @@ describe('Style import', () => {
       }
       expect(wrappedImport.value).toHaveLength(1);
       expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
-      expect(evald.toString({ context: inlineContext })).toContain('@media (min-width: 600px)');
-      expect(evald.toString({ context: inlineContext })).toContain('#css { color: yellow; }');
+      const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
+      expect(css).toContain('@media (min-width: 600px)');
+      expect(css).toContain('#css { color: yellow; }');
     });
 
     it('import-inline: supports/layer postludes wrap inline source in order', async () => {
@@ -2057,7 +2058,7 @@ describe('Style import', () => {
       }
       expect(`${mediaRules.value[0].value.name}`).toBe('@media');
 
-      const css = evald.toString({ context: inlineContext });
+      const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@layer theme');
       expect(css).toContain('@supports (display: grid)');
       expect(css).toContain('@media screen and (min-width: 600px)');
@@ -2098,8 +2099,9 @@ describe('Style import', () => {
         throw new Error('Expected wrapped import child to be AtRule');
       }
       expect(wrappedImport.value[0].value.rules).toBeInstanceOf(RulesClass);
-      expect(`${evald}`).toContain('@media screen and (min-width: 600px)');
-      expect(`${evald}`).toContain('.imported');
+      const css = await renderNodeToString(node, context, { context });
+      expect(css).toContain('@media screen and (min-width: 600px)');
+      expect(css).toContain('.imported');
     });
 
     it('import-interpolation: resolves vars from later imports on retry', async () => {
@@ -2144,8 +2146,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
       expect(css).toContain('@import "file.css";');
       expect(css).toContain('.after {');
       expect(css.indexOf('@import "file.css";')).toBeLessThan(css.indexOf('.after {'));
@@ -2174,8 +2175,8 @@ describe('Style import', () => {
         style({ path: quoted(any('once.jess')) }, { type: 'import' }),
         style({ path: quoted(any('once.jess')) }, { type: 'import' })
       ]);
-      const evald = await node.eval(context);
-      expect(evald.toString().split('.once').length - 1).toBe(1);
+      const css = await renderNodeToString(node, context);
+      expect(css.split('.once').length - 1).toBe(1);
     });
 
     it('import-reference-issues: reference imports are optional visibility', async () => {
