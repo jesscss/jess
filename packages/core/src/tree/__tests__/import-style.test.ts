@@ -954,8 +954,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.consumer {');
       expect(css).toContain('border-color: purple;');
@@ -1140,8 +1139,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -1213,8 +1211,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -1266,8 +1263,7 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = `${evald}`;
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toContain('.consumer {');
       expect(css).toContain('border-color: purple;');
