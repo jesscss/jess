@@ -3080,8 +3080,8 @@ describe('Style import', () => {
         style({ path: quoted(any('repeat.jess')) }, { type: 'import', importOptions: { once: false } }),
         style({ path: quoted(any('repeat.jess')) }, { type: 'import', importOptions: { once: false } })
       ]);
-      const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.repeat')).toBe(2);
+      const css = await renderNodeToString(node, context);
+      expect(countSelector(css, '.repeat')).toBe(2);
     });
 
     it('plain import followed by reference import renders once', async () => {
@@ -3098,8 +3098,8 @@ describe('Style import', () => {
           { type: 'import', importOptions: { reference: true } }
         )
       ]);
-      const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.mix-order')).toBe(1);
+      const css = await renderNodeToString(node, context);
+      expect(countSelector(css, '.mix-order')).toBe(1);
     });
 
     it('reference import followed by plain import stays suppressed without multiple', async () => {
@@ -3116,8 +3116,8 @@ describe('Style import', () => {
         ),
         style({ path: quoted(any('mix-order-rev.jess')) }, { type: 'import' })
       ]);
-      const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.mix-order-rev')).toBe(0);
+      const css = await renderNodeToString(node, context);
+      expect(countSelector(css, '.mix-order-rev')).toBe(0);
     });
 
     it('compose multiple:true renders repeated modules', async () => {
@@ -3137,8 +3137,8 @@ describe('Style import', () => {
           { type: 'compose', namespace: '*', importOptions: { multiple: true } }
         )
       ]);
-      const evald = await node.eval(context);
-      expect(countSelector(evald.toString(), '.compose-repeat')).toBe(2);
+      const css = await renderNodeToString(node, context);
+      expect(countSelector(css, '.compose-repeat')).toBe(2);
     });
   });
 
@@ -3158,8 +3158,7 @@ describe('Style import', () => {
         style({ path: quoted(any('library-dedupe.jess')) }, { type: 'compose', namespace: '*' })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       // Should only render `.imported` once (second compose is reference mode by default).
       expect(css.split('.imported').length - 1).toBe(1);
     });
