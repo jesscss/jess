@@ -1825,8 +1825,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             color: purple;
           }
@@ -1881,8 +1881,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             color: green;
           }
@@ -1932,8 +1932,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .fast-ruleset {
             color: green;
           }
@@ -1984,8 +1984,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             color: orange;
           }
@@ -2034,8 +2034,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .foo {
             color: red;
           }
@@ -2082,8 +2082,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             content: .missing-mixin;
           }
@@ -2127,8 +2127,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             content: .missing-ruleset-mixin;
           }
