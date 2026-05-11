@@ -275,6 +275,9 @@ touching production code.
   - `postEvalVisitor` is a compatibility hook name for pre-render visitors:
     compiler tests prove it runs after eval and before serialization, and
     typed visitor objects do not need a generic `visit(...)` method to run.
+  - typed `preEvalVisitor` objects are also covered on the public render path:
+    a plain `{ varDeclaration(...) { ... } }` visitor can update variables
+    before Less variable resolution without using a generic visitor wrapper.
 - `packages/core/src/tree/util/selector-utils.ts`
   - implicit selector-list construction now maps generated implicit-ampersand
     items into a fresh `SelectorList` instead of cloning the source selector
