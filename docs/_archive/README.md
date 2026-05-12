@@ -8,3 +8,6 @@ This folder contains **dev-facing, legacy, or superseded** notes that used to li
   and audit material. It is historical context only; active runtime guidance
   lives in `docs/future/performance/2026-04-13-registry-redesign-handoff.md`,
   `docs/future/node-copy-reduction/`, and `docs/future/pre-eval-elimination.md`.
+- `node-copy-reduction/` contains the older per-file completion log that used
+  to live in the active node-copy README. It is useful archaeology, not startup
+  guidance.
