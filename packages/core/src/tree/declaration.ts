@@ -94,6 +94,13 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   return false;
 };
 
+const unwrapAtomicCustomValue = (node: Node): Node => {
+  if ((isNode(node, N.Sequence) || isNode(node, N.List)) && node.value.length === 1) {
+    return unwrapAtomicCustomValue(node.value[0]!);
+  }
+  return node;
+};
+
 type LessFunctionFallbackCall = Call & {
   value: Call['value'] & {
     name: Reference;
@@ -106,13 +113,6 @@ const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCal
   && node.value.name.options?.type === 'function'
   && node.value.name.options?.fallbackValue === true
 );
-
-const unwrapAtomicCustomValue = (node: Node): Node => {
-  if ((isNode(node, N.Sequence) || isNode(node, N.List)) && node.value.length === 1) {
-    return unwrapAtomicCustomValue(node.value[0]!);
-  }
-  return node;
-};
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
@@ -291,22 +291,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Preserve custom value text, but normalize boundary artifacts:
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
-      // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
-      //   insert a single separator space for stable CSS output.
-      const atomicValue = unwrapAtomicCustomValue(value);
       const valueMark = w.mark();
       value.toString(options);
       w.replaceSince(valueMark, (valueOut) => {
-        let customOut = stringifyCustomFallbackFunctionCall(value, options) ?? valueOut;
-        customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
-        customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
-        if (!/^[ \t\r\f]/.test(customOut) && customOut.trimStart().startsWith('/*')) {
-          customOut = ` ${customOut}`;
-        }
-        if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
-          customOut = ` ${customOut}`;
-        }
-        return customOut;
+        const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+        const customOut = fallbackOut === undefined
+          ? valueOut
+          : `${valueOut.match(/^[ \t\r\f]*/)?.[0] ?? ''}${fallbackOut}`;
+        return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
       }, value);
       restorePrintState(options, saved);
     } else {

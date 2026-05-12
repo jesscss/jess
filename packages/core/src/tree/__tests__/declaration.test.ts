@@ -254,7 +254,7 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('--custom:prefix-red');
   });
 
-  it('keeps a single space before block-comment custom property values after evaluation', async () => {
+  it('keeps custom property value spacing raw after evaluation', async () => {
     const root = rules([
       vardecl({
         name: any('commentText'),
@@ -267,8 +267,28 @@ describe('Declaration', () => {
     ]);
 
     expect(await renderNodeToString(root, context)).toBeString(`
-      --comment: /* // Not commented out // */;
+      --comment:/* // Not commented out // */;
     `);
+  });
+
+  it('does not insert custom property value spacing around adjacent comments', () => {
+    const node = decl({
+      name: any('--custom'),
+      value: any('a/* kept raw */b')
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:a/* kept raw */b');
+    expect(node.render(context)).toBe('--custom:a/* kept raw */b');
+  });
+
+  it('preserves authored custom property value leading space', () => {
+    const node = decl({
+      name: any('--custom'),
+      value: any(' red')
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom: red');
+    expect(node.render(context)).toBe('--custom: red');
   });
 
   it('preserves generic calls in custom property values during render(context)', () => {
@@ -304,7 +324,8 @@ describe('Declaration', () => {
       }, { silentFail: true })
     });
 
-    expect(node.render(context)).toBe(node.toTrimmedString());
+    expect(node.toTrimmedString()).toBe('--custom:rgba(0, 30, 0, 238)');
+    expect(node.render(context)).toBe('--custom:rgba(0, 30, 0, 238)');
   });
 
   it('streams custom declaration values without capture scaffolding', () => {
