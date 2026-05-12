@@ -48,6 +48,9 @@ describe('RenderBuffer', () => {
     expect(createRenderBufferForFlags({ hasExtends: false, hasReferenceImports: false }).kind).toBe('flat');
     expect(createRenderBufferForFlags({ hasExtends: true }).kind).toBe('segmented');
     expect(createRenderBufferForFlags({ hasReferenceImports: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasHoists: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasMerges: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasPendingRefs: true }).kind).toBe('segmented');
   });
 
   it('recognizes render buffer objects', () => {

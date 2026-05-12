@@ -144,7 +144,9 @@ in flat mode, it should stay strings.
 Current implementation state:
 
 - `packages/core/src/tree/util/render-buffer.ts` defines the initial
-  `RenderBuffer` / segment types and helpers.
+  `RenderBuffer` / segment types and helpers. Buffer selection now knows all
+  currently named delayed-output families: extends, reference imports, hoists,
+  merges, and pending refs.
 - Flat-buffer bridging exists for many simple nodes.
 - Segmented rendering is not integrated into structural nodes yet.
 - Extend collection still uses AST/runtime-side machinery rather than a render

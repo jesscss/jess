@@ -34,6 +34,9 @@ export type RenderBuffer = FlatRenderBuffer | SegmentedRenderBuffer;
 export type RenderBufferFlags = {
   hasExtends?: boolean;
   hasReferenceImports?: boolean;
+  hasHoists?: boolean;
+  hasMerges?: boolean;
+  hasPendingRefs?: boolean;
 };
 
 export type FlatRenderBuffer = {
@@ -100,7 +103,15 @@ export function createRenderBuffer(kind: RenderBuffer['kind']): RenderBuffer {
 }
 
 export function createRenderBufferForFlags(flags: RenderBufferFlags): RenderBuffer {
-  return createRenderBuffer(flags.hasExtends || flags.hasReferenceImports ? 'segmented' : 'flat');
+  return createRenderBuffer(
+    flags.hasExtends
+    || flags.hasReferenceImports
+    || flags.hasHoists
+    || flags.hasMerges
+    || flags.hasPendingRefs
+      ? 'segmented'
+      : 'flat'
+  );
 }
 
 export function isRenderBuffer(value: unknown): value is RenderBuffer {
