@@ -26,6 +26,7 @@ import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
+import { isRenderBuffer, renderNodeToBuffer, type RenderBuffer } from './util/render-buffer.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -1932,6 +1933,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    */
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderReferenceSyntax(options);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   /**

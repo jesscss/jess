@@ -2,7 +2,7 @@ import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, c
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 let context: Context;
 
 describe('reference', () => {
@@ -72,6 +72,25 @@ describe('reference', () => {
       const rendered = refNode.render(context);
 
       expect(rendered).toBe('red');
+      expect(refNode.evaluated).toBe(false);
+      expect(refNode.preEvaluated).toBe(false);
+    });
+
+    it('writes resolved reference output into segmented buffers', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+      const buffer = createRenderBuffer('segmented');
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+
+      expect(refNode.render(context, buffer)).toBe('red');
+      expect(buffer.segments).toEqual(['red']);
       expect(refNode.evaluated).toBe(false);
       expect(refNode.preEvaluated).toBe(false);
     });
