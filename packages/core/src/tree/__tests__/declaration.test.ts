@@ -5,7 +5,7 @@ import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -72,6 +72,23 @@ describe('Declaration', () => {
     }).render(context);
 
     expect(rendered).toBe('color: red');
+  });
+
+  it('writes resolved declaration output into segmented buffers', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+
+    expect(node.render(context, buffer)).toBe('color: red');
+    expect(buffer.segments).toEqual(['color: red']);
   });
 
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
@@ -175,6 +192,23 @@ describe('Declaration', () => {
     expect(node.preEvaluated).toBe(false);
     expect(context.inCustom).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes resolved custom declaration output into segmented buffers', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = customdecl({
+      name: any('--color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+
+    expect(node.render(context, buffer)).toBe('--color:red');
+    expect(buffer.segments).toEqual(['--color:red']);
   });
 
   it('renders indexed references inside custom property values through render(context)', async () => {
