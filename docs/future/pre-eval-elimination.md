@@ -775,200 +775,30 @@ A safer order is:
 
 This keeps the intermediate states understandable and testable.
 
-## First Implementation Slice
+## Current Implementation State
 
-Do not start by deleting `preEval()`.
+Do not start by deleting `preEval()`. The current bridge is intentionally
+halfway between the old public phase name and the target eval-owned setup:
 
-The first code slice was a no-behavior-change extraction inside
-`Rules`/identity nodes:
+- `Node.prepareEval()` and `Node.prepareRegistration()` are the migration
+  surfaces for local setup.
+- Public `preEval()` remains as a compatibility delegate while callers still
+  depend on the old phase shape.
+- `Rules` owns pending registration state for two proven surfaces:
+  - dynamic declaration names use a local fixed-point bucket.
+  - callable, selector, and import identities stay in one source-ordered list.
+- Declaration assignment/value prep still runs during registration prep today.
+  Moving it into `Declaration.evalNode()` needs focused assignment and merge
+  tests, because that rewrite creates semantic references and value containers.
+- `Ruleset` and `AtRule` body traversal still happens during registration prep
+  where extend-root registration depends on it. Moving those bodies into normal
+  source-order eval is the major remaining semantic migration.
 
-- extracted declaration key prep and assignment normalization from
-  `Declaration.preEval()` into named private helpers
-- separated declaration assignment normalization from recursive value prep while
-  keeping the current timing intact
-- extracted mixin callable-name prep from `Mixin.preEval()`
-- extracted ruleset selector identity prep and child-rules registration from
-  `Ruleset.preEval()`
-- extracted at-rule name identity prep from `AtRule.preEval()` without moving
-  import queuing or child-rules traversal yet
-- renamed the remaining at-rule prep wrapper around import queuing / child
-  registration so it no longer pretends to evaluate the prelude
-- extracted `StyleImport` path identity prep inside `evalNode()` so the narrow
-  path-resolution retry surface is explicit
-- removed the unused static registration accumulator in `Rules` and renamed the
-  dynamic registration arrays to pending buckets
-- extracted `Rules` registration context restoration so registration prep has a
-  single restore path before it moves closer to eval setup
-- named the `Rules` nestable-at-rule-body registration check that decides when
-  a body becomes the current extend root during prep
-- extracted `Rules` registration context setup so root / extend-root preparation
-  is a named surface before eval owns it directly
-- extracted `Rules` pending-registration partitioning so declaration-name
-  retries are separated from other unresolved identities at the call site
-- replaced loose `any` saved-context plumbing in `Rules` registration helpers
-  with the actual registration context snapshot type
-- extracted the shared `Rules` prepared-node storage path used by sync and
-  async identity prep before registration
-- aligned the pending registration resolver parameter names with the new
-  pending bucket language
-- extracted the `Rules` registration completion step so scan, map stamping,
-  restore, and pending-resolution responsibilities are separated
-- extracted per-node registerable prep from the `Rules` source-order scan
-- extracted charset prep from the registration scan as output-order
-  bookkeeping rather than name registration
-- extracted the `Rules` source-order registration scan from the registration
-  completion step
-- extracted resolved-node recording and application from the `Rules` pending
-  registration loop
-- extracted the eval entrypoint's registration-prep bridge into a named
-  `Rules` helper
-- renamed the `Rules` registration-prep entrypoint around its one-time
-  preparation semantics
-- kept `StyleImport` registration detection structural to avoid introducing a
-  circular runtime import back into `Rules`
-- routed `StyleImport` path-retry detection through explicit local predicates
-  instead of ad hoc string / `any` checks
-- typed the static-identity flag probe as `unknown` while preserving its current
-  duck-typed behavior
-- reused that static-identity flag probe for selector identity checks
-- moved charset registration-prep detection behind a local type guard
-- extracted fast registration-map stamping from the `Rules` completion step
-- named the pending-registration resolution callback shared by declaration-name
-  retries and other dynamic identity attempts
-- named the fixed retry cap for declaration-name registration
-- extracted the no-pending registration completion path
-- extracted the pending registration completion path
-- renamed the registration scan completion step around its scan-result input
-- updated stale pending-dynamic wording from `preEval` to registration prep
-- shared the registration context restore / return path across pending and
-  no-pending completion
-- extracted the eval entrypoint continuation that runs after registration prep
-- extracted root extend-stack setup from the post-registration eval bridge
-- extracted root document-order assignment from the post-registration eval bridge
-- extracted post-queue evaluation cleanup from the post-registration eval bridge
-- extracted readonly import shadow validation from the eval continuation
-- extracted eval finalization and context restore from the eval continuation
-- extracted eval error context restore from the eval entrypoint
-- classified pending registration into declaration and other buckets during scan
-- skipped empty pending registration buckets during resolution
-- added a focused fixed-point test for dependent dynamic declaration names
-- named pending registration buckets around declaration names and other identity surfaces
-- indexed resolved pending registration nodes before applying them
-- skipped resolved-node application when no pending registrations resolved
-- removed duplicate ruleset registration from pending identity resolution
-- documented the source-order contract for non-declaration pending identities
-- tagged ordered pending identity entries by callable / selector / import kind
-- added focused coverage for source-ordered non-declaration identity prep
-- added focused coverage for blocked dynamic declaration-name retry depth
-- named the dynamic declaration-name resolver around its fixed-point behavior
-- added focused coverage that direct `Rules.evalNode()` enters registration
-  prep for dynamic declaration names
-- named pending prep state around declaration-name nodes and ordered identities
-- named the ordered identity prep resolver around its source-order contract
-- renamed the declaration pending lane to `pendingDeclarationNames`
-- aligned the lookup-side `ScopeFrame` pending declaration-name list with the
-  same naming
-- removed stale slice-number / runtime-binding wording from ScopeFrame docs and
-  test names
-- named the declaration-name fixed-point retry state around attempts and
-  unresolved declarations
-- extracted declaration name-identity prep from the remaining declaration
-  registration prep while keeping assignment/value prep timing unchanged
-- renamed the remaining declaration value prep helper so it does not pretend to
-  be lookup-registration-only work
-- separated mixin registration prep into callable-name identity and body
-  visibility setup without pre-evaluating mixin body rules
-- named at-rule prep helpers around at-rule name identity and registration
-  instead of generic name / registration wording
-- split at-rule registration prep into import queueing and child body
-  registration helpers without moving either behavior
-- extracted at-rule body registration context setup/restore without moving child
-  traversal timing
-- restored Rules registration context after child registration-prep errors so
-  at-rule body prep cannot leak extend roots or ruleset frames
-- split ruleset registration prep around selector identity and removed stale
-  unused parent-selector inheritance calculation
-- restored parent ruleset frames after child registration-prep errors so nested
-  ruleset prep cannot leak selector context on throw or rejection
-- restored ruleset eval frames after body evaluation errors and removed adjacent
-  no-op debug scaffolding from the ruleset eval path
-- restored at-rule prelude evaluation rules context when prelude eval throws
-- restored at-rule body evaluation context after body eval/prep errors so frames,
-  cleared ruleset frames, and pushed extend roots do not leak
-- restored compose-import extend roots after imported evaluation errors
-- extracted declaration-name pending prep into its own `Rules` phase before
-  source-ordered callable / selector / import identity prep
-- made declaration-name pending prep apply its resolved nodes through a local
-  accumulator instead of sharing the ordered-identity accumulator
-- added a focused mixin test proving callable identity prep still does not
-  pre-evaluate the mixin body
-- moved registration prep state creation to the eval / preEval bridge and split
-  the declaration-name fixed-point state from the source-ordered identity state
-- added an internal `Node.prepareEval()` hook so `Rules.eval()` can route to
-  registration prep without depending on the public `preEval()` phase name
-- added a public `Node.prepareRegistration()` bridge for lookup-identity prep
-  call sites that still delegate to `preEval()` internally during migration
-- moved `Mixin` callable identity prep and `Any(role='charset')` output-order
-  prep onto `prepareRegistration()` while keeping public `preEval()` as a
-  compatibility delegate
-- moved `Declaration` key / assignment / value registration prep onto
-  `prepareRegistration()` while keeping current timing unchanged
-- moved `Ruleset` selector identity and child-rules registration prep onto
-  `prepareRegistration()` while keeping its depth-first child registration
-  timing unchanged
-- moved `AtRule` name identity, import queueing, and body registration prep onto
-  `prepareRegistration()` while keeping prelude evaluation in `evalNode()`
-- moved `StyleImport`'s no-op registration prep and imported-rules prep call
-  onto `prepareRegistration()`
-- moved declaration-value recursive prep inside declaration registration onto
-  `prepareRegistration()`
-- made `Rules` expose its registration-prep implementation directly through
-  `prepareRegistration()`, with public `preEval()` left as a compatibility
-  delegate
-- made `Collection` and `$for` expose their mark-only registration prep through
-  `prepareRegistration()`
-- routed the base compatibility `preEval()` child walk through child
-  `prepareRegistration()` hooks
-- inverted the base bridge so public `preEval()` delegates to the default
-  `prepareRegistration()` implementation
-- routed the base `prepareEval()` default directly through
-  `prepareRegistration()`
-- made `Rules` registration prep state internal to the one-time registration
-  helper
-- split `Rules` registration finalization so declaration-name fixed-point prep
-  runs before the ordered callable/import/selector identity lane
-- made the declaration-name registration phase apply its resolved nodes from
-  the registration finalization path
-- gave the declaration-name and ordered-identity registration phases separate
-  finish helpers, keeping the existing ordering but making the eval-owned
-  declaration-name boundary explicit
-- cleaned stale local comments and variable names that described registration
-  prep and eval prep as generic pre-evaluation
-
-The current implementation slice has introduced `Rules`-owned pending
-registration state for two surfaces:
-
-- dynamic declaration names live in the fixed-point
-  `Rules._resolvePendingDeclarationNamesFixedPoint()` bucket
-- other identity work stays in one source-ordered list, with entries tagged as
-  callable, selector, or import identity
-
-Both paths still run under the existing registration-prep call path for now.
-`Rules.evalNode()` routes through that internal helper directly when preparation
-is needed, and ordinary `Rules.eval()` now reaches the same path through
-`prepareEval()` instead of the public `preEval()` phase name. Declaration
-registration still depends on the preparatory scan, but the scan now calls
-`prepareRegistration()` for identity prep rather than naming the public preEval
-phase directly. The old unused async child-preEval continuation helper has been
-removed.
-
-The next step is to make `Rules.evalNode()` own more of the declaration-name
-prep timing directly instead of reaching it through the shared registration scan.
-Do not split the ordered non-declaration identity list into separate schedulers
-yet. There is now focused coverage that mixed callable/import/selector identity
-prep preserves source order; splitting that list still needs separate proof that
-each surface can move independently without changing registration or import
-retry timing.
+The next step is to make `Rules.evalNode()` own more of the declaration-name and
+body-prep timing directly instead of reaching it through the shared registration
+scan. Do not split the ordered non-declaration identity list into separate
+schedulers unless focused tests prove each surface can move independently
+without changing registration or import retry timing.
 
 Do not simply override `Rules.eval()` to skip the public `preEval()` wrapper.
 That changes when registration prep runs relative to `rulesEvalStack` setup and
