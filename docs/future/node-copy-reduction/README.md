@@ -276,6 +276,11 @@ touching production code.
     cloning the input color and mutating the clone's `value.node`; the input
     color remains unchanged and no `Color.clone()` call is needed for this
     generated output.
+- `packages/fns/src/less/extract.ts`
+  - `extract()` now returns an owned, trivia-detached result through
+    `copyWithReusableLeaves(...)` instead of a full `copy(true)`. Extracted
+    containers still get their own result surface, while inert source-free
+    leaves can remain canonical and frozen.
 - `packages/fns/src/util/color-output.ts`
   - `rgb(color)` / `rgb(color, alpha)` and `hsl(color)` /
     `hsl(color, alpha)` now share a generated color-output helper instead of
@@ -375,14 +380,11 @@ Use this as the active checklist for the next narrow batches:
 8. Record only durable frontier changes here; old recovery details belong in
    git history, not this startup handoff.
 
-Current scan note: outside clone infrastructure and key-set/bitset copies, the
-remaining production deep-clone surfaces are explicit and should not be treated
-as generic low-hanging fruit:
+Current scan note: outside clone infrastructure and key-set/bitset copies,
+`packages/fns/src` has no remaining production `.copy()` / `.clone()` call
+sites. The remaining production deep-clone surfaces elsewhere are explicit and
+should not be treated as generic low-hanging fruit:
 
-- `packages/fns/src/less/extract.ts` still returns an owned, trivia-detached
-  result surface for the extracted item. That should eventually move to a
-  reusable-leaf copy helper or function-result ownership API, but it is not the
-  same routine clone-and-mutate pattern removed from color output.
 - `packages/core/src/tree/ruleset.ts` no longer has the defensive
   `selector.copy(true)` fallback after the owned/reusable selector helper; the
   helper must return a selector-shaped node or throw.
