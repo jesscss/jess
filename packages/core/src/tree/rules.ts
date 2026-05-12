@@ -2124,13 +2124,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return atIndex(this.value.filter(isIndexedRuleChild), index);
   }
 
-  /**
-   * This traverses deeply to visit all nodes, but indexes locally.
-   */
-  override preEval(context: Context) {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(context: Context): MaybePromise<this> {
     return this._prepareRegistrationOnce(context);
   }

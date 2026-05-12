@@ -788,7 +788,10 @@ halfway between the old public phase name and the target eval-owned setup:
 - `Node.prepareEval()` and `Node.prepareRegistration()` are the migration
   surfaces for local setup.
 - Public `preEval()` remains as a compatibility delegate while callers still
-  depend on the old phase shape.
+  depend on the old phase shape. Node classes no longer carry redundant
+  `preEval()` overrides that only delegate to `prepareRegistration()`;
+  node-specific setup should live in `prepareRegistration()` or
+  `prepareEval()`.
 - `Rules` owns pending registration state for two proven surfaces:
   - dynamic declaration names use a local fixed-point bucket.
   - callable, selector, and import identities stay in one source-ordered list.

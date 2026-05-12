@@ -56,10 +56,6 @@ export class Any<
     this.addFlag(F_STATIC);
   }
 
-  override preEval(context: Context): this | Nil {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules

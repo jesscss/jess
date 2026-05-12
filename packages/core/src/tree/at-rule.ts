@@ -155,10 +155,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * Prepare name identity and body registration.
    * Prelude evaluation stays in evalNode so live-scope lookups stay correct.
    */
-  override preEval(context: Context): MaybePromise<AtRule | Nil> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(context: Context): MaybePromise<AtRule | Nil> {
     if (!this.preEvaluated) {
       const prepared = this._prepareAtRuleNameIdentity(context);

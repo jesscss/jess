@@ -278,10 +278,6 @@ export class For extends Node<StructuredLoopValue> {
     makeDirectiveRulesPublic(value.rules);
   }
 
-  override preEval(context: Context): MaybePromise<Node> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(_context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
       this.preEvaluated = true;

@@ -174,10 +174,6 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
-  override preEval(context: Context): MaybePromise<Mixin> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(context: Context): MaybePromise<Mixin> {
     if (this.preEvaluated) {
       return this;

@@ -530,10 +530,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Defer import-path interpolation to evalNode so unresolved vars can be retried
    * after later imports/assignments in the same Rules scope have evaluated.
    */
-  override preEval(context: Context): MaybePromise<this> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(_context: Context): MaybePromise<this> {
     return this;
   }

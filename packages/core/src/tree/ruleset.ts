@@ -1005,10 +1005,6 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       : normalizeIndent(header, idt)) + '\n';
   }
 
-  override preEval(context: Context): MaybePromise<Ruleset> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(context: Context): MaybePromise<Ruleset> {
     if (!this.preEvaluated) {
       return this._prepareRulesetRegistration(context);
