@@ -159,11 +159,15 @@ clean:
 
 1. Keep reducing routine `clone()` / defensive copy boundaries where focused
    tests prove the source tree stays canonical.
-2. Audit remaining `sourceNode` / `sourceParent` uses and classify each as
-   semantic provenance, import/reference identity, or removable transport debt.
-3. Audit remaining `OutputWriter.mark()` / `getSince()` / `restore()` /
-   `capture()` sites and remove legacy preview scaffolding where direct
-   streaming preserves trivia and sourcemaps.
+2. Keep `sourceNode` on semantic provenance surfaces only: import/reference
+   identity, selector keyset/library inheritance, sourcemap/trivia mapping, and
+   focused recursion/lookup identity. Production `sourceParent` transport is
+   gone; do not reintroduce it.
+3. Reduce writer preview scaffolding. Production `OutputWriter.capture()` use
+   is retired outside the writer implementation; remaining broad usage is
+   `mark()` / `getSince()` local serializer windows plus the real
+   `Rules._emitRulesBody(...)` preview path. Do not remove that path without
+   focused ruleset/at-rule/trivia/sourcemap tests.
 4. Implement the first structural `RenderBuffer` integration only where a node
    has a proven delayed-output need.
 5. Move extend collection toward render-pass side-table population.
@@ -180,7 +184,8 @@ clean:
 - Preserve Jess behavior unless a behavior change is explicitly chosen.
 - Do not weaken Less fixtures or core tests to make refactors look complete.
 - Do not add broad abstractions without multiple node-shape proofs.
-- Do not use `sourceParent` or `sourceNode` to smuggle invocation scope.
+- Do not use `sourceNode` to smuggle invocation scope, and do not reintroduce
+  `sourceParent` transport.
 - Do not reintroduce wrapper `VarDeclaration` insertion for lookup transport.
 - Keep docs short enough to read at startup; move old debugging archaeology to
   archive or git history instead of keeping it in active handoffs.
