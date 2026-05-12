@@ -185,9 +185,6 @@ export function renderNodeToBuffer(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): MaybePromise<string> {
-  if (buffer.kind !== 'flat') {
-    throw new Error('renderNodeToBuffer(...) can only use the default bridge with flat RenderBuffer; segmented rendering needs explicit segment handling.');
-  }
   const rendered = renderNodeToString(node, context, options);
   const writeRendered = (text: string): string => {
     writeRenderText(buffer, text);

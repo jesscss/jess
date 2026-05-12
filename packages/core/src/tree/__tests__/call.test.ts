@@ -178,14 +178,15 @@ describe('Call', () => {
     expect(rule.preEvaluated).toBe(false);
   });
 
-  it('requires explicit segment handling for segmented buffers', () => {
+  it('writes finalized CSS call output into segmented buffers', () => {
     const buffer = createRenderBuffer('segmented');
     const rule = call({
       name: 'rgb',
       args: list([num(100), num(100), num(100)])
     });
 
-    expect(() => rule.render(context, buffer)).toThrow(/segmented rendering/u);
+    expect(rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.segments).toEqual(['rgb(100, 100, 100)']);
   });
 
   it('streams rendered CSS call arguments without capture scaffolding', () => {

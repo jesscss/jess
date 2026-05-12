@@ -679,6 +679,11 @@ after a fixed-point pass is a real error.
   (a miss resolved only after a later miss resolves) need a fixed-point loop;
   diagnostic quality for unresolved names has to be preserved explicitly.
 
+Segmented buffers do not imply "keep child nodes around." A child that can
+finalize its own output should write a string segment immediately; only the
+parent/finalization boundary that genuinely needs delayed ordering should stay
+typed.
+
 ### Target Hybrid
 
 Default to Shape B. Keep narrow schedulers only where the current code already

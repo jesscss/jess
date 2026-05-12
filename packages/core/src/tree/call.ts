@@ -296,9 +296,6 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      if (bufferOrOptions.kind !== 'flat') {
-        throw new Error('Call segmented rendering needs explicit segment handling.');
-      }
       if (typeof this.value.name !== 'string') {
         return renderNodeToBuffer(this, context, bufferOrOptions, options);
       }

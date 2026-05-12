@@ -121,11 +121,12 @@ describe('renderNodeToBuffer', () => {
     expect(options.emittedTrivia).toBe(emittedTrivia);
   });
 
-  it('requires explicit implementations for segmented rendering', () => {
+  it('writes finalized string output into segmented buffers', () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
     const node = any('green');
 
-    expect(() => renderNodeToBuffer(node, context, buffer)).toThrow(/segmented rendering/u);
+    expect(renderNodeToBuffer(node, context, buffer)).toBe('green');
+    expect(buffer.segments).toEqual(['green']);
   });
 });

@@ -148,6 +148,9 @@ Current implementation state:
   currently named delayed-output families: extends, reference imports, hoists,
   merges, and pending refs.
 - Flat-buffer bridging exists for many simple nodes.
+- Segmented buffers can still accept finalized string output. A delayed parent
+  segment is not permission to retain child node structure when a child can
+  already render to a string.
 - Segmented rendering is not integrated into structural nodes yet.
 - Extend collection still uses AST/runtime-side machinery rather than a render
   side table.
