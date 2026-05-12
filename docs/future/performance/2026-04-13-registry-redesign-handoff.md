@@ -1,7 +1,12 @@
 # Registry Redesign — Handoff
 
-This file is historical design context plus the current high-level roadmap. It
-is not an operational queue.
+This file is the current high-level roadmap for the registry/runtime redesign.
+It is not an operational queue.
+
+Older April 2026 benchmark audits, proposal text, and investigation ticket
+drafts are archived under `docs/_archive/future-performance-2026-04-13/`.
+Use those only for archaeology; do not treat their dated "current system" notes
+as active guidance.
 
 For active execution, prefer:
 
@@ -16,14 +21,10 @@ handoffs above.
 
 ## Current Status
 
-Last verified during this cleanup pass:
-
-- branch: `dev`
-- baseline: `pnpm run verify:baseline`
-- result: passing for core, parsers, and `packages/jess/test/less/all-less.test.ts`
-
-The old failure buckets in this document were removed because they described
-past recovery work as if it were current state.
+The old failure buckets were removed because they described past recovery work
+as if it were current state. For the current baseline and exact verification
+commands, run the active handoff checks in `docs/future/node-copy-reduction/`
+and the relevant focused tests for the code being changed.
 
 ## Architecture Direction
 
@@ -153,28 +154,24 @@ Current implementation state:
 
 ## Active Todo List
 
-Use this list as the roadmap after the current node-copy reduction pass:
+Use this list as the roadmap after the current node-copy frontier check is
+clean:
 
-1. Finish the remaining node-copy reduction seams in
-   `docs/future/node-copy-reduction/README.md`.
-2. Keep reducing routine `clone()` / defensive copy boundaries where focused
+1. Keep reducing routine `clone()` / defensive copy boundaries where focused
    tests prove the source tree stays canonical.
-3. Audit remaining `sourceNode` / `sourceParent` uses and classify each as
+2. Audit remaining `sourceNode` / `sourceParent` uses and classify each as
    semantic provenance, import/reference identity, or removable transport debt.
-4. Audit remaining `OutputWriter.mark()` / `getSince()` / `restore()` /
+3. Audit remaining `OutputWriter.mark()` / `getSince()` / `restore()` /
    `capture()` sites and remove legacy preview scaffolding where direct
    streaming preserves trivia and sourcemaps.
-5. Before deeper Track 5 integration, refresh
-   `docs/future/pre-eval-elimination.md` against the current `Rules` code and
-   verify its eval-order decisions still match production.
-6. Implement the first structural `RenderBuffer` integration only where a node
+4. Implement the first structural `RenderBuffer` integration only where a node
    has a proven delayed-output need.
-7. Move extend collection toward render-pass side-table population.
-8. Implement a pure post-step for selector finalization, extend application,
+5. Move extend collection toward render-pass side-table population.
+6. Implement a pure post-step for selector finalization, extend application,
    and reference visibility.
-9. Migrate `extend-roots.ts` reachability logic toward a pure
+7. Migrate `extend-roots.ts` reachability logic toward a pure
    `ExtendRoot x ExtendRoot` predicate usable by the post-step.
-10. Remove base-class `preEval` / generic eval stamping / compatibility
+8. Remove base-class `preEval` / generic eval stamping / compatibility
     serialization bridges only after node-level replacements and parity
     coverage prove they are unused.
 

@@ -13,7 +13,7 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/performance/2026-04-13-registry-redesign-proposal.md
+ * @see docs/future/performance/2026-04-13-registry-redesign-handoff.md
  */
 
 import type { Node } from './node.js';
