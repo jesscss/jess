@@ -8,6 +8,7 @@ import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
+import { isRenderBuffer, renderNodeToBuffer, type RenderBuffer } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -139,6 +140,15 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     return serializeRulesContainer(this, printOptions);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   /**

@@ -15,7 +15,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import * as path from 'path';
 import * as fs from 'fs';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -198,6 +198,41 @@ describe('AtRule', () => {
     });
 
     expect(node.render(context)).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+  });
+
+  it('writes finalized at-rule output into segmented buffers', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const buffer = createRenderBuffer('segmented');
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const rendered = await Promise.resolve(node.render(context, buffer));
+
+    expect(rendered).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(buffer.segments).toHaveLength(1);
+    expect(buffer.segments[0]).toBeString(`
       @media print {
         color: red;
       }

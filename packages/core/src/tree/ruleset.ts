@@ -26,6 +26,7 @@ import {
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
+import { isRenderBuffer, renderNodeToBuffer, type RenderBuffer } from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
@@ -570,6 +571,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
     }
     return serializeRulesContainer(this, opts);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   /**

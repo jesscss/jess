@@ -4,7 +4,7 @@ import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -86,6 +86,30 @@ describe('Rule', () => {
       foo {
         border: 1px solid black;
         color: #eee;
+      }
+    `);
+  });
+
+  it('writes finalized ruleset output into segmented buffers', async () => {
+    const buffer = createRenderBuffer('segmented');
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const rendered = await Promise.resolve(node.render(context, buffer));
+
+    expect(rendered).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(buffer.segments).toHaveLength(1);
+    expect(buffer.segments[0]).toBeString(`
+      foo {
+        color: red;
       }
     `);
   });

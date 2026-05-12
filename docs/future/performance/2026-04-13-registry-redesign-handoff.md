@@ -151,9 +151,9 @@ Current implementation state:
 - Segmented buffers can still accept finalized string output. A delayed parent
   segment is not permission to retain child node structure when a child can
   already render to a string.
-- Segmented rendering is not integrated into structural nodes yet. The next
-  structural candidates are `Ruleset` and `AtRule`, because they own selector,
-  reference, hoist, and nested-body finalization boundaries.
+- `Ruleset` and `AtRule` can now write finalized string output through the
+  segmented buffer bridge. Their delayed selector/reference/hoist finalization
+  still needs explicit segment integration.
 - Extend collection still uses AST/runtime-side machinery rather than a render
   side table.
 - Reference visibility, selector finalization, and hoist/merge finalization are
