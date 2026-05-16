@@ -4,8 +4,34 @@ import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
+import { isRenderBuffer, renderNodeToBuffer, type RenderBuffer } from './util/render-buffer.js';
+import type { PrintOptions } from './util/print.js';
 
 const { isArray } = Array;
+
+function isSelector(value: unknown): value is Selector {
+  return value instanceof Selector;
+}
+
+function selectorArray(value: unknown): Selector[] | undefined {
+  if (!isArray(value)) {
+    return undefined;
+  }
+  return value.every(isSelector) ? value : undefined;
+}
+
+function selectorArg(value: unknown): Selector | undefined {
+  if (typeof value !== 'object' || value === null || !('arg' in value)) {
+    return undefined;
+  }
+  const arg = Reflect.get(value, 'arg');
+  return isSelector(arg) ? arg : undefined;
+}
+
+function nodeType(value: Node | undefined): string {
+  return value?.type ?? 'none';
+}
+
 /**
  * This represents anything that is valid in a selector
  *
@@ -37,34 +63,25 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   protected _requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
     const { keySetLibrary, sourceNode, parent } = this;
-    const sourceLibrary = (
-      sourceNode !== this
-      && (sourceNode as Selector).isSelector
-    )
-      ? (sourceNode as Selector).keySetLibrary
+    const sourceLibrary = sourceNode !== this && isSelector(sourceNode)
+      ? sourceNode.keySetLibrary
       : undefined;
-    const parentLibrary = (
-      parent !== this
-      && (parent as Selector | undefined)?.isSelector
-    )
-      ? (parent as Selector).keySetLibrary
+    const parentLibrary = parent !== this && isSelector(parent)
+      ? parent.keySetLibrary
       : undefined;
-    const treeContext = this.treeContext as
-      | { selectorBits?: BitSetLibrary<string>; opts?: { selectorBits?: BitSetLibrary<string> } }
-      | undefined;
+    const treeContext = this.treeContextIfSet;
     const library = keySetLibrary
       ?? parentLibrary
       ?? sourceLibrary
       ?? context?.selectorBits
-      ?? treeContext?.selectorBits
       ?? treeContext?.opts?.selectorBits;
     if (library) {
       this.keySetLibrary ??= library;
       return library;
     }
     const selectorText = String(this.valueOf?.() ?? '');
-    const parentType = (parent as { type?: string } | undefined)?.type ?? 'none';
-    const sourceType = (sourceNode as { type?: string } | undefined)?.type ?? 'none';
+    const parentType = nodeType(parent);
+    const sourceType = nodeType(sourceNode);
     throw new Error(`Selector keySet library not found (${this.type}: ${selectorText}; parent=${parentType}; source=${sourceType})`);
   }
 
@@ -73,20 +90,18 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       return this;
     }
     const inherited = super.inherit(node);
-    if (node && (node as Selector).isSelector) {
-      inherited.keySetLibrary ??= (node as Selector).keySetLibrary;
+    if (isSelector(node)) {
+      inherited.keySetLibrary ??= node.keySetLibrary;
     }
-    const { value } = inherited as Record<string, unknown>;
-    if (isArray(value)) {
-      for (const item of value) {
-        if ((item as Selector | undefined)?.isSelector) {
-          inherited.adopt(item as Selector);
-        }
+    const selectors = selectorArray(inherited.value);
+    if (selectors) {
+      for (const item of selectors) {
+        inherited.adopt(item);
       }
-    } else if (value && typeof value === 'object') {
-      const arg = (value as { arg?: unknown }).arg;
-      if ((arg as Selector | undefined)?.isSelector) {
-        inherited.adopt(arg as Selector);
+    } else {
+      const arg = selectorArg(inherited.value);
+      if (arg) {
+        inherited.adopt(arg);
       }
     }
     return inherited;
@@ -102,10 +117,19 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     const { selectorBits } = context;
     const { sourceNode } = this;
     this.keySetLibrary ??= selectorBits;
-    if (sourceNode !== this && (sourceNode as Selector).isSelector) {
-      (sourceNode as Selector).keySetLibrary ??= selectorBits;
+    if (sourceNode !== this && isSelector(sourceNode)) {
+      sourceNode.keySetLibrary ??= selectorBits;
     }
     return super.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   /**
@@ -135,16 +159,16 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       return this.keySet;
     }
     const library = this._requireKeySetLibrary(context);
-    const { value } = this as Record<string, unknown>;
-    if (isArray(value)) {
+    const selectors = selectorArray(this.value);
+    if (selectors) {
       let keySet: BitSet<string> | undefined;
-      for (const child of value as Selector[]) {
+      for (const child of selectors) {
         const childKeySet = child.getKeySet(context);
         keySet = keySet ? keySet.or(childKeySet) : childKeySet.clone();
       }
       return keySet ?? library.getBitset();
     }
-    const selectorValue = String((this as unknown as { valueOf(context?: Context): string }).valueOf(context));
+    const selectorValue = String(this.valueOf());
     return library.getBitset([selectorValue]);
   }
 
@@ -178,12 +202,12 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       return;
     }
     const library = this._requireKeySetLibrary();
-    const { value } = this as Record<string, unknown>;
-    if (isArray(value)) {
+    const selectors = selectorArray(this.value);
+    if (selectors) {
       let keySet: BitSet<string> | undefined;
       let visibleKeySet: BitSet<string> | undefined;
       let requiredKeySet: BitSet<string> | undefined;
-      for (const child of value as Selector[]) {
+      for (const child of selectors) {
         const childKeySet = child.keySet;
         keySet = keySet
           ? keySet.or(childKeySet)

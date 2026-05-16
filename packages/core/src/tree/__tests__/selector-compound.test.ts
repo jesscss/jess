@@ -4,6 +4,7 @@ import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -100,6 +101,31 @@ describe('Compound Selector', () => {
     ]).render(context);
 
     expect(rendered).toBe('a[data=foo]');
+  });
+
+  test('writes resolved compound selector output into segmented buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+    const buffer = createRenderBuffer('segmented');
+
+    const rendered = compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]).render(context, buffer);
+
+    expect(rendered).toBe('a[data=foo]');
+    expect(buffer.segments).toEqual(['a[data=foo]']);
   });
 
   test('resolves compound selector values without touching render state', async () => {

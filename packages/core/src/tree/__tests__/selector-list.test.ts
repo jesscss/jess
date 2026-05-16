@@ -1,5 +1,6 @@
 import { any, attr, co, compound, el, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 /**
  * @todo - add tests for list bubbling
@@ -79,6 +80,34 @@ describe('Selector list', () => {
     ]).render(context);
 
     expect(rendered).toBe('a[data=foo],\n.bar');
+  });
+
+  test('writes resolved selector-list output into segmented buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+    const buffer = createRenderBuffer('segmented');
+
+    const rendered = sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
+        })
+      ]),
+      el('.bar')
+    ]).render(context, buffer);
+
+    expect(rendered).toBe('a[data=foo],\n.bar');
+    expect(buffer.segments).toEqual(['a[data=foo],\n.bar']);
   });
 
   test('resolves selector-list values without touching render state', async () => {

@@ -1,6 +1,6 @@
 import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
 import { Context } from '../../context.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -59,6 +59,31 @@ describe('Attribute Selector', () => {
     const rendered = attrNode.render(context);
 
     expect(rendered).toBe('[data=foo]');
+    expect(attrNode.evaluated).toBe(false);
+    expect(attrNode.preEvaluated).toBe(false);
+  });
+
+  test('writes resolved attribute selector output into segmented buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+
+    const attrNode = attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    });
+    const rendered = attrNode.render(context, buffer);
+
+    expect(rendered).toBe('[data=foo]');
+    expect(buffer.segments).toEqual(['[data=foo]']);
     expect(attrNode.evaluated).toBe(false);
     expect(attrNode.preEvaluated).toBe(false);
   });

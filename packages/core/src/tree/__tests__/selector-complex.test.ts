@@ -3,6 +3,7 @@ import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rul
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -79,6 +80,35 @@ describe('Complex selector', () => {
       ]).render(context);
 
       expect(rendered).toBe('a[data=foo] > .foo');
+    });
+
+    test('writes resolved complex selector output into segmented buffers', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+      const buffer = createRenderBuffer('segmented');
+
+      const rendered = sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]).render(context, buffer);
+
+      expect(rendered).toBe('a[data=foo] > .foo');
+      expect(buffer.segments).toEqual(['a[data=foo] > .foo']);
     });
 
     test('does not consume reordered source trivia between generated selector parts', () => {

@@ -5,6 +5,7 @@ import type { IToken } from 'chevrotain';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -101,6 +102,30 @@ describe('PseudoSelector', () => {
     const rendered = pseudoNode.render(context);
 
     expect(rendered).toBe(':is(.foo, .bar)');
+    expect(pseudoNode.evaluated).toBe(false);
+    expect(pseudoNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved pseudo selector output into segmented buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([el('.foo'), el('.bar')])
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+    const buffer = createRenderBuffer('segmented');
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    const rendered = pseudoNode.render(context, buffer);
+
+    expect(rendered).toBe(':is(.foo, .bar)');
+    expect(buffer.segments).toEqual([':is(.foo, .bar)']);
     expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.preEvaluated).toBe(false);
   });
