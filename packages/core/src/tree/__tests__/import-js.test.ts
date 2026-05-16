@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { js, quoted } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('JsImport', () => {
   it('serializes JS import source syntax through toTrimmedString()', () => {
@@ -19,5 +20,16 @@ describe('JsImport', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes source import syntax into render buffers', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('segmented');
+    const node = js({ path: quoted('foo.js') }, { namespace: 'foo' });
+
+    expect(node.render(context, buffer)).toBe('@-use "foo.js" as foo;');
+    expect(buffer.segments).toEqual(['@-use "foo.js" as foo;']);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
   });
 });

@@ -28,7 +28,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -252,6 +252,24 @@ describe('Control Nodes', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes evaluated $for output into render buffers', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('segmented');
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toContain('item: a');
+    expect(rendered).toContain('item: b');
+    expect(buffer.segments).toEqual([rendered]);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
   });
 
   it('serializes $while source syntax through toTrimmedString()', () => {

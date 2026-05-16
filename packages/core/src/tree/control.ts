@@ -12,6 +12,11 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -405,7 +410,12 @@ export class For extends Node<StructuredLoopValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
     return renderControlSourceSyntax(this, context, options);
   }
 }

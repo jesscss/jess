@@ -1,7 +1,13 @@
 import type { Context } from '../context.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -70,6 +76,15 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
 
   override resolve(_context: Context): this {
     return this;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 }
 

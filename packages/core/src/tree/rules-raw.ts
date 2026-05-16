@@ -1,7 +1,13 @@
 import { defineType } from './node.js';
 import type { Context } from '../context.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,
@@ -37,6 +43,15 @@ export class RawRules extends Rules {
 
   override resolve(_context: Context): this {
     return this;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 }
 

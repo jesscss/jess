@@ -57,6 +57,10 @@ it is for current direction and next seams, not a historical pass log.
   direct root rendering and the case where the source root resolves to an owned
   root surface; the root serializer exception should stay limited to that
   identity-backed case.
+- Focused core coverage now proves explicit render-buffer output for `JsImport`,
+  `RawRules`, async `JsExpression`, and evaluated `$for` output. The `$for`
+  bridge deliberately does not change legacy direct string render, which still
+  returns source syntax for sync compatibility.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check now also fails on ordinary production `.copy()`
@@ -91,6 +95,10 @@ it is for current direction and next seams, not a historical pass log.
   of falling back to source text. New render bridges should share
   `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
   reuse heuristics.
+- Do not add buffer overloads to invisible registration or compile-time
+  side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
+  `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof
+  before they become render-buffer output surfaces.
 - The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
   remains the public compatibility hook name, but internally that phase is
   treated as pre-render: visitors run after eval and before serialization.

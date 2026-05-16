@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, decl, rawrules } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('RawRules', () => {
   it('serializes raw rules children without parent formatting', () => {
@@ -23,5 +24,18 @@ describe('RawRules', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes raw child output into render buffers', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('segmented');
+    const node = rawrules([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+
+    expect(node.render(context, buffer)).toBe('color: red');
+    expect(buffer.segments).toEqual(['color: red']);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
   });
 });

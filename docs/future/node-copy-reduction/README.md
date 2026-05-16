@@ -41,6 +41,12 @@ selector placement truly needs one.
   `node.render(context)` when a render context exists. `Quoted` and `Any`
   remain raw-value exceptions because Less helper APIs intentionally consume
   their literal forms.
+- The explicit render-buffer bridge now covers ordinary scalar, declaration,
+  selector, reference, style import, JS import, raw-rules, async JS expression,
+  and evaluated `$for` output seams that have focused tests. This does not mean
+  every node should gain a buffer overload: invisible registration or
+  side-effect nodes should stay invisible unless a focused output test proves a
+  real render seam.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check fails on ordinary production `.copy()` callers
@@ -67,6 +73,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   materialization are suspect surfaces, not automatic bugs.
 - `prepareRenderPrintState(...)` is the central render bridge. New bridges
   should use it instead of adding local writer/frame/trivia reset heuristics.
+- Keep direct legacy `render(context)` behavior separate from explicit
+  `render(context, buffer)` behavior where the repo still needs that
+  compatibility. For example, direct `$for` string render remains source syntax
+  while the buffer path emits evaluated loop output.
 - If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a
   parser-accurate focused core repro first when practical.
 

@@ -3,6 +3,11 @@ import { Node, defineType } from './node.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 /**
  * Deprecated Less feature
@@ -37,6 +42,15 @@ export class JsExpression extends Node<string> {
 
   override resolve(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 }
 export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');
