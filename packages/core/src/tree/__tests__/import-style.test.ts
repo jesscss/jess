@@ -37,7 +37,7 @@ import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -3063,6 +3063,36 @@ describe('Style import', () => {
       expect(node.evaluated).toBe(false);
       expect(node.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('writes resolved style import output into segmented buffers', async () => {
+      context.sourceTrees.set('buffer-import.jess', rules([
+        ruleset({
+          selector: el('.buffered'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+      const node = style(
+        { path: quoted(any('buffer-import.jess')) },
+        { type: 'import' }
+      );
+      const anchor = rules([node]);
+      context.root = anchor;
+      context.rulesContext = anchor;
+      const buffer = createRenderBuffer('segmented');
+
+      const rendered = await node.render(context, buffer);
+
+      expect(rendered).toBeString(`
+        .buffered {
+          color: red;
+        }
+      `);
+      expect(buffer.segments).toEqual([rendered]);
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
     });
   });
 

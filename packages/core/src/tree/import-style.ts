@@ -15,6 +15,8 @@ import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
+import { isRenderBuffer, renderNodeToBuffer, type RenderBuffer } from './util/render-buffer.js';
+import type { PrintOptions } from './util/print.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -839,6 +841,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   override resolve(context: Context): MaybePromise<Rules> {
     return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
