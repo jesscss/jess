@@ -57,8 +57,9 @@ it is for current direction and next seams, not a historical pass log.
   direct root rendering and the case where the source root resolves to an owned
   root surface; the root serializer exception should stay limited to that
   identity-backed case.
-- Focused core coverage now proves explicit render-buffer output for `JsImport`,
-  `RawRules`, async `JsExpression`, and evaluated `$for` output. The `$for`
+- Focused core coverage now proves explicit render-buffer output for
+  `Collection`, `JsImport`, `RawRules`, async `JsExpression`, inherited
+  visible `VarDeclaration` output, and evaluated `$for` output. The `$for`
   bridge deliberately does not change legacy direct string render, which still
   returns source syntax for sync compatibility.
 - `pnpm run verify:node-copy-frontier` reports no production deep
@@ -71,6 +72,9 @@ it is for current direction and next seams, not a historical pass log.
   complex ampersand boundary replacement.
 - The remaining ordinary copy helpers should be audited by ownership purpose,
   not by treating every local copy boundary as the same kind of bug.
+- `List` and `Sequence` addition already have focused coverage for preserving
+  source child parentage and reusing childless source-free scalar leaves; do not
+  churn those helpers without a new ownership failure.
 
 ## Current Frontier
 

@@ -43,10 +43,11 @@ selector placement truly needs one.
   their literal forms.
 - The explicit render-buffer bridge now covers ordinary scalar, declaration,
   selector, reference, style import, JS import, raw-rules, async JS expression,
-  and evaluated `$for` output seams that have focused tests. This does not mean
-  every node should gain a buffer overload: invisible registration or
-  side-effect nodes should stay invisible unless a focused output test proves a
-  real render seam.
+  collection, and evaluated `$for` output seams that have focused tests.
+  `VarDeclaration` output is covered through the inherited `Declaration`
+  buffer path for visible parameter bindings. This does not mean every node
+  should gain a buffer overload: invisible registration or side-effect nodes
+  should stay invisible unless a focused output test proves a real render seam.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check fails on ordinary production `.copy()` callers

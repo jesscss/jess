@@ -1,6 +1,7 @@
 import { vardecl, coll, decl, any, rules, Node } from '../index.js';
 import { Context } from '../../context.js';
 import { nil } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -74,6 +75,21 @@ describe('Let', () => {
       });
 
       expect(rule.render(context)).toBe('$tone');
+    });
+
+    it('writes visible parameter vars into render buffers through Declaration', () => {
+      const buffer = createRenderBuffer('segmented');
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+
+      expect(rule.render(context, buffer)).toBe('$tone');
+      expect(buffer.segments).toEqual(['$tone']);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.preEvaluated).toBe(false);
     });
 
     it('resolves visible parameter vars without touching render state', async () => {

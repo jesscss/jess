@@ -3,6 +3,11 @@ import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import type { PrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -30,6 +35,15 @@ export class Collection extends Rules {
 
   override resolve(context: Context): MaybePromise<this> {
     return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   override prepareRegistration(_context: Context): this | Promise<this> {
