@@ -46,6 +46,7 @@ describe('Expression', () => {
 
     const buffer = createRenderBuffer('flat');
     const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    expect(renderedNode.toTrimmedString()).not.toBe('foo');
 
     expect(await renderedNode.render(context, buffer)).toBe('foo');
     expect(buffer.parts).toEqual(['foo']);

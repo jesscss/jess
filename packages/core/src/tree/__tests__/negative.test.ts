@@ -54,6 +54,7 @@ describe('Negative', () => {
 
     const buffer = createRenderBuffer('flat');
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+    expect(negativeNode.toTrimmedString()).not.toBe('-20');
 
     expect(await negativeNode.render(context, buffer)).toBe('-20');
     expect(buffer.parts).toEqual(['-20']);

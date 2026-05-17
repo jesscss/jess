@@ -120,6 +120,15 @@ it is for current direction and next seams, not a historical pass log.
   `resolve()`. This is the preferred pattern for visible leaves and
   self-resolving containers/directives that have no contextual eval work or can
   render directly from context.
+- The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
+  single cleanup bucket. Some are expression/value evaluators (`Negative`,
+  `Expression`, `Operation`, `Condition`, `Reference`, `Quoted`, `Url`,
+  `Interpolated`), some are selector/rules structure (`Selector`, interpolated
+  selectors, selector capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`),
+  and some are contextual containers or async/effectful surfaces (`Block`,
+  `List`, `Sequence`, `Call`, `JsExpression`, `StyleImport`). Direct string
+  writes are wrong for these until the node can stream its evaluated behavior
+  natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof
