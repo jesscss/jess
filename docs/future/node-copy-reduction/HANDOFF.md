@@ -58,7 +58,7 @@ it is for current direction and next seams, not a historical pass log.
   root surface; the root serializer exception should stay limited to that
   identity-backed case.
 - Focused core coverage now proves explicit render-buffer output for
-  `Collection`, `JsImport`, `RawRules`, async `JsExpression`, inherited
+  `Collection`, `JsImport`, `RawRules`, `Rules`, async `JsExpression`, inherited
   visible `VarDeclaration` output, and evaluated `$for` output. The `$for`
   bridge deliberately does not change legacy direct string render, which still
   returns source syntax for sync compatibility.

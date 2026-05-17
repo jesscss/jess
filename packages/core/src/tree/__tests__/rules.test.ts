@@ -28,7 +28,7 @@ import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -168,6 +168,41 @@ describe('Rules', () => {
     expect(first).toBe('color: red;');
     expect(second).toBe('color: red;');
     expect(context.printState.writer?.toString()).toBe('color: red;');
+  });
+
+  it('writes rules body output into render buffers', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    context.root = rules([]);
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('color: red;\n');
+    expect(buffer.parts).toEqual(['color: red;\n']);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
+  it('writes root-owned charset and imports into render buffers', async () => {
+    const root = rules([]);
+    const buffer = createRenderBuffer('segmented');
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css'))
+      })
+    ];
+
+    const rendered = await root.render(context, buffer);
+
+    expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(buffer.segments).toEqual([rendered]);
+    expect(root.evaluated).toBe(false);
+    expect(root.preEvaluated).toBe(false);
   });
 
   it('derives rules resolve wrappers without shallow-cloning the source rules', async () => {
