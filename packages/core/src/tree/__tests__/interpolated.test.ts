@@ -93,9 +93,19 @@ describe('Interpolated', () => {
       source: `hello-${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'variable' })]
     });
+    const originalResolve = interpolatedNode.resolve;
+    let resolveCalls = 0;
+    interpolatedNode.resolve = function countResolveCalls(
+      this: typeof interpolatedNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await interpolatedNode.render(context, buffer)).toBe('hello-world');
     expect(buffer.parts).toEqual(['hello-world']);
+    expect(resolveCalls).toBe(0);
     expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.preEvaluated).toBe(false);
   });

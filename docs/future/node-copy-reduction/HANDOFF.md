@@ -132,9 +132,12 @@ it is for current direction and next seams, not a historical pass log.
 - `Quoted` and `Url` now use their existing value-resolution helpers for
   explicit buffer render. Focused tests prove they bypass wrapper `resolve()`
   while preserving quoted/url syntax.
+- `Interpolated` now uses its existing interpolation-resolution helper for
+  explicit buffer render. Focused tests prove it bypasses wrapper `resolve()`
+  while preserving resolved replacement output.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
-  single cleanup bucket. Some are expression/value evaluators (`Reference`,
-  `Interpolated`), some are selector/rules structure (`Selector`, interpolated
+  single cleanup bucket. Some are expression/value evaluators (`Reference`),
+  some are selector/rules structure (`Selector`, interpolated
   selectors, selector capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`),
   and some are contextual containers or async/effectful surfaces (`Block`,
   `List`, `Sequence`, `Call`, `JsExpression`, `StyleImport`). Direct string

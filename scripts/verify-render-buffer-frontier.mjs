@@ -16,7 +16,6 @@ const expectedRemaining = new Set([
   'packages/core/src/tree/control.ts',
   'packages/core/src/tree/declaration.ts',
   'packages/core/src/tree/import-style.ts',
-  'packages/core/src/tree/interpolated.ts',
   'packages/core/src/tree/js-expr.ts',
   'packages/core/src/tree/list.ts',
   'packages/core/src/tree/reference.ts',
