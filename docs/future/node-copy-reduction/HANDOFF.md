@@ -149,12 +149,15 @@ it is for current direction and next seams, not a historical pass log.
   render, preserving declaration registration/eval behavior without calling the
   public `resolve()` wrapper. Focused tests cover ordinary declarations, custom
   declarations, and inherited visible `VarDeclaration` output.
+- `AtRule` now uses its existing owned-surface eval path directly for explicit
+  buffer render, preserving evaluated preludes and body output without calling
+  the public `resolve()` wrapper.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are expression/value evaluators (`Reference`),
-  some are selector/rules structure (`Selector`, `AtRule`, `Ruleset`, `Rules`),
-  and some are contextual or async/effectful surfaces (`Call`, `StyleImport`).
-  Direct string writes are wrong for these until the node can stream its
-  evaluated behavior natively.
+  some are selector/rules structure (`Selector`, `Ruleset`, `Rules`), and some
+  are contextual or async/effectful surfaces (`Call`, `StyleImport`). Direct
+  string writes are wrong for these until the node can stream its evaluated
+  behavior natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof
