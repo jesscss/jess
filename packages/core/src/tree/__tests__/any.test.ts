@@ -27,9 +27,15 @@ describe('Any and Keyword', () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     const node = any('foo');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('foo');
     expect(buffer.parts).toEqual(['foo']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('renders Keyword syntax through toTrimmedString()', () => {

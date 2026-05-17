@@ -30,9 +30,15 @@ describe('Bool', () => {
   it('writes bool render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = bool(true);
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('true');
     expect(buffer.parts).toEqual(['true']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('resolves bool values without touching render state', async () => {

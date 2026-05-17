@@ -30,9 +30,15 @@ describe('Rest', () => {
   it('writes rest render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = rest('items');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('...$$items');
     expect(buffer.parts).toEqual(['...$$items']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('resolves rest values without touching render state', async () => {

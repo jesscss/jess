@@ -9,8 +9,8 @@ import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 export type AnyRole =
@@ -80,9 +80,10 @@ export class Any<
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      writeRenderText(bufferOrOptions, this.value);
+      return this.value;
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }

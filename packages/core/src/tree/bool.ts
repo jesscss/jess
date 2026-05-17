@@ -3,8 +3,8 @@ import { Node, F_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -38,9 +38,11 @@ export class Bool extends Node<boolean> {
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const text = this.value ? 'true' : 'false';
+      writeRenderText(bufferOrOptions, text);
+      return text;
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
