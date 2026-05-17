@@ -141,13 +141,16 @@ it is for current direction and next seams, not a historical pass log.
 - `SelectorCapture` and `InterpolatedSelector` now use their wrapper-local
   resolution helpers for explicit buffer render. Focused tests prove both
   bypass wrapper `resolve()` while preserving selector output.
+- `List` and `Sequence` now use their existing value-resolution helpers for
+  explicit buffer render. Focused tests prove both bypass wrapper `resolve()`
+  while preserving list separators, sequence spacing, and source-trivia
+  behavior.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are expression/value evaluators (`Reference`),
   some are selector/rules structure (`Selector`, `AtRule`, `Declaration`,
-  `Ruleset`, `Rules`), and some are contextual containers or async/effectful
-  surfaces (`List`, `Sequence`, `Call`, `StyleImport`). Direct string writes
-  are wrong for these until the node can stream its evaluated behavior
-  natively.
+  `Ruleset`, `Rules`), and some are contextual or async/effectful surfaces
+  (`Call`, `StyleImport`). Direct string writes are wrong for these until the
+  node can stream its evaluated behavior natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

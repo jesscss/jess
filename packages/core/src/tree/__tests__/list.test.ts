@@ -156,9 +156,19 @@ describe('List', () => {
       spaced([num(1), any('2'), any('3')]),
       ref({ key: 'item' }, { type: 'variable' })
     ]);
+    const originalResolve = listNode.resolve;
+    let resolveCalls = 0;
+    listNode.resolve = function countResolveCalls(
+      this: typeof listNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await listNode.render(context, buffer)).toBe('1 2 3, four');
     expect(buffer.parts).toEqual(['1 2 3, four']);
+    expect(resolveCalls).toBe(0);
     expect(listNode.evaluated).toBe(false);
     expect(listNode.preEvaluated).toBe(false);
   });

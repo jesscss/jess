@@ -15,12 +15,10 @@ const expectedRemaining = new Set([
   'packages/core/src/tree/control.ts',
   'packages/core/src/tree/declaration.ts',
   'packages/core/src/tree/import-style.ts',
-  'packages/core/src/tree/list.ts',
   'packages/core/src/tree/reference.ts',
   'packages/core/src/tree/rules.ts',
   'packages/core/src/tree/ruleset.ts',
-  'packages/core/src/tree/selector.ts',
-  'packages/core/src/tree/sequence.ts'
+  'packages/core/src/tree/selector.ts'
 ]);
 
 function walk(dir) {

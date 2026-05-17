@@ -98,12 +98,12 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   `Collection` and `JsImport`, write their own text directly instead of
   resolving first and re-entering the bridge. Prefer that shape when focused
   tests can prove no eval or ownership boundary is being skipped.
-- Do not convert evaluating nodes by pattern. `Reference`, `Selector`, `List`,
-  `Sequence`, `Call`, `AtRule`, `Declaration`, `Ruleset`, `Rules`, and
-  `StyleImport` still need context-sensitive resolution, child evaluation,
-  async finalization, registration/visibility effects, or selector/rules
-  ownership. Their buffer path should move only when the node has a native
-  streaming implementation for that evaluated behavior.
+- Do not convert evaluating nodes by pattern. `Reference`, `Selector`, `Call`,
+  `AtRule`, `Declaration`, `Ruleset`, `Rules`, and `StyleImport` still need
+  context-sensitive resolution, child evaluation, async finalization,
+  registration/visibility effects, or selector/rules ownership. Their buffer
+  path should move only when the node has a native streaming implementation for
+  that evaluated behavior.
 - `Expression` now delegates buffer rendering to its child render path, and
   `Negative` evaluates its operand directly before writing the evaluated output.
   Both have focused tests proving buffer render bypasses the wrapper
@@ -123,6 +123,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - `SelectorCapture` and `InterpolatedSelector` now use their wrapper-local
   resolution helpers for buffer render. Focused tests prove both bypass wrapper
   `resolve()` while preserving selector output.
+- `List` and `Sequence` now use their existing value-resolution helpers for
+  buffer render. Focused tests prove both bypass wrapper `resolve()` while
+  preserving list separators, sequence spacing, and source-trivia behavior.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax

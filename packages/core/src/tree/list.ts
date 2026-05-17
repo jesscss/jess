@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { defineType, Node } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -11,8 +11,8 @@ import {
 import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -130,7 +130,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const writeResolved = (node: Node): string => {
+        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const resolved = this.resolveValue(context);
+      return isThenable(resolved)
+        ? (resolved as Promise<Node>).then(writeResolved)
+        : writeResolved(resolved as Node);
     }
     return super.render(context, bufferOrOptions);
   }
@@ -164,6 +172,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveValue(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Node> {
     const values = new Array<Node>(this.value.length);
     const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
       const out = item.resolve(context);
