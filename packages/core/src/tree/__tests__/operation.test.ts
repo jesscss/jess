@@ -74,9 +74,15 @@ describe('Operation', () => {
       '+',
       ref({ key: 'rhs' }, { type: 'variable' })
     ]);
+    let operationResolveCalls = 0;
+    operationNode.resolve = (renderContext: Context) => {
+      operationResolveCalls++;
+      return operationNode.evalNode(renderContext);
+    };
 
     expect(await operationNode.render(context, buffer)).toBe('30');
     expect(buffer.parts).toEqual(['30']);
+    expect(operationResolveCalls).toBe(0);
     expect(operationNode.evaluated).toBe(false);
     expect(operationNode.preEvaluated).toBe(false);
   });

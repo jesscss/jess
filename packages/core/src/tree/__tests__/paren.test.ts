@@ -77,9 +77,15 @@ describe('Paren', () => {
 
     const buffer = createRenderBuffer('flat');
     const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
+    let parenResolveCalls = 0;
+    parenNode.resolve = (renderContext: Context) => {
+      parenResolveCalls++;
+      return parenNode.evalNode(renderContext);
+    };
 
     expect(await parenNode.render(context, buffer)).toBe('(foo)');
     expect(buffer.parts).toEqual(['(foo)']);
+    expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.preEvaluated).toBe(false);
   });

@@ -1,12 +1,12 @@
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node.js';
 import { Bool } from './bool.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 function getCallReferenceKey(name: unknown): string {
@@ -81,7 +81,15 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const writeResolved = (node: Bool): string => {
+        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const resolved = this.evaluateCondition(context, 'resolve');
+      return isThenable(resolved)
+        ? (resolved as Promise<Bool>).then(writeResolved)
+        : writeResolved(resolved as Bool);
     }
     return super.render(context, bufferOrOptions);
   }

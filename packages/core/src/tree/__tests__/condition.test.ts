@@ -75,9 +75,15 @@ describe('Condition', () => {
         '=',
         bool(false)
       ]);
+      let conditionResolveCalls = 0;
+      node.resolve = (renderContext: Context) => {
+        conditionResolveCalls++;
+        return node.evalNode(renderContext);
+      };
 
       expect(await node.render(context, buffer)).toBe('false');
       expect(buffer.parts).toEqual(['false']);
+      expect(conditionResolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
       expect(node.preEvaluated).toBe(false);
     });

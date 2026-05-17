@@ -6,12 +6,12 @@ import { Node, defineType, F_NON_STATIC } from './node.js';
 import { Dimension } from './dimension.js';
 import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 function getCallReferenceKey(name: unknown): string {
@@ -130,12 +130,20 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const writeResolved = (node: Node): string => {
+        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const resolved = this.evaluateValue(context, 'resolve');
+      return isThenable(resolved)
+        ? (resolved as Promise<Node>).then(writeResolved)
+        : writeResolved(resolved as Node);
     }
     return super.render(context, bufferOrOptions);
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
+  private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
     const currentValue = this.value;
     if (currentValue) {
       const guardBool = getDefaultGuardBool(currentValue, context);
@@ -146,7 +154,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       if (isOp) {
         context.parenFrames.push(true);
       }
-      const maybeEvald = currentValue.eval(context);
+      const maybeEvald = mode === 'eval' ? currentValue.eval(context) : currentValue.resolve(context);
       const after = (v: Node): Node => {
         let value = v;
         if (isOp) {
@@ -191,53 +199,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return this;
   }
 
+  override evalNode(context: Context): MaybePromise<Node> {
+    return this.evaluateValue(context, 'eval');
+  }
+
   override resolve(context: Context): MaybePromise<Node> {
-    const currentValue = this.value;
-    if (currentValue) {
-      const guardBool = getDefaultGuardBool(currentValue, context);
-      if (guardBool) {
-        return guardBool;
-      }
-      const isOp = isOpOrExpression(currentValue);
-      if (isOp) {
-        context.parenFrames.push(true);
-      }
-      const maybeResolved = currentValue.resolve(context);
-      const after = (v: Node): Node => {
-        let value = v;
-        if (isOp) {
-          context.parenFrames.pop();
-        }
-        const evaluatedGuardBool = getDefaultGuardBool(value, context);
-        if (evaluatedGuardBool) {
-          return evaluatedGuardBool;
-        }
-        if (this._options?.escaped && value instanceof Node) {
-          if (value instanceof List && value.options?.sep === ';') {
-            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
-          }
-          return value;
-        }
-        while (value instanceof Paren && value.value) {
-          value = value.value;
-        }
-        if (value instanceof Bool || value instanceof Dimension) {
-          return value;
-        }
-        if (isOp && !isOpOrExpression(value)) {
-          return value;
-        }
-        if (value === currentValue) {
-          return this;
-        }
-        return this.withValue(value);
-      };
-      if (isThenable(maybeResolved)) {
-        return (maybeResolved as Promise<Node>).then(after);
-      }
-      return after(maybeResolved as Node);
-    }
-    return this;
+    return this.evaluateValue(context, 'resolve');
   }
 
   // toCSS(context: Context, out: OutputCollector) {
