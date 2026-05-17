@@ -13,7 +13,6 @@ const expectedRemaining = new Set([
   'packages/core/src/tree/at-rule.ts',
   'packages/core/src/tree/call.ts',
   'packages/core/src/tree/control.ts',
-  'packages/core/src/tree/declaration.ts',
   'packages/core/src/tree/import-style.ts',
   'packages/core/src/tree/reference.ts',
   'packages/core/src/tree/rules.ts',

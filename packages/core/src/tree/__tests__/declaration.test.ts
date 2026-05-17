@@ -86,9 +86,19 @@ describe('Declaration', () => {
       name: any('color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(node.render(context, buffer)).toBe('color: red');
     expect(buffer.segments).toEqual(['color: red']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
@@ -206,9 +216,19 @@ describe('Declaration', () => {
       name: any('--color'),
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(node.render(context, buffer)).toBe('--color:red');
     expect(buffer.segments).toEqual(['--color:red']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('renders indexed references inside custom property values through render(context)', async () => {
