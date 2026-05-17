@@ -72,6 +72,10 @@ it is for current direction and next seams, not a historical pass log.
   complex ampersand boundary replacement.
 - The remaining ordinary copy helpers should be audited by ownership purpose,
   not by treating every local copy boundary as the same kind of bug.
+- `callWithContext(...)` skips raw-argument ownership copies for functions that
+  do not declare params metadata. Those calls pass positional args directly;
+  copied `rawArgs` only exists for metadata-backed functions that expose
+  `this.rawArgs`, `this.args()`, preprocessing, lazy params, or validation.
 - `List` and `Sequence` addition already have focused coverage for preserving
   source child parentage and reusing childless source-free scalar leaves; do not
   churn those helpers without a new ownership failure.

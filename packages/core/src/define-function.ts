@@ -323,6 +323,13 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     throw new Error('Record-based call without params is not supported');
   }
 
+  const hasParams = !!(fn as any)?.options?.params;
+
+  if (!hasParams) {
+    // No metadata; treat as normal positional function call (sync or async)
+    return (fn as any).call(context, ...args);
+  }
+
   /** Normalize positional args into a List node for tracking original arguments */
   let originalArgsList: List;
   if (listArg) {
@@ -333,13 +340,6 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     originalArgsList = copiedListArg;
   } else {
     originalArgsList = new List(args.map(arg => isNode(arg) ? copyWithReusableLeaves(arg) : arg));
-  }
-
-  const hasParams = !!(fn as any)?.options?.params;
-
-  if (!hasParams) {
-    // No metadata; treat as normal positional function call (sync or async)
-    return (fn as any).call(context, ...args);
   }
 
   const params = (fn as any)?.options?.params as DefineFunctionOptions['params'] | undefined;

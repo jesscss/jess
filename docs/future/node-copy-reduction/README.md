@@ -53,6 +53,9 @@ selector placement truly needs one.
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check fails on ordinary production `.copy()` callers
   outside the base node-copy API/infrastructure.
+- `callWithContext(...)` now only creates copied raw-argument ownership
+  surfaces for functions with params metadata. Ordinary JS functions receive
+  positional args directly instead of paying for an unused `rawArgs` copy.
 
 ## Current Frontier
 
@@ -65,6 +68,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - Base `Node.copy()` / `Node.clone()`, `copyWithReusableLeaves(...)`, keyset
   copies, bitset copies, and test-only clones are infrastructure, not normal
   eval-flow wins by themselves.
+- Metadata-backed functions still need a copied raw-args surface for
+  `this.rawArgs`, `this.args()`, preprocessing, lazy params, validation, and
+  `@arguments`-style behavior. Plain functions without metadata do not.
 - Generated selector output often needs an owned placement surface; do not
   collapse those copies without tests proving source selector parentage,
   visibility flags, and extend output all stay correct.
