@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
+  Anonymous,
+  MixinCollection,
+  Selector,
   amp,
   any,
   atrule,
@@ -15,17 +18,30 @@ import {
   compound,
   condition,
   coll,
+  callableRulesEntry,
+  customdecl,
   decl,
   defaultguard,
   dimension,
   el,
+  extend,
   expr,
+  fn,
+  forNode,
+  ifNode,
   interpolated,
   interpolatedSelector,
   js,
+  jsarray,
+  jsfunc,
+  jsobj,
+  keyword,
   list,
+  log,
+  mixin,
   negative,
   nil,
+  num,
   op,
   paren,
   pseudo,
@@ -38,11 +54,15 @@ import {
   rules,
   ruleset,
   seq,
+  selcap,
   sel,
   sellist,
+  spaced,
   url,
-  vardecl
+  vardecl,
+  whileNode
 } from '../index.js';
+import { extendList } from '../extend-list.js';
 import { jsexpr } from '../js-expr.js';
 import { Node } from '../node-base.js';
 import { OutputWriter } from '../util/print.js';
@@ -61,6 +81,12 @@ class AsyncResolvedNode extends Node<string> {
 class RejectingNode extends Node<string> {
   override resolve() {
     return Promise.reject(new Error('nope'));
+  }
+}
+
+class RenderBufferSelector extends Selector<string> {
+  override valueOf() {
+    return this.value;
   }
 }
 
@@ -300,6 +326,99 @@ describe('renderNodeToBuffer', () => {
       context.root = evaldRoot;
       context.rulesContext = evaldRoot;
       item.setup?.(context);
+
+      const direct = await Promise.resolve(renderNodeToString(item.node, context, { context }));
+      const buffer = createRenderBuffer('flat');
+      const buffered = await Promise.resolve(renderNodeToBuffer(item.node, context, buffer, { context }));
+
+      expect(buffered, item.surface).toBe(direct);
+      expect(buffer.parts, item.surface).toEqual(item.expectedParts ?? [direct]);
+      if (item.expected !== undefined) {
+        expect(buffered, item.surface).toBe(item.expected);
+      }
+    }
+  });
+
+  it('keeps string and flat-buffer render aligned across the next node surfaces', async () => {
+    const cases: Array<{
+      surface: string;
+      node: Node;
+      expected?: string;
+      expectedParts?: string[];
+    }> = [
+      { surface: 'Anonymous', node: new Anonymous('legacy-anon'), expected: 'legacy-anon' },
+      { surface: 'Keyword', node: keyword('auto'), expected: 'auto' },
+      { surface: 'Num', node: num(7), expected: '7' },
+      { surface: 'CustomDeclaration', node: customdecl({ name: any('--gap'), value: any('0') }) },
+      { surface: 'SpacedSequenceHelper', node: spaced([any('span'), any('2')]), expected: 'span 2' },
+      { surface: 'Extend', node: extend({ target: el('.target') }), expected: '', expectedParts: [] },
+      { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]) },
+      { surface: 'SelectorCapture', node: selcap(el('.captured')), expected: '.captured' },
+      { surface: 'Log', node: log({ level: 'debug', message: any('') }), expected: '', expectedParts: [] },
+      { surface: 'JsArray', node: jsarray([any('one'), any('two')]) },
+      { surface: 'JsObject', node: jsobj({ one: any('one') }) },
+      { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }) },
+      { surface: 'Mixin', node: mixin({ name: any('.paint'), rules: rules([decl({ name: 'color', value: any('red') })]) }) },
+      { surface: 'Func', node: fn({ name: any('paint'), body: rules([decl({ name: 'return', value: any('red') })]) }) },
+      {
+        surface: 'If',
+        node: ifNode({
+          branches: [
+            { condition: bool(true), rules: rules([decl({ name: 'color', value: any('red') })]) },
+            { rules: rules([decl({ name: 'color', value: any('blue') })]) }
+          ]
+        })
+      },
+      {
+        surface: 'ForRange',
+        node: forNode({
+          pattern: { kind: 'single', value: vardecl({ name: 'item', value: nil() }, { paramVar: true }) },
+          iterable: {
+            kind: 'range',
+            start: dimension([1]),
+            end: dimension([1]),
+            includeStart: true,
+            includeEnd: true
+          },
+          rules: rules([decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })])
+        })
+      },
+      {
+        surface: 'ForList',
+        node: forNode({
+          pattern: { kind: 'single', value: vardecl({ name: 'tone', value: nil() }, { paramVar: true }) },
+          iterable: { kind: 'node', value: list([any('red'), any('blue')]) },
+          rules: rules([decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })])
+        })
+      },
+      {
+        surface: 'While',
+        node: whileNode({
+          condition: bool(false),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        })
+      },
+      {
+        surface: 'MixinCollection',
+        node: new MixinCollection([
+          callableRulesEntry(
+            { rules: rules([decl({ name: 'color', value: any('red') })]) },
+            undefined,
+            0
+          )
+        ])
+      },
+      { surface: 'SelectorBase', node: new RenderBufferSelector('.base'), expected: '.base' }
+    ];
+
+    expect(cases).toHaveLength(20);
+
+    for (const item of cases) {
+      const context = new Context();
+      const root = rules([]);
+      const evaldRoot = await root.eval(context);
+      context.root = evaldRoot;
+      context.rulesContext = evaldRoot;
 
       const direct = await Promise.resolve(renderNodeToString(item.node, context, { context }));
       const buffer = createRenderBuffer('flat');
