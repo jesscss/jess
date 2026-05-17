@@ -39,6 +39,11 @@ describe('Collection', () => {
     const node = coll([
       decl({ name: any('color'), value: any('red') })
     ]);
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     const rendered = await node.render(context, buffer);
 
@@ -48,6 +53,7 @@ describe('Collection', () => {
       }
     `);
     expect(buffer.segments).toEqual([rendered]);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });

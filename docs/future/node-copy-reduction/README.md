@@ -94,9 +94,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   API name.
 - Static/self-resolving buffer renderers such as `Any`, `Bool`, `Rest`,
   `Combinator`, `DefaultGuard`, `Dimension`, `Comment`, `Range`, `Color`, and
-  `RawRules` write their own text directly instead of resolving first and
-  re-entering the bridge. Prefer that shape when focused tests can prove no
-  eval or ownership boundary is being skipped.
+  `RawRules`, plus self-resolving container/directive surfaces such as
+  `Collection` and `JsImport`, write their own text directly instead of
+  resolving first and re-entering the bridge. Prefer that shape when focused
+  tests can prove no eval or ownership boundary is being skipped.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax

@@ -1,12 +1,12 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
-import type { PrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 /**
@@ -41,7 +41,9 @@ export class Collection extends Rules {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const text = this.toTrimmedString(getPrintOptions({ ...options, context }));
+      writeRenderText(bufferOrOptions, text);
+      return text;
     }
     return super.render(context, bufferOrOptions);
   }

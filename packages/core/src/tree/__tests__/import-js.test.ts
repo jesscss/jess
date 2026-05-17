@@ -26,9 +26,15 @@ describe('JsImport', () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
     const node = js({ path: quoted('foo.js') }, { namespace: 'foo' });
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(node.render(context, buffer)).toBe('@-use "foo.js" as foo;');
     expect(buffer.segments).toEqual(['@-use "foo.js" as foo;']);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });
