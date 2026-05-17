@@ -48,7 +48,7 @@ export class Expression extends Node<Node> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      return renderNodeToBuffer(this.value, context, bufferOrOptions, options);
     }
     return super.render(context, bufferOrOptions);
   }

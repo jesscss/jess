@@ -46,10 +46,16 @@ describe('Expression', () => {
 
     const buffer = createRenderBuffer('flat');
     const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    let expressionResolveCalls = 0;
+    renderedNode.resolve = (renderContext: Context) => {
+      expressionResolveCalls++;
+      return renderedNode.value.resolve(renderContext);
+    };
     expect(renderedNode.toTrimmedString()).not.toBe('foo');
 
     expect(await renderedNode.render(context, buffer)).toBe('foo');
     expect(buffer.parts).toEqual(['foo']);
+    expect(expressionResolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.preEvaluated).toBe(false);
   });

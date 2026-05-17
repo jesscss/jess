@@ -54,10 +54,16 @@ describe('Negative', () => {
 
     const buffer = createRenderBuffer('flat');
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+    let negativeResolveCalls = 0;
+    negativeNode.resolve = (renderContext: Context) => {
+      negativeResolveCalls++;
+      return negativeNode.evalNode(renderContext);
+    };
     expect(negativeNode.toTrimmedString()).not.toBe('-20');
 
     expect(await negativeNode.render(context, buffer)).toBe('-20');
     expect(buffer.parts).toEqual(['-20']);
+    expect(negativeResolveCalls).toBe(0);
     expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.preEvaluated).toBe(false);
   });
