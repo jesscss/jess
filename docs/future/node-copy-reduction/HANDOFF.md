@@ -138,13 +138,15 @@ it is for current direction and next seams, not a historical pass log.
 - `JsExpression` now evaluates directly for explicit buffer render, and
   `Block` uses its existing value-resolution helper. Focused tests prove both
   bypass wrapper `resolve()` while preserving evaluated output.
+- `SelectorCapture` and `InterpolatedSelector` now use their wrapper-local
+  resolution helpers for explicit buffer render. Focused tests prove both
+  bypass wrapper `resolve()` while preserving selector output.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are expression/value evaluators (`Reference`),
-  some are selector/rules structure (`Selector`, interpolated
-  selectors, selector capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`),
-  and some are contextual containers or async/effectful surfaces (`List`,
-  `Sequence`, `Call`, `StyleImport`). Direct string
-  writes are wrong for these until the node can stream its evaluated behavior
+  some are selector/rules structure (`Selector`, `AtRule`, `Declaration`,
+  `Ruleset`, `Rules`), and some are contextual containers or async/effectful
+  surfaces (`List`, `Sequence`, `Call`, `StyleImport`). Direct string writes
+  are wrong for these until the node can stream its evaluated behavior
   natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,

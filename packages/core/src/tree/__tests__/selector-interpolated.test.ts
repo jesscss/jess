@@ -71,9 +71,19 @@ describe('InterpolatedSelector', () => {
       source: `.${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'index' })]
     }));
+    const originalResolve = selectorNode.resolve;
+    let resolveCalls = 0;
+    selectorNode.resolve = function countResolveCalls(
+      this: typeof selectorNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await selectorNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
+    expect(resolveCalls).toBe(0);
     expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.preEvaluated).toBe(false);
   });

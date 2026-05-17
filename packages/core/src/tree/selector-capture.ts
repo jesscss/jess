@@ -1,12 +1,12 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { Selector } from './selector.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
@@ -47,7 +47,15 @@ export class SelectorCapture extends Node<Selector> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const writeResolved = (selector: Selector): string => {
+        const text = selector.toTrimmedString(prepareRenderPrintState(context, options));
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const resolved = this.resolveValue(context);
+      return isThenable(resolved)
+        ? (resolved as Promise<Selector>).then(writeResolved)
+        : writeResolved(resolved as Selector);
     }
     return super.render(context, bufferOrOptions);
   }
@@ -68,6 +76,10 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override resolve(context: Context): MaybePromise<Selector> {
+    return this.resolveValue(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Selector> {
     const out = this.value.resolve(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));

@@ -46,9 +46,19 @@ describe('SelectorCapture', () => {
 
     const buffer = createRenderBuffer('flat');
     const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    const originalResolve = captureNode.resolve;
+    let resolveCalls = 0;
+    captureNode.resolve = function countResolveCalls(
+      this: typeof captureNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await captureNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
+    expect(resolveCalls).toBe(0);
     expect(captureNode.evaluated).toBe(false);
     expect(captureNode.preEvaluated).toBe(false);
   });

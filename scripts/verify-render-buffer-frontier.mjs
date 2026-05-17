@@ -19,8 +19,6 @@ const expectedRemaining = new Set([
   'packages/core/src/tree/reference.ts',
   'packages/core/src/tree/rules.ts',
   'packages/core/src/tree/ruleset.ts',
-  'packages/core/src/tree/selector-capture.ts',
-  'packages/core/src/tree/selector-interpolated.ts',
   'packages/core/src/tree/selector.ts',
   'packages/core/src/tree/sequence.ts'
 ]);
