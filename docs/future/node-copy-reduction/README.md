@@ -84,10 +84,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   materialization are suspect surfaces, not automatic bugs.
 - `prepareRenderPrintState(...)` is the central render bridge. New bridges
   should use it instead of adding local writer/frame/trivia reset heuristics.
-- `renderNodeToBuffer(...)` still bridges many nodes through
+- `renderNodeToBuffer(...)` still bridges some nodes through
   `renderNodeToWriter(...)`, so the compiler buffer seam is not proof that all
-  nodes stream natively. Prefer moving one proven production surface at a time
-  off the bridge instead of adding empty buffer overloads.
+  nodes stream natively. Run `pnpm run verify:render-buffer-frontier` before
+  and after moving a surface off the wrapper bridge.
 - Plain CSS `Call` argument/content rendering uses the writer helper directly
   because it renders into the active call writer while preserving calc-frame
   cleanup. Do not route those child surfaces through a public "final string"
@@ -98,14 +98,18 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   `Collection` and `JsImport`, write their own text directly instead of
   resolving first and re-entering the bridge. Prefer that shape when focused
   tests can prove no eval or ownership boundary is being skipped.
-- Do not convert evaluating nodes by pattern. `Negative`, `Expression`,
-  `Operation`, `Condition`, `Reference`, `Quoted`, `Url`, `Interpolated`,
-  selector interpolation/capture, `Block`, `List`, `Sequence`, `Call`,
-  `JsExpression`, `AtRule`, `Declaration`, `Ruleset`, `Rules`, and
-  `StyleImport` still need context-sensitive resolution, child evaluation,
-  async finalization, registration/visibility effects, or selector/rules
-  ownership. Their buffer path should move only when the node has a native
-  streaming implementation for that evaluated behavior.
+- Do not convert evaluating nodes by pattern. `Operation`, `Condition`,
+  `Reference`, `Quoted`, `Url`, `Interpolated`, selector
+  interpolation/capture, `Block`, `List`, `Sequence`, `Call`, `JsExpression`,
+  `AtRule`, `Declaration`, `Ruleset`, `Rules`, and `StyleImport` still need
+  context-sensitive resolution, child evaluation, async finalization,
+  registration/visibility effects, or selector/rules ownership. Their buffer
+  path should move only when the node has a native streaming implementation for
+  that evaluated behavior.
+- `Expression` now delegates buffer rendering to its child render path, and
+  `Negative` evaluates its operand directly before writing the evaluated output.
+  Both have focused tests proving buffer render bypasses the wrapper
+  `resolve()` method while preserving evaluated output.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax
@@ -117,6 +121,7 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 
 ```sh
 pnpm run verify:node-copy-frontier
+pnpm run verify:render-buffer-frontier
 pnpm run test:less:test-data
 pnpm run verify:baseline
 ```

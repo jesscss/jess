@@ -111,6 +111,8 @@ it is for current direction and next seams, not a historical pass log.
   `renderNodeToWriter(...)` before writing text. Treat that as the next
   production frontier: migrate concrete output surfaces when a focused test
   proves the node can emit without first materializing a whole resolved subtree.
+  Use `pnpm run verify:render-buffer-frontier` to keep the remaining wrapper
+  bridge list executable instead of hand-maintained.
 - Plain CSS `Call` argument/content rendering uses `renderNodeToWriter(...)`
   because those children intentionally render into the active call writer while
   calc-frame cleanup is still owned by the call renderer.
@@ -120,15 +122,18 @@ it is for current direction and next seams, not a historical pass log.
   `resolve()`. This is the preferred pattern for visible leaves and
   self-resolving containers/directives that have no contextual eval work or can
   render directly from context.
+- `Expression` now delegates explicit buffer render to its child render path.
+  `Negative` now evaluates its operand and writes that evaluated value directly.
+  Focused tests prove both bypass the wrapper `resolve()` method while keeping
+  evaluated output.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
-  single cleanup bucket. Some are expression/value evaluators (`Negative`,
-  `Expression`, `Operation`, `Condition`, `Reference`, `Quoted`, `Url`,
-  `Interpolated`), some are selector/rules structure (`Selector`, interpolated
-  selectors, selector capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`),
-  and some are contextual containers or async/effectful surfaces (`Block`,
-  `List`, `Sequence`, `Call`, `JsExpression`, `StyleImport`). Direct string
-  writes are wrong for these until the node can stream its evaluated behavior
-  natively.
+  single cleanup bucket. Some are expression/value evaluators (`Operation`,
+  `Condition`, `Reference`, `Quoted`, `Url`, `Interpolated`), some are
+  selector/rules structure (`Selector`, interpolated selectors, selector
+  capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`), and some are
+  contextual containers or async/effectful surfaces (`Block`, `List`,
+  `Sequence`, `Call`, `JsExpression`, `StyleImport`). Direct string writes are
+  wrong for these until the node can stream its evaluated behavior natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof
