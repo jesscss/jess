@@ -135,6 +135,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   public `resolve()` wrapper.
 - `Reference` now evaluates directly for buffer render, preserving existing
   lookup semantics without calling the public `resolve()` wrapper.
+- `For` keeps direct `render(context)` on source syntax, but explicit buffer
+  render now evaluates directly and writes the resulting loop output without
+  calling the public `resolve()` wrapper.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax

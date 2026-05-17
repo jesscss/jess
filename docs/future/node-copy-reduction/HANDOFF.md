@@ -154,6 +154,9 @@ it is for current direction and next seams, not a historical pass log.
   the public `resolve()` wrapper.
 - `Reference` now evaluates directly for explicit buffer render, preserving
   existing lookup semantics without calling the public `resolve()` wrapper.
+- `For` keeps direct `render(context)` on source syntax, but explicit buffer
+  render now evaluates directly and writes the resulting loop output without
+  calling the public `resolve()` wrapper.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are selector/rules structure (`Selector`,
   `Ruleset`, `Rules`), and some are contextual or async/effectful surfaces

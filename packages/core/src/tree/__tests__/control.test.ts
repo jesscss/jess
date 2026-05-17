@@ -262,12 +262,22 @@ describe('Control Nodes', () => {
       list([any('a'), any('b')]),
       rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
     );
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     const rendered = await node.render(context, buffer);
 
     expect(rendered).toContain('item: a');
     expect(rendered).toContain('item: b');
     expect(buffer.segments).toEqual([rendered]);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });

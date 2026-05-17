@@ -7,15 +7,15 @@ import { Num } from './number.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -414,7 +414,15 @@ export class For extends Node<StructuredLoopValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const writeEvaluated = (node: Node): string => {
+        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const evaluated = this.evalNode(context);
+      return isThenable(evaluated)
+        ? (evaluated as Promise<Node>).then(writeEvaluated)
+        : writeEvaluated(evaluated as Node);
     }
     return renderControlSourceSyntax(this, context, options);
   }
