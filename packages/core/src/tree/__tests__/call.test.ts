@@ -171,9 +171,19 @@ describe('Call', () => {
       name: ref({ key: 'empty' }, { type: 'function' }),
       args: list([])
     });
+    const originalResolve = rule.resolve;
+    let resolveCalls = 0;
+    rule.resolve = function countResolveCalls(
+      this: typeof rule,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await rule.render(context, buffer)).toBe('ok');
     expect(buffer.parts).toEqual(['ok']);
+    expect(resolveCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
   });

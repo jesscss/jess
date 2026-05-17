@@ -157,11 +157,14 @@ it is for current direction and next seams, not a historical pass log.
 - `For` keeps direct `render(context)` on source syntax, but explicit buffer
   render now evaluates directly and writes the resulting loop output without
   calling the public `resolve()` wrapper.
+- `Call` already streamed plain CSS calls; non-string function/mixin lookup
+  calls now use the same derived eval surface directly for explicit buffer
+  render instead of calling the public `resolve()` wrapper.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are selector/rules structure (`Selector`,
   `Ruleset`, `Rules`), and some are contextual or async/effectful surfaces
-  (`Call`, `StyleImport`). Direct string writes are wrong for these until the
-  node can stream its evaluated behavior natively.
+  (`StyleImport`). Direct string writes are wrong for these until the node can
+  stream its evaluated behavior natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

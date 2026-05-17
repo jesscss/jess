@@ -10,7 +10,6 @@ const ignoredSegments = new Set([
 ]);
 const frontierPattern = /renderNodeToBuffer\(\s*this\s*,/u;
 const expectedRemaining = new Set([
-  'packages/core/src/tree/call.ts',
   'packages/core/src/tree/import-style.ts',
   'packages/core/src/tree/rules.ts',
   'packages/core/src/tree/ruleset.ts',
