@@ -69,9 +69,16 @@ describe('url', () => {
 
     const buffer = createRenderBuffer('flat');
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    const resolveUrl = urlNode.resolve.bind(urlNode);
+    let urlResolveCalls = 0;
+    urlNode.resolve = (renderContext: Context) => {
+      urlResolveCalls++;
+      return resolveUrl(renderContext);
+    };
 
     expect(await urlNode.render(context, buffer)).toBe('url("image.png")');
     expect(buffer.parts).toEqual(['url("image.png")']);
+    expect(urlResolveCalls).toBe(0);
     expect(urlNode.evaluated).toBe(false);
     expect(urlNode.preEvaluated).toBe(false);
   });

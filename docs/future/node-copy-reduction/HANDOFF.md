@@ -129,14 +129,17 @@ it is for current direction and next seams, not a historical pass log.
 - `Operation`, `Condition`, and `Paren` now use their existing internal
   evaluation/resolution helpers for explicit buffer render. Focused tests prove
   they bypass wrapper `resolve()` while preserving evaluated output.
+- `Quoted` and `Url` now use their existing value-resolution helpers for
+  explicit buffer render. Focused tests prove they bypass wrapper `resolve()`
+  while preserving quoted/url syntax.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are expression/value evaluators (`Reference`,
-  `Quoted`, `Url`, `Interpolated`), some are selector/rules structure
-  (`Selector`, interpolated selectors, selector capture, `AtRule`,
-  `Declaration`, `Ruleset`, `Rules`), and some are contextual containers or
-  async/effectful surfaces (`Block`, `List`, `Sequence`, `Call`,
-  `JsExpression`, `StyleImport`). Direct string writes are wrong for these
-  until the node can stream its evaluated behavior natively.
+  `Interpolated`), some are selector/rules structure (`Selector`, interpolated
+  selectors, selector capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`),
+  and some are contextual containers or async/effectful surfaces (`Block`,
+  `List`, `Sequence`, `Call`, `JsExpression`, `StyleImport`). Direct string
+  writes are wrong for these until the node can stream its evaluated behavior
+  natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

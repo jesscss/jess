@@ -76,9 +76,16 @@ describe('quoted', () => {
 
     const buffer = createRenderBuffer('flat');
     const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    const resolveQuoted = quotedNode.resolve.bind(quotedNode);
+    let quotedResolveCalls = 0;
+    quotedNode.resolve = (renderContext: Context) => {
+      quotedResolveCalls++;
+      return resolveQuoted(renderContext);
+    };
 
     expect(await quotedNode.render(context, buffer)).toBe('"hello"');
     expect(buffer.parts).toEqual(['"hello"']);
+    expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.preEvaluated).toBe(false);
   });

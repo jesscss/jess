@@ -19,15 +19,13 @@ const expectedRemaining = new Set([
   'packages/core/src/tree/interpolated.ts',
   'packages/core/src/tree/js-expr.ts',
   'packages/core/src/tree/list.ts',
-  'packages/core/src/tree/quoted.ts',
   'packages/core/src/tree/reference.ts',
   'packages/core/src/tree/rules.ts',
   'packages/core/src/tree/ruleset.ts',
   'packages/core/src/tree/selector-capture.ts',
   'packages/core/src/tree/selector-interpolated.ts',
   'packages/core/src/tree/selector.ts',
-  'packages/core/src/tree/sequence.ts',
-  'packages/core/src/tree/url.ts'
+  'packages/core/src/tree/sequence.ts'
 ]);
 
 function walk(dir) {

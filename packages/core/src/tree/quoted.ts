@@ -2,12 +2,12 @@ import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 
 export type QuotedOptions = {
@@ -76,7 +76,15 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const writeResolved = (node: Quoted | Node): string => {
+        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const resolved = this.evaluateValue(context, 'resolve');
+      return isThenable(resolved)
+        ? (resolved as Promise<Quoted | Node>).then(writeResolved)
+        : writeResolved(resolved as Quoted | Node);
     }
     return super.render(context, bufferOrOptions);
   }
@@ -93,7 +101,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
   }
 
-  override evalNode(context: Context): MaybePromise<Quoted | Node> {
+  private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Quoted | Node> {
     const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
       if (this._options?.escaped) {
         if (value instanceof Node) {
@@ -111,7 +119,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     };
     const { value } = this;
     if (value instanceof Node) {
-      const out = value.eval(context);
+      const out = mode === 'eval' ? value.eval(context) : value.resolve(context);
       if (isThenable(out)) {
         return (out as Promise<Node | Any | Interpolated>).then(cont);
       }
@@ -120,31 +128,12 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return cont(value);
   }
 
+  override evalNode(context: Context): MaybePromise<Quoted | Node> {
+    return this.evaluateValue(context, 'eval');
+  }
+
   override resolve(context: Context): MaybePromise<Quoted | Node> {
-    const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
-      if (this._options?.escaped) {
-        if (value instanceof Node) {
-          return value;
-        }
-        return new Any(value);
-      }
-      if (value === this.value) {
-        return this;
-      }
-      if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
-        return value;
-      }
-      return this.withValue(value);
-    };
-    const { value } = this;
-    if (value instanceof Node) {
-      const out = value.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node | Any | Interpolated>).then(cont);
-      }
-      return cont(out as Node | Any | Interpolated);
-    }
-    return cont(value);
+    return this.evaluateValue(context, 'resolve');
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');
