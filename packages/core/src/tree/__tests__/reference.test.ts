@@ -88,9 +88,19 @@ describe('reference', () => {
       context.rulesContext = evald as RulesClass;
       const buffer = createRenderBuffer('segmented');
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
+      const originalResolve = refNode.resolve;
+      let resolveCalls = 0;
+      refNode.resolve = function countResolveCalls(
+        this: typeof refNode,
+        ...args: Parameters<typeof originalResolve>
+      ): ReturnType<typeof originalResolve> {
+        resolveCalls++;
+        return originalResolve.apply(this, args);
+      };
 
       expect(refNode.render(context, buffer)).toBe('red');
       expect(buffer.segments).toEqual(['red']);
+      expect(resolveCalls).toBe(0);
       expect(refNode.evaluated).toBe(false);
       expect(refNode.preEvaluated).toBe(false);
     });
