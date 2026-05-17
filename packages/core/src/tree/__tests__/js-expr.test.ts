@@ -24,11 +24,21 @@ describe('JsExpression', () => {
   it('writes evaluated JavaScript expression output into render buffers', async () => {
     const node = new JsExpression('"blue"');
     const buffer = createRenderBuffer('segmented');
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: JsExpression,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     const rendered = await Promise.resolve(node.render(context, buffer));
 
     expect(rendered).toBe('blue');
     expect(buffer.segments).toEqual(['blue']);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });

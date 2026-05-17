@@ -78,9 +78,19 @@ describe('Block', () => {
 
     const buffer = createRenderBuffer('flat');
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const originalResolve = blockNode.resolve;
+    let resolveCalls = 0;
+    blockNode.resolve = function countResolveCalls(
+      this: typeof blockNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await blockNode.render(context, buffer)).toBe('{foo}');
     expect(buffer.parts).toEqual(['{foo}']);
+    expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
     expect(blockNode.preEvaluated).toBe(false);
   });

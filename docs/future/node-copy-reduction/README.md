@@ -99,12 +99,12 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   resolving first and re-entering the bridge. Prefer that shape when focused
   tests can prove no eval or ownership boundary is being skipped.
 - Do not convert evaluating nodes by pattern. `Reference`, selector
-  interpolation/capture, `Block`, `List`, `Sequence`, `Call`,
-  `JsExpression`, `AtRule`, `Declaration`, `Ruleset`, `Rules`, and
-  `StyleImport` still need context-sensitive resolution, child evaluation,
-  async finalization, registration/visibility effects, or selector/rules
-  ownership. Their buffer path should move only when the node has a native
-  streaming implementation for that evaluated behavior.
+  interpolation/capture, `List`, `Sequence`, `Call`, `AtRule`, `Declaration`,
+  `Ruleset`, `Rules`, and `StyleImport` still need context-sensitive
+  resolution, child evaluation, async finalization, registration/visibility
+  effects, or selector/rules ownership. Their buffer path should move only
+  when the node has a native streaming implementation for that evaluated
+  behavior.
 - `Expression` now delegates buffer rendering to its child render path, and
   `Negative` evaluates its operand directly before writing the evaluated output.
   Both have focused tests proving buffer render bypasses the wrapper
@@ -118,6 +118,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - `Interpolated` now uses its existing interpolation-resolution helper for
   buffer render, preserving resolved replacement output without calling the
   wrapper `resolve()` method.
+- `JsExpression` now evaluates directly for buffer render, and `Block` uses its
+  existing value-resolution helper. Focused tests prove both bypass wrapper
+  `resolve()` while preserving evaluated output.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax

@@ -135,12 +135,15 @@ it is for current direction and next seams, not a historical pass log.
 - `Interpolated` now uses its existing interpolation-resolution helper for
   explicit buffer render. Focused tests prove it bypasses wrapper `resolve()`
   while preserving resolved replacement output.
+- `JsExpression` now evaluates directly for explicit buffer render, and
+  `Block` uses its existing value-resolution helper. Focused tests prove both
+  bypass wrapper `resolve()` while preserving evaluated output.
 - The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
   single cleanup bucket. Some are expression/value evaluators (`Reference`),
   some are selector/rules structure (`Selector`, interpolated
   selectors, selector capture, `AtRule`, `Declaration`, `Ruleset`, `Rules`),
-  and some are contextual containers or async/effectful surfaces (`Block`,
-  `List`, `Sequence`, `Call`, `JsExpression`, `StyleImport`). Direct string
+  and some are contextual containers or async/effectful surfaces (`List`,
+  `Sequence`, `Call`, `StyleImport`). Direct string
   writes are wrong for these until the node can stream its evaluated behavior
   natively.
 - Do not add buffer overloads to invisible registration or compile-time
