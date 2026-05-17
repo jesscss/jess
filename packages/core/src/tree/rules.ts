@@ -20,6 +20,7 @@ import {
   OutputWriter,
   type PrintOptions,
   getPrintOptions,
+  prepareRenderPrintState,
   savePrintState,
   restorePrintState,
   saveSetState,
@@ -49,8 +50,8 @@ import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-fram
 import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -1872,7 +1873,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const prepared = prepareRenderPrintState(context, options);
+      const writeEvaluated = (node: Node): string => {
+        const text = node.type === 'Rules' && (this === context.root || node === context.root)
+          ? node.toString(prepared)
+          : node.toTrimmedString(prepared);
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const evaluated = this.derive().eval(context);
+      return isThenable(evaluated)
+        ? (evaluated as Promise<Node>).then(writeEvaluated)
+        : writeEvaluated(evaluated as Node);
     }
     return super.render(context, bufferOrOptions);
   }

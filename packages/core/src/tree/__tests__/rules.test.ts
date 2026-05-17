@@ -176,11 +176,21 @@ describe('Rules', () => {
     ]);
     const buffer = createRenderBuffer('flat');
     context.root = rules([]);
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     const rendered = await node.render(context, buffer);
 
     expect(rendered).toBe('color: red;\n');
     expect(buffer.parts).toEqual(['color: red;\n']);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });
@@ -196,11 +206,21 @@ describe('Rules', () => {
         prelude: quoted(any('theme.css'))
       })
     ];
+    const originalResolve = root.resolve;
+    let resolveCalls = 0;
+    root.resolve = function countResolveCalls(
+      this: typeof root,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     const rendered = await root.render(context, buffer);
 
     expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(buffer.segments).toEqual([rendered]);
+    expect(resolveCalls).toBe(0);
     expect(root.evaluated).toBe(false);
     expect(root.preEvaluated).toBe(false);
   });
