@@ -14,8 +14,8 @@ import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -329,7 +329,9 @@ export class Dimension extends Node<DimensionValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const text = this.toTrimmedString(options);
+      writeRenderText(bufferOrOptions, text);
+      return text;
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }

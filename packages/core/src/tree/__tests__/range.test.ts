@@ -79,9 +79,15 @@ describe('Range', () => {
       end: num(3),
       step: num(2)
     });
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('1 to 3 step 2');
     expect(buffer.parts).toEqual(['1 to 3 step 2']);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });

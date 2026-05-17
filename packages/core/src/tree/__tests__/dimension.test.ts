@@ -57,9 +57,15 @@ describe('Dimension', () => {
     it('writes dimension render output into flat buffers', async () => {
       const buffer = createRenderBuffer('flat');
       const node = dimension([10, 'px']);
+      let resolveCalls = 0;
+      node.resolve = () => {
+        resolveCalls++;
+        return node;
+      };
 
       expect(await node.render(context, buffer)).toBe('10px');
       expect(buffer.parts).toEqual(['10px']);
+      expect(resolveCalls).toBe(0);
     });
 
     it('resolves dimensions without touching render state', async () => {

@@ -3,8 +3,8 @@ import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo, type TreeCont
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderText
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -38,7 +38,9 @@ export class Comment extends Node<string, CommentOptions> {
       return '';
     }
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const text = this.toTrimmedString(options);
+      writeRenderText(bufferOrOptions, text);
+      return text;
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }

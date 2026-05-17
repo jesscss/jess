@@ -114,10 +114,11 @@ it is for current direction and next seams, not a historical pass log.
 - Plain CSS `Call` argument/content rendering uses `renderNodeToWriter(...)`
   because those children intentionally render into the active call writer while
   calc-frame cleanup is still owned by the call renderer.
-- `Any`, `Bool`, `Rest`, `Combinator`, and `DefaultGuard` now write buffer
-  output directly and have focused tests proving buffer render does not call
-  `resolve()`. This is the preferred pattern for trivial visible leaves that
-  have no contextual eval work or can render directly from context.
+- `Any`, `Bool`, `Rest`, `Combinator`, `DefaultGuard`, `Dimension`, `Comment`,
+  and `Range` now write buffer output directly and have focused tests proving
+  buffer render does not call `resolve()`. This is the preferred pattern for
+  trivial visible leaves that have no contextual eval work or can render
+  directly from context.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

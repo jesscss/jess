@@ -38,9 +38,15 @@ describe('Comment', () => {
   it('writes visible comment render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = comment('/* keep me */');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('/* keep me */');
     expect(buffer.parts).toEqual(['/* keep me */']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('preserves printable block trivia before invisible nodes', () => {
