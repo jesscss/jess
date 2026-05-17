@@ -244,6 +244,10 @@ export function finalizeRenderBuffer(buffer: RenderBuffer, finalizers: SegmentFi
     : finalizeSegments(buffer.segments, finalizers);
 }
 
+export function finalizeFlatRenderBuffer(buffer: FlatRenderBuffer): string {
+  return buffer.parts.join('');
+}
+
 export function finalizeSegments(segments: readonly Segment[], finalizers: SegmentFinalizers): string {
   let out = '';
   const finalizeChildren: FinalizeChildren = childSegments => finalizeSegments(childSegments, finalizers);

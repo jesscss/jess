@@ -6,6 +6,7 @@ import {
   createPendingRefSlot,
   createRenderBuffer,
   createRenderBufferForFlags,
+  finalizeFlatRenderBuffer,
   createRulesetBlock,
   createSegmentBody,
   finalizeRenderBuffer,
@@ -41,6 +42,7 @@ describe('RenderBuffer', () => {
 
     expect(buffer.parts).toEqual(['.a', ' { color: red; }']);
     expect(finalizeRenderBuffer(buffer, finalizers)).toBe('.a { color: red; }');
+    expect(finalizeFlatRenderBuffer(buffer)).toBe('.a { color: red; }');
   });
 
   it('chooses flat mode until delayed finalization is needed', () => {

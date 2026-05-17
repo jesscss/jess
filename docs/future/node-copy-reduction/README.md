@@ -35,6 +35,9 @@ selector placement truly needs one.
 - `render(...)`, `renderString(...)`, `renderToResult(...)`, and
   `safeRender(...)` all use the eval/render path. `safeCompile(...)` remains a
   compatibility/debug API for callers that explicitly need a tree surface.
+- The Jess compiler render phase now creates and finalizes a flat render buffer
+  directly. That makes the public compiler output path consume the buffer
+  contract instead of treating `renderNodeToString(...)` as its final API.
 - `postEvalVisitor` is a compatibility hook name for pre-render visitors:
   compiler tests prove it runs after eval and before serialization.
 - Less function helper serialization routes ordinary node values through
@@ -81,6 +84,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   materialization are suspect surfaces, not automatic bugs.
 - `prepareRenderPrintState(...)` is the central render bridge. New bridges
   should use it instead of adding local writer/frame/trivia reset heuristics.
+- `renderNodeToBuffer(...)` still bridges many nodes through
+  `renderNodeToString(...)`, so the compiler buffer seam is not proof that all
+  nodes stream natively. Prefer moving one proven production surface at a time
+  off the bridge instead of adding empty buffer overloads.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax

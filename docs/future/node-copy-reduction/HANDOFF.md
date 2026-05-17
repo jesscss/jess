@@ -41,6 +41,10 @@ it is for current direction and next seams, not a historical pass log.
 - Active public compiler coverage now proves `render(...)`, `renderString(...)`,
   and `renderToResult(...)` preserve root-owned output such as first charset,
   hoisted CSS imports, and final newline behavior through the render bridge.
+- The Jess compiler render phase now creates a flat render buffer, writes the
+  evaluated root through `renderNodeToBuffer(...)`, and finalizes it with
+  `finalizeFlatRenderBuffer(...)`. This is a public output-path seam; it does
+  not mean every node has native streaming render behavior yet.
 - `safeRender(...)` now owns its eval/render path directly instead of calling
   `safeCompile(...)` and then serializing that compiled tree surface. Keep
   safe diagnostic collection on the render path without restoring the old
@@ -103,6 +107,10 @@ it is for current direction and next seams, not a historical pass log.
   of falling back to source text. New render bridges should share
   `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
   reuse heuristics.
+- Many explicit buffer calls still pass through `renderNodeToString(...)` before
+  writing text. Treat that as the next production frontier: migrate concrete
+  output surfaces when a focused test proves the node can emit without first
+  materializing a whole resolved subtree.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof
