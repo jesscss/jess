@@ -98,6 +98,15 @@ describe('Rule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     const rendered = await Promise.resolve(node.render(context, buffer));
 
@@ -112,6 +121,7 @@ describe('Rule', () => {
         color: red;
       }
     `);
+    expect(resolveCalls).toBe(0);
   });
 
   it('restores parent ruleset frame when child registration prep throws', () => {
