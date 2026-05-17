@@ -32,11 +32,17 @@ describe('DefaultGuard', () => {
   it('writes resolved default guard render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = defaultguard('default');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node.evalNode(context);
+    };
 
     context.isDefault = true;
 
     expect(await node.render(context, buffer)).toBe('true');
     expect(buffer.parts).toEqual(['true']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('resolves default guard values without touching render state', async () => {

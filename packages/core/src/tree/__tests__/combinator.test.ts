@@ -30,9 +30,15 @@ describe('Combinator', () => {
   it('writes combinator render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = co('>');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('>');
     expect(buffer.parts).toEqual(['>']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('resolves combinators without touching render state', async () => {
