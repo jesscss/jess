@@ -2,29 +2,48 @@ import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
+  amp,
   any,
   atrule,
+  attr,
   bool,
+  block,
   call,
   co,
   color,
   comment,
+  compound,
+  condition,
+  coll,
   decl,
   defaultguard,
   dimension,
+  el,
+  expr,
+  interpolated,
+  interpolatedSelector,
+  js,
   list,
   negative,
   nil,
   op,
   paren,
+  pseudo,
+  query,
   quoted,
+  range,
   ref,
   rest,
+  rawrules,
   rules,
+  ruleset,
   seq,
+  sel,
+  sellist,
   url,
   vardecl
 } from '../index.js';
+import { jsexpr } from '../js-expr.js';
 import { Node } from '../node-base.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -214,6 +233,77 @@ describe('renderNodeToBuffer', () => {
       const direct = await Promise.resolve(item.node.render(context));
       const buffer = createRenderBuffer('flat');
       const buffered = await Promise.resolve(item.node.render(context, buffer));
+
+      expect(buffered, item.surface).toBe(direct);
+      expect(buffer.parts, item.surface).toEqual(item.expectedParts ?? [direct]);
+      if (item.expected !== undefined) {
+        expect(buffered, item.surface).toBe(item.expected);
+      }
+    }
+  });
+
+  it('keeps string and flat-buffer render aligned across additional node surfaces', async () => {
+    const cases: Array<{
+      surface: string;
+      node: Node;
+      expected?: string;
+      expectedParts?: string[];
+      setup?: (ctx: Context) => void;
+    }> = [
+      { surface: 'Rules', node: rules([decl({ name: 'color', value: any('red') })]) },
+      {
+        surface: 'Ruleset',
+        node: ruleset({
+          selector: el('.box'),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        })
+      },
+      { surface: 'BasicSelector', node: el('.box'), expected: '.box' },
+      { surface: 'CompoundSelector', node: compound([el('.box'), el('.active')]), expected: '.box.active' },
+      { surface: 'ComplexSelector', node: sel([el('.box'), co('>'), el('.child')]), expected: '.box > .child' },
+      { surface: 'SelectorList', node: sellist([el('.a'), el('.b')]), expected: '.a,\n.b' },
+      { surface: 'PseudoSelector', node: pseudo({ name: ':hover' }), expected: ':hover' },
+      { surface: 'AttributeSelector', node: attr({ name: 'data-x', op: '=', value: quoted('yes') }), expected: '[data-x="yes"]' },
+      {
+        surface: 'Interpolated',
+        node: interpolated({ source: 'icon-%%', replacements: [ref({ key: 'brand' }, { type: 'variable' })] }),
+        expected: 'icon-red'
+      },
+      {
+        surface: 'InterpolatedSelector',
+        node: interpolatedSelector(
+          interpolated({ source: '.%%', replacements: [ref({ key: 'class-name' }, { type: 'variable' })] })
+        ),
+        expected: '.active'
+      },
+      { surface: 'Expression', node: expr(op([dimension([2]), '+', dimension([3])])), expected: '5' },
+      { surface: 'Range', node: range({ start: dimension([1]), end: dimension([3]), step: dimension([1]) }) },
+      { surface: 'Condition', node: condition([dimension([2]), '>', dimension([1])]), expected: 'true' },
+      { surface: 'QueryCondition', node: query([any('(min-width:'), dimension([10, 'px']), any(')')]) },
+      { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
+      { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
+      { surface: 'RawRules', node: rawrules([decl({ name: 'color', value: any('red') })]) },
+      { surface: 'JsExpression', node: jsexpr('"ok"'), expected: 'ok' },
+      { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
+      { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
+    ];
+
+    expect(cases).toHaveLength(20);
+
+    for (const item of cases) {
+      const context = new Context();
+      const root = rules([
+        vardecl({ name: any('brand'), value: any('red') }),
+        vardecl({ name: any('class-name'), value: any('active') })
+      ]);
+      const evaldRoot = await root.eval(context);
+      context.root = evaldRoot;
+      context.rulesContext = evaldRoot;
+      item.setup?.(context);
+
+      const direct = await Promise.resolve(renderNodeToString(item.node, context, { context }));
+      const buffer = createRenderBuffer('flat');
+      const buffered = await Promise.resolve(renderNodeToBuffer(item.node, context, buffer, { context }));
 
       expect(buffered, item.surface).toBe(direct);
       expect(buffer.parts, item.surface).toEqual(item.expectedParts ?? [direct]);
