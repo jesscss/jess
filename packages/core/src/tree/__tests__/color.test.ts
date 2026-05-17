@@ -301,9 +301,15 @@ describe('Color Node', () => {
         rgb: [255, 0, 0],
         alpha: 1
       });
+      let resolveCalls = 0;
+      color.resolve = () => {
+        resolveCalls++;
+        return color;
+      };
 
       expect(await color.render(new Context(), buffer)).toBe('rgb(255, 0, 0)');
       expect(buffer.parts).toEqual(['rgb(255, 0, 0)']);
+      expect(resolveCalls).toBe(0);
     });
 
     it('resolves colors without touching render state', async () => {

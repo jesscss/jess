@@ -62,10 +62,10 @@ it is for current direction and next seams, not a historical pass log.
   root surface; the root serializer exception should stay limited to that
   identity-backed case.
 - Focused core coverage now proves explicit render-buffer output for
-  `Collection`, `JsImport`, `RawRules`, `Rules`, async `JsExpression`, inherited
-  visible `VarDeclaration` output, and evaluated `$for` output. The `$for`
-  bridge deliberately does not change legacy direct string render, which still
-  returns source syntax for sync compatibility.
+  `Collection`, `JsImport`, `Rules`, async `JsExpression`, inherited visible
+  `VarDeclaration` output, and evaluated `$for` output. The `$for` bridge
+  deliberately does not change legacy direct string render, which still returns
+  source syntax for sync compatibility.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check now also fails on ordinary production `.copy()`
@@ -115,10 +115,10 @@ it is for current direction and next seams, not a historical pass log.
   because those children intentionally render into the active call writer while
   calc-frame cleanup is still owned by the call renderer.
 - `Any`, `Bool`, `Rest`, `Combinator`, `DefaultGuard`, `Dimension`, `Comment`,
-  and `Range` now write buffer output directly and have focused tests proving
-  buffer render does not call `resolve()`. This is the preferred pattern for
-  trivial visible leaves that have no contextual eval work or can render
-  directly from context.
+  `Range`, `Color`, and `RawRules` now write buffer output directly and have
+  focused tests proving buffer render does not call `resolve()`. This is the
+  preferred pattern for visible leaves and self-resolving containers that have
+  no contextual eval work or can render directly from context.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

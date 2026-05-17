@@ -32,9 +32,15 @@ describe('RawRules', () => {
     const node = rawrules([
       decl({ name: any('color'), value: any('red') })
     ]);
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(node.render(context, buffer)).toBe('color: red');
     expect(buffer.segments).toEqual(['color: red']);
+    expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });
