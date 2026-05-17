@@ -66,7 +66,7 @@ import { extendList } from '../extend-list.js';
 import { jsexpr } from '../js-expr.js';
 import { Node } from '../node-base.js';
 import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer, renderNodeToBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToBuffer, renderNodeToString, renderNodeToWriter } from '../util/render-buffer.js';
 
 class AsyncResolvedNode extends Node<string> {
   override resolve() {
@@ -141,6 +141,15 @@ describe('renderNodeToBuffer', () => {
 
     expect(renderNodeToString(node, context, { writer })).toBe('writer-output');
     expect(writer.toString()).toBe('writer-output');
+  });
+
+  it('renders child nodes into an active writer without using the string helper name', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const node = any('child-output');
+
+    expect(renderNodeToWriter(node, context, { writer })).toBe('child-output');
+    expect(writer.toString()).toBe('child-output');
   });
 
   it('uses the canonical root serializer for root-only output', () => {

@@ -185,7 +185,7 @@ export function renderNodeToBuffer(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): MaybePromise<string> {
-  const rendered = renderNodeToString(node, context, options);
+  const rendered = renderNodeToWriter(node, context, options);
   const writeRendered = (text: string): string => {
     writeRenderText(buffer, text);
     return text;
@@ -195,7 +195,7 @@ export function renderNodeToBuffer(
     : writeRendered(rendered);
 }
 
-export function renderNodeToString(
+export function renderNodeToWriter(
   node: RenderBufferNode,
   context: Context,
   options?: PrintOptions
@@ -214,6 +214,14 @@ export function renderNodeToString(
   return isThenable(resolved)
     ? (resolved as Promise<RenderableOutput>).then(writeResolved)
     : writeResolved(resolved);
+}
+
+export function renderNodeToString(
+  node: RenderBufferNode,
+  context: Context,
+  options?: PrintOptions
+): MaybePromise<string> {
+  return renderNodeToWriter(node, context, options);
 }
 
 function isRootRulesOutput(

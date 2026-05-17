@@ -15,7 +15,7 @@ import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   renderNodeToBuffer,
-  renderNodeToString,
+  renderNodeToWriter,
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
@@ -165,7 +165,7 @@ export class Call extends Node<CallValue, CallOptions> {
         w.add('(', arg);
         if (arg.value) {
           const innerMark = w.mark();
-          const rendered = renderNodeToString(arg.value, context, printOptions);
+          const rendered = renderNodeToWriter(arg.value, context, printOptions);
           const finishParen = (): MaybePromise<string> => {
             w.trimHorizontalStartSince(innerMark);
             w.trimHorizontalEndSince(innerMark);
@@ -186,7 +186,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return serializeArgAt(i + 1);
       } else {
         const argMark = w.mark();
-        const rendered = renderNodeToString(arg, context, printOptions);
+        const rendered = renderNodeToWriter(arg, context, printOptions);
         return isThenable(rendered)
           ? rendered.then(() => finishArg(argMark))
           : finishArg(argMark);
@@ -226,7 +226,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
-        const renderedContent = renderNodeToString(contentNode, context, prepared);
+        const renderedContent = renderNodeToWriter(contentNode, context, prepared);
         return isThenable(renderedContent)
           ? renderedContent.then(() => w.getSince(mark))
           : w.getSince(mark);

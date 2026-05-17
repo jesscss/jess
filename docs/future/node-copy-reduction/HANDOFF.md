@@ -107,10 +107,13 @@ it is for current direction and next seams, not a historical pass log.
   of falling back to source text. New render bridges should share
   `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
   reuse heuristics.
-- Many explicit buffer calls still pass through `renderNodeToString(...)` before
-  writing text. Treat that as the next production frontier: migrate concrete
-  output surfaces when a focused test proves the node can emit without first
-  materializing a whole resolved subtree.
+- Many explicit buffer calls still resolve and serialize through
+  `renderNodeToWriter(...)` before writing text. Treat that as the next
+  production frontier: migrate concrete output surfaces when a focused test
+  proves the node can emit without first materializing a whole resolved subtree.
+- Plain CSS `Call` argument/content rendering uses `renderNodeToWriter(...)`
+  because those children intentionally render into the active call writer while
+  calc-frame cleanup is still owned by the call renderer.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

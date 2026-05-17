@@ -85,9 +85,13 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - `prepareRenderPrintState(...)` is the central render bridge. New bridges
   should use it instead of adding local writer/frame/trivia reset heuristics.
 - `renderNodeToBuffer(...)` still bridges many nodes through
-  `renderNodeToString(...)`, so the compiler buffer seam is not proof that all
+  `renderNodeToWriter(...)`, so the compiler buffer seam is not proof that all
   nodes stream natively. Prefer moving one proven production surface at a time
   off the bridge instead of adding empty buffer overloads.
+- Plain CSS `Call` argument/content rendering uses the writer helper directly
+  because it renders into the active call writer while preserving calc-frame
+  cleanup. Do not route those child surfaces through a public "final string"
+  API name.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax
