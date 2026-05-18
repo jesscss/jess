@@ -123,6 +123,9 @@ it is for current direction and next seams, not a historical pass log.
   already-evaluated node into the active render buffer with
   `prepareRenderPrintState(...)`. It is deliberately small: node classes still
   own the semantic decision about whether to eval, resolve, or write directly.
+- `writeRootAwareRenderedOutput(...)` centralizes the root `Rules` serializer
+  exception. Keep it narrow: it chooses root `toString(...)` versus ordinary
+  `toTrimmedString(...)`; it does not decide what should be evaluated.
 - Plain CSS `Call` argument/content rendering now uses a call-local active
   writer helper that evals children and serializes into the existing function
   writer while keeping calc-frame cleanup owned by the call renderer.
@@ -132,6 +135,10 @@ it is for current direction and next seams, not a historical pass log.
   `resolve()`. This is the preferred pattern for visible leaves and
   self-resolving containers/directives that have no contextual eval work or can
   render directly from context.
+- `Log` and `Extend` are invisible side-effect nodes. Their explicit buffer
+  render paths run node-local `evalNode(...)` without public `resolve()` and
+  write the invisible `Nil` result, so logging and extend registration still
+  happen without emitting CSS text.
 - `Expression` now evaluates its child directly for explicit buffer render.
   `Negative` now evaluates its operand and writes that evaluated value directly.
   Focused tests prove both bypass public wrapper/child `resolve()` calls while

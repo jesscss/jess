@@ -152,6 +152,13 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   "already-evaluated node becomes text in the active render buffer" case. Keep
   using node-local eval helpers to decide what to evaluate; do not grow this
   helper into another output tree or dispatch layer.
+- `writeRootAwareRenderedOutput(...)` is the matching helper for the root
+  `Rules` serializer exception: root-owned `Rules` output keeps the full root
+  serializer, while ordinary evaluated nodes use trimmed output.
+- Invisible side-effect nodes such as `Log` and `Extend` now implement explicit
+  buffer render by running their node-local `evalNode(...)` and writing the
+  resulting invisible `Nil`. Their render seam is side-effect registration, not
+  CSS text emission.
 - `Call` already streamed plain CSS calls; non-string function/mixin lookup
   calls now use the same derived eval surface directly for buffer render
   instead of calling the public `resolve()` wrapper.

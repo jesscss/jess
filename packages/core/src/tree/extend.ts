@@ -13,6 +13,11 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  writeRenderedOutput
+} from './util/render-buffer.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -282,6 +287,18 @@ export class Extend extends Node<ExtendValue> {
 
   override resolve(context: Context): MaybePromise<Nil> {
     return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      const evaluated = this.evalNode(context);
+      return isThenable(evaluated)
+        ? (evaluated as Promise<Nil>).then(node => writeRenderedOutput(bufferOrOptions, node, context, options))
+        : writeRenderedOutput(bufferOrOptions, evaluated as Nil, context, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 }
 

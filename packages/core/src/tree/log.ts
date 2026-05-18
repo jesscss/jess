@@ -3,6 +3,12 @@ import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type 
 import { Nil } from './nil.js';
 import { logger } from '../logger.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { PrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  writeRenderedOutput
+} from './util/render-buffer.js';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
 
@@ -62,6 +68,18 @@ export class Log extends Node<LogValue, NodeOptions> {
 
   override resolve(context: Context): MaybePromise<Nil> {
     return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      const evaluated = this.evalNode(context);
+      return isThenable(evaluated)
+        ? (evaluated as Promise<Nil>).then(node => writeRenderedOutput(bufferOrOptions, node, context, options))
+        : writeRenderedOutput(bufferOrOptions, evaluated as Nil, context, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 
   private _logMessage(message: Node): void {

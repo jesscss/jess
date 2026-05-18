@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ExtendFlag, el, extend } from '../index.js';
+import { Context } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer, renderNodeToBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -22,5 +24,22 @@ describe('Extend', () => {
 
     expect(node.toTrimmedString({ writer })).toBe('$extend .source -> .target !exact;');
     expect(writer.captures).toBe(0);
+  });
+
+  it('writes no CSS for extend buffers while evaluating without public resolve', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = extend({
+      target: el('.target'),
+      flag: ExtendFlag.Exact
+    });
+    node.resolve = () => {
+      throw new Error('Extend buffer render should use evalNode');
+    };
+
+    await expect(Promise.resolve(renderNodeToBuffer(node, context, buffer))).resolves.toBe('');
+
+    expect(buffer.parts).toEqual([]);
+    expect(node.evaluated).toBe(false);
   });
 });

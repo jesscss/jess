@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Log, Any, Quoted, Nil } from '../index.js';
 import { Context } from '../../context.js';
 import { logger } from '../../logger.js';
+import { createRenderBuffer, renderNodeToBuffer } from '../util/render-buffer.js';
 
 describe('Log node', () => {
   let context: Context;
@@ -106,5 +107,24 @@ describe('Log node', () => {
     expect(logNode.evaluated).toBe(false);
     expect(logNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes no CSS for log buffers while evaluating without public resolve', async () => {
+    const logSpy = vi.fn();
+    logger.log = logSpy;
+    const buffer = createRenderBuffer('flat');
+    const logNode = new Log({
+      level: 'debug',
+      message: new Any('buffer message')
+    });
+    logNode.resolve = () => {
+      throw new Error('Log buffer render should use evalNode');
+    };
+
+    await expect(Promise.resolve(renderNodeToBuffer(logNode, context, buffer))).resolves.toBe('');
+
+    expect(logSpy).toHaveBeenCalledWith('buffer message');
+    expect(buffer.parts).toEqual([]);
+    expect(logNode.evaluated).toBe(false);
   });
 });

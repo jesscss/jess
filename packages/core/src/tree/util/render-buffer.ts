@@ -148,6 +148,31 @@ export function writeRenderedOutput(
   return text;
 }
 
+export function renderedOutputToString(
+  source: RenderBufferNode,
+  node: RenderableOutput,
+  context: Context,
+  options?: PrintOptions
+): string {
+  const prepared = prepareRenderPrintState(context, options);
+  if (isRootRulesOutput(source, node, context)) {
+    return node.toString(prepared);
+  }
+  return node.toTrimmedString(prepared);
+}
+
+export function writeRootAwareRenderedOutput(
+  buffer: RenderBuffer,
+  source: RenderBufferNode,
+  node: RenderableOutput,
+  context: Context,
+  options?: PrintOptions
+): string {
+  const text = renderedOutputToString(source, node, context, options);
+  writeRenderText(buffer, text);
+  return text;
+}
+
 export function createSegmentBody(): Segment[] {
   return [];
 }
@@ -221,12 +246,8 @@ export function renderNodeToWriter(
   // Track 5 bridge only: this adapts current node serializers to evaluated
   // string output. Nodes with delayed-output semantics must write explicit
   // segments instead of growing a second AST.
-  const prepared = prepareRenderPrintState(context, options);
   const writeResolved = (resolved: RenderableOutput): string => {
-    if (isRootRulesOutput(node, resolved, context)) {
-      return resolved.toString(prepared);
-    }
-    return resolved.toTrimmedString(prepared);
+    return renderedOutputToString(node, resolved, context, options);
   };
   const resolved = node.resolve(context);
   return isThenable(resolved)
