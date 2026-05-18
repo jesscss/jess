@@ -122,10 +122,10 @@ it is for current direction and next seams, not a historical pass log.
   `resolve()`. This is the preferred pattern for visible leaves and
   self-resolving containers/directives that have no contextual eval work or can
   render directly from context.
-- `Expression` now delegates explicit buffer render to its child render path.
+- `Expression` now evaluates its child directly for explicit buffer render.
   `Negative` now evaluates its operand and writes that evaluated value directly.
-  Focused tests prove both bypass the wrapper `resolve()` method while keeping
-  evaluated output.
+  Focused tests prove both bypass public wrapper/child `resolve()` calls while
+  keeping evaluated output.
 - `Operation`, `Condition`, and `Paren` now use their existing internal
   evaluation/resolution helpers for explicit buffer render. Focused tests prove
   they bypass wrapper `resolve()` while preserving evaluated output.

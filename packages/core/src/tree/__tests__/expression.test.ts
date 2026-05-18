@@ -45,17 +45,28 @@ describe('Expression', () => {
     context.rulesContext = evald as RulesClass;
 
     const buffer = createRenderBuffer('flat');
-    const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const expressionChild = ref({ key: 'value' }, { type: 'variable' });
+    const renderedNode = expr(expressionChild);
     let expressionResolveCalls = 0;
     renderedNode.resolve = (renderContext: Context) => {
       expressionResolveCalls++;
       return renderedNode.value.resolve(renderContext);
+    };
+    let childResolveCalls = 0;
+    const originalChildResolve = expressionChild.resolve;
+    expressionChild.resolve = function countResolveCalls(
+      this: typeof expressionChild,
+      ...args: Parameters<typeof originalChildResolve>
+    ): ReturnType<typeof originalChildResolve> {
+      childResolveCalls++;
+      return originalChildResolve.apply(this, args);
     };
     expect(renderedNode.toTrimmedString()).not.toBe('foo');
 
     expect(await renderedNode.render(context, buffer)).toBe('foo');
     expect(buffer.parts).toEqual(['foo']);
     expect(expressionResolveCalls).toBe(0);
+    expect(childResolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.preEvaluated).toBe(false);
   });

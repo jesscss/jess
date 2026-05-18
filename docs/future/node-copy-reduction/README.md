@@ -86,10 +86,8 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   should use it instead of adding local writer/frame/trivia reset heuristics.
 - No node now uses `renderNodeToBuffer(this, ...)` as its own explicit buffer
   implementation. `renderNodeToBuffer(...)` still exists for the compiler root
-  and a few caller-owned child/focused-test paths, so the compiler buffer seam
-  is not proof that every child path streams natively. Keep
-  `pnpm run verify:render-buffer-frontier` green before and after touching
-  those remaining bridge callers.
+  and focused tests, so keep `pnpm run verify:render-buffer-frontier` green
+  before and after touching render-buffer callers.
 - Plain CSS `Call` argument/content rendering uses the writer helper directly
   because it renders into the active call writer while preserving calc-frame
   cleanup. Do not route those child surfaces through a public "final string"
@@ -104,10 +102,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   when focused tests prove the path preserves context-sensitive evaluation,
   child resolution, async finalization, registration/visibility effects, and
   selector/rules ownership.
-- `Expression` now delegates buffer rendering to its child render path, and
-  `Negative` evaluates its operand directly before writing the evaluated output.
-  Both have focused tests proving buffer render bypasses the wrapper
-  `resolve()` method while preserving evaluated output.
+- `Expression` now evaluates its child directly for buffer render, and
+  `Negative` evaluates its operand directly before writing the evaluated
+  output. Both have focused tests proving buffer render bypasses public
+  wrapper/child `resolve()` calls while preserving evaluated output.
 - `Operation`, `Condition`, and `Paren` now use their existing internal
   evaluation/resolution helpers for buffer render, so they preserve evaluated
   output without calling the wrapper `resolve()` method.
