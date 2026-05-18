@@ -87,9 +87,11 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - Production render paths no longer call `renderNodeToBuffer(...)`,
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`; the Jess compiler
   root calls `Rules.render(...)` directly. The `renderNodeTo*` helpers remain as
-  focused utility/test bridges, not production compiler plumbing. Keep
-  `pnpm run verify:render-buffer-frontier` green before and after touching
-  render-buffer callers.
+  focused utility/test bridges, not production compiler plumbing.
+  `renderNodeToString(...)` exercises native buffer render when a node has that
+  overload, so render tests should not silently drift back to
+  resolve-then-serialize coverage. Keep `pnpm run verify:render-buffer-frontier`
+  green before and after touching render-buffer callers.
 - Plain CSS `Call` argument/content rendering uses a call-local active writer
   helper that evals child args/content and serializes into the existing
   function writer while preserving calc-frame cleanup. Do not route those child

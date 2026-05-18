@@ -111,6 +111,10 @@ it is for current direction and next seams, not a historical pass log.
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`. Treat any new
   production use of those helpers as a regression unless it is backed by a
   focused rule for why the caller cannot use the node's native buffer/eval path.
+- `renderNodeToString(...)` is still available to tests, but it now routes
+  through native buffer render for nodes that implement that overload. That
+  keeps old test helpers useful without making "render" coverage mean
+  resolve-then-serialize by accident.
 - Plain CSS `Call` argument/content rendering now uses a call-local active
   writer helper that evals children and serializes into the existing function
   writer while keeping calc-frame cleanup owned by the call renderer.

@@ -134,13 +134,13 @@ describe('renderNodeToBuffer', () => {
     await expect(renderNodeToString(node, context)).resolves.toBe('resolved');
   });
 
-  it('renders through the provided writer when string output is requested', () => {
+  it('renders native buffer output to strings without reusing a provided writer', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const node = any('writer-output');
 
     expect(renderNodeToString(node, context, { writer })).toBe('writer-output');
-    expect(writer.toString()).toBe('writer-output');
+    expect(writer.toString()).toBe('');
   });
 
   it('renders child nodes into an active writer without using the string helper name', () => {

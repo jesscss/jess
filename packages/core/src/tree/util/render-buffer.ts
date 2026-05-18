@@ -6,6 +6,10 @@ export type RenderBufferNode = {
   resolve(context: Context): MaybePromise<RenderableOutput>;
 };
 
+type NativeRenderBufferNode = RenderBufferNode & {
+  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+};
+
 export type RenderableOutput = {
   type?: string;
   toTrimmedString(options?: PrintOptions): string;
@@ -185,6 +189,9 @@ export function renderNodeToBuffer(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): MaybePromise<string> {
+  if (hasNativeBufferRender(node)) {
+    return node.render(context, buffer, options);
+  }
   const rendered = renderNodeToWriter(node, context, options);
   const writeRendered = (text: string): string => {
     writeRenderText(buffer, text);
@@ -221,7 +228,29 @@ export function renderNodeToString(
   context: Context,
   options?: PrintOptions
 ): MaybePromise<string> {
-  return renderNodeToWriter(node, context, options);
+  const buffer = createRenderBuffer('flat');
+  const rendered = renderNodeToBuffer(node, context, buffer, options);
+  const finalize = (): string => finalizeFlatRenderBuffer(buffer);
+  return isThenable(rendered)
+    ? rendered.then(finalize)
+    : finalize();
+}
+
+function hasNativeBufferRender(node: RenderBufferNode): node is NativeRenderBufferNode {
+  let proto = getObjectPrototype(node);
+  while (proto) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'render');
+    if (typeof descriptor?.value === 'function') {
+      return descriptor.value.length >= 3;
+    }
+    proto = getObjectPrototype(proto);
+  }
+  return false;
+}
+
+function getObjectPrototype(value: object): object | null {
+  const proto: unknown = Object.getPrototypeOf(value);
+  return typeof proto === 'object' ? proto : null;
 }
 
 function isRootRulesOutput(
