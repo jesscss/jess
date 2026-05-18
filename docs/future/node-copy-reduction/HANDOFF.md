@@ -42,7 +42,7 @@ it is for current direction and next seams, not a historical pass log.
   and `renderToResult(...)` preserve root-owned output such as first charset,
   hoisted CSS imports, and final newline behavior through the render bridge.
 - The Jess compiler render phase now creates a flat render buffer, writes the
-  evaluated root through `renderNodeToBuffer(...)`, and finalizes it with
+  evaluated root through `Rules.render(...)`, and finalizes it with
   `finalizeFlatRenderBuffer(...)`. This is a public output-path seam; it does
   not mean every node has native streaming render behavior yet.
 - `safeRender(...)` now owns its eval/render path directly instead of calling

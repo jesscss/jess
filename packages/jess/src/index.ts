@@ -16,8 +16,7 @@ import {
   type Deprecation,
   type Visitor,
   createRenderBuffer,
-  finalizeFlatRenderBuffer,
-  renderNodeToBuffer
+  finalizeFlatRenderBuffer
 } from '@jesscss/core';
 import {
   getOptions,
@@ -868,7 +867,7 @@ export class Compiler {
 
     let css = await measureProfileAsync(profile, 'render', async () => {
       const buffer = createRenderBuffer('flat');
-      await renderNodeToBuffer(tree, context, buffer, printOptions);
+      await tree.render(context, buffer, printOptions);
       return finalizeFlatRenderBuffer(buffer);
     });
     css = measureProfileSync(profile, 'postProcessCss', () => {
