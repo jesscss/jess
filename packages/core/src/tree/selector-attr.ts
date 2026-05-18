@@ -145,7 +145,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     );
   }
 
-  override resolve(context: Context): MaybePromise<this> {
+  protected override resolveForRender(context: Context): MaybePromise<this> {
     const currentName = this.value.name;
     const currentValue = this.value.value;
     const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
@@ -162,6 +162,10 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       });
     }
     return finalize(name as string | Node, value as Node | undefined);
+  }
+
+  override resolve(context: Context): MaybePromise<this> {
+    return this.resolveForRender(context);
   }
 
   override toTrimmedString(options?: PrintOptions) {

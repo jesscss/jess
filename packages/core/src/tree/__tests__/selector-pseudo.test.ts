@@ -122,10 +122,20 @@ describe('PseudoSelector', () => {
       name: ':is',
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
+    const originalResolve = pseudoNode.resolve;
+    let resolveCalls = 0;
+    pseudoNode.resolve = function countResolveCalls(
+      this: typeof pseudoNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = pseudoNode.render(context, buffer);
 
     expect(rendered).toBe(':is(.foo, .bar)');
     expect(buffer.segments).toEqual([':is(.foo, .bar)']);
+    expect(resolveCalls).toBe(0);
     expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.preEvaluated).toBe(false);
   });

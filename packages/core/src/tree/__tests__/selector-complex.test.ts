@@ -94,7 +94,7 @@ describe('Complex selector', () => {
       context.rulesContext = evald as RulesClass;
       const buffer = createRenderBuffer('segmented');
 
-      const rendered = sel([
+      const selectorNode = sel([
         compound([
           el('a'),
           attr({
@@ -105,10 +105,22 @@ describe('Complex selector', () => {
         ]),
         co('>'),
         el('.foo')
-      ]).render(context, buffer);
+      ]);
+      const originalResolve = selectorNode.resolve;
+      let resolveCalls = 0;
+      selectorNode.resolve = function countResolveCalls(
+        this: typeof selectorNode,
+        ...args: Parameters<typeof originalResolve>
+      ): ReturnType<typeof originalResolve> {
+        resolveCalls++;
+        return originalResolve.apply(this, args);
+      };
+
+      const rendered = selectorNode.render(context, buffer);
 
       expect(rendered).toBe('a[data=foo] > .foo');
       expect(buffer.segments).toEqual(['a[data=foo] > .foo']);
+      expect(resolveCalls).toBe(0);
     });
 
     test('does not consume reordered source trivia between generated selector parts', () => {

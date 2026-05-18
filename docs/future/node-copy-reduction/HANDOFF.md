@@ -166,11 +166,14 @@ it is for current direction and next seams, not a historical pass log.
 - `Ruleset` now evaluates directly for explicit buffer render and writes the
   evaluated ruleset/rules/nil result without calling the public `resolve()`
   wrapper.
-- The remaining `renderNodeToBuffer(this, ...)` callers are intentionally not a
-  single cleanup bucket. Some are selector structure (`Selector`), and some are
-  contextual or async/effectful surfaces (`StyleImport`). Direct string writes
-  are wrong for these until the node can stream its evaluated behavior
-  natively.
+- `Selector` now writes explicit buffer output through an internal
+  `resolveForRender(...)` hook. Selector containers and attribute selectors use
+  that hook to preserve child selector resolution semantics without calling the
+  public `resolve()` wrapper, while simple selector leaves keep the default
+  eval-for-output path.
+- The remaining `renderNodeToBuffer(this, ...)` caller is `StyleImport`.
+  Direct string writes are wrong there until the node can stream its contextual
+  async/effectful behavior natively.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

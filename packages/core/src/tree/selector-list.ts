@@ -248,7 +248,7 @@ export class SelectorList extends Selector<Selector[]> {
     );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
@@ -320,6 +320,10 @@ export class SelectorList extends Selector<Selector[]> {
         return list.withSelectors(flattened, currentValue);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveForRender(context);
   }
 }
 

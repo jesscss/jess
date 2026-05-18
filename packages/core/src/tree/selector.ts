@@ -1,11 +1,11 @@
-import type { MaybePromise } from 'awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
-import { isRenderBuffer, renderNodeToBuffer, type RenderBuffer } from './util/render-buffer.js';
-import type { PrintOptions } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { prepareRenderPrintState, type PrintOptions } from './util/print.js';
 
 const { isArray } = Array;
 
@@ -123,11 +123,24 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return super.evalNode(context);
   }
 
+  protected resolveForRender(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+      const prepared = prepareRenderPrintState(context, options);
+      const writeResolved = (resolved: Node): string => {
+        const text = resolved.toTrimmedString(prepared);
+        writeRenderText(bufferOrOptions, text);
+        return text;
+      };
+      const resolved = this.resolveForRender(context);
+      return isThenable(resolved)
+        ? (resolved as Promise<Node>).then(writeResolved)
+        : writeResolved(resolved);
     }
     return super.render(context, bufferOrOptions);
   }

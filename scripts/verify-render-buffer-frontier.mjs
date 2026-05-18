@@ -10,8 +10,7 @@ const ignoredSegments = new Set([
 ]);
 const frontierPattern = /renderNodeToBuffer\(\s*this\s*,/u;
 const expectedRemaining = new Set([
-  'packages/core/src/tree/import-style.ts',
-  'packages/core/src/tree/selector.ts'
+  'packages/core/src/tree/import-style.ts'
 ]);
 
 function walk(dir) {

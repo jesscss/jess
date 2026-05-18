@@ -115,17 +115,29 @@ describe('Compound Selector', () => {
     context.rulesContext = evald as RulesClass;
     const buffer = createRenderBuffer('segmented');
 
-    const rendered = compound([
+    const selectorNode = compound([
       el('a'),
       attr({
         name: 'data',
         op: '=',
         value: ref({ key: 'capture-attr' }, { type: 'variable' })
       })
-    ]).render(context, buffer);
+    ]);
+    const originalResolve = selectorNode.resolve;
+    let resolveCalls = 0;
+    selectorNode.resolve = function countResolveCalls(
+      this: typeof selectorNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = selectorNode.render(context, buffer);
 
     expect(rendered).toBe('a[data=foo]');
     expect(buffer.segments).toEqual(['a[data=foo]']);
+    expect(resolveCalls).toBe(0);
   });
 
   test('resolves compound selector values without touching render state', async () => {

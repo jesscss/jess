@@ -94,7 +94,7 @@ describe('Selector list', () => {
     context.rulesContext = evald as RulesClass;
     const buffer = createRenderBuffer('segmented');
 
-    const rendered = sellist([
+    const selectorNode = sellist([
       compound([
         el('a'),
         attr({
@@ -104,10 +104,22 @@ describe('Selector list', () => {
         })
       ]),
       el('.bar')
-    ]).render(context, buffer);
+    ]);
+    const originalResolve = selectorNode.resolve;
+    let resolveCalls = 0;
+    selectorNode.resolve = function countResolveCalls(
+      this: typeof selectorNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = selectorNode.render(context, buffer);
 
     expect(rendered).toBe('a[data=foo],\n.bar');
     expect(buffer.segments).toEqual(['a[data=foo],\n.bar']);
+    expect(resolveCalls).toBe(0);
   });
 
   test('resolves selector-list values without touching render state', async () => {

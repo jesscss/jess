@@ -182,7 +182,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
     );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
@@ -235,6 +235,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel.withComponents(value, currentValue);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveForRender(context);
   }
 
   /** @todo move to visitors */

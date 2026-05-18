@@ -271,7 +271,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
@@ -357,6 +357,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector.withComponents(value.filter(isComplexSelectorComponent), currentValue);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveForRender(context);
   }
   // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
   //   let elements = [...selector.value] as ComplexSelectorValue

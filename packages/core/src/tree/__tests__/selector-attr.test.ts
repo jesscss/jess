@@ -80,10 +80,20 @@ describe('Attribute Selector', () => {
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
     });
+    const originalResolve = attrNode.resolve;
+    let resolveCalls = 0;
+    attrNode.resolve = function countResolveCalls(
+      this: typeof attrNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = attrNode.render(context, buffer);
 
     expect(rendered).toBe('[data=foo]');
     expect(buffer.segments).toEqual(['[data=foo]']);
+    expect(resolveCalls).toBe(0);
     expect(attrNode.evaluated).toBe(false);
     expect(attrNode.preEvaluated).toBe(false);
   });
