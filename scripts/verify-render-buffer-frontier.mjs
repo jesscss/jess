@@ -3,13 +3,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = path.resolve(import.meta.dirname, '..');
-const scanRoot = path.join(rootDir, 'packages/core/src/tree');
+const scanRoots = [
+  path.join(rootDir, 'packages/core/src/tree'),
+  path.join(rootDir, 'packages/jess/src')
+];
 const ignoredSegments = new Set([
   '__tests__',
   'util'
 ]);
-const frontierPattern = /renderNodeToBuffer\(\s*this\s*,/u;
-const expectedRemaining = new Set();
+const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
+const allowedFiles = new Set([
+  'packages/core/src/tree/util/render-buffer.ts'
+]);
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -30,51 +35,43 @@ function walk(dir) {
 }
 
 const matches = [];
-for (const file of walk(scanRoot)) {
-  const relative = path.relative(rootDir, file);
-  const source = fs.readFileSync(file, 'utf8');
-  source.split(/\r?\n/u).forEach((line, index) => {
-    if (frontierPattern.test(line)) {
-      matches.push({ file: relative, line: index + 1, text: line.trim() });
+for (const scanRoot of scanRoots) {
+  if (!fs.existsSync(scanRoot)) {
+    continue;
+  }
+  for (const file of walk(scanRoot)) {
+    const relative = path.relative(rootDir, file);
+    if (allowedFiles.has(relative)) {
+      continue;
     }
-  });
+    const source = fs.readFileSync(file, 'utf8');
+    source.split(/\r?\n/u).forEach((line, index) => {
+      if (frontierPattern.test(line)) {
+        matches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+    });
+  }
 }
-
-const files = [...new Set(matches.map(match => match.file))].sort();
-const unexpected = files.filter(file => !expectedRemaining.has(file));
-const missingExpected = [...expectedRemaining].filter(file => !files.includes(file));
 
 console.log('Render buffer frontier scan');
 console.log('');
-console.log('Expected remaining wrapper bridges:');
-const expectedFiles = files.filter(file => expectedRemaining.has(file));
-if (expectedFiles.length === 0) {
+console.log('Production render bridge helper sites:');
+if (matches.length === 0) {
   console.log('- none');
 }
-for (const file of expectedFiles) {
+
+const files = [...new Set(matches.map(match => match.file))].sort();
+for (const file of files) {
   console.log(`- ${file}`);
   for (const match of matches.filter(match => match.file === file)) {
     console.log(`  ${match.line}: ${match.text}`);
   }
 }
 
-if (unexpected.length > 0) {
+if (matches.length > 0) {
   console.log('');
-  console.log('Unexpected renderNodeToBuffer(this, ...) sites:');
-  for (const file of unexpected) {
-    console.log(`- ${file}`);
-    for (const match of matches.filter(match => match.file === file)) {
-      console.log(`  ${match.line}: ${match.text}`);
-    }
-  }
-  process.exitCode = 1;
-}
-
-if (missingExpected.length > 0) {
-  console.log('');
-  console.log('Expected frontier entries with no remaining wrapper bridge:');
-  for (const file of missingExpected) {
-    console.log(`- ${file}`);
-  }
+  console.log(
+    'Production render paths should call node render methods directly; keep renderNodeTo* helpers in tests/util only.'
+  );
   process.exitCode = 1;
 }

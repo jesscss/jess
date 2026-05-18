@@ -84,11 +84,12 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   materialization are suspect surfaces, not automatic bugs.
 - `prepareRenderPrintState(...)` is the central render bridge. New bridges
   should use it instead of adding local writer/frame/trivia reset heuristics.
-- No node now uses `renderNodeToBuffer(this, ...)` as its own explicit buffer
-  implementation, and the Jess compiler root render calls `Rules.render(...)`
-  directly. `renderNodeToBuffer(...)` remains as a focused utility/test bridge,
-  not production compiler plumbing. Keep `pnpm run verify:render-buffer-frontier`
-  green before and after touching render-buffer callers.
+- Production render paths no longer call `renderNodeToBuffer(...)`,
+  `renderNodeToWriter(...)`, or `renderNodeToString(...)`; the Jess compiler
+  root calls `Rules.render(...)` directly. The `renderNodeTo*` helpers remain as
+  focused utility/test bridges, not production compiler plumbing. Keep
+  `pnpm run verify:render-buffer-frontier` green before and after touching
+  render-buffer callers.
 - Plain CSS `Call` argument/content rendering uses a call-local active writer
   helper that evals child args/content and serializes into the existing
   function writer while preserving calc-frame cleanup. Do not route those child

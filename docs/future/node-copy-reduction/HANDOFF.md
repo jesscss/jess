@@ -107,10 +107,10 @@ it is for current direction and next seams, not a historical pass log.
   of falling back to source text. New render bridges should share
   `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
   reuse heuristics.
-- Production render-buffer paths no longer call `renderNodeToBuffer(...)` or
-  `renderNodeToWriter(...)`. Treat any new production use of those helpers as a
-  regression unless it is backed by a focused rule for why the caller cannot
-  use the node's native buffer/eval path.
+- Production render-buffer paths no longer call `renderNodeToBuffer(...)`,
+  `renderNodeToWriter(...)`, or `renderNodeToString(...)`. Treat any new
+  production use of those helpers as a regression unless it is backed by a
+  focused rule for why the caller cannot use the node's native buffer/eval path.
 - Plain CSS `Call` argument/content rendering now uses a call-local active
   writer helper that evals children and serializes into the existing function
   writer while keeping calc-frame cleanup owned by the call renderer.
