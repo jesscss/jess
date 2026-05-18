@@ -31,13 +31,13 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 });
 
 class AsyncAny extends Any<string> {
-  override resolve() {
+  override eval() {
     return Promise.resolve(any(this.value));
   }
 }
 
 class RejectingAny extends Any<string> {
-  override resolve() {
+  override eval() {
     return Promise.reject(new Error(this.value));
   }
 }
@@ -112,6 +112,39 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('writes CSS call arguments without resolving child wrappers', async () => {
+    const root = rules([
+      vardecl({
+        name: any('red-channel'),
+        value: num(100)
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as Rules;
+    context.rulesContext = evald as Rules;
+    const buffer = createRenderBuffer('flat');
+    const arg = ref({ key: 'red-channel' }, { type: 'variable' });
+    const rule = call({
+      name: 'rgb',
+      args: list([arg, num(100), num(100)])
+    });
+    const originalResolve = arg.resolve;
+    let argResolveCalls = 0;
+    arg.resolve = function countResolveCalls(
+      this: typeof arg,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      argResolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(argResolveCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
   });

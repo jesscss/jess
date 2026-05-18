@@ -89,10 +89,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   directly. `renderNodeToBuffer(...)` remains as a focused utility/test bridge,
   not production compiler plumbing. Keep `pnpm run verify:render-buffer-frontier`
   green before and after touching render-buffer callers.
-- Plain CSS `Call` argument/content rendering uses the writer helper directly
-  because it renders into the active call writer while preserving calc-frame
-  cleanup. Do not route those child surfaces through a public "final string"
-  API name.
+- Plain CSS `Call` argument/content rendering uses a call-local active writer
+  helper that evals child args/content and serializes into the existing
+  function writer while preserving calc-frame cleanup. Do not route those child
+  surfaces through a public "final string" API name.
 - Static/self-resolving buffer renderers such as `Any`, `Bool`, `Rest`,
   `Combinator`, `DefaultGuard`, `Dimension`, `Comment`, `Range`, `Color`, and
   `RawRules`, plus self-resolving container/directive surfaces such as

@@ -14,7 +14,6 @@ import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
   isRenderBuffer,
-  renderNodeToWriter,
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
@@ -85,6 +84,18 @@ export type ExtendedFn<T extends unknown[] = unknown[], R = unknown> = ((this: C
  */
 export class Call extends Node<CallValue, CallOptions> {
   override _requiredSemi = true;
+
+  private renderChildToActiveWriter(
+    node: Node,
+    context: Context,
+    options: PrintOptions
+  ): MaybePromise<string> {
+    const rendered = node.eval(context);
+    const writeRendered = (value: Node): string => value.toTrimmedString(options);
+    return isThenable(rendered)
+      ? (rendered as Promise<Node>).then(writeRendered)
+      : writeRendered(rendered as Node);
+  }
 
   private deriveCall(value: CallValue, options?: CallOptions): Call {
     return new Call(
@@ -164,7 +175,7 @@ export class Call extends Node<CallValue, CallOptions> {
         w.add('(', arg);
         if (arg.value) {
           const innerMark = w.mark();
-          const rendered = renderNodeToWriter(arg.value, context, printOptions);
+          const rendered = this.renderChildToActiveWriter(arg.value, context, printOptions);
           const finishParen = (): MaybePromise<string> => {
             w.trimHorizontalStartSince(innerMark);
             w.trimHorizontalEndSince(innerMark);
@@ -185,7 +196,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return serializeArgAt(i + 1);
       } else {
         const argMark = w.mark();
-        const rendered = renderNodeToWriter(arg, context, printOptions);
+        const rendered = this.renderChildToActiveWriter(arg, context, printOptions);
         return isThenable(rendered)
           ? rendered.then(() => finishArg(argMark))
           : finishArg(argMark);
@@ -225,7 +236,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (contentNode) {
         w.add(': ');
-        const renderedContent = renderNodeToWriter(contentNode, context, prepared);
+        const renderedContent = this.renderChildToActiveWriter(contentNode, context, prepared);
         return isThenable(renderedContent)
           ? renderedContent.then(() => w.getSince(mark))
           : w.getSince(mark);

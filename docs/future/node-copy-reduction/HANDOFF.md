@@ -107,15 +107,13 @@ it is for current direction and next seams, not a historical pass log.
   of falling back to source text. New render bridges should share
   `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
   reuse heuristics.
-- Many explicit buffer calls still resolve and serialize through
-  `renderNodeToWriter(...)` before writing text. Treat that as the next
-  production frontier: migrate concrete output surfaces when a focused test
-  proves the node can emit without first materializing a whole resolved subtree.
-  Use `pnpm run verify:render-buffer-frontier` to keep the remaining wrapper
-  bridge list executable instead of hand-maintained.
-- Plain CSS `Call` argument/content rendering uses `renderNodeToWriter(...)`
-  because those children intentionally render into the active call writer while
-  calc-frame cleanup is still owned by the call renderer.
+- Production render-buffer paths no longer call `renderNodeToBuffer(...)` or
+  `renderNodeToWriter(...)`. Treat any new production use of those helpers as a
+  regression unless it is backed by a focused rule for why the caller cannot
+  use the node's native buffer/eval path.
+- Plain CSS `Call` argument/content rendering now uses a call-local active
+  writer helper that evals children and serializes into the existing function
+  writer while keeping calc-frame cleanup owned by the call renderer.
 - `Any`, `Bool`, `Rest`, `Combinator`, `DefaultGuard`, `Dimension`, `Comment`,
   `Range`, `Color`, `RawRules`, `Collection`, and `JsImport` now write buffer
   output directly and have focused tests proving buffer render does not call
