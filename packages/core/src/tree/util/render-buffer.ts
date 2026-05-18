@@ -184,6 +184,18 @@ export function writeRootAwareRenderedOutput(
   return text;
 }
 
+export function writeMaybeRootAwareRenderedOutput(
+  buffer: RenderBuffer,
+  source: RenderBufferNode,
+  node: MaybePromise<RenderableOutput>,
+  context: Context,
+  options?: PrintOptions
+): MaybePromise<string> {
+  return isThenable(node)
+    ? (node as Promise<RenderableOutput>).then(resolved => writeRootAwareRenderedOutput(buffer, source, resolved, context, options))
+    : writeRootAwareRenderedOutput(buffer, source, node, context, options);
+}
+
 export function createSegmentBody(): Segment[] {
   return [];
 }

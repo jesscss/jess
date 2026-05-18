@@ -159,6 +159,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - `writeRootAwareRenderedOutput(...)` is the matching helper for the root
   `Rules` serializer exception: root-owned `Rules` output keeps the full root
   serializer, while ordinary evaluated nodes use trimmed output.
+- `writeMaybeRootAwareRenderedOutput(...)` is only the promise-aware form of
+  that root exception. Use it when a node has already chosen the evaluated
+  surface but still needs the `Rules` root serializer check.
 - Invisible side-effect or registration nodes such as `Log`, `Extend`, and
   `ExtendList` now implement explicit buffer render by writing an invisible
   `Nil` result. Their render seam is side-effect or grouping behavior, not CSS

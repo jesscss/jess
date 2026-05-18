@@ -26,7 +26,7 @@ import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
-import { isRenderBuffer, type RenderBuffer, writeRenderedOutput } from './util/render-buffer.js';
+import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -1939,13 +1939,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeEvaluated = (node: Node): string => {
-        return writeRenderedOutput(bufferOrOptions, node, context, options);
-      };
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(writeEvaluated)
-        : writeEvaluated(evaluated as Node);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }

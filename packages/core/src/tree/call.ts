@@ -15,6 +15,7 @@ import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  writeMaybeRenderedOutput,
   writeRenderText
 } from './util/render-buffer.js';
 
@@ -307,16 +308,12 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       if (typeof this.value.name !== 'string') {
-        const prepared = prepareRenderPrintState(context, options);
-        const writeEvaluated = (node: Node): string => {
-          const text = node.toTrimmedString(prepared);
-          writeRenderText(bufferOrOptions, text);
-          return text;
-        };
-        const evaluated = this.deriveResolveSurface().eval(context);
-        return isThenable(evaluated)
-          ? (evaluated as Promise<Node>).then(writeEvaluated)
-          : writeEvaluated(evaluated as Node);
+        return writeMaybeRenderedOutput(
+          bufferOrOptions,
+          this.deriveResolveSurface().eval(context),
+          context,
+          options
+        );
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.

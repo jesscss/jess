@@ -15,8 +15,8 @@ import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
-import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
-import { prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
+import { type PrintOptions } from './util/print.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -847,16 +847,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const prepared = prepareRenderPrintState(context, options);
-      const writeEvaluated = (resolved: Rules): string => {
-        const text = resolved.toTrimmedString(prepared);
-        writeRenderText(bufferOrOptions, text);
-        return text;
-      };
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Rules>).then(writeEvaluated)
-        : writeEvaluated(evaluated);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }

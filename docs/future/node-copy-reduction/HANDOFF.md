@@ -130,6 +130,9 @@ it is for current direction and next seams, not a historical pass log.
 - `writeRootAwareRenderedOutput(...)` centralizes the root `Rules` serializer
   exception. Keep it narrow: it chooses root `toString(...)` versus ordinary
   `toTrimmedString(...)`; it does not decide what should be evaluated.
+- `writeMaybeRootAwareRenderedOutput(...)` is the promise-aware variant of
+  that same root exception. It is acceptable for `Rules`-style eval surfaces
+  that already chose what to evaluate; it is not a general render dispatcher.
 - Plain CSS `Call` argument/content rendering now uses a call-local active
   writer helper that evals children and serializes into the existing function
   writer while keeping calc-frame cleanup owned by the call renderer.

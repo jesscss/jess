@@ -72,6 +72,7 @@ import {
   renderNodeToString,
   renderNodeToWriter,
   writeMaybeRenderedOutput,
+  writeMaybeRootAwareRenderedOutput,
   writeRootAwareRenderedOutput
 } from '../util/render-buffer.js';
 
@@ -217,6 +218,27 @@ describe('renderNodeToBuffer', () => {
     expect(syncBuffer.parts).toEqual(['sync']);
     expect(asyncBuffer.parts).toEqual(['async']);
     expect(rejectedBuffer.parts).toEqual([]);
+  });
+
+  it('writes maybe-async root-aware output through the root serializer exception', async () => {
+    const context = new Context();
+    const root = rules([]);
+    const syncBuffer = createRenderBuffer('flat');
+    const asyncBuffer = createRenderBuffer('flat');
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+
+    expect(writeMaybeRootAwareRenderedOutput(syncBuffer, root, root, context, { context })).toBe('@charset "utf-8";\n');
+    await expect(writeMaybeRootAwareRenderedOutput(
+      asyncBuffer,
+      root,
+      Promise.resolve(root),
+      context,
+      { context }
+    )).resolves.toBe('@charset "utf-8";\n');
+
+    expect(syncBuffer.parts).toEqual(['@charset "utf-8";\n']);
+    expect(asyncBuffer.parts).toEqual(['@charset "utf-8";\n']);
   });
 
   it('uses native root render without consulting public resolve', () => {

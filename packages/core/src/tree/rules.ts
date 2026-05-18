@@ -50,7 +50,7 @@ import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRootAwareRenderedOutput
+  writeMaybeRootAwareRenderedOutput
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -1872,13 +1872,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeEvaluated = (node: Node): string => {
-        return writeRootAwareRenderedOutput(bufferOrOptions, this, node, context, options);
-      };
-      const evaluated = this.derive().eval(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(writeEvaluated)
-        : writeEvaluated(evaluated as Node);
+      return writeMaybeRootAwareRenderedOutput(
+        bufferOrOptions,
+        this,
+        this.derive().eval(context),
+        context,
+        options
+      );
     }
     return super.render(context, bufferOrOptions);
   }
