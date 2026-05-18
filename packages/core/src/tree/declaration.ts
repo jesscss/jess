@@ -15,8 +15,8 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
-import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState, savePrintState, restorePrintState } from './util/print.js';
-import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderedOutput } from './util/render-buffer.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
@@ -330,9 +330,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderedOutput(bufferOrOptions, node, context, options);
       };
       const evaluated = this.eval(context);
       return isThenable(evaluated)

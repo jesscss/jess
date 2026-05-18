@@ -145,7 +145,13 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   lookup semantics without calling the public `resolve()` wrapper.
 - `If` and `For` keep direct `render(context)` on source syntax, but explicit
   buffer render now evaluates directly and writes resulting branch/loop output
-  without calling the public `resolve()` wrapper.
+  without calling the public `resolve()` wrapper. `$while` remains source
+  syntax through root render until the loop mutation and termination semantics
+  are designed and covered by focused tests.
+- `writeRenderedOutput(...)` is the shared helper for the narrow
+  "already-evaluated node becomes text in the active render buffer" case. Keep
+  using node-local eval helpers to decide what to evaluate; do not grow this
+  helper into another output tree or dispatch layer.
 - `Call` already streamed plain CSS calls; non-string function/mixin lookup
   calls now use the same derived eval surface directly for buffer render
   instead of calling the public `resolve()` wrapper.

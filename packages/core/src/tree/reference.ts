@@ -10,7 +10,7 @@ import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
@@ -26,7 +26,7 @@ import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
-import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderedOutput } from './util/render-buffer.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -1940,9 +1940,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderedOutput(bufferOrOptions, node, context, options);
       };
       const evaluated = this.evalNode(context);
       return isThenable(evaluated)

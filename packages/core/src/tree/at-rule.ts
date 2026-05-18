@@ -3,12 +3,12 @@ import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
-import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
-import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderedOutput } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -147,9 +147,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderedOutput(bufferOrOptions, node, context, options);
       };
       const evaluated = this.deriveAtRule(this.value).eval(context);
       return isThenable(evaluated)

@@ -21,13 +21,12 @@ import {
   savePrintState,
   restorePrintState,
   getCachedComposedSelector,
-  prepareRenderPrintState,
   setCachedComposedSelector
 } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
-import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderedOutput } from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
@@ -579,9 +578,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderedOutput(bufferOrOptions, node, context, options);
       };
       const evaluated = this.eval(context);
       return isThenable(evaluated)

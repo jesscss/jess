@@ -119,6 +119,10 @@ it is for current direction and next seams, not a historical pass log.
   through native buffer render for nodes that implement that overload. That
   keeps old test helpers useful without making "render" coverage mean
   resolve-then-serialize by accident.
+- `writeRenderedOutput(...)` is the shared helper for writing an
+  already-evaluated node into the active render buffer with
+  `prepareRenderPrintState(...)`. It is deliberately small: node classes still
+  own the semantic decision about whether to eval, resolve, or write directly.
 - Plain CSS `Call` argument/content rendering now uses a call-local active
   writer helper that evals children and serializes into the existing function
   writer while keeping calc-frame cleanup owned by the call renderer.
@@ -163,8 +167,9 @@ it is for current direction and next seams, not a historical pass log.
 - `If` and `For` keep direct `render(context)` on source syntax, but explicit
   buffer render now evaluates directly and writes resulting branch/loop output
   without calling the public `resolve()` wrapper.
-- `$while` is still source-syntax-only; leave it out of completion claims until
-  loop semantics are defined and covered by focused eval/render tests.
+- `$while` remains source syntax through root render. Do not claim it as
+  eval/render complete or add a buffer eval path until the project defines
+  loop state mutation, visibility, and termination behavior.
 - `Call` already streamed plain CSS calls; non-string function/mixin lookup
   calls now use the same derived eval surface directly for explicit buffer
   render instead of calling the public `resolve()` wrapper.

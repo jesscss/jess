@@ -137,6 +137,17 @@ export function writeRenderText(buffer: RenderBuffer, text: string): void {
   buffer.segments.push(text);
 }
 
+export function writeRenderedOutput(
+  buffer: RenderBuffer,
+  node: RenderableOutput,
+  context: Context,
+  options?: PrintOptions
+): string {
+  const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+  writeRenderText(buffer, text);
+  return text;
+}
+
 export function createSegmentBody(): Segment[] {
   return [];
 }

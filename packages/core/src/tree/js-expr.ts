@@ -1,12 +1,12 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { cast } from './util/cast.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeRenderedOutput
 } from './util/render-buffer.js';
 
 /**
@@ -49,9 +49,7 @@ export class JsExpression extends Node<string> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderedOutput(bufferOrOptions, node, context, options);
       };
       const evaluated = this.evalNode(context);
       return isThenable(evaluated)

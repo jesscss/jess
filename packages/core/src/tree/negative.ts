@@ -2,11 +2,11 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node.js';
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, isThenable, pipe, tryStep } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeRenderedOutput
 } from './util/render-buffer.js';
 
 export class Negative extends Node<Node> {
@@ -34,9 +34,7 @@ export class Negative extends Node<Node> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderedOutput(bufferOrOptions, node, context, options);
       };
       const evaluated = this.evalNode(context);
       return isThenable(evaluated)

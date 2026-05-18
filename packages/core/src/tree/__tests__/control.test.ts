@@ -374,6 +374,23 @@ describe('Control Nodes', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('keeps $while source syntax through root render until loop eval semantics exist', async () => {
+    const context = new Context();
+    const root = rules([
+      new While({
+        condition: bool(true),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+
+    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+      $while (true) {
+        color: red;
+      }
+
+    `);
+  });
+
   it('adopts $while condition and rules as children', () => {
     const condition = bool(true);
     const body = rules([decl({ name: 'color', value: any('red') })]);

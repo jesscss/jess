@@ -8,7 +8,7 @@ import { Bool } from './bool.js';
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
@@ -16,7 +16,7 @@ import { copyWithReusableLeaves } from './util/cloning.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeRenderedOutput
 } from './util/render-buffer.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -50,9 +50,7 @@ function writeEvaluatedControlOutput(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): string {
-  const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-  writeRenderText(buffer, text);
-  return text;
+  return writeRenderedOutput(buffer, node, context, options);
 }
 
 export type ForPattern =
@@ -450,15 +448,10 @@ export class For extends Node<StructuredLoopValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeEvaluated = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
-      };
       const evaluated = this.evalNode(context);
       return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(writeEvaluated)
-        : writeEvaluated(evaluated as Node);
+        ? (evaluated as Promise<Node>).then(node => writeEvaluatedControlOutput(node, context, bufferOrOptions, options))
+        : writeEvaluatedControlOutput(evaluated as Node, context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }
