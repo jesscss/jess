@@ -138,6 +138,9 @@ describe('renderNodeToBuffer', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const node = any('writer-output');
+    node.resolve = () => {
+      throw new Error('renderNodeToString should use native buffer render');
+    };
 
     expect(renderNodeToString(node, context, { writer })).toBe('writer-output');
     expect(writer.toString()).toBe('');
@@ -167,13 +170,14 @@ describe('renderNodeToBuffer', () => {
     expect(renderNodeToString(root, context, { context })).toBe('@charset "utf-8";\n@import "theme.css";\n');
   });
 
-  it('uses the canonical root serializer when the source root resolves to an owned root surface', () => {
+  it('uses native root render without consulting public resolve', () => {
     const context = new Context();
     const root = rules([]);
-    const resolvedRoot = rules([]);
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
-    root.resolve = () => resolvedRoot;
+    root.resolve = () => {
+      throw new Error('renderNodeToString should use native root render');
+    };
 
     expect(renderNodeToString(root, context, { context })).toBe('@charset "utf-8";\n');
   });
