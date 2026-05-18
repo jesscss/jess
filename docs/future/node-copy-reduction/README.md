@@ -55,7 +55,8 @@ selector placement truly needs one.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check fails on ordinary production `.copy()` callers
-  outside the base node-copy API/infrastructure.
+  outside the base node-copy API/infrastructure, and on new ordinary production
+  `.clone()` callers outside the current base/selector/bitset override set.
 - `callWithContext(...)` now only creates copied raw-argument ownership
   surfaces for functions with params metadata. Ordinary JS functions receive
   positional args directly instead of paying for an unused `rawArgs` copy.

@@ -69,7 +69,9 @@ it is for current direction and next seams, not a historical pass log.
 - `pnpm run verify:node-copy-frontier` reports no production deep
   copy/clone-style frontier outside clone infrastructure.
 - The same frontier check now also fails on ordinary production `.copy()`
-  callers outside the base `Node.copy()` API/infrastructure.
+  callers outside the base `Node.copy()` API/infrastructure, and on new
+  ordinary production `.clone()` callers outside the current
+  base/selector/bitset override set.
 - `packages/core/src/tree/util/extend-walk.ts` is whole-file lint-clean.
 - `packages/core/src/tree/util/extend.ts` no longer has the deep `.copy(true)`
   generated-output frontier and no longer uses generic `selector.copy()` for
@@ -88,6 +90,8 @@ it is for current direction and next seams, not a historical pass log.
 
 - Continue reducing ordinary `.copy()` / `.clone()` usage from normal eval flow,
   but only after proving the caller does not need an owned eval/output surface.
+  If a new clone site is truly infrastructure, add the evidence before adding it
+  to the verifier allowlist.
 - Prefer explicit derived wrappers or lazy runtime state when a wrapper needs
   local scope, registry, import/reference, merge, or output ownership.
 - Use the shared reusable-leaf helpers only when a container still proves it

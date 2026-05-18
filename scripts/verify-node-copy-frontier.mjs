@@ -20,9 +20,18 @@ const patterns = [
   /cloneWithReusableLeaves\(/u
 ];
 const ordinaryCopyPattern = /\.copy\(/u;
+const ordinaryClonePattern = /\.clone\(/u;
 const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
+]);
+const allowedOrdinaryCloneFiles = new Set([
+  'packages/core/src/tree/ampersand.ts',
+  'packages/core/src/tree/rules.ts',
+  'packages/core/src/tree/selector-pseudo.ts',
+  'packages/core/src/tree/selector.ts',
+  'packages/core/src/tree/util/bitset.ts',
+  ...infrastructureFiles
 ]);
 const expectedRemaining = new Set();
 
@@ -46,6 +55,7 @@ function walk(dir) {
 
 const matches = [];
 const ordinaryCopyMatches = [];
+const ordinaryCloneMatches = [];
 for (const scanRoot of scanRoots) {
   const absoluteRoot = path.join(rootDir, scanRoot);
   if (!fs.existsSync(absoluteRoot)) {
@@ -60,6 +70,9 @@ for (const scanRoot of scanRoots) {
       }
       if (ordinaryCopyPattern.test(line)) {
         ordinaryCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (ordinaryClonePattern.test(line)) {
+        ordinaryCloneMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -78,6 +91,8 @@ const unexpected = frontierFiles.filter(file => !expectedRemaining.has(file));
 const missingExpected = [...expectedRemaining].filter(file => !frontierFiles.includes(file));
 const unexpectedOrdinaryCopy = ordinaryCopyMatches
   .filter(match => !infrastructureFiles.has(match.file));
+const unexpectedOrdinaryClone = ordinaryCloneMatches
+  .filter(match => !allowedOrdinaryCloneFiles.has(match.file));
 
 console.log('Node copy frontier scan');
 console.log('');
@@ -110,6 +125,16 @@ if (unexpectedOrdinaryCopy.length > 0) {
   console.log('');
   console.log('Unexpected ordinary production .copy() sites:');
   for (const match of unexpectedOrdinaryCopy) {
+    console.log(`- ${match.file}`);
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+  process.exitCode = 1;
+}
+
+if (unexpectedOrdinaryClone.length > 0) {
+  console.log('');
+  console.log('Unexpected ordinary production .clone() sites:');
+  for (const match of unexpectedOrdinaryClone) {
     console.log(`- ${match.file}`);
     console.log(`  ${match.line}: ${match.text}`);
   }
