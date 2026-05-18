@@ -84,10 +84,12 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   materialization are suspect surfaces, not automatic bugs.
 - `prepareRenderPrintState(...)` is the central render bridge. New bridges
   should use it instead of adding local writer/frame/trivia reset heuristics.
-- `renderNodeToBuffer(...)` still bridges some nodes through
-  `renderNodeToWriter(...)`, so the compiler buffer seam is not proof that all
-  nodes stream natively. Run `pnpm run verify:render-buffer-frontier` before
-  and after moving a surface off the wrapper bridge.
+- No node now uses `renderNodeToBuffer(this, ...)` as its own explicit buffer
+  implementation. `renderNodeToBuffer(...)` still exists for the compiler root
+  and a few caller-owned child/focused-test paths, so the compiler buffer seam
+  is not proof that every child path streams natively. Keep
+  `pnpm run verify:render-buffer-frontier` green before and after touching
+  those remaining bridge callers.
 - Plain CSS `Call` argument/content rendering uses the writer helper directly
   because it renders into the active call writer while preserving calc-frame
   cleanup. Do not route those child surfaces through a public "final string"
@@ -98,9 +100,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   `Collection` and `JsImport`, write their own text directly instead of
   resolving first and re-entering the bridge. Prefer that shape when focused
   tests can prove no eval or ownership boundary is being skipped.
-- Do not convert evaluating nodes by pattern. `StyleImport` still needs
-  context-sensitive async/effectful handling, and its buffer path should move
-  only when the node can stream that evaluated behavior natively.
+- Do not convert evaluating nodes by pattern. Direct buffer output is only safe
+  when focused tests prove the path preserves context-sensitive evaluation,
+  child resolution, async finalization, registration/visibility effects, and
+  selector/rules ownership.
 - `Expression` now delegates buffer rendering to its child render path, and
   `Negative` evaluates its operand directly before writing the evaluated output.
   Both have focused tests proving buffer render bypasses the wrapper
@@ -148,6 +151,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   without calling the public `resolve()` wrapper.
 - `Ruleset` now evaluates directly for buffer render and writes the evaluated
   ruleset/rules/nil result without calling the public `resolve()` wrapper.
+- `StyleImport` now evaluates directly for buffer render and writes the
+  resulting rules output without calling the public `resolve()` wrapper,
+  preserving import resolution, optional/import-once/reference behavior, and
+  async path handling.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$for` string render remains source syntax

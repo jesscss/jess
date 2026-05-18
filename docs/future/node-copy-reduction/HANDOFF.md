@@ -171,9 +171,10 @@ it is for current direction and next seams, not a historical pass log.
   that hook to preserve child selector resolution semantics without calling the
   public `resolve()` wrapper, while simple selector leaves keep the default
   eval-for-output path.
-- The remaining `renderNodeToBuffer(this, ...)` caller is `StyleImport`.
-  Direct string writes are wrong there until the node can stream its contextual
-  async/effectful behavior natively.
+- `StyleImport` now evaluates directly for explicit buffer render and writes
+  the resulting rules output without calling the public `resolve()` wrapper.
+  Focused coverage preserves import resolution, optional/import-once/reference
+  behavior, and async path handling.
 - Do not add buffer overloads to invisible registration or compile-time
   side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
   `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof

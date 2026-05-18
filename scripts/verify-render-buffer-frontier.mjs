@@ -9,9 +9,7 @@ const ignoredSegments = new Set([
   'util'
 ]);
 const frontierPattern = /renderNodeToBuffer\(\s*this\s*,/u;
-const expectedRemaining = new Set([
-  'packages/core/src/tree/import-style.ts'
-]);
+const expectedRemaining = new Set();
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -49,7 +47,11 @@ const missingExpected = [...expectedRemaining].filter(file => !files.includes(fi
 console.log('Render buffer frontier scan');
 console.log('');
 console.log('Expected remaining wrapper bridges:');
-for (const file of files.filter(file => expectedRemaining.has(file))) {
+const expectedFiles = files.filter(file => expectedRemaining.has(file));
+if (expectedFiles.length === 0) {
+  console.log('- none');
+}
+for (const file of expectedFiles) {
   console.log(`- ${file}`);
   for (const match of matches.filter(match => match.file === file)) {
     console.log(`  ${match.line}: ${match.text}`);

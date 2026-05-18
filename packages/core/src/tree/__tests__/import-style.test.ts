@@ -3082,6 +3082,15 @@ describe('Style import', () => {
       context.root = anchor;
       context.rulesContext = anchor;
       const buffer = createRenderBuffer('segmented');
+      const originalResolve = node.resolve;
+      let resolveCalls = 0;
+      node.resolve = function countResolveCalls(
+        this: typeof node,
+        ...args: Parameters<typeof originalResolve>
+      ): ReturnType<typeof originalResolve> {
+        resolveCalls++;
+        return originalResolve.apply(this, args);
+      };
 
       const rendered = await node.render(context, buffer);
 
@@ -3091,6 +3100,7 @@ describe('Style import', () => {
         }
       `);
       expect(buffer.segments).toEqual([rendered]);
+      expect(resolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
       expect(node.preEvaluated).toBe(false);
     });
