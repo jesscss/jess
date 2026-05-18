@@ -143,9 +143,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   public `resolve()` wrapper.
 - `Reference` now evaluates directly for buffer render, preserving existing
   lookup semantics without calling the public `resolve()` wrapper.
-- `For` keeps direct `render(context)` on source syntax, but explicit buffer
-  render now evaluates directly and writes the resulting loop output without
-  calling the public `resolve()` wrapper.
+- `If` and `For` keep direct `render(context)` on source syntax, but explicit
+  buffer render now evaluates directly and writes resulting branch/loop output
+  without calling the public `resolve()` wrapper.
 - `Call` already streamed plain CSS calls; non-string function/mixin lookup
   calls now use the same derived eval surface directly for buffer render
   instead of calling the public `resolve()` wrapper.
@@ -160,8 +160,8 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   async path handling.
 - Keep direct legacy `render(context)` behavior separate from explicit
   `render(context, buffer)` behavior where the repo still needs that
-  compatibility. For example, direct `$for` string render remains source syntax
-  while the buffer path emits evaluated loop output.
+  compatibility. For example, direct `$if` / `$for` string render remains source
+  syntax while the buffer path emits evaluated branch/loop output.
 - If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a
   parser-accurate focused core repro first when practical.
 

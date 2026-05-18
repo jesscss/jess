@@ -180,6 +180,51 @@ describe('Control Nodes', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('writes evaluated $if output into render buffers without public resolve', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = new If({
+      branches: [
+        {
+          condition: bool(false),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          condition: bool(true),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        }
+      ]
+    });
+    node.resolve = () => {
+      throw new Error('$if buffer render should use evalNode');
+    };
+
+    await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
+    expect(buffer.parts).toEqual(['color: blue;']);
+  });
+
+  it('evaluates $if output through root render', async () => {
+    const context = new Context();
+    const root = rules([
+      new If({
+        branches: [
+          {
+            condition: bool(false),
+            rules: rules([decl({ name: 'color', value: any('red') })])
+          },
+          {
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }
+        ]
+      })
+    ]);
+
+    await expect(renderNodeToString(root, context)).resolves.toBe('color: green;\n');
+  });
+
   it('serializes $for source syntax through toTrimmedString()', () => {
     const node = makeLoop(
       makePattern(['value'], 'single'),

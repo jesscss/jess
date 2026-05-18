@@ -3,6 +3,7 @@ import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
+import { Bool } from './bool.js';
 
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
@@ -41,6 +42,17 @@ function renderControlSourceSyntax(node: Node, context: Context, options?: Print
   } finally {
     printOptions.context = savedContext;
   }
+}
+
+function writeEvaluatedControlOutput(
+  node: Node,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): string {
+  const text = node.toTrimmedString(prepareRenderPrintState(context, options));
+  writeRenderText(buffer, text);
+  return text;
 }
 
 export type ForPattern =
@@ -204,7 +216,31 @@ export class If extends Node<IfValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
+  override evalNode(context: Context): MaybePromise<Node> {
+    const run = async (): Promise<Node> => {
+      for (const branch of this.value.branches) {
+        if (!branch.condition) {
+          return branch.rules.eval(context);
+        }
+        const condition = await branch.condition.eval(context);
+        if (condition instanceof Bool && condition.value === true) {
+          return branch.rules.eval(context);
+        }
+      }
+      return new Rules([]).inherit(this);
+    };
+    return run();
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      const evaluated = this.evalNode(context);
+      return isThenable(evaluated)
+        ? (evaluated as Promise<Node>).then(node => writeEvaluatedControlOutput(node, context, bufferOrOptions, options))
+        : writeEvaluatedControlOutput(evaluated as Node, context, bufferOrOptions, options);
+    }
     return renderControlSourceSyntax(this, context, options);
   }
 
