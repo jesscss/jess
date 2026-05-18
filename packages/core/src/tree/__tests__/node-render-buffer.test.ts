@@ -71,6 +71,7 @@ import {
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
+  writeMaybeRenderedOutput,
   writeRootAwareRenderedOutput
 } from '../util/render-buffer.js';
 
@@ -201,6 +202,21 @@ describe('renderNodeToBuffer', () => {
 
     expect(text).toBe('color: red;');
     expect(buffer.parts).toEqual(['color: red;']);
+  });
+
+  it('writes maybe-async evaluated output without mutating rejected buffers', async () => {
+    const context = new Context();
+    const syncBuffer = createRenderBuffer('flat');
+    const asyncBuffer = createRenderBuffer('flat');
+    const rejectedBuffer = createRenderBuffer('flat');
+
+    expect(writeMaybeRenderedOutput(syncBuffer, any('sync'), context)).toBe('sync');
+    await expect(writeMaybeRenderedOutput(asyncBuffer, Promise.resolve(any('async')), context)).resolves.toBe('async');
+    await expect(writeMaybeRenderedOutput(rejectedBuffer, Promise.reject(new Error('nope')), context)).rejects.toThrow('nope');
+
+    expect(syncBuffer.parts).toEqual(['sync']);
+    expect(asyncBuffer.parts).toEqual(['async']);
+    expect(rejectedBuffer.parts).toEqual([]);
   });
 
   it('uses native root render without consulting public resolve', () => {

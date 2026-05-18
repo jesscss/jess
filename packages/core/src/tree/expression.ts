@@ -5,7 +5,7 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderedOutput
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
 /**
@@ -48,13 +48,7 @@ export class Expression extends Node<Node> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeEvaluated = (node: Node): string => {
-        return writeRenderedOutput(bufferOrOptions, node, context, options);
-      };
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(writeEvaluated)
-        : writeEvaluated(evaluated as Node);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }

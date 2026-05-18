@@ -16,7 +16,7 @@ import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderedOutput
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
 export enum ExtendFlag {
@@ -293,10 +293,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Nil>).then(node => writeRenderedOutput(bufferOrOptions, node, context, options))
-        : writeRenderedOutput(bufferOrOptions, evaluated as Nil, context, options);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }

@@ -152,6 +152,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   "already-evaluated node becomes text in the active render buffer" case. Keep
   using node-local eval helpers to decide what to evaluate; do not grow this
   helper into another output tree or dispatch layer.
+- `writeMaybeRenderedOutput(...)` is only the promise-aware form of the same
+  operation. It removes repeated local `isThenable(...)` plumbing after a node
+  has already chosen its eval surface; it must not decide which node should be
+  evaluated or rendered.
 - `writeRootAwareRenderedOutput(...)` is the matching helper for the root
   `Rules` serializer exception: root-owned `Rules` output keeps the full root
   serializer, while ordinary evaluated nodes use trimmed output.
