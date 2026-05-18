@@ -549,9 +549,10 @@ Delete the hook.
 The control-node override in `packages/core/src/tree/control.ts` is also just a
 mark-only clone step.
 
-Loops and directives do real work in `evalNode()`, not `preEval()`. They do not
-participate in registration-by-name, and they should not require a separate prep
-phase.
+`$if` and `$for` do real work in `evalNode()`, not `preEval()`. `$while`
+currently remains source-syntax-only until its loop semantics are deliberately
+defined. Control nodes do not participate in registration-by-name, and they
+should not require a separate prep phase.
 
 The only real concern is queue placement:
 

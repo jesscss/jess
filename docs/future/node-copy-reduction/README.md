@@ -162,6 +162,8 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   `render(context, buffer)` behavior where the repo still needs that
   compatibility. For example, direct `$if` / `$for` string render remains source
   syntax while the buffer path emits evaluated branch/loop output.
+- `$while` is still source-syntax-only; do not pretend it is part of the
+  eval/render convergence until its loop semantics are defined and tested.
 - If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a
   parser-accurate focused core repro first when practical.
 

@@ -163,6 +163,8 @@ it is for current direction and next seams, not a historical pass log.
 - `If` and `For` keep direct `render(context)` on source syntax, but explicit
   buffer render now evaluates directly and writes resulting branch/loop output
   without calling the public `resolve()` wrapper.
+- `$while` is still source-syntax-only; leave it out of completion claims until
+  loop semantics are defined and covered by focused eval/render tests.
 - `Call` already streamed plain CSS calls; non-string function/mixin lookup
   calls now use the same derived eval surface directly for explicit buffer
   render instead of calling the public `resolve()` wrapper.

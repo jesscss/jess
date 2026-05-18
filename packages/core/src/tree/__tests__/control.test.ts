@@ -128,7 +128,7 @@ describe('Control Nodes', () => {
     `);
   });
 
-  it('keeps direct $if render(context) on source syntax until parent Rules owns evaluated emission', () => {
+  it('keeps legacy direct $if render(context) on source syntax', () => {
     const context = new Context();
     const node = new If({
       branches: [
@@ -262,7 +262,7 @@ describe('Control Nodes', () => {
     expect(writer.captures).toBe(0);
   });
 
-  it('keeps direct $for render(context) on source syntax until parent Rules owns evaluated emission', () => {
+  it('keeps legacy direct $for render(context) on source syntax', () => {
     const context = new Context();
     const node = makeLoop(
       makePattern(['value'], 'single'),
