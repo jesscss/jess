@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ExtendFlag, el, extend } from '../index.js';
 import { Context } from '../../context.js';
+import { extendList } from '../extend-list.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToBuffer } from '../util/render-buffer.js';
 
@@ -35,6 +36,23 @@ describe('Extend', () => {
     });
     node.resolve = () => {
       throw new Error('Extend buffer render should use evalNode');
+    };
+
+    await expect(Promise.resolve(renderNodeToBuffer(node, context, buffer))).resolves.toBe('');
+
+    expect(buffer.parts).toEqual([]);
+    expect(node.evaluated).toBe(false);
+  });
+
+  it('writes no CSS for extend-list buffers without public resolve', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = extendList([
+      extend({ target: el('.one'), flag: ExtendFlag.Exact }),
+      extend({ target: el('.two'), flag: ExtendFlag.All })
+    ]);
+    node.resolve = () => {
+      throw new Error('ExtendList buffer render should stay invisible');
     };
 
     await expect(Promise.resolve(renderNodeToBuffer(node, context, buffer))).resolves.toBe('');

@@ -2,6 +2,12 @@ import { Node, F_VISIBLE, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
+import { Nil } from './nil.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  writeRenderedOutput
+} from './util/render-buffer.js';
 
 /**
  * An extend statement list with no rules
@@ -34,6 +40,15 @@ export class ExtendList extends Node<Extend[]> {
 
   override resolve(_context: Context): this {
     return this;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderedOutput(bufferOrOptions, new Nil(), context, options);
+    }
+    return super.render(context, bufferOrOptions);
   }
 }
 

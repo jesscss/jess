@@ -66,7 +66,13 @@ import { extendList } from '../extend-list.js';
 import { jsexpr } from '../js-expr.js';
 import { Node } from '../node-base.js';
 import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer, renderNodeToBuffer, renderNodeToString, renderNodeToWriter } from '../util/render-buffer.js';
+import {
+  createRenderBuffer,
+  renderNodeToBuffer,
+  renderNodeToString,
+  renderNodeToWriter,
+  writeRootAwareRenderedOutput
+} from '../util/render-buffer.js';
 
 class AsyncResolvedNode extends Node<string> {
   override resolve() {
@@ -168,6 +174,33 @@ describe('renderNodeToBuffer', () => {
     ];
 
     expect(renderNodeToString(root, context, { context })).toBe('@charset "utf-8";\n@import "theme.css";\n');
+  });
+
+  it('keeps the root serializer exception inside the root-aware buffer helper', () => {
+    const context = new Context();
+    const root = rules([]);
+    const buffer = createRenderBuffer('flat');
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+
+    const text = writeRootAwareRenderedOutput(buffer, root, root, context, { context });
+
+    expect(text).toBe('@charset "utf-8";\n');
+    expect(buffer.parts).toEqual(['@charset "utf-8";\n']);
+  });
+
+  it('keeps non-root rules output trimmed in the root-aware buffer helper', () => {
+    const context = new Context();
+    const root = rules([]);
+    const childRules = rules([decl({ name: 'color', value: any('red') })]);
+    const buffer = createRenderBuffer('flat');
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+
+    const text = writeRootAwareRenderedOutput(buffer, childRules, childRules, context, { context });
+
+    expect(text).toBe('color: red;');
+    expect(buffer.parts).toEqual(['color: red;']);
   });
 
   it('uses native root render without consulting public resolve', () => {
@@ -365,7 +398,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'CustomDeclaration', node: customdecl({ name: any('--gap'), value: any('0') }) },
       { surface: 'SpacedSequenceHelper', node: spaced([any('span'), any('2')]), expected: 'span 2' },
       { surface: 'Extend', node: extend({ target: el('.target') }), expected: '', expectedParts: [] },
-      { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]) },
+      { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]), expectedParts: [] },
       { surface: 'SelectorCapture', node: selcap(el('.captured')), expected: '.captured' },
       { surface: 'Log', node: log({ level: 'debug', message: any('') }), expected: '', expectedParts: [] },
       { surface: 'JsArray', node: jsarray([any('one'), any('two')]) },

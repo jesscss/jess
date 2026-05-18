@@ -135,9 +135,9 @@ it is for current direction and next seams, not a historical pass log.
   `resolve()`. This is the preferred pattern for visible leaves and
   self-resolving containers/directives that have no contextual eval work or can
   render directly from context.
-- `Log` and `Extend` are invisible side-effect nodes. Their explicit buffer
-  render paths run node-local `evalNode(...)` without public `resolve()` and
-  write the invisible `Nil` result, so logging and extend registration still
+- `Log`, `Extend`, and `ExtendList` are invisible side-effect or registration
+  nodes. Their explicit buffer render paths avoid public `resolve()` and write
+  an invisible `Nil` result, so logging and extend registration/grouping still
   happen without emitting CSS text.
 - `Expression` now evaluates its child directly for explicit buffer render.
   `Negative` now evaluates its operand and writes that evaluated value directly.
@@ -196,9 +196,12 @@ it is for current direction and next seams, not a historical pass log.
   Focused coverage preserves import resolution, optional/import-once/reference
   behavior, and async path handling.
 - Do not add buffer overloads to invisible registration or compile-time
-  side-effect nodes just to make the bridge list longer. `Extend`, `ExtendList`,
-  `Mixin`, `Func`, `Log`, and JS host wrapper nodes need caller-specific proof
-  before they become render-buffer output surfaces.
+  side-effect nodes just to make the bridge list longer. `Mixin`, `Func`, and
+  JS host wrapper nodes still need caller-specific proof before they become
+  native render-buffer output surfaces. Direct renders of those nodes currently
+  exercise source/host wrapper serialization through the helper fallback; keep
+  that shape until a focused eval/render test proves a real side-effect or
+  ownership boundary.
 - The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
   remains the public compatibility hook name, but internally that phase is
   treated as pre-render: visitors run after eval and before serialization.

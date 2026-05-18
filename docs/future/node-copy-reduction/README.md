@@ -155,10 +155,10 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
 - `writeRootAwareRenderedOutput(...)` is the matching helper for the root
   `Rules` serializer exception: root-owned `Rules` output keeps the full root
   serializer, while ordinary evaluated nodes use trimmed output.
-- Invisible side-effect nodes such as `Log` and `Extend` now implement explicit
-  buffer render by running their node-local `evalNode(...)` and writing the
-  resulting invisible `Nil`. Their render seam is side-effect registration, not
-  CSS text emission.
+- Invisible side-effect or registration nodes such as `Log`, `Extend`, and
+  `ExtendList` now implement explicit buffer render by writing an invisible
+  `Nil` result. Their render seam is side-effect or grouping behavior, not CSS
+  text emission.
 - `Call` already streamed plain CSS calls; non-string function/mixin lookup
   calls now use the same derived eval surface directly for buffer render
   instead of calling the public `resolve()` wrapper.
