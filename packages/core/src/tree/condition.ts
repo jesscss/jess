@@ -82,9 +82,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeResolved = (node: Bool): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderText(
+          bufferOrOptions,
+          node.toTrimmedString(prepareRenderPrintState(context, options))
+        );
       };
       const resolved = this.evaluateCondition(context, 'resolve');
       return isThenable(resolved)

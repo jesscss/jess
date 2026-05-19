@@ -64,9 +64,10 @@ export class Url extends Node<Node> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeResolved = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderText(
+          bufferOrOptions,
+          node.toTrimmedString(prepareRenderPrintState(context, options))
+        );
       };
       const resolved = this.resolveValue(context);
       return isThenable(resolved)
