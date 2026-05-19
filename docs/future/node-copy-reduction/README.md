@@ -26,167 +26,71 @@ rendering should emit through contextual resolution, with small owned output
 surfaces only where a rule, scope, import/reference, merge, or generated
 selector placement truly needs one.
 
-## Current Evidence
+## Current State
 
-- `packages/jess/test/less/all-less.test.ts` renders through
-  `Compiler.renderToResult(...)`, so the Less fixture baseline exercises the
-  awaited eval/render API instead of compiling a tree and then calling
-  `tree.toString({ context })`.
-- `render(...)`, `renderString(...)`, `renderToResult(...)`, and
-  `safeRender(...)` all use the eval/render path. `safeCompile(...)` remains a
-  compatibility/debug API for callers that explicitly need a tree surface.
-- The Jess compiler render phase now creates and finalizes a flat render buffer
-  directly. That makes the public compiler output path consume the buffer
-  contract instead of treating `renderNodeToString(...)` as its final API.
-- `postEvalVisitor` is a compatibility hook name for pre-render visitors:
-  compiler tests prove it runs after eval and before serialization.
-- Less function helper serialization routes ordinary node values through
-  `node.render(context)` when a render context exists. `Quoted` and `Any`
-  remain raw-value exceptions because Less helper APIs intentionally consume
-  their literal forms.
-- The explicit render-buffer bridge now covers ordinary scalar, declaration,
-  selector, rules, reference, style import, JS import, raw-rules, async JS
-  expression, collection, and evaluated `$for` output seams that have focused
-  tests. `VarDeclaration` output is covered through the inherited
-  `Declaration` buffer path for visible parameter bindings. This does not mean
-  every node should gain a buffer overload: invisible registration or
-  side-effect nodes should stay invisible unless a focused output test proves a
-  real render seam.
-- `pnpm run verify:node-copy-frontier` reports no production deep
-  copy/clone-style frontier outside clone infrastructure.
-- The same frontier check fails on ordinary production `.copy()` callers
-  outside the base node-copy API/infrastructure, and on new ordinary production
-  `.clone()` callers outside the current base/selector/bitset override set.
-- `callWithContext(...)` now only creates copied raw-argument ownership
-  surfaces for functions with params metadata. Ordinary JS functions receive
-  positional args directly instead of paying for an unused `rawArgs` copy.
+- Public CSS output APIs (`render(...)`, `renderString(...)`,
+  `renderToResult(...)`, and `safeRender(...)`) use the awaited eval/render
+  path. `safeCompile(...)` remains the explicit tree-surface compatibility API.
+- The compiler render phase writes the evaluated root through a flat render
+  buffer and finalizes that buffer. Production render paths must not call
+  `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, or
+  `renderNodeToString(...)`; those helpers are test/utility bridges only.
+- `postEvalVisitor` is still the public compatibility hook name, but the hook
+  runs after evaluation and before serialization.
+- The render-buffer frontier is not a per-node status list anymore. The
+  important current fact is that the production bridge scan is green and direct
+  output seams use node-owned eval/render decisions plus shared buffer helpers.
+- The node-copy frontier scan is green for deep copy/clone and ordinary
+  production `.copy()` calls outside infrastructure. New copy/clone sites must
+  prove an ownership need before they land.
 
-## Current Frontier
+## Remaining Architecture Work
 
-The frontier is no longer a broad per-node cleanup log. Choose the next seam by
-running the scan, reading the specific source, and proving the ownership move
-with focused tests.
+The remaining work is not "add a buffer overload to every class." It is to
+remove the places where eval still creates broad output surfaces merely so a
+later serializer can walk them.
 
-Use these rules when deciding whether a remaining copy/clone call is real debt:
+Priority seams:
 
-- Base `Node.copy()` / `Node.clone()`, `copyWithReusableLeaves(...)`, keyset
-  copies, bitset copies, and test-only clones are infrastructure, not normal
-  eval-flow wins by themselves.
-- Metadata-backed functions still need a copied raw-args surface for
-  `this.rawArgs`, `this.args()`, preprocessing, lazy params, validation, and
-  `@arguments`-style behavior. Plain functions without metadata do not.
-- Generated selector output often needs an owned placement surface; do not
-  collapse those copies without tests proving source selector parentage,
-  visibility flags, and extend output all stay correct.
-- Direct comment children are currently preserved per generated output
-  placement. Do not change that without an explicit AST/comment ownership
-  decision.
-- `Context.rulesContext`, `ScopeFrame.fallbackFrame`, deep clone, and
-  materialization are suspect surfaces, not automatic bugs.
-- `prepareRenderPrintState(...)` is the central render bridge. New bridges
-  should use it instead of adding local writer/frame/trivia reset heuristics.
-- Production render paths no longer call `renderNodeToBuffer(...)`,
-  `renderNodeToWriter(...)`, or `renderNodeToString(...)`; the Jess compiler
-  root calls `Rules.render(...)` directly. The `renderNodeTo*` helpers remain as
-  focused utility/test bridges, not production compiler plumbing.
-  `renderNodeToString(...)` exercises native buffer render when a node has that
-  overload, so render tests should not silently drift back to
-  resolve-then-serialize coverage. Keep `pnpm run verify:render-buffer-frontier`
-  green before and after touching render-buffer callers.
-- Plain CSS `Call` argument/content rendering uses a call-local active writer
-  helper that evals child args/content and serializes into the existing
-  function writer while preserving calc-frame cleanup. Do not route those child
-  surfaces through a public "final string" API name.
-- Static/self-resolving buffer renderers such as `Any`, `Bool`, `Rest`,
-  `Combinator`, `DefaultGuard`, `Dimension`, `Comment`, `Range`, `Color`, and
-  `RawRules`, plus self-resolving container/directive surfaces such as
-  `Collection` and `JsImport`, write their own text directly instead of
-  resolving first and re-entering the bridge. Prefer that shape when focused
-  tests can prove no eval or ownership boundary is being skipped.
-- Do not convert evaluating nodes by pattern. Direct buffer output is only safe
-  when focused tests prove the path preserves context-sensitive evaluation,
-  child resolution, async finalization, registration/visibility effects, and
-  selector/rules ownership.
-- `Expression` now evaluates its child directly for buffer render, and
-  `Negative` evaluates its operand directly before writing the evaluated
-  output. Both have focused tests proving buffer render bypasses public
-  wrapper/child `resolve()` calls while preserving evaluated output.
-- `Operation`, `Condition`, and `Paren` now use their existing internal
-  evaluation/resolution helpers for buffer render, so they preserve evaluated
-  output without calling the wrapper `resolve()` method.
-- `Quoted` and `Url` now use their existing value-resolution helpers for buffer
-  render, preserving quoted/url syntax without calling the wrapper `resolve()`
-  method.
-- `Interpolated` now uses its existing interpolation-resolution helper for
-  buffer render, preserving resolved replacement output without calling the
-  wrapper `resolve()` method.
-- `JsExpression` now evaluates directly for buffer render, and `Block` uses its
-  existing value-resolution helper. Focused tests prove both bypass wrapper
-  `resolve()` while preserving evaluated output.
-- `SelectorCapture` and `InterpolatedSelector` now use their wrapper-local
-  resolution helpers for buffer render. Focused tests prove both bypass wrapper
-  `resolve()` while preserving selector output.
-- `Selector` now writes explicit buffer output through an internal
-  `resolveForRender(...)` hook. Selector containers and attribute selectors use
-  that hook to preserve child selector resolution semantics without calling the
-  public `resolve()` wrapper, while simple selector leaves keep the default
-  eval-for-output path.
-- `List` and `Sequence` now use their existing value-resolution helpers for
-  buffer render. Focused tests prove both bypass wrapper `resolve()` while
-  preserving list separators, sequence spacing, and source-trivia behavior.
-- `Declaration` now uses the normal eval path directly for buffer render,
-  preserving declaration registration/eval behavior without calling the public
-  `resolve()` wrapper. Focused tests cover ordinary declarations, custom
-  declarations, and inherited visible `VarDeclaration` output.
-- `AtRule` now uses its existing owned-surface eval path directly for buffer
-  render, preserving evaluated preludes and body output without calling the
-  public `resolve()` wrapper.
-- `Reference` now evaluates directly for buffer render, preserving existing
-  lookup semantics without calling the public `resolve()` wrapper.
-- `If` and `For` keep direct `render(context)` on source syntax, but explicit
-  buffer render now evaluates directly and writes resulting branch/loop output
-  without calling the public `resolve()` wrapper. `$while` remains source
-  syntax through root render until the loop mutation and termination semantics
-  are designed and covered by focused tests.
-- `writeRenderedOutput(...)` is the shared helper for the narrow
-  "already-evaluated node becomes text in the active render buffer" case. Keep
-  using node-local eval helpers to decide what to evaluate; do not grow this
-  helper into another output tree or dispatch layer.
-- `writeRenderText(...)` writes already-rendered text and returns that text.
-  Use it for direct leaf output; do not route evaluating nodes through it before
-  they have made their own eval/render decision.
-- `writeMaybeRenderedOutput(...)` is only the promise-aware form of the same
-  operation. It removes repeated local `isThenable(...)` plumbing after a node
-  has already chosen its eval surface; it must not decide which node should be
-  evaluated or rendered.
-- `writeRootAwareRenderedOutput(...)` is the matching helper for the root
-  `Rules` serializer exception: root-owned `Rules` output keeps the full root
-  serializer, while ordinary evaluated nodes use trimmed output.
-- `writeMaybeRootAwareRenderedOutput(...)` is only the promise-aware form of
-  that root exception. Use it when a node has already chosen the evaluated
-  surface but still needs the `Rules` root serializer check.
-- Invisible side-effect or registration nodes such as `Log`, `Extend`, and
-  `ExtendList` now implement explicit buffer render by writing an invisible
-  `Nil` result. Their render seam is side-effect or grouping behavior, not CSS
-  text emission.
-- `Call` already streamed plain CSS calls; non-string function/mixin lookup
-  calls now use the same derived eval surface directly for buffer render
-  instead of calling the public `resolve()` wrapper.
-- `Rules` now uses its existing derived eval surface directly for buffer
-  render, preserving root `toString()` output for charset/import prefixes
-  without calling the public `resolve()` wrapper.
-- `Ruleset` now evaluates directly for buffer render and writes the evaluated
-  ruleset/rules/nil result without calling the public `resolve()` wrapper.
-- `StyleImport` now evaluates directly for buffer render and writes the
-  resulting rules output without calling the public `resolve()` wrapper,
-  preserving import resolution, optional/import-once/reference behavior, and
-  async path handling.
-- Keep direct legacy `render(context)` behavior separate from explicit
-  `render(context, buffer)` behavior where the repo still needs that
-  compatibility. For example, direct `$if` / `$for` string render remains source
-  syntax while the buffer path emits evaluated branch/loop output.
-- `$while` is still source-syntax-only; do not pretend it is part of the
-  eval/render convergence until its loop semantics are defined and tested.
+1. **Legacy direct render fallback**: `Node.render(context)` still has a
+   synchronous resolve-then-serialize compatibility fallback. Keep it until the
+   public sync callers are audited, but do not route new compiler behavior
+   through it.
+2. **Loop convergence**: `$if` and `$for` already have explicit buffer eval
+   output. `$while` should converge with that model: repeatedly evaluate its
+   condition in the live context, emit each successful body pass through the
+   render buffer, and stop when the condition becomes false or a bounded
+   iteration guard fails. This is closer to `$for` or recursive mixins than to
+   a separate semantic problem.
+3. **Materialization seams**: find remaining code that resolves/evals a whole
+   subtree only to immediately call `toTrimmedString(...)`. Convert only when
+   focused tests prove the node can stream children or use a smaller owned
+   output surface.
+4. **Generated selector/output ownership**: selector expansion, extend output,
+   and direct comment children may still need owned placement surfaces. Reduce
+   these with parentage, visibility, and extend-output tests; do not collapse
+   them by pattern.
+5. **Function/mixin argument surfaces**: metadata-backed functions still need
+   copied raw-argument ownership for `this.rawArgs`, `this.args()`,
+   preprocessing, lazy params, validation, and `@arguments`-style behavior.
+   Plain functions should keep receiving positional args directly.
+6. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
+   and similar render/eval shadow state are suspect surfaces. Keep them only
+   where they express live scope or placement state better than copied nodes.
+
+## Guardrails
+
+- Base `Node.copy()` / `Node.clone()`, keyset copies, bitset copies, reusable
+  leaf helpers, and test-only clones are infrastructure, not automatic wins.
+- `prepareRenderPrintState(...)` is the central bridge for active writer,
+  frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
+- Shared render-buffer helpers must stay narrow:
+  - `writeRenderText(...)` writes already-rendered text.
+  - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
+  - `writeMaybeRenderedOutput(...)` only removes promise plumbing.
+  - root-aware helpers only preserve the `Rules` root serializer exception.
+- Invisible registration or side-effect nodes should stay invisible unless a
+  focused output test proves a real render seam.
 - If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a
   parser-accurate focused core repro first when practical.
 
