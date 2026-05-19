@@ -130,6 +130,19 @@ describe('url', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('returns static urls without resolving child values', async () => {
+    const value = quoted('image.png');
+    const urlNode = url(value);
+    value.resolve = () => {
+      throw new Error('static url child should not resolve');
+    };
+
+    const resolved = await urlNode.resolve(context);
+
+    expect(resolved).toBe(urlNode);
+    expect(resolved.toTrimmedString()).toBe('url("image.png")');
+  });
+
   it('keeps source url values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

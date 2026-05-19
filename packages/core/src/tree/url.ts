@@ -1,4 +1,4 @@
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
@@ -69,6 +69,9 @@ export class Url extends Node<Node> {
   }
 
   private resolveValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     const value = this.value.resolve(context);
     const finalize = (resolvedValue: Node): Node => {
       if (resolvedValue === this.value) {
