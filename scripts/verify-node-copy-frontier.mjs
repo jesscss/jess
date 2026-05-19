@@ -29,9 +29,7 @@ const infrastructureFiles = new Set([
 const allowedOrdinaryCloneFiles = new Set([
   'packages/core/src/tree/ampersand.ts',
   'packages/core/src/tree/rules.ts',
-  'packages/core/src/tree/selector-pseudo.ts',
   'packages/core/src/tree/selector.ts',
-  'packages/core/src/tree/util/bitset.ts',
   ...infrastructureFiles
 ]);
 const expectedRemaining = new Set();
@@ -57,6 +55,14 @@ function walk(dir) {
   return files;
 }
 
+function isBitSetCloneLine(relativeFile, line) {
+  return relativeFile === 'packages/core/src/tree/util/bitset.ts'
+    || /\.keySet\.clone\(\)/u.test(line)
+    || /\.visibleKeySet\.clone\(\)/u.test(line)
+    || /\.requiredKeySet\.clone\(\)/u.test(line)
+    || /\b_bitset\.clone\(\)/u.test(line);
+}
+
 const matches = [];
 const ordinaryCopyMatches = [];
 const ordinaryCloneMatches = [];
@@ -76,7 +82,7 @@ for (const scanRoot of scanRoots) {
       if (ordinaryCopyPattern.test(line)) {
         ordinaryCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
-      if (ordinaryClonePattern.test(line)) {
+      if (ordinaryClonePattern.test(line) && !isBitSetCloneLine(relative, line)) {
         ordinaryCloneMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
       if (loopEvalSurfaceCopyPattern.test(line)) {
