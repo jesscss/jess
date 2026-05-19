@@ -21,6 +21,7 @@ const patterns = [
 ];
 const ordinaryCopyPattern = /\.copy\(/u;
 const ordinaryClonePattern = /\.clone\(/u;
+const loopEvalSurfaceCopyPattern = /copyWithReusableLeaves\(\s*sourceRules\s*\)/u;
 const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
@@ -34,6 +35,9 @@ const allowedOrdinaryCloneFiles = new Set([
   ...infrastructureFiles
 ]);
 const expectedRemaining = new Set();
+const expectedLoopEvalSurfaceCopies = new Set([
+  'packages/core/src/tree/control.ts'
+]);
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -56,6 +60,7 @@ function walk(dir) {
 const matches = [];
 const ordinaryCopyMatches = [];
 const ordinaryCloneMatches = [];
+const loopEvalSurfaceCopyMatches = [];
 for (const scanRoot of scanRoots) {
   const absoluteRoot = path.join(rootDir, scanRoot);
   if (!fs.existsSync(absoluteRoot)) {
@@ -73,6 +78,9 @@ for (const scanRoot of scanRoots) {
       }
       if (ordinaryClonePattern.test(line)) {
         ordinaryCloneMatches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (loopEvalSurfaceCopyPattern.test(line)) {
+        loopEvalSurfaceCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -93,6 +101,11 @@ const unexpectedOrdinaryCopy = ordinaryCopyMatches
   .filter(match => !infrastructureFiles.has(match.file));
 const unexpectedOrdinaryClone = ordinaryCloneMatches
   .filter(match => !allowedOrdinaryCloneFiles.has(match.file));
+const unexpectedLoopEvalSurfaceCopies = loopEvalSurfaceCopyMatches
+  .filter(match => !expectedLoopEvalSurfaceCopies.has(match.file));
+const filesWithLoopEvalSurfaceCopies = new Set(loopEvalSurfaceCopyMatches.map(match => match.file));
+const missingLoopEvalSurfaceCopies = [...expectedLoopEvalSurfaceCopies]
+  .filter(file => !filesWithLoopEvalSurfaceCopies.has(file));
 
 console.log('Node copy frontier scan');
 console.log('');
@@ -108,6 +121,12 @@ for (const file of frontierFiles.filter(file => expectedRemaining.has(file))) {
     console.log(`  ${match.line}: ${match.text}`);
   }
 }
+console.log('');
+console.log('Expected loop eval-surface copy seams:');
+for (const match of loopEvalSurfaceCopyMatches.filter(match => expectedLoopEvalSurfaceCopies.has(match.file))) {
+  console.log(`- ${match.file}`);
+  console.log(`  ${match.line}: ${match.text}`);
+}
 
 if (unexpected.length > 0) {
   console.log('');
@@ -117,6 +136,25 @@ if (unexpected.length > 0) {
     for (const match of byFile.get(file) ?? []) {
       console.log(`  ${match.line}: ${match.text}`);
     }
+  }
+  process.exitCode = 1;
+}
+
+if (unexpectedLoopEvalSurfaceCopies.length > 0) {
+  console.log('');
+  console.log('Unexpected loop eval-surface copy seams:');
+  for (const match of unexpectedLoopEvalSurfaceCopies) {
+    console.log(`- ${match.file}`);
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+  process.exitCode = 1;
+}
+
+if (missingLoopEvalSurfaceCopies.length > 0) {
+  console.log('');
+  console.log('Expected loop eval-surface copy seams with no remaining matches:');
+  for (const file of missingLoopEvalSurfaceCopies) {
+    console.log(`- ${file}`);
   }
   process.exitCode = 1;
 }
