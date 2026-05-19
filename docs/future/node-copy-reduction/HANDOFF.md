@@ -36,7 +36,9 @@ it is for the current direction and next seams, not a historical pass log.
   frontier, package-export, and node-constructor metadata coverage;
   changed-only mode intentionally runs the full baseline when verifier scripts
   or root dependency metadata changed. Changed-only mode includes local
-  unstaged and staged files as well as committed branch diff.
+  unstaged and staged files as well as committed branch diff. The pre-push
+  gate shares the same root-gate rules; its generated upstream TODO report is
+  ignored by git and removed after a clean upstream run.
 - Public CSS output goes through eval/render: `render(...)`,
   `renderString(...)`, `renderToResult(...)`, and `safeRender(...)`.
   `safeCompile(...)` remains the compatibility/debug API for callers that need

@@ -49,7 +49,10 @@ selector placement truly needs one.
   frontier, package-export, and node-constructor metadata scans. `--changed`
   may narrow package work, but changes to the gate scripts or root dependency
   metadata intentionally run the full baseline. It includes local unstaged and
-  staged changes, not only committed branch diff.
+  staged changes, not only committed branch diff. The pre-push gate uses the
+  same root-gate rules; any non-blocking upstream TODO report is generated
+  under `.cursor/PREPUSH_CHECK_TODOS.md`, ignored by git, and removed again
+  after a clean upstream run.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
   `$while` render per iteration. `$while` carries loop-body variable mutation
@@ -68,10 +71,10 @@ Priority seams:
    synchronous resolve-then-serialize compatibility fallback. Keep it until the
    public sync callers are audited, but do not route new compiler behavior
    through it.
-2. **Materialization seams**: shrink the two expected
-   `verify:materialization-frontier` entries only when focused tests prove the
-   node can stream children or use a smaller owned output surface without
-   changing scope, registration, async, selector, or trivia behavior.
+2. **Materialization seam**: shrink the expected
+   `verify:materialization-frontier` entry only when focused tests prove the
+   compatibility path can stream children or use a smaller owned output surface
+   without changing scope, registration, async, selector, or trivia behavior.
 3. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
