@@ -1,5 +1,21 @@
 import { describe, it, vi, beforeEach, afterEach } from 'vitest';
 import { performance } from 'node:perf_hooks';
+import type { Context } from '../src/context.js';
+import type { ImportOptions } from '../src/tree/import-style.js';
+import type { Rules } from '../src/tree/rules.js';
+
+type EvalKey = 'eval' | 'evalNode' | 'preEval';
+type EvalMethod = (this: unknown, ...args: unknown[]) => unknown;
+type PatchablePrototype = Partial<Record<EvalKey, EvalMethod>> & Record<string, unknown>;
+type ConstructorLike = { prototype?: PatchablePrototype };
+type AwaitablePipeModule = Record<string, unknown> & {
+  pipe?: (...args: unknown[]) => unknown;
+};
+type TestContext = Context & {
+  getTree(importPath: string, importOptions?: ImportOptions): Promise<{ node: Rules; resolvedPath: string }>;
+};
+
+const wrappedAsyncMethods = new WeakSet<EvalMethod>();
 
 function fmt(ms: number) {
   return `${ms.toFixed(2)}ms`;
@@ -9,12 +25,12 @@ function pad(s: string, n: number) {
 }
 
 function isPromiseLike(x: unknown): x is Promise<unknown> {
-  return !!x && (typeof x === 'object' || typeof x === 'function') && typeof (x as any).then === 'function';
+  return !!x && (typeof x === 'object' || typeof x === 'function') && 'then' in x && typeof x.then === 'function';
 }
 
-function patchAllEvalAsync(treeModule: Record<string, any>): () => void {
-  const originals: Array<{ proto: any; key: 'eval' | 'evalNode' | 'preEval'; fn: Function }> = [];
-  const wrap = (proto: any, key: 'eval' | 'evalNode' | 'preEval') => {
+function patchAllEvalAsync(treeModule: Record<string, unknown>): () => void {
+  const originals: Array<{ proto: PatchablePrototype; key: EvalKey; fn: EvalMethod }> = [];
+  const wrap = (proto: PatchablePrototype | undefined, key: EvalKey) => {
     if (!proto) {
       return;
     }
@@ -22,29 +38,40 @@ function patchAllEvalAsync(treeModule: Record<string, any>): () => void {
     if (typeof orig !== 'function') {
       return;
     }
-    if ((orig as any).__wrappedAsync) {
+    if (wrappedAsyncMethods.has(orig)) {
       return;
     }
-    const wrapped = function(this: any, ...args: any[]) {
+    const wrapped: EvalMethod = function(this: unknown, ...args: unknown[]) {
       const out = orig.apply(this, args);
       return isPromiseLike(out) ? out : Promise.resolve(out);
-    } as any;
-    (wrapped as any).__wrappedAsync = true;
+    };
+    wrappedAsyncMethods.add(wrapped);
     originals.push({ proto, key, fn: orig });
     proto[key] = wrapped;
   };
   for (const v of Object.values(treeModule)) {
-    if (typeof v === 'function' && v.prototype) {
-      wrap(v.prototype, 'preEval');
-      wrap(v.prototype, 'evalNode');
-      wrap(v.prototype, 'eval');
-    }
+    const proto = getPatchablePrototype(v);
+    wrap(proto, 'preEval');
+    wrap(proto, 'evalNode');
+    wrap(proto, 'eval');
   }
   return () => {
     for (const { proto, key, fn } of originals) {
       proto[key] = fn;
     }
   };
+}
+
+function isPatchablePrototype(value: unknown): value is PatchablePrototype {
+  return !!value && (typeof value === 'object' || typeof value === 'function');
+}
+
+function getPatchablePrototype(value: unknown): PatchablePrototype | undefined {
+  if (typeof value !== 'function') {
+    return undefined;
+  }
+  const ctor: ConstructorLike = value;
+  return isPatchablePrototype(ctor.prototype) ? ctor.prototype : undefined;
 }
 
 function mulberry32(a: number) {
@@ -73,20 +100,23 @@ async function runScenario(
   vi.resetModules();
   if (mockPipe) {
     vi.doMock('@jesscss/awaitable-pipe', async (importOriginal) => {
-      const mod: any = await importOriginal();
-      const isThenable = (x: unknown): x is Promise<unknown> => !!x && (typeof x === 'object' || typeof x === 'function') && typeof (x as any).then === 'function';
-      function asyncPipe(...args: any[]): any {
+      const mod = await importOriginal<AwaitablePipeModule>();
+      const isThenable = (x: unknown): x is Promise<unknown> => !!x && (typeof x === 'object' || typeof x === 'function') && 'then' in x && typeof x.then === 'function';
+      function asyncPipe(...args: unknown[]): unknown {
         if (args.length === 0) {
-          return undefined as any;
+          return undefined;
         }
         const first = args[0];
-        const fns = (typeof first === 'function' && typeof args[1] === 'function') ? (args as any[]) : args.slice(1);
+        const fns = (typeof first === 'function' && typeof args[1] === 'function') ? args : args.slice(1);
         const hasInput = !(typeof first === 'function' && typeof args[1] === 'function');
-        const initial = hasInput ? (typeof first === 'function' ? (first as any)() : first) : undefined;
+        const initial = hasInput ? (typeof first === 'function' ? first() : first) : undefined;
         let p = Promise.resolve(initial);
         for (const fn of fns) {
           p = p.then((val) => {
-            const out = hasInput ? fn(val) : fn(val);
+            if (typeof fn !== 'function') {
+              return val;
+            }
+            const out = fn(val);
             if (forceNoCheck) {
               return Promise.resolve(out);
             }
@@ -98,7 +128,7 @@ async function runScenario(
       return { ...mod, pipe: asyncPipe };
     });
   } else {
-    vi.unmock('@jesscss/awaitable-pipe');
+    vi.doUnmock('@jesscss/awaitable-pipe');
   }
 
   const { Context } = await import('../src/context.js');
@@ -120,7 +150,7 @@ async function runScenario(
 
   let restore: undefined | (() => void);
   if (patchNodes) {
-    restore = patchAllEvalAsync(Tree as unknown as Record<string, any>);
+    restore = patchAllEvalAsync(Tree);
   }
 
   const build = (depth: number, breadth: number) => {
@@ -138,7 +168,7 @@ async function runScenario(
         if (withSparseAsync) {
           const hit = randomizePlacement ? rng() < asyncRatio : (i % Math.max(1, Math.floor(1 / asyncRatio)) === 0);
           if (hit) {
-            r.push(style({ path: quoted('virtual.css') }, { type: 'import', importOptions: {} as any }));
+            r.push(style({ path: quoted('virtual.css') }, { type: 'import', importOptions: {} }));
             continue;
           }
         }
@@ -157,9 +187,9 @@ async function runScenario(
 
   const roots = Array.from({ length: repeats }, () => build(depth, breadth));
   for (let i = 0; i < Math.min(3, repeats); i++) {
-    const ctx = new Context();
+    const ctx: TestContext = new Context();
     if (withSparseAsync) {
-      (ctx as any).getTree = async (importPath: string) => {
+      ctx.getTree = async (importPath: string) => {
         if (microDelay) {
           for (let d = 0; d < microDelaySteps; d++) {
             await Promise.resolve();
@@ -167,7 +197,7 @@ async function runScenario(
         }
         return { node: rules([]), resolvedPath: importPath };
       };
-      (ctx as any).evaldTrees = new Map();
+      ctx.evaldTrees = new Map();
     }
     const out = roots[i]!.eval(ctx);
     if (isThenable(out)) {
@@ -176,9 +206,9 @@ async function runScenario(
   }
   const t0 = performance.now();
   for (let i = 0; i < repeats; i++) {
-    const ctx = new Context();
+    const ctx: TestContext = new Context();
     if (withSparseAsync) {
-      (ctx as any).getTree = async (importPath: string) => {
+      ctx.getTree = async (importPath: string) => {
         if (microDelay) {
           for (let d = 0; d < microDelaySteps; d++) {
             await Promise.resolve();
@@ -186,7 +216,7 @@ async function runScenario(
         }
         return { node: rules([]), resolvedPath: importPath };
       };
-      (ctx as any).evaldTrees = new Map();
+      ctx.evaldTrees = new Map();
     }
     const out = roots[i]!.eval(ctx);
     if (isThenable(out)) {
@@ -222,10 +252,10 @@ async function runScenarioMulti(opts: Parameters<typeof runScenario>, runs: numb
 describe.skip('Jess real-AST perf compare (baseline vs forced async)', () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.unmock('@jesscss/awaitable-pipe');
+    vi.doUnmock('@jesscss/awaitable-pipe');
   });
   afterEach(() => {
-    vi.unmock('@jesscss/awaitable-pipe');
+    vi.doUnmock('@jesscss/awaitable-pipe');
     vi.resetModules();
   });
   it('compares baseline vs forced async cleanly', async () => {
