@@ -180,7 +180,7 @@ describe('Control Nodes', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('writes evaluated $if output into render buffers without public resolve', async () => {
+  it('writes evaluated $if output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     const node = new If({
@@ -200,6 +200,9 @@ describe('Control Nodes', () => {
     });
     node.resolve = () => {
       throw new Error('$if buffer render should use evalNode');
+    };
+    node.evalNode = () => {
+      throw new Error('$if buffer render should evaluate the selected branch directly');
     };
 
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');

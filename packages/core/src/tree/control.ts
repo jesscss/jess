@@ -334,11 +334,28 @@ export class If extends Node<IfValue> {
     return run();
   }
 
+  private async renderSelectedBranch(
+    context: Context,
+    buffer: RenderBuffer,
+    options?: PrintOptions
+  ): Promise<string> {
+    for (const branch of this.value.branches) {
+      if (!branch.condition) {
+        return writeMaybeEvaluatedControlOutput(branch.rules.eval(context), context, buffer, options);
+      }
+      const condition = await branch.condition.eval(context);
+      if (condition instanceof Bool && condition.value === true) {
+        return writeMaybeEvaluatedControlOutput(branch.rules.eval(context), context, buffer, options);
+      }
+    }
+    return '';
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeEvaluatedControlOutput(this.evalNode(context), context, bufferOrOptions, options);
+      return this.renderSelectedBranch(context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }
