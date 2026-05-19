@@ -644,6 +644,59 @@ describe('Control Nodes', () => {
     }
   });
 
+  it('keeps canonical $while body children parented to the source wrapper', async () => {
+    const renderContext = new Context();
+    const renderBuffer = createRenderBuffer('flat');
+    const renderDecl = decl({ name: 'tick', value: any('yes') });
+    const renderRules = rules([renderDecl]);
+    let renderCalls = 0;
+    const renderNode = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going-render',
+          fn: () => bool(++renderCalls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: renderRules
+    });
+
+    const rendered = await Promise.resolve(renderNode.render(renderContext, renderBuffer));
+
+    expect(rendered).toBeString(`
+      tick: yes;
+      tick: yes;
+    `);
+    expect(renderCalls).toBe(3);
+    expect(renderDecl.parent).toBe(renderRules);
+
+    const evalContext = new Context();
+    const evalDecl = decl({ name: 'tick', value: any('yes') });
+    const evalRules = rules([evalDecl]);
+    let evalCalls = 0;
+    const evalRoot = rules([
+      new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going-eval',
+            fn: () => bool(++evalCalls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: evalRules
+      })
+    ]);
+
+    const evald = await evalRoot.eval(evalContext);
+
+    expect(evald.toTrimmedString()).toBeString(`
+      tick: yes;
+      tick: yes;
+    `);
+    expect(evalCalls).toBe(3);
+    expect(evalDecl.parent).toBe(evalRules);
+  });
+
   it('throws when $while exceeds its iteration guard', async () => {
     const context = new Context();
     const root = rules([
