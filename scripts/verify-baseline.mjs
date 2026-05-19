@@ -37,6 +37,7 @@ const FULL_BASELINE_PATH_PATTERNS = [
   /^scripts\/verify-node-copy-frontier\.mjs$/,
   /^scripts\/verify-render-buffer-frontier\.mjs$/,
   /^scripts\/verify-materialization-frontier\.mjs$/,
+  /^scripts\/verify-package-exports\.mjs$/,
   /^package\.json$/,
   /^pnpm-lock\.yaml$/
 ];
@@ -275,5 +276,6 @@ if (runLessCompat) {
 }
 
 runFrontierChecks();
+run('pnpm', ['run', 'verify:package-exports']);
 
 console.log('\n>>> Verify baseline passed (core + parsers + Less fixture and compatibility suites + frontier checks).');
