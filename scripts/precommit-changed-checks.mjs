@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
 
@@ -56,7 +56,13 @@ function run(command, args, packageDir, options = {}) {
 }
 
 function writeTodoReport() {
-  if (failures.length === 0 || MODE !== 'upstream') {
+  if (MODE !== 'upstream') {
+    return;
+  }
+  if (failures.length === 0) {
+    if (existsSync(TODO_REPORT_PATH)) {
+      rmSync(TODO_REPORT_PATH);
+    }
     return;
   }
   const now = new Date().toISOString();

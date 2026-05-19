@@ -77,3 +77,4 @@ profiling/
 state/codex-auto/
 state/agent-loop/
 state/task-runtime/
+.cursor/PREPUSH_CHECK_TODOS.md
