@@ -248,6 +248,18 @@ export function declarationList(this: P, _T: TokenMap) {
 
         if ($.RECORDING_PHASE) {
           value = $.OR([
+            {
+              GATE: () => $.LA(1).tokenType === $.T.JessIf,
+              ALT: () => $.SUBRULE($.jessIfStatement, { ARGS: [{ ...ctx, inner: true }] })
+            },
+            {
+              GATE: () => $.LA(1).tokenType === $.T.JessFor,
+              ALT: () => $.SUBRULE($.jessForStatement, { ARGS: [{ ...ctx, inner: true }] })
+            },
+            {
+              GATE: () => $.LA(1).tokenType === $.T.JessWhile,
+              ALT: () => $.SUBRULE($.jessWhileStatement, { ARGS: [{ ...ctx, inner: true }] })
+            },
             { ALT: () => $.SUBRULE($.innerAtRule, { ARGS: [{ ...ctx, inner: true }] }) },
             {
               GATE: () => isJessMixinDefinitionStart($),
@@ -263,6 +275,12 @@ export function declarationList(this: P, _T: TokenMap) {
             },
             { ALT: () => $.CONSUME($.T.Semi) }
           ]);
+        } else if ($.LA(1).tokenType === $.T.JessIf) {
+          value = $.SUBRULE($.jessIfStatement, { ARGS: [{ ...ctx, inner: true }] });
+        } else if ($.LA(1).tokenType === $.T.JessFor) {
+          value = $.SUBRULE($.jessForStatement, { ARGS: [{ ...ctx, inner: true }] });
+        } else if ($.LA(1).tokenType === $.T.JessWhile) {
+          value = $.SUBRULE($.jessWhileStatement, { ARGS: [{ ...ctx, inner: true }] });
         } else if ($.LA(1).tokenType === $.T.Semi) {
           value = $.CONSUME($.T.Semi);
         } else if ($.isTypeAt(1, $.T.AtName)) {

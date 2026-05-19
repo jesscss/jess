@@ -58,6 +58,9 @@ const cases: ParseCase[] = [
   { name: '$if / $else', src: '$if ($x > 0) { .a { color: red; } } $else { .a { color: blue; } }' },
   { name: '$for loop', src: '$for ($i in $items) { .item { color: red; } }' },
   { name: '$while loop', src: '$while ($i < 3) { .item { color: red; } }' },
+  { name: 'nested $if control block', src: '.a { $if ($theme = dark) { color: white; } }' },
+  { name: 'nested $for control block', src: '.a { $for ($i in $items) { width: $i; } }' },
+  { name: 'nested $while control block', src: '.a { $while ($i < 3) { width: $i; } }' },
   { name: 'collection literal', src: '$colors: { primary: #333; secondary: #666; };' },
   { name: 'collection with multiple entries', src: '$theme: { primary: red; secondary: blue; accent: green; };' }
 ];
