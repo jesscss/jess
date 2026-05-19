@@ -9,9 +9,9 @@ type AcceptFn<T extends Node> = (
   node: T,
   visitor: {
     visitArray?: (nodes: LessNode[]) => void;
-    visit?: (node: LessNode) => void;
+    visit?: (node: LessNode) => unknown;
   },
-  cache?: WeakMap<Node, LessNode>
+  cache?: WeakMap<Node, unknown>
 ) => T | unknown;
 
 export interface NodeAdapter<T extends Node> {
@@ -49,9 +49,9 @@ export function selfVisitAccept<T extends Node>(): AcceptFn<T> {
  * Accept helper: traverse child nodes via visitor.visitArray.
  */
 export function childrenAccept<T extends Node>(
-  getChildren: (node: T, cache?: WeakMap<Node, LessNode>) => Node[]
+  getChildren: (node: T, cache?: WeakMap<Node, unknown>) => Node[]
 ): AcceptFn<T> {
-  return (node: T, visitor, cache?: WeakMap<Node, LessNode>) => {
+  return (node: T, visitor, cache?: WeakMap<Node, unknown>) => {
     const children = getChildren(node, cache);
     if (children.length > 0) {
       const lessChildren = children
@@ -79,7 +79,7 @@ export function childrenAccept<T extends Node>(
 export function singleChildAccept<T extends Node>(
   getChild: (node: T) => Node | undefined
 ): AcceptFn<T> {
-  return (node: T, visitor, cache?: WeakMap<Node, LessNode>) => {
+  return (node: T, visitor, cache?: WeakMap<Node, unknown>) => {
     const child = getChild(node);
     if (child instanceof Node) {
       const lessChild = toLessNode(child, { cache });

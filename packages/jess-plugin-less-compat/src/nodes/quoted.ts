@@ -16,8 +16,8 @@ export const transformQuotedToLess = createFromAdapter<Quoted>({
       }
       return String(value);
     },
-    quote: q => q.quote || '"',
-    escaped: q => q.escaped === true
+    quote: q => q.options.quote || '"',
+    escaped: q => q.options.escaped === true
   },
   accept: selfVisitAccept()
 });

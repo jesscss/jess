@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { AbstractPlugin, Any, Declaration, Dimension, type Plugin, type Visitor, type Node, F_VISIBLE, REMOVE } from '@jesscss/core';
+import { AbstractPlugin, Any, Declaration, Dimension, type PluginInterface, type PluginVisitor, type Node, F_VISIBLE, REMOVE } from '@jesscss/core';
 import { toLessNode, fromLessNode, fromLessPluginReturnValue } from './transform/index.js';
 import { LessAdapterBase } from './transform/less-adapter.js';
 import type { LessVisitor } from './types.js';
@@ -102,7 +102,7 @@ export class LessCompatPlugin extends AbstractPlugin {
 
   // Cache the visitor instance so it's reused across multiple calls
   // This ensures that visitors added via @plugin are available for subsequent nodes
-  private _cachedVisitor: Visitor | Visitor[] | undefined;
+  private _cachedVisitor: PluginVisitor | PluginVisitor[] | undefined;
   private _lessPluginManager?: LessPluginManager;
   private _currentFilePath?: string;
   private _jessFunctionRegistry?: any;
@@ -121,7 +121,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * - addPreProcessor() - these will run during preEval
    * - addPostProcessor() - these run on serialized CSS after render
    */
-  get preEvalVisitor() {
+  get preEvalVisitor(): PluginInterface['preEvalVisitor'] {
     // Cache the visitor instance so it's reused across multiple calls
     // This ensures that visitors added via @plugin are available for subsequent nodes
     if (!this._cachedVisitor) {
@@ -133,7 +133,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   /**
    * Less post-processors operate on final CSS, not on the preRenderVisitor tree hook.
    */
-  get postEvalVisitor() {
+  get postEvalVisitor(): PluginInterface['postEvalVisitor'] {
     // Not used yet - post processors run via runPostProcessors()
     return undefined;
   }
@@ -185,7 +185,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * This visitor intercepts each node, converts it to Less format,
    * runs the Less visitors, and converts back if modified.
    */
-  get visitor(): Visitor | Visitor[] | undefined {
+  get visitor(): PluginVisitor | PluginVisitor[] | undefined {
     const cache = this.opts.cache !== false;
     const cacheMap = cache ? new WeakMap() : undefined;
 
@@ -976,7 +976,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         return node;
       },
 
-      visit: (node: Node): Node => {
+      visit: (node: Node): Node | typeof REMOVE => {
         if (!node) {
           return node;
         }
@@ -1100,7 +1100,7 @@ export class LessCompatPlugin extends AbstractPlugin {
           // The WeakSet will be garbage collected when the visitor is done
         }
       }
-    } satisfies Visitor;
+    };
 
     return visitor;
   }
@@ -1109,9 +1109,9 @@ export class LessCompatPlugin extends AbstractPlugin {
 /**
  * Create a Less.js compatibility plugin
  */
-const lessCompatPlugin: Plugin = ((opts?: LessCompatPluginOptions) => {
+const lessCompatPlugin = (opts?: LessCompatPluginOptions) => {
   return new LessCompatPlugin(opts);
-}) as Plugin;
+};
 
 export default lessCompatPlugin;
 export { lessCompatPlugin };
