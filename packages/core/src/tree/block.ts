@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -65,6 +65,9 @@ export class Block extends Node<Node, BlockOptions> {
   }
 
   private resolveValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     const value = this.value.resolve(context);
     const finalize = (resolvedValue: Node): Node => {
       if (resolvedValue === this.value) {

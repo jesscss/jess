@@ -115,6 +115,19 @@ describe('Block', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('returns static blocks without resolving child values', async () => {
+    const value = any('foo');
+    const blockNode = block(value);
+    value.resolve = () => {
+      throw new Error('static block child should not resolve');
+    };
+
+    const resolved = await blockNode.resolve(context);
+
+    expect(resolved).toBe(blockNode);
+    expect(resolved.toTrimmedString()).toBe('{foo}');
+  });
+
   it('keeps source block values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
