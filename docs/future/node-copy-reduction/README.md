@@ -39,11 +39,13 @@ selector placement truly needs one.
   evaluation and before serialization. `postEvalVisitor` remains a compatibility
   alias for older plugin callers.
 - The render-buffer frontier is not a per-node status list anymore. The
-  important current fact is that the production bridge scan is green and direct
-  output seams use node-owned eval/render decisions plus shared buffer helpers.
+  important current facts are that the production bridge scan is green and
+  that `$for` / `$while` stream each loop iteration through node render methods.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
-  production `.copy()` calls outside infrastructure. New copy/clone sites must
-  prove an ownership need before they land.
+  production `.copy()` calls outside infrastructure. It now also reports the
+  expected remaining loop eval-surface copy seam in `control.ts`; that is
+  visible debt, not a hidden pass. New copy/clone sites must prove an ownership
+  need before they land.
 - `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
   parsers, the Less fixture corpus, the less-compat plugin suite, and the
   frontier, package-export, and node-constructor metadata scans. `--changed`
@@ -56,7 +58,9 @@ selector placement truly needs one.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
   `$while` render per iteration. `$while` carries loop-body variable mutation
-  in a small live `ScopeFrame`, not in a full output tree. Direct sync
+  in a small live `ScopeFrame`, not in a full output tree. `$while` has focused
+  guards for native buffer rendering, no `Rules.clone()` loop-body surface, and
+  no scalar leaf copy/clone inside per-iteration body copies. Direct sync
   `render(context)` remains source syntax for compatibility.
 
 ## Remaining Architecture Work
@@ -75,15 +79,20 @@ Priority seams:
    `verify:materialization-frontier` entry only when focused tests prove the
    compatibility path can stream children or use a smaller owned output surface
    without changing scope, registration, async, selector, or trivia behavior.
-3. **Generated selector/output ownership**: selector expansion, extend output,
+3. **Loop eval surfaces**: remove the expected
+   `copyWithReusableLeaves(sourceRules)` seam in `control.ts` only after
+   `$for` and `$while` can model per-iteration scope and mutation without a
+   copied `Rules` surface. Keep the existing render and scalar-leaf guards
+   green while doing it.
+4. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
    them by pattern.
-4. **Function/mixin argument surfaces**: metadata-backed functions still need
+5. **Function/mixin argument surfaces**: metadata-backed functions still need
    copied raw-argument ownership for `this.rawArgs`, `this.args()`,
    preprocessing, lazy params, validation, and `@arguments`-style behavior.
    Plain functions should keep receiving positional args directly.
-5. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
+6. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
    loop live slots, and similar render/eval shadow state are suspect surfaces.
    Keep them only where they express live scope or placement state better than
    copied nodes.
