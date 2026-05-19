@@ -12,9 +12,12 @@ const ignoredSegments = new Set([
   'util'
 ]);
 const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
+const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buffer/u;
 const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
+const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
+const expectedControlIterationRenderSites = 2;
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -35,6 +38,7 @@ function walk(dir) {
 }
 
 const matches = [];
+const controlIterationRenderMatches = [];
 for (const scanRoot of scanRoots) {
   if (!fs.existsSync(scanRoot)) {
     continue;
@@ -48,6 +52,9 @@ for (const scanRoot of scanRoots) {
     source.split(/\r?\n/u).forEach((line, index) => {
       if (frontierPattern.test(line)) {
         matches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (controlIterationRenderPattern.test(line)) {
+        controlIterationRenderMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -67,11 +74,49 @@ for (const file of files) {
     console.log(`  ${match.line}: ${match.text}`);
   }
 }
+console.log('');
+console.log('Control native iteration render sites:');
+if (controlIterationRenderMatches.length === 0) {
+  console.log('- none');
+}
+for (const match of controlIterationRenderMatches) {
+  console.log(`- ${match.file}`);
+  console.log(`  ${match.line}: ${match.text}`);
+}
 
 if (matches.length > 0) {
   console.log('');
   console.log(
     'Production render paths should call node render methods directly; keep renderNodeTo* helpers in tests/util only.'
   );
+  process.exitCode = 1;
+}
+
+const unexpectedControlIterationRenderSites = controlIterationRenderMatches
+  .filter(match => match.file !== expectedControlIterationRenderFile);
+const expectedFileControlIterationRenderCount = controlIterationRenderMatches
+  .filter(match => match.file === expectedControlIterationRenderFile)
+  .length;
+
+if (
+  unexpectedControlIterationRenderSites.length > 0
+  || expectedFileControlIterationRenderCount !== expectedControlIterationRenderSites
+) {
+  console.log('');
+  console.log(
+    'Control loop render should stream each iteration through node render methods; update this verifier when that native path changes.'
+  );
+  if (unexpectedControlIterationRenderSites.length > 0) {
+    console.log('Unexpected control iteration render sites:');
+    for (const match of unexpectedControlIterationRenderSites) {
+      console.log(`- ${match.file}`);
+      console.log(`  ${match.line}: ${match.text}`);
+    }
+  }
+  if (expectedFileControlIterationRenderCount !== expectedControlIterationRenderSites) {
+    console.log(
+      `Expected ${expectedControlIterationRenderSites} control iteration render site(s) in ${expectedControlIterationRenderFile}, found ${expectedFileControlIterationRenderCount}.`
+    );
+  }
   process.exitCode = 1;
 }
