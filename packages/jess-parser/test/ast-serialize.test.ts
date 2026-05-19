@@ -148,6 +148,18 @@ describe('jess-parser (ast serialize)', () => {
     expect(tree.toString()).toContain('$else');
   });
 
+  it('serializes $while loop', () => {
+    const { tree, errors, lexerResult } = parser.parse('$while ($i < 3) { .a { color: red; } }');
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+    expect(serializeTypes(tree)).toContainString('(While');
+    expect(tree.toString()).toContain('$while');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const whileNode = rules?.value.find(n => n.type === 'While');
+    expect(whileNode?.type).toBe('While');
+  });
+
   it('serializes @-compose as StyleImport', () => {
     const { tree, errors, lexerResult } = parser.parse('@-compose "./theme.jess";');
     expect(lexerResult.errors).toEqual([]);
