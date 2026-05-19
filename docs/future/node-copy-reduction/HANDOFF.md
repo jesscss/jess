@@ -39,8 +39,10 @@ it is for the current direction and next seams, not a historical pass log.
 - The compiler render phase writes through `Rules.render(...)` into a flat
   render buffer. Production code should not call `renderNodeToBuffer(...)`,
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`.
-- `$if`, `$for`, and `$while` all have explicit buffer eval output. Direct sync
-  `render(context)` remains source syntax for compatibility.
+- `$if`, `$for`, and `$while` avoid control-wrapper materialization in buffer
+  render. `$if` renders only the selected branch output; `$for` and `$while`
+  render per iteration. Direct sync `render(context)` remains source syntax for
+  compatibility.
 - The old per-node render-buffer checklist is done enough to be history. Do not
   re-create it. The useful question now is whether a seam still materializes an
   output tree when it could stream or use smaller contextual state.
@@ -48,8 +50,8 @@ it is for the current direction and next seams, not a historical pass log.
 ## Next Seams
 
 1. **Audit remaining materialization boundaries.**
-   - Search for eval/resolve paths that immediately serialize with
-     `toTrimmedString(...)`.
+   - `pnpm run verify:materialization-frontier` names the current expected
+     sync compatibility seams.
    - Convert only when the node can stream children or keep a smaller owned
      surface without changing scope, registration, async, selector, or trivia
      behavior.

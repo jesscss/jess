@@ -43,8 +43,10 @@ selector placement truly needs one.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. New copy/clone sites must
   prove an ownership need before they land.
-- `$if`, `$for`, and `$while` all have explicit buffer eval output. Direct sync
-  `render(context)` remains source syntax for compatibility.
+- `$if`, `$for`, and `$while` do not render by materializing a control-node
+  wrapper first. `$if` renders only the selected branch output; `$for` and
+  `$while` render per iteration. Direct sync `render(context)` remains source
+  syntax for compatibility.
 
 ## Remaining Architecture Work
 
@@ -58,10 +60,10 @@ Priority seams:
    synchronous resolve-then-serialize compatibility fallback. Keep it until the
    public sync callers are audited, but do not route new compiler behavior
    through it.
-2. **Materialization seams**: find remaining code that resolves/evals a whole
-   subtree only to immediately call `toTrimmedString(...)`. Convert only when
-   focused tests prove the node can stream children or use a smaller owned
-   output surface.
+2. **Materialization seams**: shrink the two expected
+   `verify:materialization-frontier` entries only when focused tests prove the
+   node can stream children or use a smaller owned output surface without
+   changing scope, registration, async, selector, or trivia behavior.
 3. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
