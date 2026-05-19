@@ -9,12 +9,13 @@ const SHOULD_BLOCK = MODE === 'staged';
 const TODO_REPORT_PATH = path.join(ROOT, '.cursor', 'PREPUSH_CHECK_TODOS.md');
 const failures = [];
 
-/** Packages that gate on full baseline (core + parsers + all-less.test.ts). Push blocked if baseline fails. */
+/** Packages that gate on the broad baseline. Push blocked if baseline fails. */
 const BASELINE_PACKAGES = new Set([
   'packages/core',
   'packages/less-parser',
   'packages/css-parser',
-  'packages/jess'
+  'packages/jess',
+  'packages/jess-plugin-less-compat'
 ]);
 
 const NON_SOURCE_PATH_PATTERNS = [
@@ -221,7 +222,7 @@ function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyR
 }
 
 function runVerifyBaseline() {
-  console.log('\n==> Running verify:baseline (core + parsers + all-less.test.ts)');
+  console.log('\n==> Running verify:baseline (core + parsers + Less fixture and compatibility suites)');
   run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
