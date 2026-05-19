@@ -35,7 +35,7 @@ export class Nil extends Node<''> {
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(
-    value?: any,
+    value?: '',
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
@@ -45,8 +45,6 @@ export class Nil extends Node<''> {
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
     this.fullRender = false;
   }
-
-  foo() {}
 
   override toTrimmedString() {
     return '';
