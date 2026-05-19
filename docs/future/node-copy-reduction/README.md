@@ -46,9 +46,10 @@ selector placement truly needs one.
   prove an ownership need before they land.
 - `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
   parsers, the Less fixture corpus, the less-compat plugin suite, and the
-  frontier scans. `--changed` may narrow package work, but changes to the gate
-  scripts or root dependency metadata intentionally run the full baseline. It
-  includes local unstaged and staged changes, not only committed branch diff.
+  frontier and package-export scans. `--changed` may narrow package work, but
+  changes to the gate scripts or root dependency metadata intentionally run the
+  full baseline. It includes local unstaged and staged changes, not only
+  committed branch diff.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
   `$while` render per iteration. `$while` carries loop-body variable mutation
@@ -106,6 +107,7 @@ Priority seams:
 pnpm run verify:node-copy-frontier
 pnpm run verify:render-buffer-frontier
 pnpm run verify:materialization-frontier
+pnpm run verify:package-exports
 pnpm run test:less:test-data
 pnpm --filter ./packages/jess-plugin-less-compat test
 pnpm run verify:baseline

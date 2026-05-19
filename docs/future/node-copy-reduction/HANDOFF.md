@@ -32,10 +32,11 @@ it is for the current direction and next seams, not a historical pass log.
 - `pnpm run verify:baseline`, `pnpm run verify:node-copy-frontier`,
   `pnpm run verify:render-buffer-frontier`, and
   `pnpm run verify:materialization-frontier` are the active truth checks.
-  The broad baseline includes core, parser, Less fixture, less-compat, and
-  frontier coverage; changed-only mode intentionally runs the full baseline
-  when verifier scripts or root dependency metadata changed. Changed-only mode
-  includes local unstaged and staged files as well as committed branch diff.
+  The broad baseline includes core, parser, Less fixture, less-compat,
+  frontier, and package-export coverage; changed-only mode intentionally runs
+  the full baseline when verifier scripts or root dependency metadata changed.
+  Changed-only mode includes local unstaged and staged files as well as
+  committed branch diff.
 - Public CSS output goes through eval/render: `render(...)`,
   `renderString(...)`, `renderToResult(...)`, and `safeRender(...)`.
   `safeCompile(...)` remains the compatibility/debug API for callers that need
