@@ -141,11 +141,6 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(name);
   }
 
-  private isPlainFunctionSurface(name: string | Node): boolean {
-    return typeof name === 'string'
-      || (isNode(name, N.Reference) && name.options?.type === 'function');
-  }
-
   private serializeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
@@ -330,17 +325,7 @@ export class Call extends Node<CallValue, CallOptions> {
         ? super.render(context, bufferOrOptions)
         : rendered;
     }
-    const resolved = this.resolve(context);
-    if (isThenable(resolved)) {
-      return super.render(context, bufferOrOptions);
-    }
-    if (!isNode(resolved, N.Call) || !this.isPlainFunctionSurface(resolved.value.name)) {
-      return resolved.toTrimmedString(prepared);
-    }
-    const rendered = this.renderPlainFunctionCall(resolved, context, prepared);
-    return isThenable(rendered)
-      ? super.render(context, bufferOrOptions)
-      : rendered;
+    return super.render(context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

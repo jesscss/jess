@@ -17,10 +17,6 @@ const expectedRemaining = new Map([
   [
     'packages/core/src/tree/node-base.ts',
     'legacy sync Node.render(context) compatibility fallback'
-  ],
-  [
-    'packages/core/src/tree/call.ts',
-    'legacy sync Call.render(context) compatibility for evaluated custom/function surfaces'
   ]
 ]);
 
