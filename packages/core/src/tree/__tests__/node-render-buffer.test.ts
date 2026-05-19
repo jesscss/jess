@@ -154,6 +154,23 @@ describe('renderNodeToBuffer', () => {
     expect(writer.toString()).toBe('');
   });
 
+  it('uses instance-owned native buffer render methods before resolving', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = {
+      resolve() {
+        throw new Error('renderNodeToBuffer should use native instance render');
+      },
+      render(_context: Context, target: typeof buffer) {
+        target.parts.push('instance-output');
+        return 'instance-output';
+      }
+    };
+
+    expect(renderNodeToBuffer(node, context, buffer)).toBe('instance-output');
+    expect(buffer.parts).toEqual(['instance-output']);
+  });
+
   it('renders child nodes into an active writer without using the string helper name', () => {
     const context = new Context();
     const writer = new OutputWriter();

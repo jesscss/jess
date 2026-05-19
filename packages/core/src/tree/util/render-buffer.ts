@@ -291,6 +291,11 @@ export function renderNodeToString(
 }
 
 function hasNativeBufferRender(node: RenderBufferNode): node is NativeRenderBufferNode {
+  const ownDescriptor = Object.getOwnPropertyDescriptor(node, 'render');
+  if (typeof ownDescriptor?.value === 'function' && ownDescriptor.value.length >= 2) {
+    return true;
+  }
+
   let proto = getObjectPrototype(node);
   while (proto) {
     const descriptor = Object.getOwnPropertyDescriptor(proto, 'render');
