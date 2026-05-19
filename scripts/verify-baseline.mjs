@@ -31,6 +31,15 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/coverage\//
 ];
 
+const FULL_BASELINE_PATH_PATTERNS = [
+  /^scripts\/verify-baseline\.mjs$/,
+  /^scripts\/verify-node-copy-frontier\.mjs$/,
+  /^scripts\/verify-render-buffer-frontier\.mjs$/,
+  /^scripts\/verify-materialization-frontier\.mjs$/,
+  /^package\.json$/,
+  /^pnpm-lock\.yaml$/
+];
+
 function run(name, args, opts = {}) {
   const { cwd = ROOT } = opts;
   const cmd = [name, ...args].join(' ');
@@ -150,6 +159,12 @@ function packageDirsFromFiles(files) {
   return [...dirs];
 }
 
+function shouldRunFullBaselineForFiles(files) {
+  return files.some(file =>
+    FULL_BASELINE_PATH_PATTERNS.some(pattern => pattern.test(file))
+  );
+}
+
 /**
  * Packages to run baseline checks for:
  * - Changed baseline packages
@@ -196,8 +211,12 @@ const { revDeps, nameToDir } = buildBaselineGraph();
 let packagesToCheck = [...BASELINE_PACKAGE_DIRS].sort();
 if (CHANGED_ONLY) {
   const changedFiles = changedFilesAgainstUpstream();
-  const changedDirs = packageDirsFromFiles(changedFiles);
-  packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
+  if (shouldRunFullBaselineForFiles(changedFiles)) {
+    console.log('Verify baseline (--changed): baseline gate or root dependency changed; running full baseline.');
+  } else {
+    const changedDirs = packageDirsFromFiles(changedFiles);
+    packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
+  }
   if (packagesToCheck.length === 0) {
     console.log('Verify baseline (--changed): no baseline packages changed or affected. Running frontier checks only.');
     runFrontierChecks();
