@@ -56,6 +56,10 @@ it is for the current direction and next seams, not a historical pass log.
   per-iteration body copies. The node-copy frontier still reports the expected
   direct loop-body child-copy seam in `control.ts`; remove that only with a real
   loop eval-surface replacement, not by hiding the scanner output.
+- The stateful loop parity guard intentionally checks that native render and
+  eval serialization stay aligned. It does not bless or change the exact
+  same-iteration `$while` mutation timing; settle that as a runtime semantics
+  change before changing expectations.
 - The old per-node render-buffer checklist is done enough to be history. Do not
   re-create it. The useful question now is whether a seam still materializes an
   output tree when it could stream or use smaller contextual state.
@@ -74,6 +78,8 @@ it is for the current direction and next seams, not a historical pass log.
      selector placement, or output ownership.
    - Reusable-leaf helpers are acceptable only for containers that still prove
      they need an owned surface.
+   - The node-copy frontier intentionally ignores BitSet `.clone()` calls;
+     those are selector-index data copies, not AST ownership copies.
 3. **Replace loop eval surfaces without losing semantics.**
    - `$for` and `$while` still derive an owned `Rules` eval surface with copied
      direct loop-body children through the expected `control.ts` seam. The next

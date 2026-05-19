@@ -44,8 +44,9 @@ selector placement truly needs one.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. It now also reports the
   expected remaining loop eval-surface child-copy seam in `control.ts`; that is
-  visible debt, not a hidden pass. New copy/clone sites must prove an ownership
-  need before they land.
+  visible debt, not a hidden pass. The scan ignores BitSet `.clone()` calls
+  because those are immutable selector-index data, not AST ownership surfaces.
+  New copy/clone sites must prove an ownership need before they land.
 - `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
   parsers, the Less fixture corpus, the less-compat plugin suite, and the
   frontier, package-export, and node-constructor metadata scans. `--changed`
@@ -60,8 +61,11 @@ selector placement truly needs one.
   `$while` render per iteration. `$while` carries loop-body variable mutation
   in a small live `ScopeFrame`, not in a full output tree. `$while` has focused
   guards for native buffer rendering, no `Rules.clone()` loop-body surface, and
-  no scalar leaf copy/clone inside per-iteration body copies. Direct sync
-  `render(context)` remains source syntax for compatibility.
+  no scalar leaf copy/clone inside per-iteration body copies. A focused guard
+  keeps stateful `$while`/`$for` native render aligned with eval serialization;
+  changing same-iteration `$while` mutation visibility is a semantics decision,
+  not a copy-reduction cleanup. Direct sync `render(context)` remains source
+  syntax for compatibility.
 
 ## Remaining Architecture Work
 
