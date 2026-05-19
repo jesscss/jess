@@ -12,6 +12,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
 
 const ROOT = process.cwd();
 const CHANGED_ONLY = process.argv.includes('--changed');
@@ -29,18 +30,6 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/\.docusaurus\//,
   /\/dist\//,
   /\/coverage\//
-];
-
-const FULL_BASELINE_PATH_PATTERNS = [
-  /^scripts\/verify-baseline\.mjs$/,
-  /^scripts\/precommit-changed-checks\.mjs$/,
-  /^scripts\/verify-node-copy-frontier\.mjs$/,
-  /^scripts\/verify-render-buffer-frontier\.mjs$/,
-  /^scripts\/verify-materialization-frontier\.mjs$/,
-  /^scripts\/verify-package-exports\.mjs$/,
-  /^scripts\/verify-node-constructor-metadata\.mjs$/,
-  /^package\.json$/,
-  /^pnpm-lock\.yaml$/
 ];
 
 function run(name, args, opts = {}) {
@@ -175,12 +164,6 @@ function packageDirsFromFiles(files) {
     }
   }
   return [...dirs];
-}
-
-function shouldRunFullBaselineForFiles(files) {
-  return files.some(file =>
-    FULL_BASELINE_PATH_PATTERNS.some(pattern => pattern.test(file))
-  );
 }
 
 /**
