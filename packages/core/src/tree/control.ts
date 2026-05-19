@@ -92,10 +92,10 @@ function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: No
 }
 
 function createIterationEvalSurface(sourceRules: Rules): Rules {
-  const iterationRules = copyWithReusableLeaves(sourceRules);
-  if (!(iterationRules instanceof Rules)) {
-    throw new TypeError('Copied loop body must remain Rules');
-  }
+  const iterationRules = createDerivedIterationOutputSurface(
+    sourceRules,
+    sourceRules.value.map(node => copyWithReusableLeaves(node))
+  );
   iterationRules.options.rulesVisibility = {
     ...iterationRules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY

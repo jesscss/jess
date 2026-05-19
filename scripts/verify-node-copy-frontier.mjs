@@ -21,7 +21,7 @@ const patterns = [
 ];
 const ordinaryCopyPattern = /\.copy\(/u;
 const ordinaryClonePattern = /\.clone\(/u;
-const loopEvalSurfaceCopyPattern = /copyWithReusableLeaves\(\s*sourceRules\s*\)/u;
+const loopEvalSurfaceCopyPattern = /sourceRules\.value\.map\(\s*node\s*=>\s*copyWithReusableLeaves\(node\)\s*\)/u;
 const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
@@ -122,7 +122,7 @@ for (const file of frontierFiles.filter(file => expectedRemaining.has(file))) {
   }
 }
 console.log('');
-console.log('Expected loop eval-surface copy seams:');
+console.log('Expected loop eval-surface child-copy seams:');
 for (const match of loopEvalSurfaceCopyMatches.filter(match => expectedLoopEvalSurfaceCopies.has(match.file))) {
   console.log(`- ${match.file}`);
   console.log(`  ${match.line}: ${match.text}`);
@@ -142,7 +142,7 @@ if (unexpected.length > 0) {
 
 if (unexpectedLoopEvalSurfaceCopies.length > 0) {
   console.log('');
-  console.log('Unexpected loop eval-surface copy seams:');
+  console.log('Unexpected loop eval-surface child-copy seams:');
   for (const match of unexpectedLoopEvalSurfaceCopies) {
     console.log(`- ${match.file}`);
     console.log(`  ${match.line}: ${match.text}`);
@@ -152,7 +152,7 @@ if (unexpectedLoopEvalSurfaceCopies.length > 0) {
 
 if (missingLoopEvalSurfaceCopies.length > 0) {
   console.log('');
-  console.log('Expected loop eval-surface copy seams with no remaining matches:');
+  console.log('Expected loop eval-surface child-copy seams with no remaining matches:');
   for (const file of missingLoopEvalSurfaceCopies) {
     console.log(`- ${file}`);
   }

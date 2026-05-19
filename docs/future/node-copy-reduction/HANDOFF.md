@@ -54,8 +54,8 @@ it is for the current direction and next seams, not a historical pass log.
 - `$while` currently has explicit focused guards for native buffer rendering,
   no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
   per-iteration body copies. The node-copy frontier still reports the expected
-  `copyWithReusableLeaves(sourceRules)` seam in `control.ts`; remove that only
-  with a real loop eval-surface replacement, not by hiding the scanner output.
+  direct loop-body child-copy seam in `control.ts`; remove that only with a real
+  loop eval-surface replacement, not by hiding the scanner output.
 - The old per-node render-buffer checklist is done enough to be history. Do not
   re-create it. The useful question now is whether a seam still materializes an
   output tree when it could stream or use smaller contextual state.
@@ -75,9 +75,10 @@ it is for the current direction and next seams, not a historical pass log.
    - Reusable-leaf helpers are acceptable only for containers that still prove
      they need an owned surface.
 3. **Replace loop eval surfaces without losing semantics.**
-   - `$for` and `$while` still derive an owned `Rules` eval surface through the
-     expected `control.ts` seam. The next win is to model per-iteration scope,
-     rule visibility, and `$while` mutation without copying the whole loop body.
+   - `$for` and `$while` still derive an owned `Rules` eval surface with copied
+     direct loop-body children through the expected `control.ts` seam. The next
+     win is to model per-iteration scope, rule visibility, and `$while`
+     mutation without copied body children.
    - Keep `verify:render-buffer-frontier` and the focused control tests green
      while changing this.
 4. **Reduce generated-output ownership carefully.**
