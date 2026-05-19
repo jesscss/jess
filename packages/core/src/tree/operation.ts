@@ -2,7 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
@@ -11,7 +11,7 @@ import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -81,16 +81,12 @@ export class Operation extends Node<OperationValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeResolved = (node: Node): string => {
-        return writeRenderText(
-          bufferOrOptions,
-          node.toTrimmedString(prepareRenderPrintState(context, options))
-        );
-      };
-      const resolved = this.evaluateOperands(context, 'resolve');
-      return isThenable(resolved)
-        ? (resolved as Promise<Node>).then(writeResolved)
-        : writeResolved(resolved as Node);
+      return writeMaybeRenderedOutput(
+        bufferOrOptions,
+        this.evaluateOperands(context, 'resolve'),
+        context,
+        options
+      );
     }
     return super.render(context, bufferOrOptions);
   }

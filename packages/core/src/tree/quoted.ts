@@ -2,12 +2,12 @@ import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
 export type QuotedOptions = {
@@ -76,16 +76,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeResolved = (node: Quoted | Node): string => {
-        return writeRenderText(
-          bufferOrOptions,
-          node.toTrimmedString(prepareRenderPrintState(context, options))
-        );
-      };
-      const resolved = this.evaluateValue(context, 'resolve');
-      return isThenable(resolved)
-        ? (resolved as Promise<Quoted | Node>).then(writeResolved)
-        : writeResolved(resolved as Quoted | Node);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.evaluateValue(context, 'resolve'), context, options);
     }
     return super.render(context, bufferOrOptions);
   }

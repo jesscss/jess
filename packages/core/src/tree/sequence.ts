@@ -6,11 +6,11 @@ import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -166,16 +166,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeResolved = (node: Node): string => {
-        return writeRenderText(
-          bufferOrOptions,
-          node.toTrimmedString(prepareRenderPrintState(context, options))
-        );
-      };
-      const resolved = this.resolveValue(context);
-      return isThenable(resolved)
-        ? (resolved as Promise<Node>).then(writeResolved)
-        : writeResolved(resolved as Node);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }

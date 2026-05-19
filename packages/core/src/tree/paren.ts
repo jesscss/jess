@@ -6,12 +6,12 @@ import { Node, defineType, F_NON_STATIC } from './node.js';
 import { Dimension } from './dimension.js';
 import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
 function getCallReferenceKey(name: unknown): string {
@@ -130,16 +130,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeResolved = (node: Node): string => {
-        return writeRenderText(
-          bufferOrOptions,
-          node.toTrimmedString(prepareRenderPrintState(context, options))
-        );
-      };
-      const resolved = this.evaluateValue(context, 'resolve');
-      return isThenable(resolved)
-        ? (resolved as Promise<Node>).then(writeResolved)
-        : writeResolved(resolved as Node);
+      return writeMaybeRenderedOutput(
+        bufferOrOptions,
+        this.evaluateValue(context, 'resolve'),
+        context,
+        options
+      );
     }
     return super.render(context, bufferOrOptions);
   }

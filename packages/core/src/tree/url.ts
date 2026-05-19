@@ -1,13 +1,13 @@
 import { Node, defineType } from './node.js';
 import type { Context } from '../context.js';
-import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
 /**
@@ -63,16 +63,7 @@ export class Url extends Node<Node> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeResolved = (node: Node): string => {
-        return writeRenderText(
-          bufferOrOptions,
-          node.toTrimmedString(prepareRenderPrintState(context, options))
-        );
-      };
-      const resolved = this.resolveValue(context);
-      return isThenable(resolved)
-        ? (resolved as Promise<Node>).then(writeResolved)
-        : writeResolved(resolved as Node);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }
