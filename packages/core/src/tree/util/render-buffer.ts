@@ -126,15 +126,16 @@ export function isRenderBuffer(value: unknown): value is RenderBuffer {
   return kind === 'flat' || kind === 'segmented';
 }
 
-export function writeRenderText(buffer: RenderBuffer, text: string): void {
+export function writeRenderText(buffer: RenderBuffer, text: string): string {
   if (text === '') {
-    return;
+    return text;
   }
   if (buffer.kind === 'flat') {
     buffer.parts.push(text);
-    return;
+    return text;
   }
   buffer.segments.push(text);
+  return text;
 }
 
 export function writeRenderedOutput(

@@ -39,9 +39,7 @@ export class Rest extends Node<Node | string | undefined> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const text = `...$${this.name}`;
-      writeRenderText(bufferOrOptions, text);
-      return text;
+      return writeRenderText(bufferOrOptions, `...$${this.name}`);
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }

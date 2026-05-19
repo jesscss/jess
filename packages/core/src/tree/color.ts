@@ -571,9 +571,10 @@ export class Color extends Node<ColorData, ColorOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const text = this.toTrimmedString(getPrintOptions({ ...options, context }));
-      writeRenderText(bufferOrOptions, text);
-      return text;
+      return writeRenderText(
+        bufferOrOptions,
+        this.toTrimmedString(getPrintOptions({ ...options, context }))
+      );
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }

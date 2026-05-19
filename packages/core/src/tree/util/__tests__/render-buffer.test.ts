@@ -37,8 +37,8 @@ describe('RenderBuffer', () => {
   it('keeps flat mode as plain string parts', () => {
     const buffer = createRenderBuffer('flat');
 
-    writeRenderText(buffer, '.a');
-    writeRenderText(buffer, ' { color: red; }');
+    expect(writeRenderText(buffer, '.a')).toBe('.a');
+    expect(writeRenderText(buffer, ' { color: red; }')).toBe(' { color: red; }');
 
     expect(buffer.parts).toEqual(['.a', ' { color: red; }']);
     expect(finalizeRenderBuffer(buffer, finalizers)).toBe('.a { color: red; }');

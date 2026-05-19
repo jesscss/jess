@@ -123,6 +123,9 @@ it is for current direction and next seams, not a historical pass log.
   already-evaluated node into the active render buffer with
   `prepareRenderPrintState(...)`. It is deliberately small: node classes still
   own the semantic decision about whether to eval, resolve, or write directly.
+- `writeRenderText(...)` appends already-rendered text and returns the same
+  text, so direct visible leaves can keep their buffer render methods tiny
+  without wrapping the write in local variables.
 - `writeMaybeRenderedOutput(...)` is the promise-aware variant for the same
   narrow case. Use it to remove repeated async write boilerplate after the node
   has already made its semantic eval/render choice; do not let it become a

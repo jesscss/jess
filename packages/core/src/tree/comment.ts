@@ -38,9 +38,7 @@ export class Comment extends Node<string, CommentOptions> {
       return '';
     }
     if (isRenderBuffer(bufferOrOptions)) {
-      const text = this.toTrimmedString(options);
-      writeRenderText(bufferOrOptions, text);
-      return text;
+      return writeRenderText(bufferOrOptions, this.toTrimmedString(options));
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }

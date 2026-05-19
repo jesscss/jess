@@ -152,6 +152,9 @@ Use these rules when deciding whether a remaining copy/clone call is real debt:
   "already-evaluated node becomes text in the active render buffer" case. Keep
   using node-local eval helpers to decide what to evaluate; do not grow this
   helper into another output tree or dispatch layer.
+- `writeRenderText(...)` writes already-rendered text and returns that text.
+  Use it for direct leaf output; do not route evaluating nodes through it before
+  they have made their own eval/render decision.
 - `writeMaybeRenderedOutput(...)` is only the promise-aware form of the same
   operation. It removes repeated local `isThenable(...)` plumbing after a node
   has already chosen its eval surface; it must not decide which node should be

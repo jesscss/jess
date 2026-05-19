@@ -82,8 +82,7 @@ export class Any<
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      writeRenderText(bufferOrOptions, this.value);
-      return this.value;
+      return writeRenderText(bufferOrOptions, this.value);
     }
     return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
