@@ -141,6 +141,32 @@ describe('AtRule', () => {
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
+  it('keeps lifted rules context until async at-rule prelude eval settles', async () => {
+    const savedRulesContext = rules([]);
+    const parentAtRule = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: savedRulesContext
+    });
+    const outerRulesContext = rules([parentAtRule]);
+    const prelude = any('screen');
+    prelude.addFlags(F_MAY_ASYNC);
+    prelude.eval = async (evalContext: Context) => {
+      await Promise.resolve();
+      expect(evalContext.rulesContext).toBe(outerRulesContext);
+      return any('print');
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude,
+      rules: rules([])
+    });
+    context.rulesContext = savedRulesContext;
+
+    await expect(Promise.resolve(node.eval(context))).resolves.toBe(node);
+    expect(node.value.prelude?.toTrimmedString()).toBe('print');
+    expect(context.rulesContext).toBe(savedRulesContext);
+  });
+
   it('restores at-rule frame when body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),

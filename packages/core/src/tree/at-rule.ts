@@ -529,16 +529,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           let out: MaybePromise<Node>;
           try {
             out = prelude.eval(context);
-          } finally {
+          } catch (error) {
             context.rulesContext = savedRulesContext;
+            throw error;
           }
           if (isThenable(out)) {
-            return (out as Promise<Node>).then((n) => {
-              node.value.prelude = n;
-              return undefined;
-            });
+            return (out as Promise<Node>).then(
+              (n) => {
+                node.value.prelude = n;
+                context.rulesContext = savedRulesContext;
+                return undefined;
+              },
+              (error: unknown) => {
+                context.rulesContext = savedRulesContext;
+                throw error;
+              }
+            );
           }
           node.value.prelude = out as Node;
+          context.rulesContext = savedRulesContext;
         }
       },
       () => {
