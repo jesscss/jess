@@ -50,6 +50,13 @@ async function timeAsyncMs(fn: () => Promise<void>): Promise<number> {
 
 /** Budget: tests must finish within this many ms or we consider them broken. */
 const BUDGET_MS = 2000;
+const LOG_PERF = process.env.JESS_PERF_LOGS === '1';
+
+function logPerf(message: string): void {
+  if (LOG_PERF) {
+    console.info(message);
+  }
+}
 
 // ─── Test 1: expandCompoundWithPseudoSelectors combinatorial explosion ───────
 
@@ -70,22 +77,14 @@ describe('OOM stress: expandCompoundWithPseudoSelectors', () => {
       expansions = expandCompoundWithPseudoSelectors(comp);
     });
 
-    // Document the current (broken) behavior so we can see the count:
-    console.info(`expandCompoundWithPseudoSelectors produced ${expansions.length} expansions in ${ms.toFixed(1)}ms`);
+    logPerf(`expandCompoundWithPseudoSelectors produced ${expansions.length} expansions in ${ms.toFixed(1)}ms`);
 
     // ASSERTION: the expansion count must not be exponential.
     // 3 :is() blocks × 3 alternatives each = at most 3+3+3+1 = 10 linear items, NOT 1+3+9+27=40.
     // For now we simply assert the operation finishes within budget.
     expect(ms).toBeLessThan(BUDGET_MS);
 
-    // REGRESSION MARKER: if this is > 10 the combinatorial bug is present.
-    // We track it but don't hard-fail yet (let it serve as a diagnostic).
-    if (expansions.length > 10) {
-      console.warn(
-        `[REGRESSION] expandCompoundWithPseudoSelectors returned ${expansions.length} expansions `
-        + `(expected ≤ 10). Combinatorial explosion is present.`
-      );
-    }
+    logPerf(`expandCompoundWithPseudoSelectors linear target: expected <= 10, actual ${expansions.length}`);
   });
 
   it('does NOT exponentially blow up with 5 :is() blocks of 4 alternatives each', () => {
@@ -103,15 +102,14 @@ describe('OOM stress: expandCompoundWithPseudoSelectors', () => {
       expansions = expandCompoundWithPseudoSelectors(comp);
     });
 
-    console.info(`5x:is(4) → ${expansions.length} expansions in ${ms.toFixed(1)}ms`);
+    logPerf(`5x:is(4) -> ${expansions.length} expansions in ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
 
-    if (expansions.length > 20) {
-      console.warn(
-        `[REGRESSION] 5x:is(4) produced ${expansions.length} expansions; expected ≤ 20 linearly.`
-      );
-    }
+    logPerf(`5x:is(4) linear target: expected <= 20, actual ${expansions.length}`);
   });
+
+  it.todo('keeps three chained :is() pseudo selector alternatives linear');
+  it.todo('keeps five chained :is() pseudo selector alternatives linear');
 });
 
 // ─── Test 2: areCompoundSelectorsEquivalent O(N²) on expanded forms ──────────
@@ -134,7 +132,7 @@ describe('OOM stress: areCompoundSelectorsEquivalent', () => {
       result = areCompoundSelectorsEquivalent(a, b);
     });
 
-    console.info(`areCompoundSelectorsEquivalent took ${ms.toFixed(1)}ms`);
+    logPerf(`areCompoundSelectorsEquivalent took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 });
@@ -156,7 +154,7 @@ describe('OOM stress: findExtendableLocations on large selector lists', () => {
       result = findExtendableLocations(target, find);
     });
 
-    console.info(`findExtendableLocations(500 items) took ${ms.toFixed(1)}ms, hasMatches=${result!.hasMatches}`);
+    logPerf(`findExtendableLocations(500 items) took ${ms.toFixed(1)}ms, hasMatches=${result!.hasMatches}`);
     expect(ms).toBeLessThan(BUDGET_MS);
     expect(result!.hasMatches).toBe(true);
   });
@@ -185,7 +183,7 @@ describe('OOM stress: findExtendableLocations on large selector lists', () => {
       }
     }
 
-    console.info(`100×10 findExtendableLocations total: ${totalMs.toFixed(1)}ms`);
+    logPerf(`100x10 findExtendableLocations total: ${totalMs.toFixed(1)}ms`);
     expect(totalMs).toBeLessThan(BUDGET_MS);
   });
 });
@@ -214,7 +212,7 @@ describe('OOM stress: applyExtendsToSelector restart loop', () => {
       result = applyExtendsToSelector(baseSelector, instructions);
     });
 
-    console.info(`applyExtendsToSelector(50 instructions) took ${ms.toFixed(1)}ms`);
+    logPerf(`applyExtendsToSelector(50 instructions) took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
     // All 50 targets should have been extended, so the result should differ from the input.
     expect(result!.valueOf()).not.toBe(baseSelector.valueOf());
@@ -242,7 +240,7 @@ describe('OOM stress: applyExtendsToSelector restart loop', () => {
       result = applyExtendsToSelector(targetSelector, instructions);
     });
 
-    console.info(`applyExtendsToSelector(200 instructions, 1 match) took ${ms.toFixed(1)}ms`);
+    logPerf(`applyExtendsToSelector(200 instructions, 1 match) took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 });
@@ -282,7 +280,7 @@ describe('OOM stress: full eval pipeline', () => {
       css = await renderNodeToString(node, context, { context });
     });
 
-    console.info(`100-ruleset extend eval took ${ms.toFixed(1)}ms`);
+    logPerf(`100-ruleset extend eval took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
     // The base class should now include all children
     expect(css).toContain('.base');
@@ -317,7 +315,7 @@ describe('OOM stress: full eval pipeline', () => {
       await node.eval(context);
     });
 
-    console.info(`50×50 distinct extend eval took ${ms.toFixed(1)}ms`);
+    logPerf(`50x50 distinct extend eval took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 
@@ -355,7 +353,7 @@ describe('OOM stress: full eval pipeline', () => {
       await node.eval(context);
     });
 
-    console.info(`:is()×:is() compound extend took ${ms.toFixed(1)}ms`);
+    logPerf(`:is()x:is() compound extend took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 });
@@ -380,7 +378,7 @@ describe('OOM stress: selectorCompare SelectorList normalization', () => {
       result = findExtendableLocations(listA, listB);
     });
 
-    console.info(`SelectorList(200) comparison took ${ms.toFixed(1)}ms`);
+    logPerf(`SelectorList(200) comparison took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 });
@@ -414,10 +412,10 @@ describe('Benchmark: walkAndExtend vs legacy extendSelector', () => {
       }
     });
 
-    console.info(`${ITERS}× extend on ${N}-item SelectorList:`);
-    console.info(`  walk:   ${walkMs.toFixed(1)}ms`);
-    console.info(`  legacy: ${legacyMs.toFixed(1)}ms`);
-    console.info(`  speedup: ${(legacyMs / walkMs).toFixed(1)}×`);
+    logPerf(`${ITERS}x extend on ${N}-item SelectorList:`);
+    logPerf(`  walk:   ${walkMs.toFixed(1)}ms`);
+    logPerf(`  legacy: ${legacyMs.toFixed(1)}ms`);
+    logPerf(`  speedup: ${(legacyMs / walkMs).toFixed(1)}x`);
     // Walk should complete within budget
     expect(walkMs).toBeLessThan(BUDGET_MS);
   });
@@ -449,10 +447,10 @@ describe('Benchmark: walkAndExtend vs legacy extendSelector', () => {
       }
     });
 
-    console.info(`${ITERS}×10 diagnostic checks on ${N}-item SelectorList:`);
-    console.info(`  wouldExtendChange: ${walkMs.toFixed(1)}ms`);
-    console.info(`  applyExtends:      ${legacyMs.toFixed(1)}ms`);
-    console.info(`  speedup:           ${(legacyMs / walkMs).toFixed(1)}×`);
+    logPerf(`${ITERS}x10 diagnostic checks on ${N}-item SelectorList:`);
+    logPerf(`  wouldExtendChange: ${walkMs.toFixed(1)}ms`);
+    logPerf(`  applyExtends:      ${legacyMs.toFixed(1)}ms`);
+    logPerf(`  speedup:           ${(legacyMs / walkMs).toFixed(1)}x`);
     expect(walkMs).toBeLessThan(BUDGET_MS);
   });
 });
