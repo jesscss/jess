@@ -480,7 +480,8 @@ describe('renderNodeToBuffer', () => {
         node: whileNode({
           condition: bool(false),
           rules: rules([decl({ name: 'color', value: any('red') })])
-        })
+        }),
+        expectedParts: []
       },
       {
         surface: 'MixinCollection',

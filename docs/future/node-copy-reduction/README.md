@@ -43,6 +43,8 @@ selector placement truly needs one.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. New copy/clone sites must
   prove an ownership need before they land.
+- `$if`, `$for`, and `$while` all have explicit buffer eval output. Direct sync
+  `render(context)` remains source syntax for compatibility.
 
 ## Remaining Architecture Work
 
@@ -56,25 +58,19 @@ Priority seams:
    synchronous resolve-then-serialize compatibility fallback. Keep it until the
    public sync callers are audited, but do not route new compiler behavior
    through it.
-2. **Loop convergence**: `$if` and `$for` already have explicit buffer eval
-   output. `$while` should converge with that model: repeatedly evaluate its
-   condition in the live context, emit each successful body pass through the
-   render buffer, and stop when the condition becomes false or a bounded
-   iteration guard fails. This is closer to `$for` or recursive mixins than to
-   a separate semantic problem.
-3. **Materialization seams**: find remaining code that resolves/evals a whole
+2. **Materialization seams**: find remaining code that resolves/evals a whole
    subtree only to immediately call `toTrimmedString(...)`. Convert only when
    focused tests prove the node can stream children or use a smaller owned
    output surface.
-4. **Generated selector/output ownership**: selector expansion, extend output,
+3. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
    them by pattern.
-5. **Function/mixin argument surfaces**: metadata-backed functions still need
+4. **Function/mixin argument surfaces**: metadata-backed functions still need
    copied raw-argument ownership for `this.rawArgs`, `this.args()`,
    preprocessing, lazy params, validation, and `@arguments`-style behavior.
    Plain functions should keep receiving positional args directly.
-6. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
+5. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
    and similar render/eval shadow state are suspect surfaces. Keep them only
    where they express live scope or placement state better than copied nodes.
 

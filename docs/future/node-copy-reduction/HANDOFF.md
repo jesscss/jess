@@ -38,42 +38,36 @@ it is for the current direction and next seams, not a historical pass log.
 - The compiler render phase writes through `Rules.render(...)` into a flat
   render buffer. Production code should not call `renderNodeToBuffer(...)`,
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`.
+- `$if`, `$for`, and `$while` all have explicit buffer eval output. Direct sync
+  `render(context)` remains source syntax for compatibility.
 - The old per-node render-buffer checklist is done enough to be history. Do not
   re-create it. The useful question now is whether a seam still materializes an
   output tree when it could stream or use smaller contextual state.
 
 ## Next Seams
 
-1. **Implement `$while` eval/render convergence.**
-   - Treat `$while` as the iterative sibling of `$for` and recursive mixins:
-     evaluate the condition in the live context, render the body for each true
-     pass, and stop on false or a bounded iteration guard.
-   - Preserve direct sync `render(context)` source syntax until sync callers are
-     intentionally migrated.
-   - Add focused tests beside the existing `$if` / `$for` control tests before
-     changing behavior.
-2. **Audit remaining materialization boundaries.**
+1. **Audit remaining materialization boundaries.**
    - Search for eval/resolve paths that immediately serialize with
      `toTrimmedString(...)`.
    - Convert only when the node can stream children or keep a smaller owned
      surface without changing scope, registration, async, selector, or trivia
      behavior.
-3. **Keep copy/clone pressure low.**
+2. **Keep copy/clone pressure low.**
    - A new production `.copy()` or `.clone()` site is a regression unless it
      carries explicit scope, registry, import/reference, merge, generated
      selector placement, or output ownership.
    - Reusable-leaf helpers are acceptable only for containers that still prove
      they need an owned surface.
-4. **Reduce generated-output ownership carefully.**
+3. **Reduce generated-output ownership carefully.**
    - Selector expansion, extend output, direct comment children, and root
      `Rules` serializer behavior are special because they produce placement
      output. Change them only with parentage, visibility, and output-order tests.
-5. **Preserve function/mixin raw argument contracts.**
+4. **Preserve function/mixin raw argument contracts.**
    - Metadata-backed functions may need copied raw args for `this.rawArgs`,
      `this.args()`, preprocessing, lazy params, validation, and
      `@arguments`-style behavior.
    - Plain functions should keep receiving positional args directly.
-6. **Audit context shadow state.**
+5. **Audit context shadow state.**
    - `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and similar state are
      acceptable only when they model live scope or placement better than copied
      nodes.

@@ -359,22 +359,75 @@ describe('Control Nodes', () => {
     `);
   });
 
-  it('keeps direct $while resolve(context) on source syntax without eval stamping', () => {
+  it('resolves false $while output without touching render state', async () => {
     const context = new Context();
     const node = new While({
-      condition: bool(true),
+      condition: bool(false),
       rules: rules([decl({ name: 'color', value: any('red') })])
     });
 
-    const resolved = node.resolve(context);
+    const resolved = await node.resolve(context);
 
-    expect(resolved).toBe(node);
+    expect(resolved).toBeInstanceOf(Rules);
+    expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('keeps $while source syntax through root render until loop eval semantics exist', async () => {
+  it('evaluates repeated $while body output through root render', async () => {
+    const context = new Context();
+    let calls = 0;
+    const root = rules([
+      new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going',
+            fn: () => bool(++calls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+
+    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+      color: red;
+      color: red;
+    `);
+    expect(calls).toBe(3);
+  });
+
+  it('writes evaluated $while output into render buffers without public resolve', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    let calls = 0;
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+    node.resolve = () => {
+      throw new Error('$while buffer render should use evalNode');
+    };
+
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      color: red;
+      color: red;
+    `);
+    expect(buffer.parts.join('')).toBeString(`
+      color: red;
+      color: red;
+    `);
+    expect(calls).toBe(3);
+  });
+
+  it('throws when $while exceeds its iteration guard', async () => {
     const context = new Context();
     const root = rules([
       new While({
@@ -383,12 +436,7 @@ describe('Control Nodes', () => {
       })
     ]);
 
-    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
-      $while (true) {
-        color: red;
-      }
-
-    `);
+    await expect(Promise.resolve().then(() => renderNodeToString(root, context))).rejects.toThrow('$while exceeded 10000 iterations');
   });
 
   it('adopts $while condition and rules as children', () => {
