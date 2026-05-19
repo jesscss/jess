@@ -44,6 +44,10 @@ selector placement truly needs one.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. New copy/clone sites must
   prove an ownership need before they land.
+- `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
+  parsers, the Less fixture corpus, the less-compat plugin suite, and the
+  frontier scans. `--changed` may narrow package work, but changes to the gate
+  scripts or root dependency metadata intentionally run the full baseline.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
   `$while` render per iteration. `$while` carries loop-body variable mutation
@@ -102,7 +106,9 @@ pnpm run verify:node-copy-frontier
 pnpm run verify:render-buffer-frontier
 pnpm run verify:materialization-frontier
 pnpm run test:less:test-data
+pnpm --filter ./packages/jess-plugin-less-compat test
 pnpm run verify:baseline
+pnpm run verify:baseline -- --changed
 ```
 
 ## Working Rule
