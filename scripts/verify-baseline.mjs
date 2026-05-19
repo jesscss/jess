@@ -33,6 +33,7 @@ const NON_SOURCE_PATH_PATTERNS = [
 
 const FULL_BASELINE_PATH_PATTERNS = [
   /^scripts\/verify-baseline\.mjs$/,
+  /^scripts\/precommit-changed-checks\.mjs$/,
   /^scripts\/verify-node-copy-frontier\.mjs$/,
   /^scripts\/verify-render-buffer-frontier\.mjs$/,
   /^scripts\/verify-materialization-frontier\.mjs$/,
