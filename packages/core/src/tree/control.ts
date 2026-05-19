@@ -204,6 +204,60 @@ function iterableToNode(iterable: ForIterable): Node {
   );
 }
 
+function getForBindingInfo(pattern: ForPattern): {
+  bindingDecls: VarDeclaration[];
+  bindingNames: string[];
+} {
+  const bindingDecls = getBindingDeclarations(pattern);
+  if (bindingDecls.length === 0) {
+    throw new Error('Invalid $for header: missing binding variable');
+  }
+  return {
+    bindingDecls,
+    bindingNames: bindingDecls.map(entry => entry.value.name.valueOf())
+  };
+}
+
+async function createForIterationSurface(
+  originalRules: Rules,
+  context: Context,
+  bindingDecls: VarDeclaration[],
+  bindingNames: string[],
+  value: Node,
+  key: number | string | Node,
+  counter: number
+): Promise<Rules> {
+  const resolvedValue = await value.eval(context);
+  let resolvedKey: Node;
+  if (typeof key === 'number') {
+    resolvedKey = new Num(key + 1);
+  } else if (typeof key === 'string' && key === 'value') {
+    resolvedKey = new Num(counter);
+  } else if (isNode(key)) {
+    resolvedKey = await key.eval(context);
+  } else {
+    resolvedKey = new Any(String(key), { role: 'property' });
+  }
+
+  const iterationRules = createIterationEvalSurface(originalRules);
+
+  const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
+  const liveSlots = new Map<string, BindingCell>();
+  for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
+    const bindingDecl = bindingDecls[i]!;
+    liveSlots.set(bindingNames[i]!, {
+      value: bindings[i]!,
+      sourceNode: bindingDecl,
+      readonly: bindingDecl.options?.readonly
+    });
+  }
+  const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
+    ? context.rulesContext.getScopeFrame()
+    : undefined;
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+  return iterationRules;
+}
+
 export type IfBranch = {
   /** Undefined means "else" branch */
   condition?: Node;
@@ -336,45 +390,22 @@ export class For extends Node<StructuredLoopValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     const { pattern, iterable } = this.value;
-    const bindingDecls = getBindingDeclarations(pattern);
-    const bindingNames = bindingDecls.map(entry => entry.value.name.valueOf());
-    if (bindingDecls.length === 0) {
-      throw new Error('Invalid $for header: missing binding variable');
-    }
+    const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const run = async (): Promise<Node> => {
       const outputRules: Node[] = [];
       let counter = 1;
       const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const resolvedValue = await value.eval(context);
-        let resolvedKey: Node;
-        if (typeof key === 'number') {
-          resolvedKey = new Num(key + 1);
-        } else if (typeof key === 'string' && key === 'value') {
-          resolvedKey = new Num(counter);
-        } else if (isNode(key)) {
-          resolvedKey = await key.eval(context);
-        } else {
-          resolvedKey = new Any(String(key), { role: 'property' });
-        }
-
-        const iterationRules = createIterationEvalSurface(originalRules);
-
-        const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
-        const liveSlots = new Map<string, BindingCell>();
-        for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
-          const bindingDecl = bindingDecls[i]!;
-          liveSlots.set(bindingNames[i]!, {
-            value: bindings[i]!,
-            sourceNode: bindingDecl,
-            readonly: bindingDecl.options?.readonly
-          });
-        }
-        const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
-          ? context.rulesContext.getScopeFrame()
-          : undefined;
-        iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+        const iterationRules = await createForIterationSurface(
+          originalRules,
+          context,
+          bindingDecls,
+          bindingNames,
+          value,
+          key,
+          counter
+        );
         counter++;
         const result = await iterationRules.eval(context);
 
@@ -453,11 +484,37 @@ export class For extends Node<StructuredLoopValue> {
     return w.getSince(mark);
   }
 
+  private async renderIterations(
+    context: Context,
+    buffer: RenderBuffer,
+    options?: PrintOptions
+  ): Promise<string> {
+    const { pattern, iterable, rules: originalRules } = this.value;
+    const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
+    const evaluatedIterable = await iterableToNode(iterable).eval(context);
+    let counter = 1;
+    let output = '';
+    for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+      const iterationRules = await createForIterationSurface(
+        originalRules,
+        context,
+        bindingDecls,
+        bindingNames,
+        value,
+        key,
+        counter
+      );
+      counter++;
+      output += await iterationRules.render(context, buffer, options);
+    }
+    return output;
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeEvaluatedControlOutput(this.evalNode(context), context, bufferOrOptions, options);
+      return this.renderIterations(context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }

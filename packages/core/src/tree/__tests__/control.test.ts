@@ -299,7 +299,7 @@ describe('Control Nodes', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('writes evaluated $for output into render buffers', async () => {
+  it('writes evaluated $for output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
     const node = makeLoop(
@@ -316,12 +316,15 @@ describe('Control Nodes', () => {
       resolveCalls++;
       return originalResolve.apply(this, args);
     };
+    node.evalNode = () => {
+      throw new Error('$for buffer render should stream iterations');
+    };
 
     const rendered = await node.render(context, buffer);
 
     expect(rendered).toContain('item: a');
     expect(rendered).toContain('item: b');
-    expect(buffer.segments).toEqual([rendered]);
+    expect(buffer.segments.join('')).toBe(rendered);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);

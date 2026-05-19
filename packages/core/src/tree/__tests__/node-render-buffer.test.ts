@@ -473,7 +473,8 @@ describe('renderNodeToBuffer', () => {
           pattern: { kind: 'single', value: vardecl({ name: 'tone', value: nil() }, { paramVar: true }) },
           iterable: { kind: 'node', value: list([any('red'), any('blue')]) },
           rules: rules([decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })])
-        })
+        }),
+        expectedParts: ['color: red;\n', 'color: blue;\n']
       },
       {
         surface: 'While',
