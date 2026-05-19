@@ -228,6 +228,52 @@ describe('Control Nodes', () => {
     await expect(renderNodeToString(root, context)).resolves.toBe('color: green;\n');
   });
 
+  it('evaluates nested control blocks inside ruleset render', async () => {
+    const context = new Context();
+    let whileCalls = 0;
+    const root = rules([
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: rules([
+          new If({
+            branches: [
+              {
+                condition: bool(true),
+                rules: rules([decl({ name: 'color', value: any('red') })])
+              }
+            ]
+          }),
+          makeLoop(
+            makePattern(['value'], 'single'),
+            list([new Any('10px'), new Any('20px')]),
+            rules([decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })])
+          ),
+          new While({
+            condition: call({
+              name: new JsFunction({
+                name: 'keep-going',
+                fn: () => bool(++whileCalls <= 2)
+              }),
+              args: list([])
+            }),
+            rules: rules([decl({ name: 'height', value: any('1px') })])
+          })
+        ])
+      })
+    ]);
+
+    await expect(renderNodeToString(root, context)).resolves.toBeString(`
+      .a {
+        color: red;
+        width: 10px;
+        width: 20px;
+        height: 1px;
+        height: 1px;
+      }
+    `);
+    expect(whileCalls).toBe(3);
+  });
+
   it('serializes $for source syntax through toTrimmedString()', () => {
     const node = makeLoop(
       makePattern(['value'], 'single'),

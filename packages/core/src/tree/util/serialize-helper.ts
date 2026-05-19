@@ -513,6 +513,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       });
     };
     const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
+    const originatesFromControl = (n: any): boolean => sourceChainHas(n, current =>
+      current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
+    );
     if (rulesToRender.length === 0) {
       return '';
     }
@@ -549,7 +552,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         seenValues = new Set<string>();
         seenDeclarationsByProp.set(declProp, seenValues);
       }
-      if (seenValues.has(declKey)) {
+      if (seenValues.has(declKey) && !originatesFromCall(node) && !originatesFromControl(node)) {
         skippedDuplicateDeclarations.add(i);
       } else {
         seenValues.add(declKey);
