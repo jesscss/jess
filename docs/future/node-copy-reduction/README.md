@@ -95,6 +95,7 @@ Priority seams:
 ```sh
 pnpm run verify:node-copy-frontier
 pnpm run verify:render-buffer-frontier
+pnpm run verify:materialization-frontier
 pnpm run test:less:test-data
 pnpm run verify:baseline
 ```
