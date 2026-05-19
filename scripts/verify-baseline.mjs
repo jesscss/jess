@@ -44,11 +44,19 @@ function run(name, args, opts = {}) {
   }
 }
 
+function runFrontierChecks() {
+  run('pnpm', ['run', 'verify:node-copy-frontier']);
+  run('pnpm', ['run', 'verify:render-buffer-frontier']);
+  run('pnpm', ['run', 'verify:materialization-frontier']);
+}
+
 function getWorkspaceDeps(manifest) {
   const deps = new Set();
   for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     const section = manifest[field];
-    if (!section || typeof section !== 'object') continue;
+    if (!section || typeof section !== 'object') {
+      continue;
+    }
     for (const [name, version] of Object.entries(section)) {
       if (typeof version === 'string' && version.startsWith('workspace:')) {
         deps.add(name);
@@ -65,12 +73,18 @@ function buildBaselineGraph() {
 
   const packagesDir = path.join(ROOT, 'packages');
   for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
     const dir = `packages/${entry.name}`;
     const pkgPath = path.join(ROOT, dir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
+    if (!existsSync(pkgPath)) {
+      continue;
+    }
     const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'));
-    if (manifest.name) nameToDir.set(manifest.name, dir);
+    if (manifest.name) {
+      nameToDir.set(manifest.name, dir);
+    }
   }
 
   for (const dir of BASELINE_PACKAGE_DIRS) {
@@ -78,7 +92,9 @@ function buildBaselineGraph() {
   }
   for (const dir of BASELINE_PACKAGE_DIRS) {
     const pkgPath = path.join(ROOT, dir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
+    if (!existsSync(pkgPath)) {
+      continue;
+    }
     const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const deps = getWorkspaceDeps(manifest);
     for (const depName of deps) {
@@ -100,7 +116,9 @@ function changedFilesAgainstUpstream() {
         cwd: ROOT,
         encoding: 'utf8'
       }).trim();
-      if (!base) continue;
+      if (!base) {
+        continue;
+      }
       const output = execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
         cwd: ROOT,
         encoding: 'utf8'
@@ -123,7 +141,9 @@ function packageDirsFromFiles(files) {
   const dirs = new Set();
   for (const file of filtered) {
     const match = file.match(/^packages\/[^/]+/);
-    if (match) dirs.add(match[0]);
+    if (match) {
+      dirs.add(match[0]);
+    }
   }
   return [...dirs];
 }
@@ -150,7 +170,9 @@ function getPackagesToCheck(changedDirs, revDeps, nameToDir) {
   // Baseline packages whose workspace deps changed
   for (const dir of BASELINE_PACKAGE_DIRS) {
     const pkgPath = path.join(ROOT, dir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
+    if (!existsSync(pkgPath)) {
+      continue;
+    }
     const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const deps = getWorkspaceDeps(manifest);
     for (const depName of deps) {
@@ -175,7 +197,9 @@ if (CHANGED_ONLY) {
   const changedDirs = packageDirsFromFiles(changedFiles);
   packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
   if (packagesToCheck.length === 0) {
-    console.log('Verify baseline (--changed): no baseline packages changed or affected. Skipping.');
+    console.log('Verify baseline (--changed): no baseline packages changed or affected. Running frontier checks only.');
+    runFrontierChecks();
+    console.log('\n>>> Verify baseline passed (frontier checks only).');
     process.exit(0);
   }
   console.log(
@@ -209,4 +233,6 @@ if (runJess) {
   run('pnpm', ['run', 'test:less:test-data']);
 }
 
-console.log('\n>>> Verify baseline passed (core + parsers + all-less.test.ts).');
+runFrontierChecks();
+
+console.log('\n>>> Verify baseline passed (core + parsers + all-less.test.ts + frontier checks).');
