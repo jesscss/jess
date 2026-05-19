@@ -589,6 +589,61 @@ describe('Control Nodes', () => {
     }
   });
 
+  it('reuses childless source-free scalar leaves in $while per-iteration body copies', async () => {
+    const context = new Context();
+    const originalCopy = Any.prototype.copy;
+    const originalClone = Any.prototype.clone;
+    let scalarCopies = 0;
+    let scalarClones = 0;
+    Any.prototype.copy = function copyForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this.valueOf() === 'red') {
+        scalarCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      let calls = 0;
+      const node = new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going',
+            fn: () => bool(++calls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+      expect(css).toBeString(`
+        color: red;
+        color: red;
+      `);
+      expect(calls).toBe(3);
+      expect(scalarCopies).toBe(0);
+      expect(scalarClones).toBe(0);
+    } finally {
+      Any.prototype.copy = originalCopy;
+      Any.prototype.clone = originalClone;
+    }
+  });
+
   it('throws when $while exceeds its iteration guard', async () => {
     const context = new Context();
     const root = rules([
