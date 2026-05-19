@@ -544,6 +544,51 @@ describe('Control Nodes', () => {
     expect(calls).toBe(3);
   });
 
+  it('builds $while iteration render surfaces without calling Rules.clone()', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const originalClone = Rules.prototype.clone;
+    let clonedLoopRules = 0;
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.value.some(node => (
+        node.type === 'Declaration'
+        && node.value?.name?.valueOf?.() === 'tick'
+      ))) {
+        clonedLoopRules++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      let calls = 0;
+      const loopRules = rules([
+        decl({ name: 'tick', value: any('yes') })
+      ]);
+      const node = new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going',
+            fn: () => bool(++calls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: loopRules
+      });
+
+      const css = await Promise.resolve(node.render(context, buffer));
+
+      expect(css).toContain('tick: yes');
+      expect(calls).toBe(3);
+      expect(clonedLoopRules).toBe(0);
+      expect(loopRules.parent).toBe(node);
+    } finally {
+      Rules.prototype.clone = originalClone;
+    }
+  });
+
   it('throws when $while exceeds its iteration guard', async () => {
     const context = new Context();
     const root = rules([
