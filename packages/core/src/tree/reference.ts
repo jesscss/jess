@@ -1459,42 +1459,47 @@ function finalizeRuntimeVarBindingResult(
     }
     return cloneReferenceResultNode(referenceNode, evald);
   };
-  const evaluatedBinding = (() => {
-    const savedRulesContext = context.rulesContext;
-    const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
-      bindingSource.options?.paramVar
-      || (
-        context.leakyRules !== true
-        && isNode(binding.value, N.Rules | N.Collection)
-      )
-    );
-    if (shouldUseDefinitionRulesContext) {
-      context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
+  const savedRulesContext = context.rulesContext;
+  const restoreRulesContext = () => {
+    context.rulesContext = savedRulesContext;
+  };
+  const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
+    bindingSource.options?.paramVar
+    || (
+      context.leakyRules !== true
+      && isNode(binding.value, N.Rules | N.Collection)
+    )
+  );
+  if (shouldUseDefinitionRulesContext) {
+    context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
+  }
+  let evaluatedBinding: MaybePromise<Node>;
+  try {
+    evaluatedBinding = evaluateReferenceValueNode(binding.value, context, {
+      preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
+      reuseSourceFreeLeaves: true
+    });
+  } catch (error) {
+    restoreRulesContext();
+    if (bindingSource) {
+      context.searchScope.delete(bindingSource);
     }
-    try {
-      return evaluateReferenceValueNode(binding.value, context, {
-        preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
-        reuseSourceFreeLeaves: true
-      });
-    } catch (error) {
-      context.rulesContext = savedRulesContext;
-      if (bindingSource) {
-        context.searchScope.delete(bindingSource);
-      }
-      throw error;
-    } finally {
-      context.rulesContext = savedRulesContext;
-    }
-  })();
+    throw error;
+  }
   if (isThenable(evaluatedBinding)) {
     return Promise.resolve(evaluatedBinding)
-      .then(finalizeRuntimeBinding, (error) => {
+      .then((evald) => {
+        restoreRulesContext();
+        return finalizeRuntimeBinding(evald);
+      }, (error) => {
+        restoreRulesContext();
         if (bindingSource) {
           context.searchScope.delete(bindingSource);
         }
         throw error;
       });
   }
+  restoreRulesContext();
   return finalizeRuntimeBinding(evaluatedBinding);
 }
 

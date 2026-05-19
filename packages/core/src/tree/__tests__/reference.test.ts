@@ -1,13 +1,29 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, F_MAY_ASYNC, F_NON_STATIC, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { buildScopeFrame } from '../scope-frame.js';
 let context: Context;
+let expectedAsyncRulesContext: RulesClass | undefined;
+
+class AsyncRulesContextAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override async eval(evalContext: Context) {
+    await Promise.resolve();
+    expect(evalContext.rulesContext).toBe(expectedAsyncRulesContext);
+    return any(this.value);
+  }
+}
 
 describe('reference', () => {
   beforeEach(() => {
     context = new Context();
+    expectedAsyncRulesContext = undefined;
   });
   describe('serialization', () => {
     it('renders a variable reference through toTrimmedString()', () => {
@@ -103,6 +119,32 @@ describe('reference', () => {
       expect(resolveCalls).toBe(0);
       expect(refNode.evaluated).toBe(false);
       expect(refNode.preEvaluated).toBe(false);
+    });
+
+    it('keeps definition rules context until async live-slot value eval settles', async () => {
+      const definitionRules = rules([]);
+      const paramDecl = vardecl({ name: any('tone'), value: any('blue') }, { paramVar: true });
+      definitionRules.push(paramDecl);
+      expectedAsyncRulesContext = definitionRules;
+      const asyncValue = new AsyncRulesContextAny('red');
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: list([asyncValue]),
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+
+      const resolved = await ref({ key: 'tone' }, { type: 'variable' }).eval(context);
+
+      expect(resolved.toTrimmedString()).toBe('red');
+      expect(context.rulesContext).toBe(runtimeScope);
     });
 
     it('resolves a variable value without touching render state', async () => {
