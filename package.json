@@ -62,6 +62,7 @@
     "test:less:test-data": "vitest --config vitest.less-test-data.config.ts packages/jess/test/less/all-less.test.ts",
     "verify:public-packages": "node scripts/verify-public-package-consumers.mjs",
     "verify:package-exports": "node scripts/verify-package-exports.mjs",
+    "verify:node-constructor-metadata": "node scripts/verify-node-constructor-metadata.mjs",
     "bench:css:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/css-parser",
     "bench:less:ref": "node scripts/bench-compare-ref.mjs --package @jesscss/less-parser",
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
