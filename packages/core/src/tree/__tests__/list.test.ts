@@ -196,6 +196,23 @@ describe('List', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('returns static lists without resolving child values', async () => {
+    const first = any('one');
+    const second = any('two');
+    const listNode = list([first, second]);
+    first.resolve = () => {
+      throw new Error('static list children should not resolve');
+    };
+    second.resolve = () => {
+      throw new Error('static list children should not resolve');
+    };
+
+    const resolved = await listNode.resolve(context);
+
+    expect(resolved).toBe(listNode);
+    expect(resolved.toTrimmedString()).toBe('one, two');
+  });
+
   it('keeps source list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({

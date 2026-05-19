@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { defineType, Node } from './node.js';
+import { defineType, F_STATIC, Node } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
@@ -168,6 +168,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private resolveValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     const values = new Array<Node>(this.value.length);
     const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
       const out = item.resolve(context);
