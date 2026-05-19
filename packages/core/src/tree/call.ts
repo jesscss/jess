@@ -15,8 +15,8 @@ import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeMaybeRenderedOutput,
-  writeRenderText
+  writeMaybeRenderText,
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
 function stringifyValueOf(value: unknown): string {
@@ -318,9 +318,10 @@ export class Call extends Node<CallValue, CallOptions> {
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
       const prepared = prepareRenderPrintState(context, options);
-      const rendered = this.renderPlainFunctionCall(this, context, prepared);
-      const write = (text: string): string => writeRenderText(bufferOrOptions, text);
-      return isThenable(rendered) ? rendered.then(write) : write(rendered);
+      return writeMaybeRenderText(
+        bufferOrOptions,
+        this.renderPlainFunctionCall(this, context, prepared)
+      );
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (typeof this.value.name === 'string') {

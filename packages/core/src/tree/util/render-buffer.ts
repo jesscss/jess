@@ -138,6 +138,12 @@ export function writeRenderText(buffer: RenderBuffer, text: string): string {
   return text;
 }
 
+export function writeMaybeRenderText(buffer: RenderBuffer, text: MaybePromise<string>): MaybePromise<string> {
+  return isThenable(text)
+    ? text.then(resolved => writeRenderText(buffer, resolved))
+    : writeRenderText(buffer, text);
+}
+
 export function writeRenderedOutput(
   buffer: RenderBuffer,
   node: RenderableOutput,
@@ -251,11 +257,7 @@ export function renderNodeToBuffer(
   if (hasNativeBufferRender(node)) {
     return node.render(context, buffer, options);
   }
-  const rendered = renderNodeToWriter(node, context, options);
-  const writeRendered = (text: string): string => writeRenderText(buffer, text);
-  return isThenable(rendered)
-    ? rendered.then(writeRendered)
-    : writeRendered(rendered);
+  return writeMaybeRenderText(buffer, renderNodeToWriter(node, context, options));
 }
 
 export function renderNodeToWriter(

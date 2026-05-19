@@ -7,12 +7,12 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderText
+  writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -177,16 +177,7 @@ export class Interpolated<
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const writeResolved = (node: Any<Role>): string => {
-        return writeRenderText(
-          bufferOrOptions,
-          node.toTrimmedString(prepareRenderPrintState(context, options))
-        );
-      };
-      const resolved = this.resolveValue(context);
-      return isThenable(resolved)
-        ? (resolved as Promise<Any<Role>>).then(writeResolved)
-        : writeResolved(resolved as Any<Role>);
+      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
     return super.render(context, bufferOrOptions);
   }
