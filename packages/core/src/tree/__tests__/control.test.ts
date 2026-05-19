@@ -485,6 +485,33 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('restores rulesContext when $while streaming throws', async () => {
+    const context = new Context();
+    const scope = rules([]);
+    const buffer = createRenderBuffer('flat');
+    const node = new While({
+      condition: bool(true),
+      rules: rules([
+        decl({
+          name: 'color',
+          value: call({
+            name: new JsFunction({
+              name: 'explode',
+              fn: () => {
+                throw new Error('boom');
+              }
+            }),
+            args: list([])
+          })
+        })
+      ])
+    });
+    context.rulesContext = scope;
+
+    await expect(Promise.resolve(node.render(context, buffer))).rejects.toThrow('boom');
+    expect(context.rulesContext).toBe(scope);
+  });
+
   it('writes evaluated $while output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
