@@ -103,6 +103,42 @@ function createIterationEvalSurface(sourceRules: Rules): Rules {
   return iterationRules;
 }
 
+function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
+  const stateRules = createDerivedIterationOutputSurface(sourceRules);
+  const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
+    ? context.rulesContext.getScopeFrame()
+    : undefined;
+  stateRules.scopeFrame = buildScopeFrame(undefined, stateRules, parentFrame, new Map());
+  return stateRules;
+}
+
+function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rules {
+  const iterationRules = createIterationEvalSurface(sourceRules);
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame());
+  return iterationRules;
+}
+
+async function syncWhileState(
+  stateRules: Rules,
+  iterationRules: Rules,
+  context: Context
+): Promise<void> {
+  const stateFrame = stateRules.getScopeFrame();
+  const iterationFrame = iterationRules.getScopeFrame();
+  for (const [name, bucket] of iterationFrame.declarationBucketsByName) {
+    const last = bucket[bucket.length - 1];
+    if (!last) {
+      continue;
+    }
+    const value = await last.cell.value.eval(context);
+    stateFrame.liveSlotsByName.set(name, {
+      value,
+      sourceNode: last.sourceNode,
+      readonly: last.cell.readonly
+    });
+  }
+}
+
 export type ForPattern =
   | {
     kind: 'single';
@@ -572,24 +608,33 @@ export class While extends Node<WhileValue> {
     const run = async (): Promise<Node> => {
       const outputRules: Node[] = [];
       const originalRules = this.value.rules;
+      const stateRules = createWhileStateSurface(originalRules, context);
+      const savedRulesContext = context.rulesContext;
       let iterations = 0;
-      while (true) {
-        const condition = await this.value.condition.eval(context);
-        if (!(condition instanceof Bool && condition.value === true)) {
-          break;
+      context.rulesContext = stateRules;
+      try {
+        while (true) {
+          const condition = await this.value.condition.eval(context);
+          if (!(condition instanceof Bool && condition.value === true)) {
+            break;
+          }
+          iterations++;
+          if (iterations > MAX_WHILE_ITERATIONS) {
+            throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+          }
+          const iterationRules = createWhileIterationSurface(originalRules, stateRules);
+          const result = await iterationRules.eval(context);
+          if (isNode(result, N.Rules)) {
+            await syncWhileState(stateRules, result, context);
+            result.scopeFrame = undefined;
+            outputRules.push(result);
+          } else {
+            await syncWhileState(stateRules, iterationRules, context);
+            outputRules.push(result);
+          }
         }
-        iterations++;
-        if (iterations > MAX_WHILE_ITERATIONS) {
-          throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
-        }
-        const iterationRules = createIterationEvalSurface(originalRules);
-        const result = await iterationRules.eval(context);
-        if (isNode(result, N.Rules)) {
-          result.scopeFrame = undefined;
-          outputRules.push(result);
-        } else {
-          outputRules.push(result);
-        }
+      } finally {
+        context.rulesContext = savedRulesContext;
       }
       if (outputRules.length === 0) {
         return createDerivedIterationOutputSurface(originalRules);
@@ -608,19 +653,27 @@ export class While extends Node<WhileValue> {
     options?: PrintOptions
   ): Promise<string> {
     const originalRules = this.value.rules;
+    const stateRules = createWhileStateSurface(originalRules, context);
+    const savedRulesContext = context.rulesContext;
     let iterations = 0;
     let output = '';
-    while (true) {
-      const condition = await this.value.condition.eval(context);
-      if (!(condition instanceof Bool && condition.value === true)) {
-        break;
+    context.rulesContext = stateRules;
+    try {
+      while (true) {
+        const condition = await this.value.condition.eval(context);
+        if (!(condition instanceof Bool && condition.value === true)) {
+          break;
+        }
+        iterations++;
+        if (iterations > MAX_WHILE_ITERATIONS) {
+          throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+        }
+        const iterationRules = createWhileIterationSurface(originalRules, stateRules);
+        output += await iterationRules.render(context, buffer, options);
+        await syncWhileState(stateRules, iterationRules, context);
       }
-      iterations++;
-      if (iterations > MAX_WHILE_ITERATIONS) {
-        throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
-      }
-      const iterationRules = createIterationEvalSurface(originalRules);
-      output += await iterationRules.render(context, buffer, options);
+    } finally {
+      context.rulesContext = savedRulesContext;
     }
     return output;
   }

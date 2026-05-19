@@ -15,6 +15,7 @@ import {
   any,
   bool,
   call,
+  condition,
   decl,
   expr,
   interpolated,
@@ -24,7 +25,10 @@ import {
   ref,
   rules,
   ruleset,
-  sel
+  sel,
+  num,
+  op,
+  vardecl
 } from '../index.js';
 import { Context } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
@@ -448,6 +452,37 @@ describe('Control Nodes', () => {
       color: red;
     `);
     expect(calls).toBe(3);
+  });
+
+  it('lets $while body mutation advance the next condition', async () => {
+    const context = new Context();
+    const root = rules([
+      vardecl({ name: 'i', value: num(0) }),
+      new While({
+        condition: condition([
+          ref({ key: 'i' }, { type: 'variable' }),
+          '<',
+          num(3)
+        ]),
+        rules: rules([
+          vardecl({
+            name: 'i',
+            value: op([
+              ref({ key: 'i' }, { type: 'variable' }),
+              '+',
+              num(1)
+            ])
+          }),
+          decl({ name: 'tick', value: any('yes') })
+        ])
+      })
+    ]);
+
+    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+      tick: yes;
+      tick: yes;
+      tick: yes;
+    `);
   });
 
   it('writes evaluated $while output into render buffers without public resolve/eval wrapper', async () => {
