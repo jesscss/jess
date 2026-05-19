@@ -275,7 +275,10 @@ if (MODE === 'upstream') {
 }
 
 if (changedPackages.length === 0) {
-  console.log('No staged package changes. Skipping package checks.');
+  console.log(MODE === 'upstream'
+    ? 'No package changes against upstream. Skipping package checks.'
+    : 'No staged package changes. Skipping package checks.'
+  );
   if (MODE === 'upstream' && baselineRan) {
     console.log('\nPre-push package checks passed.');
   }
