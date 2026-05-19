@@ -5,49 +5,64 @@ import { lessFragments, lessTokens } from '../src/lessTokens.js';
 import { LessRecursiveParser, type TokenMap } from '../src/lessRecursiveParser.js';
 import * as productions from '../src/productions/index.js';
 
+type RuleFactory = (this: LessRecursiveParser, T: TokenMap) => unknown;
+type GrammarAction = () => unknown;
+type RuleMetadata = {
+  originalGrammarAction?: unknown;
+};
+
+function createLessTokenMap(): TokenMap {
+  return createLexerDefinition(lessFragments(), lessTokens()).T;
+}
+
+function isRuleMetadata(value: unknown): value is RuleMetadata {
+  return !!value && (typeof value === 'object' || typeof value === 'function');
+}
+
 class DebugLessRecursiveParser extends LessRecursiveParser {
-  override topLevelRuleRecord(name: string, def: Function) {
-    process.stderr.write(`recording ${name}\n`);
+  readonly recordedRuleNames: string[] = [];
+
+  override topLevelRuleRecord(name: string, def: GrammarAction) {
+    this.recordedRuleNames.push(name);
     return super.topLevelRuleRecord(name, def);
   }
 }
 
 describe('debug self analysis', () => {
   it('verifies registered rule metadata', () => {
-    const { T } = createLexerDefinition(
-      lessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
-      lessTokens()
-    );
-
-    const parser = new DebugLessRecursiveParser(T as TokenMap, {});
+    const T = createLessTokenMap();
+    const parser = new DebugLessRecursiveParser(T, {});
 
     for (const [name, factory] of Object.entries(productions)) {
       if (typeof factory !== 'function') {
         continue;
       }
-      const produced = (factory as (this: LessRecursiveParser, T: TokenMap) => unknown).call(parser, T as TokenMap);
+      const produced = (factory as RuleFactory).call(parser, T);
       expect(typeof produced, `${name} factory return type`).toBe('function');
-      expect(typeof (parser as Record<string, unknown>)[name], `${name} parser rule type`).toBe('function');
+      expect(typeof Reflect.get(parser, name), `${name} parser rule type`).toBe('function');
     }
 
     for (const name of parser.definedRulesNames) {
-      const rule = (parser as Record<string, unknown>)[name] as Record<string, unknown>;
-      expect(typeof rule.originalGrammarAction, `${name} originalGrammarAction type`).toBe('function');
+      const rule = Reflect.get(parser, name);
+      expect(isRuleMetadata(rule), `${name} rule metadata`).toBe(true);
+      expect(isRuleMetadata(rule) ? typeof rule.originalGrammarAction : undefined, `${name} originalGrammarAction type`).toBe('function');
     }
   });
 
   it('traces performSelfAnalysis progress', () => {
-    const { T } = createLexerDefinition(
-      lessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
-      lessTokens()
-    );
-
-    const parser = new DebugLessRecursiveParser(T as TokenMap, {});
+    const T = createLessTokenMap();
+    const parser = new DebugLessRecursiveParser(T, {});
     const originalTraceInit = parser.TRACE_INIT.bind(parser);
-    parser.TRACE_INIT = ((phase: string, action: () => unknown) => {
-      process.stderr.write(`trace ${phase}\n`);
+    const phases: string[] = [];
+    parser.TRACE_INIT = (phase: string, action: () => unknown) => {
+      phases.push(phase);
       return originalTraceInit(phase, action);
-    }) as typeof parser.TRACE_INIT;
+    };
     parser.performSelfAnalysis();
+
+    expect(parser.recordedRuleNames).toEqual(parser.definedRulesNames);
+    expect(phases).toContain('performSelfAnalysis');
+    expect(phases).toContain('Grammar Recording');
+    expect(phases).toContain('Grammar Validations');
   });
 });
