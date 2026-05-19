@@ -234,16 +234,16 @@ describe('jess-parser (variables)', () => {
   it('parses $var declaration', () => {
     const tree = parse('$color: red;');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    expect(rules?.data.some(n => isNode(n, N.VarDeclaration))).toBe(true);
+    expect(rules?.value.some(n => isNode(n, N.VarDeclaration))).toBe(true);
   });
 
   it('parses $var with dimension value', () => {
     const tree = parse('$size: 16px;');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const decl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    const decl = rules?.value.find(n => isNode(n, N.VarDeclaration));
     expect(isNode(decl, N.VarDeclaration)).toBe(true);
     if (isNode(decl, N.VarDeclaration)) {
-      expect(decl.data.name.valueOf()).toBe('size');
+      expect(decl.value.name.valueOf()).toBe('size');
     }
   });
 
@@ -290,37 +290,37 @@ describe('jess-parser (mixins)', () => {
   it('parses mixin definition (no params)', () => {
     const tree = parse('clearfix() { overflow: hidden; }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    expect(rules?.data.some(n => isNode(n, N.Mixin))).toBe(true);
+    expect(rules?.value.some(n => isNode(n, N.Mixin))).toBe(true);
   });
 
   it('mixin name is stored as Any node', () => {
     const tree = parse('clearfix() { overflow: hidden; }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const mixin = rules?.data.find(n => isNode(n, N.Mixin));
+    const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
     if (isNode(mixin, N.Mixin)) {
-      expect(String(mixin.data.name)).toBe('clearfix');
+      expect(String(mixin.value.name)).toBe('clearfix');
     }
   });
 
   it('parses mixin with parameters', () => {
     const tree = parse('button($bg, $color) { background: $bg; color: $color; }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const mixin = rules?.data.find(n => isNode(n, N.Mixin));
+    const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
   });
 
   it('parses mixin with default parameter value', () => {
     const tree = parse('mixin($x: 1px, $y: blue) { width: $x; color: $y; }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const mixin = rules?.data.find(n => isNode(n, N.Mixin));
+    const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
   });
 
   it('parses .mixin() (dot-prefixed name)', () => {
     const tree = parse('.clearfix() { overflow: hidden; }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    expect(rules?.data.some(n => isNode(n, N.Mixin))).toBe(true);
+    expect(rules?.value.some(n => isNode(n, N.Mixin))).toBe(true);
   });
 
   it('parses #mixin() (hash-prefixed name)', () => {
@@ -330,16 +330,16 @@ describe('jess-parser (mixins)', () => {
     expect(result.errors).toEqual([]);
     const rules = isNode(result.tree, N.Rules) ? result.tree : null;
     // .ns ruleset should be in the tree
-    expect(rules?.data.some(n => isNode(n, N.Ruleset))).toBe(true);
+    expect(rules?.value.some(n => isNode(n, N.Ruleset))).toBe(true);
   });
 
   it('parses mixin with guard', () => {
     const tree = parse('size($n) when ($n > 0) { width: $(n)px; }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const mixin = rules?.data.find(n => isNode(n, N.Mixin));
+    const mixin = rules?.value.find(n => isNode(n, N.Mixin));
     expect(isNode(mixin, N.Mixin)).toBe(true);
     if (isNode(mixin, N.Mixin)) {
-      expect(mixin.data.guard).toBeDefined();
+      expect(mixin.value.guard).toBeDefined();
     }
   });
 
@@ -367,9 +367,9 @@ describe('jess-parser (imports)', () => {
   it('parses @-compose (StyleImport type=compose)', () => {
     const tree = parse('@-compose "./base.jess";');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const si = rules?.data.find(n => isNode(n, N.StyleImport));
+    const si = rules?.value.find(n => isNode(n, N.StyleImport));
     expect(isNode(si, N.StyleImport) && si.options.type).toBe('compose');
-    expect(String(tree)).toContain('@-compose');
+    expect(isNode(si, N.StyleImport) && si.value.path.valueOf()).toBe('./base.jess');
   });
 
   it('parses @-compose with namespace', () => {
@@ -395,27 +395,29 @@ describe('jess-parser (imports)', () => {
   it('parses @-from with namespace import (JsImport)', () => {
     const tree = parse('@-from "./tokens.js" import * as tokens;');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    expect(rules?.data.some(n => isNode(n, N.JsImport))).toBe(true);
-    expect(String(tree)).toContain('@-from');
-    expect(String(tree)).toContain('import * as tokens');
+    const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(jsImport, N.JsImport) && jsImport.options.namespace).toBe('tokens');
   });
 
   it('parses @-from with named imports — parens form', () => {
     const tree = parse('@-from "./tokens.js" import ( primary, secondary );');
-    expect(String(tree)).toContain('@-from');
-    expect(String(tree)).toContain('import ( primary, secondary )');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(jsImport, N.JsImport) && jsImport.value.imports).toEqual(['primary', 'secondary']);
   });
 
   it('parses @-from with named imports — braces form', () => {
     const tree = parse('@-from "./tokens.js" import { primary, secondary };');
-    expect(String(tree)).toContain('@-from');
-    expect(String(tree)).toContain('import ( primary, secondary )');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(jsImport, N.JsImport) && jsImport.value.imports).toEqual(['primary', 'secondary']);
   });
 
   it('parses @-from with aliased imports', () => {
     const tree = parse('@-from "./tokens.js" import ( primary as p, secondary );');
-    expect(String(tree)).toContain('import ( p');
-    expect(String(tree)).toContain('secondary');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const jsImport = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(jsImport, N.JsImport) && jsImport.value.imports).toEqual([['primary', 'p'], 'secondary']);
   });
 });
 
@@ -425,7 +427,7 @@ describe('jess-parser (control flow)', () => {
   it('parses $if with condition', () => {
     const tree = parse('$if ($theme = dark) { .a { color: white; } }');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    expect(rules?.data.some(n => n.type === 'If')).toBe(true);
+    expect(rules?.value.some(n => n.type === 'If')).toBe(true);
     expect(String(tree)).toContain('$if');
   });
 
@@ -455,20 +457,20 @@ describe('jess-parser (collections)', () => {
     const tree = parse('$colors: { primary: #333; secondary: #666; };');
     expect(serializeTypes(tree)).toContainString('(Collection');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const varDecl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    const varDecl = rules?.value.find(n => isNode(n, N.VarDeclaration));
     expect(isNode(varDecl, N.VarDeclaration)).toBe(true);
     if (isNode(varDecl, N.VarDeclaration)) {
-      expect(isNode(varDecl.data.value, N.Collection)).toBe(true);
+      expect(isNode(varDecl.value.value, N.Collection)).toBe(true);
     }
   });
 
   it('parses collection with multiple entries', () => {
     const tree = parse('$theme: { primary: red; secondary: blue; accent: green; };');
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const varDecl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    const varDecl = rules?.value.find(n => isNode(n, N.VarDeclaration));
     expect(isNode(varDecl, N.VarDeclaration)).toBe(true);
     if (isNode(varDecl, N.VarDeclaration)) {
-      expect(isNode(varDecl.data.value, N.Collection)).toBe(true);
+      expect(isNode(varDecl.value.value, N.Collection)).toBe(true);
     }
   });
 });
