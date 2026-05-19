@@ -485,6 +485,47 @@ describe('Control Nodes', () => {
     `);
   });
 
+  it('keeps native loop render aligned with eval serialization for stateful loops', async () => {
+    const makeRoot = () => rules([
+      vardecl({ name: 'i', value: num(0) }),
+      new While({
+        condition: condition([
+          ref({ key: 'i' }, { type: 'variable' }),
+          '<',
+          num(3)
+        ]),
+        rules: rules([
+          vardecl({
+            name: 'i',
+            value: op([
+              ref({ key: 'i' }, { type: 'variable' }),
+              '+',
+              num(1)
+            ])
+          }),
+          decl({ name: 'tick', value: ref({ key: 'i' }, { type: 'variable' }) })
+        ])
+      }),
+      makeLoop(
+        makePattern(['value'], 'single'),
+        list([any('a'), any('b')]),
+        rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+      )
+    ]);
+
+    const renderCss = await renderNodeToString(makeRoot(), new Context());
+    const evald = await makeRoot().eval(new Context());
+
+    expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
+    expect(renderCss).toBeString(`
+      tick: 1;
+      tick: 1;
+      tick: 2;
+      item: a;
+      item: b;
+    `);
+  });
+
   it('restores rulesContext when $while streaming throws', async () => {
     const context = new Context();
     const scope = rules([]);
