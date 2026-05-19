@@ -5,13 +5,53 @@ import {
   Collection,
   Node,
   Rules,
-  VarDeclaration
+  VarDeclaration,
+  isNode,
+  type Node as NodeType
 } from '@jesscss/core';
 
 /** Use `any` for `this` to avoid structural incompatibility */
 type P = any;
 
 type AltContext = (ctx?: RuleContext) => Array<{ ALT: () => any; GATE?: () => boolean }>;
+
+function expectNode(value: unknown): NodeType {
+  if (isNode(value)) {
+    return value;
+  }
+  throw new Error('Expected parser production to return a Jess node');
+}
+
+function expectRules(value: unknown): Rules {
+  if (value instanceof Rules) {
+    return value;
+  }
+  throw new Error('Expected parser production to return Rules');
+}
+
+function isToken(value: unknown): value is IToken {
+  if (
+    typeof value === 'object'
+    && value !== null
+    && 'image' in value
+    && 'tokenType' in value
+    && 'startOffset' in value
+    && 'tokenTypeIdx' in value
+    && typeof value.image === 'string'
+    && typeof value.startOffset === 'number'
+    && typeof value.tokenTypeIdx === 'number'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function expectToken(value: unknown): IToken {
+  if (isToken(value)) {
+    return value;
+  }
+  throw new Error('Expected parser production to return a token');
+}
 
 function isJessMixinDefinitionStart($: P): boolean {
   const la1 = $.LA(1).tokenType;
@@ -25,15 +65,19 @@ function isJessMixinDefinitionStart($: P): boolean {
  * Collection literal body: `{ key: value; ... }` consumed and returned as Rules.
  * Caller must consume the trailing `;`.
  */
-export function jessCollection(this: P, T: TokenMap) {
+export function jessCollection(this: P, _T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
     $.CONSUME($.T.LCurly);
-    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Rules;
+    const rulesValue: unknown = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] });
     $.CONSUME($.T.RCurly);
     $.CONSUME($.T.Semi);
     const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    const rules = expectRules(rulesValue);
     return new Collection(rules.value, undefined, loc, $.context);
   };
 }
@@ -41,26 +85,31 @@ export function jessCollection(this: P, T: TokenMap) {
 /**
  * `$var: valueOrCollection;` → VarDeclaration
  */
-export function varDeclaration(this: P, T: TokenMap) {
+export function varDeclaration(this: P, _T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
 
-    const dvTok = $.CONSUME($.T.DollarVariable) as unknown as IToken;
-    const dvLoc = $.getLocationInfo(dvTok);
-    const varName = dvTok.image.slice(1);
+    const dvTokenValue: unknown = $.CONSUME($.T.DollarVariable);
 
     $.CONSUME($.T.Assign); // ':'
 
-    let valueNode: Node;
+    let valueNodeValue: unknown;
     if ($.LA(1).tokenType === $.T.LCurly) {
-      valueNode = $.SUBRULE($.jessCollection, { ARGS: [ctx] }) as unknown as Node;
+      valueNodeValue = $.SUBRULE($.jessCollection, { ARGS: [ctx] });
     } else {
-      valueNode = $.SUBRULE($.valueList, { ARGS: [ctx] }) as unknown as Node;
+      valueNodeValue = $.SUBRULE($.valueList, { ARGS: [ctx] });
       $.CONSUME($.T.Semi);
     }
 
     const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    const dvTok = expectToken(dvTokenValue);
+    const dvLoc = $.getLocationInfo(dvTok);
+    const varName = dvTok.image.slice(1);
+    const valueNode = expectNode(valueNodeValue);
     const nameNode = new Any(varName, { role: 'property' }, dvLoc, $.context);
     return new VarDeclaration({ name: nameNode, value: valueNode }, undefined, loc, $.context);
   };
@@ -69,31 +118,36 @@ export function varDeclaration(this: P, T: TokenMap) {
 /**
  * Bare `$foo[.bar][…];` at statement level — expression statement.
  */
-export function jessExprStatement(this: P, T: TokenMap) {
+export function jessExprStatement(this: P, _T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     // jessVarWithAccessors handles $var, $var.prop, $var[idx], etc.
-    const node = $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] }) as unknown as Node;
+    const nodeValue: unknown = $.SUBRULE($.jessVarWithAccessors, { ARGS: [ctx] });
     $.OPTION(() => $.CONSUME($.T.Semi));
-    return node;
+    return $.RECORDING_PHASE ? undefined : expectNode(nodeValue);
   };
 }
 
 /**
  * Override SCSS `main` to dispatch Jess-specific constructs first.
  */
-export function main(this: P, T: TokenMap) {
+export function main(this: P, _T: TokenMap) {
   const $ = this;
 
   return (ctx: RuleContext = {}) => {
     const jessAlt: AltContext = (innerCtx: RuleContext = {}) => [
-      // $if / $while
+      // $if
       {
         GATE: () => {
           const tt = $.LA(1).tokenType;
-          return tt === $.T.JessIf || tt === $.T.JessWhile;
+          return tt === $.T.JessIf;
         },
         ALT: () => $.SUBRULE($.jessIfStatement, { ARGS: [innerCtx] })
+      },
+      // $while
+      {
+        GATE: () => $.LA(1).tokenType === $.T.JessWhile,
+        ALT: () => $.SUBRULE($.jessWhileStatement, { ARGS: [innerCtx] })
       },
       // $for
       {
@@ -134,9 +188,9 @@ export function main(this: P, T: TokenMap) {
       $.resetGeneratedState();
     }
 
-    const rules: Node[] = [];
+    const rules: NodeType[] = [];
     let requiredSemi = false;
-    let lastRule: Node | undefined;
+    let lastRule: NodeType | undefined;
 
     $.MANY({
       GATE: () => !requiredSemi || (requiredSemi && (
@@ -169,7 +223,7 @@ export function main(this: P, T: TokenMap) {
   };
 }
 
-export function declarationList(this: P, T: TokenMap) {
+export function declarationList(this: P, _T: TokenMap) {
   const $ = this;
 
   const isJessDeclarationStart = () =>
@@ -180,9 +234,9 @@ export function declarationList(this: P, T: TokenMap) {
     || (($.LA(1).tokenType === $.T.Ident || $.LA(1).tokenType === $.T.PlainIdent) && !$.shouldTryQualifiedRuleInDeclarationList());
 
   return (ctx: RuleContext = {}) => {
-    const rules: Node[] = [];
+    const rules: NodeType[] = [];
     let requiredSemi = false;
-    let lastRule: Node | undefined;
+    let lastRule: NodeType | undefined;
 
     $.MANY({
       GATE: () => !requiredSemi || (requiredSemi && (

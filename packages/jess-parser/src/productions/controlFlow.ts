@@ -8,6 +8,7 @@ import {
   Nil,
   Rules,
   VarDeclaration,
+  While,
   isNode,
   type Node
 } from '@jesscss/core';
@@ -218,6 +219,31 @@ export function jessIfStatement(this: P, _T: TokenMap) {
         ...resolvedConditions.map((condition, index) => ({ condition, rules: resolvedBodies[index]! })),
         ...(elseBranch ? [{ rules: expectRules(elseBranch) }] : [])
       ]
+    }, undefined, loc, $.context);
+  };
+}
+
+/**
+ * `$while (cond) { rules }`
+ */
+export function jessWhileStatement(this: P, _T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+
+    $.CONSUME($.T.JessWhile);
+    const conditionValue: unknown = $.SUBRULE($.jessConditionInParens, { ARGS: [ctx] });
+    $.CONSUME($.T.LCurly);
+    const rulesValue: unknown = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] });
+    $.CONSUME($.T.RCurly);
+
+    const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    return new While({
+      condition: expectNode(conditionValue),
+      rules: expectRules(rulesValue)
     }, undefined, loc, $.context);
   };
 }

@@ -439,6 +439,13 @@ describe('jess-parser (control flow)', () => {
     const tree = parse('$for ($i in $items) { .item { color: red; } }');
     expect(String(tree)).toContain('$for');
   });
+
+  it('parses $while loop', () => {
+    const tree = parse('$while ($i < 3) { .item { color: red; } }');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    expect(rules?.value.some(n => n.type === 'While')).toBe(true);
+    expect(String(tree)).toContain('$while');
+  });
 });
 
 // ─── Jess Collections ────────────────────────────────────────────────────────
