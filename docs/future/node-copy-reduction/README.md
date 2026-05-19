@@ -45,8 +45,9 @@ selector placement truly needs one.
   prove an ownership need before they land.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
-  `$while` render per iteration. Direct sync `render(context)` remains source
-  syntax for compatibility.
+  `$while` render per iteration. `$while` carries loop-body variable mutation
+  in a small live `ScopeFrame`, not in a full output tree. Direct sync
+  `render(context)` remains source syntax for compatibility.
 
 ## Remaining Architecture Work
 
@@ -73,8 +74,9 @@ Priority seams:
    preprocessing, lazy params, validation, and `@arguments`-style behavior.
    Plain functions should keep receiving positional args directly.
 5. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
-   and similar render/eval shadow state are suspect surfaces. Keep them only
-   where they express live scope or placement state better than copied nodes.
+   loop live slots, and similar render/eval shadow state are suspect surfaces.
+   Keep them only where they express live scope or placement state better than
+   copied nodes.
 
 ## Guardrails
 

@@ -41,8 +41,9 @@ it is for the current direction and next seams, not a historical pass log.
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`.
 - `$if`, `$for`, and `$while` avoid control-wrapper materialization in buffer
   render. `$if` renders only the selected branch output; `$for` and `$while`
-  render per iteration. Direct sync `render(context)` remains source syntax for
-  compatibility.
+  render per iteration. `$while` loop-body variable mutation is carried in a
+  live `ScopeFrame` surface between iterations, not in a full output tree.
+  Direct sync `render(context)` remains source syntax for compatibility.
 - The old per-node render-buffer checklist is done enough to be history. Do not
   re-create it. The useful question now is whether a seam still materializes an
   output tree when it could stream or use smaller contextual state.
@@ -71,9 +72,9 @@ it is for the current direction and next seams, not a historical pass log.
      `@arguments`-style behavior.
    - Plain functions should keep receiving positional args directly.
 5. **Audit context shadow state.**
-   - `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and similar state are
-     acceptable only when they model live scope or placement better than copied
-     nodes.
+   - `Context.rulesContext`, `ScopeFrame.fallbackFrame`, loop live slots, and
+     similar state are acceptable only when they model live scope or placement
+     better than copied nodes.
 
 ## Render-Buffer Rules
 
