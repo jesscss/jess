@@ -25,6 +25,18 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/coverage\//
 ];
 
+const FULL_BASELINE_PATH_PATTERNS = [
+  /^scripts\/verify-baseline\.mjs$/,
+  /^scripts\/precommit-changed-checks\.mjs$/,
+  /^scripts\/verify-node-copy-frontier\.mjs$/,
+  /^scripts\/verify-render-buffer-frontier\.mjs$/,
+  /^scripts\/verify-materialization-frontier\.mjs$/,
+  /^scripts\/verify-package-exports\.mjs$/,
+  /^scripts\/verify-node-constructor-metadata\.mjs$/,
+  /^package\.json$/,
+  /^pnpm-lock\.yaml$/
+];
+
 function run(command, args, packageDir, options = {}) {
   const { required = SHOULD_BLOCK } = options;
   const rendered = [command, ...args].join(' ');
@@ -35,8 +47,12 @@ function run(command, args, packageDir, options = {}) {
   });
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
-  if (stdout) process.stdout.write(stdout);
-  if (stderr) process.stderr.write(stderr);
+  if (stdout) {
+    process.stdout.write(stdout);
+  }
+  if (stderr) {
+    process.stderr.write(stderr);
+  }
   if (result.status !== 0) {
     failures.push({
       packageDir,
@@ -51,7 +67,9 @@ function run(command, args, packageDir, options = {}) {
 }
 
 function writeTodoReport() {
-  if (failures.length === 0 || MODE !== 'upstream') return;
+  if (failures.length === 0 || MODE !== 'upstream') {
+    return;
+  }
   const now = new Date().toISOString();
   const lines = [
     '# Pre-push Check TODOs',
@@ -116,19 +134,34 @@ function changedFilesAgainstUpstream() {
       if (!base) {
         continue;
       }
-      const output = execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
-        cwd: ROOT,
-        encoding: 'utf8'
-      });
-      return output
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
+      return uniqueLines([
+        execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --cached --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        })
+      ]);
     } catch {
       // Try next fallback ref.
     }
   }
   return [];
+}
+
+function uniqueLines(outputs) {
+  return [...new Set(
+    outputs
+      .flatMap(output => output.split('\n'))
+      .map(line => line.trim())
+      .filter(Boolean)
+  )];
 }
 
 function packageDirs(files) {
@@ -142,6 +175,12 @@ function packageDirs(files) {
   return [...unique].sort();
 }
 
+function shouldRunFullBaselineForFiles(files) {
+  return files.some(file =>
+    FULL_BASELINE_PATH_PATTERNS.some(pattern => pattern.test(file))
+  );
+}
+
 function stagedLintableFiles(files, packageDir) {
   const prefix = `${packageDir}/`;
   return files.filter(file =>
@@ -151,7 +190,7 @@ function stagedLintableFiles(files, packageDir) {
 
 function hasCodeImpactingChanges(files, packageDir) {
   const prefix = `${packageDir}/`;
-  return files.some(file => {
+  return files.some((file) => {
     if (!file.startsWith(prefix)) {
       return false;
     }
@@ -237,21 +276,24 @@ if (files.length === 0) {
 }
 
 const changedPackages = packageDirs(files);
-if (changedPackages.length === 0) {
-  console.log('No staged package changes. Skipping package checks.');
-  process.exit(0);
-}
-
-console.log(`Checking ${changedPackages.length} changed package(s) [mode=${MODE}]...`);
-
 let baselineRan = false;
 if (MODE === 'upstream') {
-  const needsBaseline = changedPackages.some((pkg) => BASELINE_PACKAGES.has(pkg));
+  const needsBaseline = shouldRunFullBaselineForFiles(files) || changedPackages.some(pkg => BASELINE_PACKAGES.has(pkg));
   if (needsBaseline) {
     runVerifyBaseline();
     baselineRan = true;
   }
 }
+
+if (changedPackages.length === 0) {
+  console.log('No staged package changes. Skipping package checks.');
+  if (MODE === 'upstream' && baselineRan) {
+    console.log('\nPre-push package checks passed.');
+  }
+  process.exit(0);
+}
+
+console.log(`Checking ${changedPackages.length} changed package(s) [mode=${MODE}]...`);
 
 for (const packageDir of changedPackages) {
   const scripts = readPackageScripts(packageDir);
