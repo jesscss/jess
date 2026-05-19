@@ -130,19 +130,34 @@ function changedFilesAgainstUpstream() {
       if (!base) {
         continue;
       }
-      const output = execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
-        cwd: ROOT,
-        encoding: 'utf8'
-      });
-      return output
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
+      return uniqueLines([
+        execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --cached --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        })
+      ]);
     } catch {
       // Try next fallback ref
     }
   }
   return [];
+}
+
+function uniqueLines(outputs) {
+  return [...new Set(
+    outputs
+      .flatMap(output => output.split('\n'))
+      .map(line => line.trim())
+      .filter(Boolean)
+  )];
 }
 
 function packageDirsFromFiles(files) {
