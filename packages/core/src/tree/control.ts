@@ -54,6 +54,17 @@ function writeEvaluatedControlOutput(
   return writeRenderedOutput(buffer, node, context, options);
 }
 
+function writeMaybeEvaluatedControlOutput(
+  node: MaybePromise<Node>,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): MaybePromise<string> {
+  return isThenable(node)
+    ? (node as Promise<Node>).then(resolved => writeEvaluatedControlOutput(resolved, context, buffer, options))
+    : writeEvaluatedControlOutput(node, context, buffer, options);
+}
+
 function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
   const sourceOptions = sourceRules.options;
   const sourceLocation = sourceRules.location.length === 0
@@ -273,10 +284,7 @@ export class If extends Node<IfValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(node => writeEvaluatedControlOutput(node, context, bufferOrOptions, options))
-        : writeEvaluatedControlOutput(evaluated as Node, context, bufferOrOptions, options);
+      return writeMaybeEvaluatedControlOutput(this.evalNode(context), context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }
@@ -449,10 +457,7 @@ export class For extends Node<StructuredLoopValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(node => writeEvaluatedControlOutput(node, context, bufferOrOptions, options))
-        : writeEvaluatedControlOutput(evaluated as Node, context, bufferOrOptions, options);
+      return writeMaybeEvaluatedControlOutput(this.evalNode(context), context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }
@@ -527,10 +532,7 @@ export class While extends Node<WhileValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const evaluated = this.evalNode(context);
-      return isThenable(evaluated)
-        ? (evaluated as Promise<Node>).then(node => writeEvaluatedControlOutput(node, context, bufferOrOptions, options))
-        : writeEvaluatedControlOutput(evaluated as Node, context, bufferOrOptions, options);
+      return writeMaybeEvaluatedControlOutput(this.evalNode(context), context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }
