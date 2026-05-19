@@ -398,7 +398,7 @@ describe('Control Nodes', () => {
     expect(calls).toBe(3);
   });
 
-  it('writes evaluated $while output into render buffers without public resolve', async () => {
+  it('writes evaluated $while output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     let calls = 0;
@@ -414,6 +414,9 @@ describe('Control Nodes', () => {
     });
     node.resolve = () => {
       throw new Error('$while buffer render should use evalNode');
+    };
+    node.evalNode = () => {
+      throw new Error('$while buffer render should stream iterations');
     };
 
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`

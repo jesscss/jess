@@ -528,11 +528,34 @@ export class While extends Node<WhileValue> {
     return run();
   }
 
+  private async renderIterations(
+    context: Context,
+    buffer: RenderBuffer,
+    options?: PrintOptions
+  ): Promise<string> {
+    const originalRules = this.value.rules;
+    let iterations = 0;
+    let output = '';
+    while (true) {
+      const condition = await this.value.condition.eval(context);
+      if (!(condition instanceof Bool && condition.value === true)) {
+        break;
+      }
+      iterations++;
+      if (iterations > MAX_WHILE_ITERATIONS) {
+        throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+      }
+      const iterationRules = createIterationEvalSurface(originalRules);
+      output += await iterationRules.render(context, buffer, options);
+    }
+    return output;
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeEvaluatedControlOutput(this.evalNode(context), context, bufferOrOptions, options);
+      return this.renderIterations(context, bufferOrOptions, options);
     }
     return renderControlSourceSyntax(this, context, options);
   }
