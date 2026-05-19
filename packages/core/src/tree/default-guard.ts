@@ -34,9 +34,7 @@ export class DefaultGuard extends Node<string> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const text = context.isDefault ? 'true' : 'false';
-      writeRenderText(bufferOrOptions, text);
-      return text;
+      return writeRenderText(bufferOrOptions, context.isDefault ? 'true' : 'false');
     }
     const printOptions = getPrintOptions({ ...bufferOrOptions, context });
     const w = printOptions.writer!;

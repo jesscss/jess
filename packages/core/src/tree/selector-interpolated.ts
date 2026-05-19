@@ -61,9 +61,10 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeResolved = (selector: Selector): string => {
-        const text = selector.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderText(
+          bufferOrOptions,
+          selector.toTrimmedString(prepareRenderPrintState(context, options))
+        );
       };
       const resolved = this.resolveValue(context);
       return isThenable(resolved)

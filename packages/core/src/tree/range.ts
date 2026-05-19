@@ -44,9 +44,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      const text = this.toTrimmedString(options);
-      writeRenderText(bufferOrOptions, text);
-      return text;
+      return writeRenderText(bufferOrOptions, this.toTrimmedString(options));
     }
     return super.render(context, bufferOrOptions);
   }
