@@ -513,8 +513,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       });
     };
     const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
+    const originatesFromMixin = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Mixin');
     const originatesFromControl = (n: any): boolean => sourceChainHas(n, current =>
       current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
+    );
+    const fromGeneratedOutput = (n: any): boolean => sourceChainHas(n, current =>
+      current?.options?.isMixinOutput === true
     );
     if (rulesToRender.length === 0) {
       return '';
@@ -552,7 +556,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         seenValues = new Set<string>();
         seenDeclarationsByProp.set(declProp, seenValues);
       }
-      if (seenValues.has(declKey) && !originatesFromCall(node) && !originatesFromControl(node)) {
+      if (
+        seenValues.has(declKey)
+        && !originatesFromCall(node)
+        && !originatesFromMixin(node)
+        && !originatesFromControl(node)
+        && !fromGeneratedOutput(node)
+      ) {
         skippedDuplicateDeclarations.add(i);
       } else {
         seenValues.add(declKey);

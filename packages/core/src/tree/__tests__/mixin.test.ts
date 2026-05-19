@@ -177,6 +177,35 @@ describe('Mixin', () => {
       `);
     });
 
+    it('emits repeated direct declarations for each mixin output placement', async () => {
+      const mixinDef = mixin({
+        name: any('.repeat'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) }),
+            call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          color: red;
+          color: red;
+        }
+      `);
+    });
+
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
       const originalClone = RulesClass.prototype.clone;
       let clonedMixinRoots = 0;
