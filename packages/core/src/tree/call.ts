@@ -319,10 +319,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // keep calc-frame cleanup instead of falling back to source text.
       const prepared = prepareRenderPrintState(context, options);
       const rendered = this.renderPlainFunctionCall(this, context, prepared);
-      const write = (text: string): string => {
-        writeRenderText(bufferOrOptions, text);
-        return text;
-      };
+      const write = (text: string): string => writeRenderText(bufferOrOptions, text);
       return isThenable(rendered) ? rendered.then(write) : write(rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);

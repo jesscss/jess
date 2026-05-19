@@ -144,9 +144,10 @@ export function writeRenderedOutput(
   context: Context,
   options?: PrintOptions
 ): string {
-  const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-  writeRenderText(buffer, text);
-  return text;
+  return writeRenderText(
+    buffer,
+    node.toTrimmedString(prepareRenderPrintState(context, options))
+  );
 }
 
 export function writeMaybeRenderedOutput(
@@ -180,9 +181,7 @@ export function writeRootAwareRenderedOutput(
   context: Context,
   options?: PrintOptions
 ): string {
-  const text = renderedOutputToString(source, node, context, options);
-  writeRenderText(buffer, text);
-  return text;
+  return writeRenderText(buffer, renderedOutputToString(source, node, context, options));
 }
 
 export function writeMaybeRootAwareRenderedOutput(
@@ -253,10 +252,7 @@ export function renderNodeToBuffer(
     return node.render(context, buffer, options);
   }
   const rendered = renderNodeToWriter(node, context, options);
-  const writeRendered = (text: string): string => {
-    writeRenderText(buffer, text);
-    return text;
-  };
+  const writeRendered = (text: string): string => writeRenderText(buffer, text);
   return isThenable(rendered)
     ? rendered.then(writeRendered)
     : writeRendered(rendered);

@@ -133,9 +133,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     if (isRenderBuffer(bufferOrOptions)) {
       const prepared = prepareRenderPrintState(context, options);
       const writeResolved = (resolved: Node): string => {
-        const text = resolved.toTrimmedString(prepared);
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderText(bufferOrOptions, resolved.toTrimmedString(prepared));
       };
       const resolved = this.resolveForRender(context);
       return isThenable(resolved)

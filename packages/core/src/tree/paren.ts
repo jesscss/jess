@@ -131,9 +131,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       const writeResolved = (node: Node): string => {
-        const text = node.toTrimmedString(prepareRenderPrintState(context, options));
-        writeRenderText(bufferOrOptions, text);
-        return text;
+        return writeRenderText(
+          bufferOrOptions,
+          node.toTrimmedString(prepareRenderPrintState(context, options))
+        );
       };
       const resolved = this.evaluateValue(context, 'resolve');
       return isThenable(resolved)
