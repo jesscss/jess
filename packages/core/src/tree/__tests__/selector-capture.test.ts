@@ -83,6 +83,19 @@ describe('SelectorCapture', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('returns static selector capture payloads without resolving child values', async () => {
+    const value = el('.foo');
+    const captureNode = selcap(value);
+    value.resolve = () => {
+      throw new Error('static selector capture child should not resolve');
+    };
+
+    const resolved = await captureNode.resolve(context);
+
+    expect(resolved).toBe(value);
+    expect(resolved.toTrimmedString()).toBe('.foo');
+  });
+
   it('keeps source selector capture child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
