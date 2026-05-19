@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, F_STATIC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
@@ -91,10 +91,18 @@ function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: No
   return output;
 }
 
+function deriveIterationChild(node: Node): Node {
+  if (node.hasFlag(F_STATIC)) {
+    node.frozen = true;
+    return node;
+  }
+  return copyWithReusableLeaves(node);
+}
+
 function createIterationEvalSurface(sourceRules: Rules): Rules {
   const iterationRules = createDerivedIterationOutputSurface(
     sourceRules,
-    sourceRules.value.map(node => copyWithReusableLeaves(node))
+    sourceRules.value.map(deriveIterationChild)
   );
   iterationRules.options.rulesVisibility = {
     ...iterationRules.options.rulesVisibility,

@@ -685,6 +685,38 @@ describe('Control Nodes', () => {
     }
   });
 
+  it('reuses static direct $while body children instead of deriving per-iteration copies', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    let calls = 0;
+    const tickDecl = decl({ name: 'tick', value: any('yes') });
+    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
+    tickDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([tickDecl]);
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: loopRules
+    });
+
+    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+    expect(css).toBeString(`
+      tick: yes;
+      tick: yes;
+    `);
+    expect(sourcePrepCalls).toBe(2);
+    expect(tickDecl.parent).toBe(loopRules);
+  });
+
   it('keeps canonical $while body children parented to the source wrapper', async () => {
     const renderContext = new Context();
     const renderBuffer = createRenderBuffer('flat');
@@ -1062,6 +1094,30 @@ describe('Control Nodes', () => {
     } finally {
       Any.prototype.clone = originalClone;
     }
+  });
+
+  it('reuses static direct $for body children instead of deriving per-iteration copies', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalPrepareRegistration = colorDecl.prepareRegistration.bind(colorDecl);
+    colorDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([
+      colorDecl,
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('color: red');
+    expect(css).toContain('item: a');
+    expect(css).toContain('item: b');
+    expect(sourcePrepCalls).toBe(2);
+    expect(colorDecl.parent).toBe(loopRules);
   });
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {

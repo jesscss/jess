@@ -21,7 +21,7 @@ const patterns = [
 ];
 const ordinaryCopyPattern = /\.copy\(/u;
 const ordinaryClonePattern = /\.clone\(/u;
-const loopEvalSurfaceCopyPattern = /sourceRules\.value\.map\(\s*node\s*=>\s*copyWithReusableLeaves\(node\)\s*\)/u;
+const loopEvalSurfaceCopyPattern = /return copyWithReusableLeaves\(node\);/u;
 const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'

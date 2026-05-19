@@ -56,9 +56,11 @@ it is for the current direction and next seams, not a historical pass log.
   Direct sync `render(context)` remains source syntax for compatibility.
 - `$while` currently has explicit focused guards for native buffer rendering,
   no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
-  per-iteration body copies. The node-copy frontier still reports the expected
-  direct loop-body child-copy seam in `control.ts`; remove that only with a real
-  loop eval-surface replacement, not by hiding the scanner output.
+  per-iteration body copies. `$for` and `$while` reuse static direct body
+  children from the canonical body without reparenting them. The node-copy
+  frontier still reports the expected dynamic direct loop-body child-copy seam
+  in `control.ts`; remove that only with a real loop eval-surface replacement,
+  not by hiding the scanner output.
 - The stateful loop parity guard intentionally checks that native render and
   eval serialization stay aligned. It does not bless or change the exact
   same-iteration `$while` mutation timing; settle that as a runtime semantics
@@ -85,9 +87,10 @@ it is for the current direction and next seams, not a historical pass log.
      those are selector-index data copies, not AST ownership copies.
 3. **Replace loop eval surfaces without losing semantics.**
    - `$for` and `$while` still derive an owned `Rules` eval surface with copied
-     direct loop-body children through the expected `control.ts` seam. The next
-     win is to model per-iteration scope, rule visibility, and `$while`
-     mutation without copied body children.
+     dynamic direct loop-body children through the expected `control.ts` seam.
+     Static direct children are already reused. The next win is to model
+     per-iteration scope, rule visibility, and `$while` mutation without copied
+     dynamic body children.
    - Keep `verify:render-buffer-frontier` and the focused control tests green
      while changing this.
 4. **Reduce generated-output ownership carefully.**

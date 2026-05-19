@@ -48,10 +48,13 @@ selector placement truly needs one.
   that `$for` / `$while` stream each loop iteration through node render methods.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. It now also reports the
-  expected remaining loop eval-surface child-copy seam in `control.ts`; that is
-  visible debt, not a hidden pass. The scan ignores BitSet `.clone()` calls
-  because those are immutable selector-index data, not AST ownership surfaces.
-  New copy/clone sites must prove an ownership need before they land.
+  expected remaining loop eval-surface child-copy seam in `control.ts`.
+  Static direct loop-body children are reused from the canonical body; dynamic
+  direct children still copy into an iteration surface for per-iteration scope
+  isolation. That is visible debt, not a hidden pass. The scan ignores BitSet
+  `.clone()` calls because those are immutable selector-index data, not AST
+  ownership surfaces. New copy/clone sites must prove an ownership need before
+  they land.
 - `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
   parsers, the Less fixture corpus, the less-compat plugin suite, and the
   frontier, package-export, and node-constructor metadata scans. `--changed`
@@ -66,11 +69,12 @@ selector placement truly needs one.
   `$while` render per iteration. `$while` carries loop-body variable mutation
   in a small live `ScopeFrame`, not in a full output tree. `$while` has focused
   guards for native buffer rendering, no `Rules.clone()` loop-body surface, and
-  no scalar leaf copy/clone inside per-iteration body copies. A focused guard
-  keeps stateful `$while`/`$for` native render aligned with eval serialization;
-  changing same-iteration `$while` mutation visibility is a semantics decision,
-  not a copy-reduction cleanup. Direct sync `render(context)` remains source
-  syntax for compatibility.
+  no scalar leaf copy/clone inside per-iteration body copies. `$for` and
+  `$while` also reuse static direct body children without reparenting the
+  canonical body. A focused guard keeps stateful `$while`/`$for` native render
+  aligned with eval serialization; changing same-iteration `$while` mutation
+  visibility is a semantics decision, not a copy-reduction cleanup. Direct sync
+  `render(context)` remains source syntax for compatibility.
 
 ## Remaining Architecture Work
 
@@ -88,10 +92,11 @@ Priority seams:
    `verify:materialization-frontier` entry only when focused tests prove the
    compatibility path can stream children or use a smaller owned output surface
    without changing scope, registration, async, selector, or trivia behavior.
-3. **Loop eval surfaces**: remove the expected direct loop-body child-copy seam
-   in `control.ts` only after `$for` and `$while` can model per-iteration scope
-   and mutation without copied body children. Keep the existing render and
-   scalar-leaf guards green while doing it.
+3. **Loop eval surfaces**: remove the expected dynamic direct loop-body
+   child-copy seam in `control.ts` only after `$for` and `$while` can model
+   per-iteration scope and mutation without copied dynamic body children. Keep
+   the existing render, static-child, and scalar-leaf guards green while doing
+   it.
 4. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
