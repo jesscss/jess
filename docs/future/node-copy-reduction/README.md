@@ -35,8 +35,9 @@ selector placement truly needs one.
   buffer and finalizes that buffer. Production render paths must not call
   `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, or
   `renderNodeToString(...)`; those helpers are test/utility bridges only.
-- `postEvalVisitor` is still the public compatibility hook name, but the hook
-  runs after evaluation and before serialization.
+- `preRenderVisitor` is the direct hook name for visitors that run after
+  evaluation and before serialization. `postEvalVisitor` remains a compatibility
+  alias for older plugin callers.
 - The render-buffer frontier is not a per-node status list anymore. The
   important current fact is that the production bridge scan is green and direct
   output seams use node-owned eval/render decisions plus shared buffer helpers.

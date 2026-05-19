@@ -119,7 +119,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * Less plugins can register visitors via:
    * - addVisitor() - these will run during preEval (default)
    * - addPreProcessor() - these will run during preEval
-   * - addPostProcessor() - these will run during postEval (after evaluation)
+   * - addPostProcessor() - these run on serialized CSS after render
    */
   get preEvalVisitor() {
     // Cache the visitor instance so it's reused across multiple calls
@@ -131,8 +131,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   /**
-   * Return postEval visitors from Less plugins that registered via addPostProcessor.
-   * These visitors will run after node.eval() completes.
+   * Less post-processors operate on final CSS, not on the preRenderVisitor tree hook.
    */
   get postEvalVisitor() {
     // Not used yet - post processors run via runPostProcessors()
