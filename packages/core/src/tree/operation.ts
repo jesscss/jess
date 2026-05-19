@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -45,7 +45,7 @@ export class Operation extends Node<OperationValue> {
     return node.inherit(this);
   }
 
-  constructor(value: OperationValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: OperationValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);

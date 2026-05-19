@@ -5,7 +5,7 @@ import {
   F_NON_STATIC,
   F_IMPLICIT_AMPERSAND,
   F_MAY_ASYNC,
-  type LocationInfo,
+  type NodeLocation,
   type NodeOptions,
   type TreeContext
 } from './node.js';
@@ -63,7 +63,7 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  constructor(value: ExtendValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: ExtendValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);

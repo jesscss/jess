@@ -1,6 +1,6 @@
 import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
-import { Node, F_STATIC, F_NON_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -54,7 +54,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return w.getSince(mark);
   }
 
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     if (typeof value === 'string' && !options?.escaped) {
       this.addFlag(F_STATIC);

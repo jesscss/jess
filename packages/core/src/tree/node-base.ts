@@ -79,6 +79,7 @@ export type LocationInfo = [
   endLine: number,
   endColumn: number
 ];
+export type NodeLocation = LocationInfo | [];
 
 function createNodeOptions() {
   return Object.create(null);
@@ -231,7 +232,7 @@ export abstract class Node<
   Data = unknown,
   O extends NodeOptions = NodeOptions
 > {
-  _location: LocationInfo | [] | undefined;
+  _location: NodeLocation | undefined;
   get location() {
     return (this._location ??= []);
   }
@@ -475,7 +476,7 @@ export abstract class Node<
   constructor(
     value: Data,
     options?: O,
-    location?: LocationInfo,
+    location?: NodeLocation,
     treeContext?: TreeContext
   ) {
     // Make some props non-enumerable to avoid JSON serialization issues

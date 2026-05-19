@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -259,7 +259,7 @@ export class Call extends Node<CallValue, CallOptions> {
     return finishCall();
   }
 
-  constructor(value: CallValue, options?: CallOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);

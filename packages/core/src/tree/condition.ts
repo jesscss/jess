@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { F_NON_STATIC, F_VISIBLE, Node, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation, type TreeContext } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -45,7 +45,7 @@ export interface Condition extends Node<ConditionValue, ConditionOptions> {
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  constructor(value: ConditionValue, options?: ConditionOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: ConditionValue, options?: ConditionOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);

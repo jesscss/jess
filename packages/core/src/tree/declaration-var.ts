@@ -5,7 +5,7 @@ import {
 } from './declaration.js';
 import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
-import { defineType, F_VISIBLE, type LocationInfo, type Node, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, type Node, type NodeLocation, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -33,7 +33,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   constructor(
     value: DeclarationValue,
     options?: VarDeclarationOptions,
-    location?: LocationInfo,
+    location?: NodeLocation,
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
@@ -74,7 +74,7 @@ defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 export const vardecl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: VarDeclarationOptions,
-  location?: LocationInfo,
+  location?: NodeLocation,
   treeContext?: TreeContext
 ) => {
   const { name } = value;

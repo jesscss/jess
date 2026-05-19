@@ -2,7 +2,7 @@ import { type Context } from '../context.js';
 import { Bool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC, type LocationInfo, type TreeContext } from './node.js';
+import { Node, defineType, F_NON_STATIC, type NodeLocation, type TreeContext } from './node.js';
 import { Dimension } from './dimension.js';
 import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -96,7 +96,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     ).inherit(this);
   }
 
-  constructor(value?: Node, options?: ParenOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value?: Node, options?: ParenOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
