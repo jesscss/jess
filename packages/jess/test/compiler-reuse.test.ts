@@ -164,6 +164,29 @@ describe('Compiler reuse', () => {
     expect(css).not.toContain('color: red');
   });
 
+  it('runs preRenderVisitor before render serialization', async () => {
+    const source = '@tone: red;\n.a { color: @tone; }';
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'pre-render-visitor-test',
+          preRenderVisitor: {
+            declaration(node: Declaration) {
+              if (node.value.name.valueOf() === 'color') {
+                node.set('value', new Any('green', { role: 'keyword' }));
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    const css = await compiler.renderString(source, { language: 'less' });
+
+    expect(css).toContain('color: green');
+    expect(css).not.toContain('color: red');
+  });
+
   it('runs typed preEvalVisitor before variable resolution', async () => {
     const source = '@tone: red;\n.a { color: @tone; }';
     const compiler = new Compiler({

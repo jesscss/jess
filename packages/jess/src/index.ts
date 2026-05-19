@@ -766,11 +766,14 @@ export class Compiler {
     }
     let current = tree;
     for (const plugin of context.plugins) {
-      const post = plugin.postEvalVisitor;
-      if (!post) {
+      const hooks = [
+        plugin.preRenderVisitor,
+        plugin.postEvalVisitor
+      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
+      if (hooks.length === 0) {
         continue;
       }
-      const visitors = Array.isArray(post) ? post : [post];
+      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
       for (const visitor of visitors) {
         if (!isVisitor(visitor)) {
           continue;
