@@ -47,7 +47,8 @@ selector placement truly needs one.
 - `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
   parsers, the Less fixture corpus, the less-compat plugin suite, and the
   frontier scans. `--changed` may narrow package work, but changes to the gate
-  scripts or root dependency metadata intentionally run the full baseline.
+  scripts or root dependency metadata intentionally run the full baseline. It
+  includes local unstaged and staged changes, not only committed branch diff.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
   `$while` render per iteration. `$while` carries loop-body variable mutation
