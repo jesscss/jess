@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Commit gate: core tests + CSS parsers + Less fixture baseline must all pass.
+ * Commit gate: core tests + CSS parsers + Less fixture and compatibility
+ * baselines must all pass.
  * Run before claiming completion or pushing. Fails fast on first failure.
  * Policy: always move the bar up — fix failures and add new critical suites here;
  * never relax expectations or remove tests to get green.
@@ -19,7 +20,8 @@ const BASELINE_PACKAGE_DIRS = new Set([
   'packages/core',
   'packages/less-parser',
   'packages/css-parser',
-  'packages/jess'
+  'packages/jess',
+  'packages/jess-plugin-less-compat'
 ]);
 
 const NON_SOURCE_PATH_PATTERNS = [
@@ -206,16 +208,17 @@ if (CHANGED_ONLY) {
     `Verify baseline (--changed): ${packagesToCheck.length} package(s) to check: ${packagesToCheck.join(', ')}`
   );
 } else {
-  console.log('Verify baseline: core + parsers + packages/jess/test/less/all-less.test.ts');
+  console.log('Verify baseline: core + parsers + Less fixture and compatibility suites');
 }
 
 const runCore = packagesToCheck.includes('packages/core');
 const runLessParser = packagesToCheck.includes('packages/less-parser');
 const runCssParser = packagesToCheck.includes('packages/css-parser');
 const runJess = packagesToCheck.includes('packages/jess');
+const runLessCompat = packagesToCheck.includes('packages/jess-plugin-less-compat');
 
 // Build core if any downstream needs it
-const needsCoreBuild = runCore || runLessParser || runCssParser || runJess;
+const needsCoreBuild = runCore || runLessParser || runCssParser || runJess || runLessCompat;
 if (needsCoreBuild) {
   run('pnpm', ['--filter', '@jesscss/core', 'build']);
 }
@@ -232,7 +235,10 @@ if (runCssParser) {
 if (runJess) {
   run('pnpm', ['run', 'test:less:test-data']);
 }
+if (runLessCompat) {
+  run('pnpm', ['--filter', './packages/jess-plugin-less-compat', 'test']);
+}
 
 runFrontierChecks();
 
-console.log('\n>>> Verify baseline passed (core + parsers + all-less.test.ts + frontier checks).');
+console.log('\n>>> Verify baseline passed (core + parsers + Less fixture and compatibility suites + frontier checks).');
