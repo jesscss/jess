@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, F_STATIC, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
@@ -12,7 +12,6 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -92,11 +91,8 @@ function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: No
 }
 
 function deriveIterationChild(node: Node): Node {
-  if (node.hasFlag(F_STATIC)) {
-    node.frozen = true;
-    return node;
-  }
-  return copyWithReusableLeaves(node);
+  node.frozen = true;
+  return node;
 }
 
 function createIterationEvalSurface(sourceRules: Rules): Rules {

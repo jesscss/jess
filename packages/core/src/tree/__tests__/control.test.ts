@@ -717,6 +717,47 @@ describe('Control Nodes', () => {
     expect(tickDecl.parent).toBe(loopRules);
   });
 
+  it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    let calls = 0;
+    const tickDecl = decl({ name: 'tick', value: ref({ key: 'tick' }, { type: 'variable' }) });
+    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
+    tickDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([
+      vardecl({ name: any('tick'), value: call({
+        name: new JsFunction({
+          name: 'next-tick',
+          fn: () => any(String(calls))
+        }),
+        args: list([])
+      }) }),
+      tickDecl
+    ]);
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: loopRules
+    });
+
+    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+    expect(css).toBeString(`
+      tick: 1;
+      tick: 2;
+    `);
+    expect(sourcePrepCalls).toBe(2);
+    expect(tickDecl.parent).toBe(loopRules);
+  });
+
   it('keeps canonical $while body children parented to the source wrapper', async () => {
     const renderContext = new Context();
     const renderBuffer = createRenderBuffer('flat');
@@ -1118,6 +1159,26 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: b');
     expect(sourcePrepCalls).toBe(2);
     expect(colorDecl.parent).toBe(loopRules);
+  });
+
+  it('reuses dynamic direct $for body children while re-evaluating each iteration', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
+    const originalPrepareRegistration = itemDecl.prepareRegistration.bind(itemDecl);
+    itemDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([itemDecl]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('item: a');
+    expect(css).toContain('item: b');
+    expect(sourcePrepCalls).toBe(2);
+    expect(itemDecl.parent).toBe(loopRules);
   });
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {

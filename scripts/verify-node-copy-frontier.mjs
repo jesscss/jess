@@ -33,9 +33,7 @@ const allowedOrdinaryCloneFiles = new Set([
   ...infrastructureFiles
 ]);
 const expectedRemaining = new Set();
-const expectedLoopEvalSurfaceCopies = new Set([
-  'packages/core/src/tree/control.ts'
-]);
+const expectedLoopEvalSurfaceCopies = new Set();
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
