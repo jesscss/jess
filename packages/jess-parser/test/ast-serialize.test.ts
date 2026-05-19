@@ -160,6 +160,35 @@ describe('jess-parser (ast serialize)', () => {
     expect(whileNode?.type).toBe('While');
   });
 
+  it('serializes nested control blocks as ruleset children', () => {
+    const { tree, errors, lexerResult } = parser.parse(`
+      .a {
+        $if ($theme = dark) { color: white; }
+        $for ($i in $items) { width: $i; }
+        $while ($i < 3) { height: $i; }
+      }
+    `);
+    expect(lexerResult.errors).toEqual([]);
+    expect(errors).toEqual([]);
+    assertValidTree(tree);
+
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const ruleset = rules?.value.find(n => isNode(n, N.Ruleset));
+    expect(isNode(ruleset, N.Ruleset)).toBe(true);
+    if (!isNode(ruleset, N.Ruleset)) {
+      return;
+    }
+
+    const childTypes = ruleset.value.rules.value.map(n => n.type);
+    expect(childTypes).toEqual(['If', 'For', 'While']);
+    const serialized = serializeTypes(ruleset);
+    expect(serialized).toContainString('(Ruleset');
+    expect(serialized).toContainString(`(BasicSelector '.a')`);
+    expect(serialized).toContainString('(If');
+    expect(serialized).toContainString('(For');
+    expect(serialized).toContainString('(While');
+  });
+
   it('serializes @-compose as StyleImport', () => {
     const { tree, errors, lexerResult } = parser.parse('@-compose "./theme.jess";');
     expect(lexerResult.errors).toEqual([]);
