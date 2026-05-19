@@ -23,6 +23,9 @@ it is for the current direction and next seams, not a historical pass log.
   state through `prepareRenderPrintState(...)`.
 - Treat `Context.rulesContext`, `ScopeFrame.fallbackFrame`, deep clone, and
   materialization as suspect surfaces, not automatic bugs.
+- Use `F_STATIC` resolve fast paths only for canonical, already-static nodes
+  whose resolve contract is unchanged by returning early. Prove each one with a
+  focused test that makes child resolution fail if it is accidentally called.
 - When a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer
   a parser-accurate focused core repro first when practical.
 - Update these docs only when the active frontier or rule set changes.

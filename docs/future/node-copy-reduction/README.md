@@ -19,6 +19,11 @@ startup. Older per-file completion logs live in
   focused test proves a semantic ownership boundary.
 - Fix structural ownership bugs where they are created, not by filtering output
   later.
+- Static resolve fast paths are acceptable only when the node is already fully
+  canonical and the fast path preserves that node's existing resolve contract.
+  Add focused tests that prove child resolution is skipped; do not use
+  `F_STATIC` to skip dynamic binding, evaluation, registration, or output
+  ownership work.
 
 The target compile path is not "eval creates a complete output tree, then
 serialize that tree". Evaluation should move semantic state forward and
