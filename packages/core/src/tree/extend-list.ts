@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, defineType } from './node.js';
+import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
@@ -23,7 +23,7 @@ export class ExtendList extends Node<Extend[]> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: Extend[], options?: any, location?: any, treeContext?: any) {
+  constructor(value: Extend[], options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
   }

@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_NON_STATIC, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
@@ -20,7 +20,7 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  constructor(value: Node, options?: any, location?: any, treeContext?: any) {
+  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlag(F_NON_STATIC);
   }

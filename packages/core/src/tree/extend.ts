@@ -1,4 +1,14 @@
-import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND, F_MAY_ASYNC } from './node.js';
+import {
+  defineType,
+  Node,
+  F_VISIBLE,
+  F_NON_STATIC,
+  F_IMPLICIT_AMPERSAND,
+  F_MAY_ASYNC,
+  type LocationInfo,
+  type NodeOptions,
+  type TreeContext
+} from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
@@ -53,7 +63,7 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
+  constructor(value: ExtendValue, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);

@@ -1,4 +1,4 @@
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type LocationInfo, type TreeContext } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -442,7 +442,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
