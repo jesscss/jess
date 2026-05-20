@@ -305,7 +305,8 @@ export class Extend extends Node<ExtendValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evalNode(context);
+    return isThenable(value) ? value.then(() => '') : '';
   }
 }
 

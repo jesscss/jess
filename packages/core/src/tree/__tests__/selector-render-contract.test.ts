@@ -41,6 +41,27 @@ describe('Selector render contract', () => {
     expect(selector.render(context)).toBe('.foo');
   });
 
+  it('renders selector captures directly without public resolve', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    selector.resolve = () => {
+      throw new Error('SelectorCapture direct render should resolve its payload natively');
+    };
+
+    expect(selector.render(context)).toBe('.foo');
+    expect(selector.evaluated).toBe(false);
+    expect(selector.preEvaluated).toBe(false);
+  });
+
   it('keeps pseudo-selector source serializers canonical while render(context) resolves selector-list arguments', async () => {
     const node = rules([
       vardecl({

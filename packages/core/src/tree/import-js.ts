@@ -2,7 +2,7 @@ import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType, type NodeLocation, type TreeContext } from './node.js';
 import { type Quoted } from './quoted.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -87,7 +87,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
         this.toTrimmedString(getPrintOptions({ ...options, context }))
       );
     }
-    return super.render(context, bufferOrOptions);
+    return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
   }
 }
 

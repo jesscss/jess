@@ -44,4 +44,18 @@ describe('RawRules', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });
+
+  it('renders raw child output directly without public resolve', () => {
+    const context = new Context();
+    const node = rawrules([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+    node.resolve = () => {
+      throw new Error('RawRules direct render should serialize source syntax');
+    };
+
+    expect(node.render(context)).toBe('color: red');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
 });

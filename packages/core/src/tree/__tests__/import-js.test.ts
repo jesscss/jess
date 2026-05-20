@@ -38,4 +38,16 @@ describe('JsImport', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });
+
+  it('renders source import syntax directly without public resolve', () => {
+    const context = new Context();
+    const node = js({ path: quoted('foo.js') }, { namespace: 'foo' });
+    node.resolve = () => {
+      throw new Error('JsImport direct render should serialize source syntax');
+    };
+
+    expect(node.render(context)).toBe('@-use "foo.js" as foo;');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
 });

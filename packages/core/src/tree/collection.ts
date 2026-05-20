@@ -1,7 +1,7 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
 import {
   isRenderBuffer,
@@ -46,7 +46,7 @@ export class Collection extends Rules {
         this.toTrimmedString(getPrintOptions({ ...options, context }))
       );
     }
-    return super.render(context, bufferOrOptions);
+    return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
   }
 
   override prepareRegistration(_context: Context): this | Promise<this> {

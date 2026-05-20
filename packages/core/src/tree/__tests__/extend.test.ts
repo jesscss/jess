@@ -44,6 +44,20 @@ describe('Extend', () => {
     expect(node.evaluated).toBe(false);
   });
 
+  it('renders no CSS for direct extend render while evaluating without public resolve', async () => {
+    const context = new Context();
+    const node = extend({
+      target: el('.target'),
+      flag: ExtendFlag.Exact
+    });
+    node.resolve = () => {
+      throw new Error('Extend direct render should use evalNode');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+    expect(node.evaluated).toBe(false);
+  });
+
   it('writes no CSS for extend-list buffers without public resolve', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');

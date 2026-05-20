@@ -87,6 +87,31 @@ describe('Operation', () => {
     expect(operationNode.preEvaluated).toBe(false);
   });
 
+  it('renders resolved operation values directly without public resolve', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const operationNode = op([
+      num(10),
+      '+',
+      ref({ key: 'rhs' }, { type: 'variable' })
+    ]);
+    operationNode.resolve = () => {
+      throw new Error('Operation direct render should evaluate operands natively');
+    };
+
+    expect(operationNode.render(context)).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
+  });
+
   it('resolves operation values without touching render state', async () => {
     const node = rules([
       vardecl({

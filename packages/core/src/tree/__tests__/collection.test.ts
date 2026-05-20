@@ -58,6 +58,23 @@ describe('Collection', () => {
     expect(node.preEvaluated).toBe(false);
   });
 
+  it('renders collection output directly without public resolve', () => {
+    const node = coll([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+    node.resolve = () => {
+      throw new Error('Collection direct render should serialize source syntax');
+    };
+
+    expect(node.render(context)).toBeString(`
+      {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
   it('resolves collections without touching render state', async () => {
     const node = coll([
       decl({ name: any('color'), value: any('red') })

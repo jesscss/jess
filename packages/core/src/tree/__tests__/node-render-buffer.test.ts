@@ -534,4 +534,16 @@ describe('renderNodeToBuffer', () => {
       }
     }
   });
+
+  it('renders log nodes directly without public resolve', async () => {
+    const context = new Context();
+    const node = log({ level: 'debug', message: any('') });
+    node.resolve = () => {
+      throw new Error('Log direct render should evaluate diagnostics natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
 });

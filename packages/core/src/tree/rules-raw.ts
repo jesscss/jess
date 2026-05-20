@@ -2,7 +2,7 @@ import { defineType } from './node.js';
 import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -54,7 +54,7 @@ export class RawRules extends Rules {
         this.toTrimmedString(getPrintOptions({ ...options, context }))
       );
     }
-    return super.render(context, bufferOrOptions);
+    return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
   }
 }
 

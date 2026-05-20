@@ -76,7 +76,8 @@ export class Log extends Node<LogValue, NodeOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evalNode(context);
+    return isThenable(value) ? value.then(() => '') : '';
   }
 
   private _logMessage(message: Node): void {
