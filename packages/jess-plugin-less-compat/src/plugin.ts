@@ -121,7 +121,7 @@ export class LessCompatPlugin extends AbstractPlugin {
    * - addPreProcessor() - these run early
    * - addPostProcessor() - these run on serialized CSS after render
    */
-  get preEvalVisitor(): PluginInterface['preEvalVisitor'] {
+  get beforeEvalVisitor(): PluginInterface['beforeEvalVisitor'] {
     // Cache the visitor instance so it's reused across multiple calls
     // This ensures that visitors added via @plugin are available for subsequent nodes
     if (!this._cachedVisitor) {

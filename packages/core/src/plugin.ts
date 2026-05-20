@@ -93,8 +93,8 @@ export interface PluginInterface {
 
   /** Post-parse or post-eval visitor(s) */
   visitor?: PluginVisitor | PluginVisitor[];
-  /** Early visitor(s), called before node eval for compatibility with Less-style plugins. */
-  preEvalVisitor?: PluginVisitor | PluginVisitor[];
+  /** Early visitor(s), called before eval for compatibility with Less-style plugins. */
+  beforeEvalVisitor?: PluginVisitor | PluginVisitor[];
   /**
    * Visitors that run after eval and immediately before render serialization.
    */

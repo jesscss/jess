@@ -187,13 +187,13 @@ describe('Compiler reuse', () => {
     expect(css).not.toContain('color: red');
   });
 
-  it('runs typed preEvalVisitor before variable resolution', async () => {
+  it('runs typed beforeEvalVisitor before variable resolution', async () => {
     const source = '@tone: red;\n.a { color: @tone; }';
     const compiler = new Compiler({
       compile: {
         plugins: [{
-          name: 'pre-eval-visitor-test',
-          preEvalVisitor: {
+          name: 'before-eval-visitor-test',
+          beforeEvalVisitor: {
             varDeclaration(node: VarDeclaration) {
               if (node.value.name.valueOf() === 'tone') {
                 node.set('value', new Any('blue', { role: 'keyword' }));

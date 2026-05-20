@@ -87,7 +87,7 @@ describe('@plugin directive processing', () => {
     // For this test, we're verifying the structure supports @plugin processing
   });
 
-  it('should process raw Jess AtRule nodes in preEval visitor mode', () => {
+  it('should process raw Jess AtRule nodes in before-eval visitor mode', () => {
     const source = `@plugin "test-plugin"; .test { color: red; }`;
 
     const { tree } = parser.parse(source);
@@ -112,9 +112,9 @@ describe('@plugin directive processing', () => {
     plugin.setCurrentFilePath('/tmp/test.less');
     plugin.setContext({ root: tree });
 
-    const visitor = normalizeVisitor(plugin.preEvalVisitor);
+    const visitor = normalizeVisitor(plugin.beforeEvalVisitor);
     if (!visitor?.atRule) {
-      throw new Error('Plugin should expose an atRule preEval visitor');
+      throw new Error('Plugin should expose an atRule before-eval visitor');
     }
 
     const pluginDirective = tree.at(0);
@@ -153,9 +153,9 @@ describe('@plugin directive processing', () => {
     plugin.setCurrentFilePath('/tmp/test.less');
     plugin.setContext({ root: tree });
 
-    const visitor = normalizeVisitor(plugin.preEvalVisitor);
+    const visitor = normalizeVisitor(plugin.beforeEvalVisitor);
     if (!visitor?.visit) {
-      throw new Error('Plugin should expose a visit preEval visitor');
+      throw new Error('Plugin should expose a visit before-eval visitor');
     }
 
     tree.accept(visitor);
@@ -168,7 +168,7 @@ describe('@plugin directive processing', () => {
     expect(Reflect.get(pluginDirective, 'visible')).toBe(false);
   });
 
-  it('should process @plugin before other nodes (preEval behavior)', () => {
+  it('should process @plugin before other nodes (before-eval behavior)', () => {
     const source = `
       @plugin "early-plugin";
       .before {

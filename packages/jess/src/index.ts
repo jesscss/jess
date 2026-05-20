@@ -715,7 +715,7 @@ export class Compiler {
     return this.createContextFromResolved(resolved, plugins);
   }
 
-  private applyPreEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Rules {
+  private applyBeforeEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
@@ -737,7 +737,7 @@ export class Compiler {
             // ignore
           }
         }
-        const pre = plugin.preEvalVisitor;
+        const pre = plugin.beforeEvalVisitor;
         if (!pre) {
           continue;
         }
@@ -799,7 +799,7 @@ export class Compiler {
         return result;
       }
       const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
-      const processedTree = this.applyPreEvalVisitors(context, result.node, resolvedPath);
+      const processedTree = this.applyBeforeEvalVisitors(context, result.node, resolvedPath);
       if (processedTree && processedTree !== result.node) {
         result.node = processedTree;
         if (result.resolvedPath) {
@@ -842,8 +842,8 @@ export class Compiler {
       if (!parsedNode) {
         throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
       }
-      tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
-        this.applyPreEvalVisitors(context, parsedNode, filePath ?? '<input>')
+      tree = measureProfileSync(profile, 'applyBeforeEvalVisitors', () =>
+        this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
     } else {
       const loaded = await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
@@ -851,8 +851,8 @@ export class Compiler {
       if (!loadedNode) {
         throw new Error(`Failed to load ${filePath!}`);
       }
-      tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
-        this.applyPreEvalVisitors(context, loadedNode, filePath!)
+      tree = measureProfileSync(profile, 'applyBeforeEvalVisitors', () =>
+        this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
       );
     }
 
