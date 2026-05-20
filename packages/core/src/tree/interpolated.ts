@@ -7,7 +7,7 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -179,7 +179,11 @@ export class Interpolated<
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.resolveValue(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 
   /**

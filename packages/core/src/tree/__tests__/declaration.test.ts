@@ -101,6 +101,26 @@ describe('Declaration', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('renders resolved declaration output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    node.resolve = () => {
+      throw new Error('Declaration direct render should evaluate natively');
+    };
+
+    expect(node.render(context)).toBe('color: red');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })

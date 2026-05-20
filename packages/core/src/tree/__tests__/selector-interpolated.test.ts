@@ -88,6 +88,30 @@ describe('InterpolatedSelector', () => {
     expect(selectorNode.preEvaluated).toBe(false);
   });
 
+  it('renders resolved interpolated selector output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const selectorNode = interpolatedSelector(interpolated({
+      source: `.${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
+    }));
+    selectorNode.resolve = () => {
+      throw new Error('InterpolatedSelector direct render should resolve natively');
+    };
+
+    expect(selectorNode.render(context)).toBe('.foo');
+    expect(selectorNode.evaluated).toBe(false);
+    expect(selectorNode.preEvaluated).toBe(false);
+  });
+
   it('resolves interpolated selectors without touching render state', async () => {
     const root = rules([
       vardecl({

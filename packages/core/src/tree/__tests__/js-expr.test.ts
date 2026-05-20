@@ -42,4 +42,15 @@ describe('JsExpression', () => {
     expect(node.evaluated).toBe(false);
     expect(node.preEvaluated).toBe(false);
   });
+
+  it('renders evaluated JavaScript expression output directly without public resolve', async () => {
+    const node = new JsExpression('"blue"');
+    node.resolve = () => {
+      throw new Error('JsExpression direct render should evaluate natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('blue');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
 });

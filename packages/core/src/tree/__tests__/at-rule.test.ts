@@ -275,6 +275,37 @@ describe('AtRule', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('renders resolved at-rule output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.resolve = () => {
+      throw new Error('AtRule direct render should evaluate a derived surface');
+    };
+
+    expect(node.render(context)).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
   it('resolves at-rules without touching render state', async () => {
     const root = rules([
       vardecl({

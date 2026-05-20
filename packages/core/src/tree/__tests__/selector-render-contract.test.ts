@@ -83,6 +83,30 @@ describe('Selector render contract', () => {
     expect(selector.render(context)).toBe(':is(.foo, .bar)');
   });
 
+  it('renders selector nodes directly without public resolve', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([el('.foo'), el('.bar')])
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const selector = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    selector.resolve = () => {
+      throw new Error('Selector direct render should use resolveForRender');
+    };
+
+    expect(selector.render(context)).toBe(':is(.foo, .bar)');
+    expect(selector.evaluated).toBe(false);
+    expect(selector.preEvaluated).toBe(false);
+  });
+
   it('keeps complex selector source serializers canonical while render(context) resolves nested selector values', async () => {
     const node = rules([
       vardecl({

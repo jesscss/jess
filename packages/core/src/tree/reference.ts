@@ -10,7 +10,7 @@ import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
@@ -1946,7 +1946,11 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evalNode(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 
   /**

@@ -1,11 +1,11 @@
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
 import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
-import { type PrintOptions } from './util/print.js';
+import { type PrintOptions, prepareRenderPrintState } from './util/print.js';
 
 const { isArray } = Array;
 
@@ -133,7 +133,11 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveForRender(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.resolveForRender(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 
   /**

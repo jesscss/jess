@@ -1,8 +1,8 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { cast } from './util/cast.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -50,7 +50,11 @@ export class JsExpression extends Node<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evalNode(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 }
 export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');

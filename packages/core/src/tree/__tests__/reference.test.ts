@@ -121,6 +121,26 @@ describe('reference', () => {
       expect(refNode.preEvaluated).toBe(false);
     });
 
+    it('renders resolved reference output directly without public resolve', async () => {
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+      refNode.resolve = () => {
+        throw new Error('Reference direct render should use evalNode');
+      };
+
+      expect(refNode.render(context)).toBe('red');
+      expect(refNode.evaluated).toBe(false);
+      expect(refNode.preEvaluated).toBe(false);
+    });
+
     it('keeps definition rules context until async live-slot value eval settles', async () => {
       const definitionRules = rules([]);
       const paramDecl = vardecl({ name: any('tone'), value: any('blue') }, { paramVar: true });

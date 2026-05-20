@@ -110,6 +110,30 @@ describe('Interpolated', () => {
     expect(interpolatedNode.preEvaluated).toBe(false);
   });
 
+  it('renders resolved interpolated output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('world')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const interpolatedNode = interpolated({
+      source: `hello-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'variable' })]
+    });
+    interpolatedNode.resolve = () => {
+      throw new Error('Interpolated direct render should resolve replacements natively');
+    };
+
+    expect(interpolatedNode.render(context)).toBe('hello-world');
+    expect(interpolatedNode.evaluated).toBe(false);
+    expect(interpolatedNode.preEvaluated).toBe(false);
+  });
+
   it('resolves interpolated values without touching render state', async () => {
     const root = rules([
       vardecl({
