@@ -88,7 +88,7 @@ export function cast(value: any): Node {
    */
   if (!isNode(value)) {
     node.evaluated = true;
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
   }
   return node;
 }

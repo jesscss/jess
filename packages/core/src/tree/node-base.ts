@@ -267,8 +267,21 @@ export abstract class Node<
   /** Will be copied during inherit */
   state = F_DEFAULT;
 
-  /** Runtime tracking: has this node completed its current prep phase? */
-  preEvaluated = false;
+  /** Runtime tracking: has this node completed registration identity prep? */
+  registrationPrepared = false;
+
+  /**
+   * Compatibility alias for older callers/tests. Prefer registrationPrepared in
+   * runtime code; eval itself is tracked by `evaluated`.
+   */
+  get preEvaluated(): boolean {
+    return this.registrationPrepared;
+  }
+
+  set preEvaluated(value: boolean) {
+    this.registrationPrepared = value;
+  }
+
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
 
@@ -931,9 +944,9 @@ export abstract class Node<
    * narrower identity or mark-only behavior override this method directly.
    */
   prepareRegistration(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this.registrationPrepared) {
       const node = this;
-      node.preEvaluated = true;
+      node.registrationPrepared = true;
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules

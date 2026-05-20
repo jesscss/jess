@@ -114,7 +114,7 @@ export class LessCompatPlugin extends AbstractPlugin {
   /**
    * Return the visitor through the early visitor hook so it runs before
    * evaluation. This keeps Less plugin visitors and preprocessors early without
-   * bringing back a public node preEval pass.
+   * bringing back a public node preparation pass.
    *
    * Less plugins can register visitors via:
    * - addVisitor() - these run early by default

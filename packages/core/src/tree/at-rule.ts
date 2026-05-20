@@ -165,7 +165,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
    * Prelude evaluation stays in evalNode so live-scope lookups stay correct.
    */
   override prepareRegistration(context: Context): MaybePromise<AtRule | Nil> {
-    if (!this.preEvaluated) {
+    if (!this.registrationPrepared) {
       const prepared = this._prepareAtRuleNameIdentity(context);
       if (isThenable(prepared)) {
         return (prepared as Promise<AtRule>).then(node => this._prepareAtRuleRegistration(node, context, this));
@@ -181,7 +181,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
 
     const node = this.deriveAtRule(this.value);
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
 
     const maybeKey = node.value.name.eval(context);
     if (isThenable(maybeKey)) {
@@ -229,7 +229,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     // Reference branches are traversed for symbol/extend resolution, but plain
     // CSS @import hoisting must remain a visible-output concern only.
     this._queueTopImport(node, context);
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
     return new Nil();
   }
 
@@ -243,16 +243,16 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (node === original) {
         node = original.deriveAtRule(original.value);
       }
-      node.preEvaluated = true;
+      node.registrationPrepared = true;
       return node;
     };
     const finalize = (): AtRule => {
-      node.preEvaluated = true;
+      node.registrationPrepared = true;
       return node;
     };
     // Depth-first: prepare child rules immediately so all nested rulesets/extends
     // are registered in source order before we process extends.
-    if (rules && !rules.preEvaluated) {
+    if (rules && !rules.registrationPrepared) {
       const saved = this._setupAtRuleBodyRegistrationContext(node, rules, context);
       let preparedRules: MaybePromise<Node>;
       try {

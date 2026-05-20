@@ -89,7 +89,7 @@ type RulesetOptions = NodeOptions & {
 export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
-  // Ruleset owns registration prep and marks `preEvaluated` directly.
+  // Ruleset owns registration prep and marks `registrationPrepared` directly.
   frames: (Ruleset | AtRule)[] | undefined;
   /** Legacy canonical composed selector slot still used by extend post-processing. */
   declare _composedSelector?: Selector;
@@ -1022,7 +1022,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   override prepareRegistration(context: Context): MaybePromise<Ruleset> {
-    if (!this.preEvaluated) {
+    if (!this.registrationPrepared) {
       return this._prepareRulesetRegistration(context);
     }
     return this;
@@ -1032,7 +1032,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     this.attachSelectorBits(this.value.selector, context.selectorBits);
     const node = this.deriveRuleset(this.value);
     node._selectorCacheOwner = this;
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
     const { selector } = node.value;
     const { selectorBits } = context;
     this._prepareRulesVisibility(node, context);
@@ -1134,7 +1134,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     // Push this ruleset to the frame so nested rulesets get the correct parent selector
     // when building implicit selectors (e.g. .header-nav inside .header → .header .header-nav).
     const childRules = node.value.rules;
-    if (childRules && !childRules.preEvaluated) {
+    if (childRules && !childRules.registrationPrepared) {
       const rulesetNode: Ruleset = node;
       const rulesetFrameCount = context.rulesetFrames.length;
       context.rulesetFrames.push(rulesetNode);

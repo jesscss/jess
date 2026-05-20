@@ -352,7 +352,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override prepareRegistration(context: Context): MaybePromise<this> {
     /** We need a derived declaration, because registration prep mutates name/value/options. */
     let node = this.derive();
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
     // Index should already be assigned by parent Rules
     return this._prepareDeclarationRegistration(node, context);
   }

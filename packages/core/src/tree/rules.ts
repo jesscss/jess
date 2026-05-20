@@ -2172,7 +2172,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       const rules = this;
       const prepState = this._createRegistrationPrepState();
       rules._registrationPrepared = true;
-      rules.preEvaluated = true;
+      rules.registrationPrepared = true;
       const { saved, isNestableAtRuleBody } = this._setupRegistrationContext(context, rules);
 
       let mp: MaybePromise<this>;
@@ -2472,7 +2472,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return true;
       }
       // After identity prep, the selector should be resolved to static identifiers.
-      if (node.preEvaluated) {
+      if (node.registrationPrepared) {
         return true;
       }
       // Check F_STATIC flag for other selector types.
@@ -3298,7 +3298,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _ensureRegistrationPrep(context: Context): MaybePromise<Rules> {
-    if (this.preEvaluated) {
+    if (this.registrationPrepared) {
       if (!this._registrationPrepared) {
         return this._prepareRegistrationOnce(context);
       }

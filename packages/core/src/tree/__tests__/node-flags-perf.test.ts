@@ -127,6 +127,7 @@ describe('Node Flags Performance', () => {
 
     expect(result).toBe(node);
     expect(node.registrationCalls).toBe(0);
+    expect(node.registrationPrepared).toBe(false);
     expect(node.preEvaluated).toBe(false);
     expect(node.evaluated).toBe(true);
   });

@@ -81,7 +81,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
-  // Mixin owns registration prep and marks `preEvaluated` directly.
+  // Mixin owns registration prep and marks `registrationPrepared` directly.
 
   private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
     const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
@@ -175,7 +175,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   override prepareRegistration(context: Context): MaybePromise<Mixin> {
-    if (this.preEvaluated) {
+    if (this.registrationPrepared) {
       return this;
     }
     return this._prepareMixinRegistration(context);
@@ -191,7 +191,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       name = node.value.name;
       rules = node.value.rules;
     }
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
     this._prepareMixinBodyVisibility(rules, context);
     return this._prepareMixinNameIdentity(node, name, context);
   }
