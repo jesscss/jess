@@ -49,9 +49,16 @@ describe('url', () => {
     context.rulesContext = evald as RulesClass;
 
     const urlNode = url(quoted(ref({ key: 'asset' }, { type: 'variable' })));
+    const resolveUrl = urlNode.resolve.bind(urlNode);
+    let urlResolveCalls = 0;
+    urlNode.resolve = (renderContext: Context) => {
+      urlResolveCalls++;
+      return resolveUrl(renderContext);
+    };
     const rendered = urlNode.render(context);
 
     expect(rendered).toBe('url("image.png")');
+    expect(urlResolveCalls).toBe(0);
     expect(urlNode.evaluated).toBe(false);
     expect(urlNode.preEvaluated).toBe(false);
   });

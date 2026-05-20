@@ -1,6 +1,6 @@
 import { Node, F_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -65,7 +65,11 @@ export class Url extends Node<Node> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.resolveValue(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? this.toTrimmedString(prepared)
+      : value.toTrimmedString(prepared);
   }
 
   private resolveValue(context: Context): MaybePromise<Node> {

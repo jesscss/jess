@@ -55,6 +55,25 @@ describe('Range', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('renders range values through render(context) without public resolve', () => {
+    const context = new Context();
+    const node = range({
+      start: num(1),
+      end: num(3),
+      step: num(2)
+    });
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
+
+    expect(node.render(context)).toBe('1 to 3 step 2');
+    expect(resolveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
   it('resolves ranges without touching render state', async () => {
     const context = new Context();
     const node = range({

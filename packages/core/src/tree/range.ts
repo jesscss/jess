@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -46,7 +46,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeRenderText(bufferOrOptions, this.toTrimmedString(options));
     }
-    return super.render(context, bufferOrOptions);
+    return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
   }
 
   override toTrimmedString(options?: PrintOptions): string {

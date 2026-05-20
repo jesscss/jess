@@ -2,7 +2,7 @@ import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -78,7 +78,11 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evaluateValue(context, 'resolve'), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evaluateValue(context, 'resolve');
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? this.toTrimmedString(prepared)
+      : value.toTrimmedString(prepared);
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

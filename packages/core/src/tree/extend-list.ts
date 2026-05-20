@@ -48,7 +48,7 @@ export class ExtendList extends Node<Extend[]> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeRenderedOutput(bufferOrOptions, new Nil(), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    return '';
   }
 }
 

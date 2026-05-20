@@ -60,4 +60,18 @@ describe('Extend', () => {
     expect(buffer.parts).toEqual([]);
     expect(node.evaluated).toBe(false);
   });
+
+  it('renders no CSS for direct extend-list render without public resolve', () => {
+    const context = new Context();
+    const node = extendList([
+      extend({ target: el('.one'), flag: ExtendFlag.Exact }),
+      extend({ target: el('.two'), flag: ExtendFlag.All })
+    ]);
+    node.resolve = () => {
+      throw new Error('ExtendList direct render should stay invisible');
+    };
+
+    expect(node.render(context)).toBe('');
+    expect(node.evaluated).toBe(false);
+  });
 });

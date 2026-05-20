@@ -56,9 +56,16 @@ describe('quoted', () => {
     context.rulesContext = evald as RulesClass;
 
     const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    const resolveQuoted = quotedNode.resolve.bind(quotedNode);
+    let quotedResolveCalls = 0;
+    quotedNode.resolve = (renderContext: Context) => {
+      quotedResolveCalls++;
+      return resolveQuoted(renderContext);
+    };
     const rendered = quotedNode.render(context);
 
     expect(rendered).toBe('"hello"');
+    expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.preEvaluated).toBe(false);
   });
