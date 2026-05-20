@@ -154,13 +154,6 @@ function printDetached(options: PrintOptions, fn: (nextOptions: PrintOptions) =>
   return writer.toString() || out;
 }
 
-export const enum Priority {
-  None = 0,
-  Low = 1,
-  Medium = 2,
-  High = 3,
-  Highest = 4
-}
 export type RulesVisibility = 'public' | 'optional' | 'private';
 
 export interface RuntimeVarBinding {
@@ -308,6 +301,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   rulesIndexed = 0;
   _indexing = false;
+  private _registrationPrepared = false;
 
   _indexRules() {
     if (this._indexing) {
@@ -2167,15 +2161,20 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._prepareRegistrationOnce(context);
   }
 
-  protected override prepareEval(context: Context): MaybePromise<this> {
-    return this.prepareRegistration(context);
+  protected override prepareEval(_context: Context): MaybePromise<this> {
+    return this;
+  }
+
+  protected override shouldPrepareEval(_context: Context, _needsReeval: boolean): boolean {
+    return false;
   }
 
   private _prepareRegistrationOnce(context: Context): MaybePromise<this> {
-    if (!this.preEvaluated) {
+    if (!this._registrationPrepared) {
       context.depth++;
       const rules = this;
       const prepState = this._createRegistrationPrepState();
+      rules._registrationPrepared = true;
       rules.preEvaluated = true;
       const { saved, isNestableAtRuleBody } = this._setupRegistrationContext(context, rules);
 
@@ -2183,6 +2182,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       try {
         mp = this._prepareRegistration(rules, context, saved, prepState);
       } catch (error) {
+        rules._registrationPrepared = false;
         this._restoreRegistrationAfterError(context, saved);
         throw error;
       }
@@ -2198,6 +2198,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
             return result;
           })
           .catch((error) => {
+            rules._registrationPrepared = false;
             this._restoreRegistrationAfterError(context, saved);
             throw error;
           });
@@ -2285,7 +2286,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
-      // registration prep and dynamic resolution — they're handled by the eval queue.
+      // registration prep and dynamic resolution. They evaluate when the
+      // source-order walk reaches them.
       if (!this._isRegisterableType(node)) {
         Reflect.set(node, 'index', nodeIndex);
         return;
@@ -2387,8 +2389,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Check if a node type participates in name-based registration.
    * Only these node types have names/selectors that registration finalization
-   * needs to resolve. Everything else (Call, Expression, Comment, etc.) goes
-   * straight to the eval queue.
+   * needs to resolve. Everything else (Call, Expression, Comment, etc.) waits
+   * for the normal source-order eval walk.
    */
   private _isRegisterableType(node: Node): boolean {
     return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset) || isStyleImportRegistrationNode(node);
@@ -2786,199 +2788,114 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  /** Build the evaluation queue partitioned by priority */
-  private _buildEvalQueue(rules: Rules): EvalQueueMap {
-    let evalQueue: EvalQueueMap = new Map();
-    for (let item of rules) {
-      let [, rule] = item;
-      let priority = NodeTypeToPriority.get(rule.type) ?? Priority.None;
-      // Less variable-calls `@foo();` are parsed as Expression(Call(variable-ref)).
-      // We *selectively* boost only those calls that "unlock mixins" (i.e. calling a variable whose
-      // value is a detached ruleset containing mixin definitions). This avoids changing evaluation
-      // order for regular detached rulesets like `@ruleset()` used for property blocks.
-      if (priority === Priority.None && rules.treeContext?.leakyRules === true && isNode(rule, N.Expression)) {
-        const key = this._getLeakyVariableCallKey(rule);
-        if (key !== undefined && this._variableCallUnlocksMixinDefinitions(rules, key)) {
-          priority = Priority.High;
-        }
-      }
-      let queue = evalQueue.get(priority) ?? [];
-      queue.push(item as [number, Node]);
-      evalQueue.set(priority, queue);
-    }
-    return evalQueue;
-  }
-
-  private _getLeakyVariableCallKey(rule: Node): string | undefined {
-    if (!isNode(rule, N.Expression)) {
-      return undefined;
-    }
-    const inner = rule.value;
-    if (!isNode(inner, N.Call)) {
-      return undefined;
-    }
-    const name = inner.value.name;
-    if (!isNode(name, N.Reference) || name.options?.type !== 'variable') {
-      return undefined;
-    }
-    const raw = name.value.key;
-    return Array.isArray(raw)
-      ? raw.join('')
-      : String(raw?.valueOf?.() ?? raw ?? '');
-  }
-
-  private _variableCallUnlocksMixinDefinitions(rules: Rules, key: string): boolean {
-    const declaration = rules.find('declaration', key, 'VarDeclaration');
-    if (!isNode(declaration, N.VarDeclaration)) {
-      return false;
-    }
-    const value = declaration.value.value;
-    return isNode(value, N.Mixin) && value.value.rules.value.some(node => isNode(node, N.Mixin));
-  }
-
-  /** Evaluate the built queues in priority order */
-  private _evaluateQueue(rules: Rules, evalQueue: EvalQueueMap, context: Context): MaybePromise<boolean> {
+  private _evaluateSourceOrder(rules: Rules, context: Context): MaybePromise<boolean> {
     let rulesToHoist = false;
-    const scheduledPriority = new WeakMap<Node, Priority>();
-    const failuresByPriority = new WeakMap<Node, Map<Priority, number>>();
+    const pendingImports: Array<[number, Node]> = [];
 
-    const priorities: Priority[] = Array.from({ length: Priority.Highest + 1 }).map((_, i) => (Priority.Highest - i) as Priority);
-    const runPriority = (p: Priority): MaybePromise<void> => {
-      const queue = evalQueue.get(p);
-      if (!queue) {
+    const applyResult = (idx: number, rule: Node, result: Node | undefined): void => {
+      if (result === undefined) {
         return;
       }
-      const enqueueRetry = (priority: Priority, item: [number, Node], rule: Node): void => {
-        const retryQueue = evalQueue.get(priority) ?? [];
-        retryQueue.push(item);
-        evalQueue.set(priority, retryQueue);
-        scheduledPriority.set(rule, priority);
-      };
-      const countFailure = (rule: Node, priority: Priority): number => {
-        const byPriority = failuresByPriority.get(rule) ?? new Map<Priority, number>();
-        const nextCount = (byPriority.get(priority) ?? 0) + 1;
-        byPriority.set(priority, nextCount);
-        failuresByPriority.set(rule, byPriority);
-        return nextCount;
-      };
-      const runSingleEntry = (q: number): MaybePromise<void | undefined> => {
-        const [idx, rule] = queue[q]!;
-        /**
-         * Var declarations have late evaluation, so they are skipped.
-         * (Meaning: they are not evaluated until they are referenced.)
-         */
-        if (isNode(rule, N.VarDeclaration)) {
+      if (result !== rule) {
+        rules.value[idx] = result;
+        if (isNode(result, N.Rules)) {
+          result.index = idx;
+          rules.adopt(result);
+          rules.registerNode(result, {
+            rulesVisibility: result.options.rulesVisibility,
+            readonly: result.options.readonly
+          }, context);
           return;
         }
+        rules.adopt(result);
+      }
+      if (result.hoistToRoot) {
+        rulesToHoist = true;
+      }
+    };
 
-        // Skip stale entries for nodes that were re-queued to a different priority.
-        const expectedPriority = scheduledPriority.get(rule);
-        if (expectedPriority !== undefined && expectedPriority !== p) {
+    const evaluateEntry = (idx: number, rule: Node, allowImportRetry: boolean): MaybePromise<void> => {
+      if (isNode(rule, N.VarDeclaration)) {
+        return;
+      }
+      const handleError = (error: unknown): Node | undefined => {
+        if (
+          allowImportRetry
+          && isStyleImportRegistrationNode(rule)
+          && isStyleImportPathResolutionError(error)
+        ) {
+          pendingImports.push([idx, rule]);
           return;
         }
+        throw error;
+      };
+      const result = (() => {
+        try {
+          const value = rule.eval(context);
+          return isThenable(value)
+            ? (value as Promise<Node>).catch(handleError)
+            : value;
+        } catch (error) {
+          return handleError(error);
+        }
+      })();
+      if (isThenable(result)) {
+        return (result as Promise<Node | undefined>).then(resolved => applyResult(idx, rule, resolved));
+      }
+      applyResult(idx, rule, result as Node | undefined);
+    };
 
-        const onEvalError = (error: unknown): Node | undefined => {
-          // Most node failures are semantic failures and should throw immediately.
-          // Retry scheduling is reserved for StyleImport ordering/interpolation cases.
-          if (!isStyleImportRegistrationNode(rule)) {
-            throw error;
-          }
-          // Final pass: no retries remain.
-          if (p === Priority.None) {
-            throw error;
-          }
+    const entries = Array.from(rules);
+    // These are the two eval-owned side-effect lanes left after removing the
+    // broad priority table. Imports can provide symbols to the whole file, and
+    // calls can produce declarations that Less property accessors read.
+    const importEntries = entries.filter(([, rule]) => isStyleImportRegistrationNode(rule));
+    const callEntries = entries.filter(([, rule]) => isNode(rule, N.Call));
+    const drainPendingImports = (allowRetry: boolean): MaybePromise<void> => {
+      if (pendingImports.length === 0) {
+        return;
+      }
+      const imports = pendingImports.splice(0);
+      const drained = serialForEach(imports, ([idx, rule]) => evaluateEntry(idx, rule, allowRetry));
+      if (isThenable(drained) && allowRetry) {
+        return (drained as Promise<void>).then(() => drainPendingImports(false));
+      }
+      return drained;
+    };
 
-          // Only retry when the import path itself couldn't be resolved
-          // (e.g. @import "@{theme}/file" where @theme isn't available yet).
-          // Path resolution is cheap (no cloning). Content evaluation errors
-          // (after cloning the import tree) are never retried — each retry
-          // would re-clone the entire tree, causing memory blowup.
-          if (!isStyleImportPathResolutionError(error)) {
-            throw error;
-          }
-
-          // Retry policy:
-          // 1) first failure at a priority -> retry once at same priority
-          // 2) second+ failure at that priority -> step down one level
-          const failures = countFailure(rule, p);
-          const nextPriority = failures === 1 ? p : (p - 1) as Priority;
-          enqueueRetry(nextPriority, [idx, rule], rule);
-          return;
-        };
-        const tryStepResult = (): MaybePromise<Node | undefined> => {
-          try {
-            const result = rule.eval(context);
-            if (isThenable(result)) {
-              return (result as Promise<Node>).catch(onEvalError);
-            }
-            return result as Node;
-          } catch (error) {
-            return onEvalError(error);
-          }
-        };
-        const stepResult = pipe(
-          tryStepResult,
-          (result: Node | undefined) => {
-            // Undefined means we re-queued this node for retry.
-            if (result === undefined) {
+    const evaluateImports = serialForEach(importEntries, ([idx, rule]) => evaluateEntry(idx, rule, true));
+    const evaluateBody = (): MaybePromise<boolean> => {
+      const importDrain = drainPendingImports(false);
+      const afterImports = () => {
+        const calls = serialForEach(callEntries, ([idx, rule]) => evaluateEntry(idx, rule, false));
+        const afterCalls = () => {
+          const normal = serialForEach(entries, ([idx, rule]) => {
+            if (isNode(rule, N.VarDeclaration) || isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
               return;
             }
-            scheduledPriority.delete(rule);
-            // Apply the result
-            if (result !== rule) {
-              rules.value[idx] = result;
-              queue[q] = [idx, result];
-              // If a StyleImport evaluated to Rules, register them in the parent's _rulesSet
-              // so variables from the import can be found by the parent
-              // Also register Rules from Call results (mixin calls) in the same way
-              if (isNode(result, N.Rules)) {
-                // Set the index of the imported Rules to the StyleImport's index
-                // so we can compare Rules indices when determining which variable was declared later
-                result.index = idx;
-                rules.adopt(result);
-                rules.registerNode(result, {
-                  rulesVisibility: result.options.rulesVisibility,
-                  readonly: result.options.readonly
-                }, context);
-              } else {
-                // For non-Rules results, adopt them to set up parent chain
-                rules.adopt(result);
-              }
-            }
-            if (result.hoistToRoot) {
-              rulesToHoist = true;
-            }
-            return;
+            const currentRule = rules.value[idx] ?? rule;
+            return evaluateEntry(idx, currentRule, false);
+          });
+          if (isThenable(normal)) {
+            return (normal as Promise<void>).then(() => rulesToHoist);
           }
-        );
-        // If stepResult is a thenable, propagate any errors
-        if (isThenable(stepResult)) {
-          return stepResult;
+          return rulesToHoist;
+        };
+        if (isThenable(calls)) {
+          return (calls as Promise<void>).then(afterCalls);
         }
-        return;
+        return afterCalls();
       };
-      const runFromIndex = (q: number): MaybePromise<void> => {
-        if (q >= queue.length) {
-          return;
-        }
-        const step = runSingleEntry(q);
-        if (isThenable(step)) {
-          return (step as Promise<void>).then(() => runFromIndex(q + 1));
-        }
-        return runFromIndex(q + 1);
-      };
-      return runFromIndex(0);
+      if (isThenable(importDrain)) {
+        return (importDrain as Promise<void>).then(afterImports);
+      }
+      return afterImports();
     };
-    const phaseRun = serialForEach(priorities, runPriority);
 
-    if (isThenable(phaseRun)) {
-      return (phaseRun as Promise<void>).then(() => {
-        return rulesToHoist;
-      }).catch((error) => {
-        throw error;
-      });
+    if (isThenable(evaluateImports)) {
+      return (evaluateImports as Promise<void>).then(evaluateBody);
     }
-    return rulesToHoist;
+    return evaluateBody();
   }
 
   /**
@@ -3220,7 +3137,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * emitted from late-evaluated calls (e.g. each/$for) appear before nested
    * rulesets/at-rules in the same parent Rules container.
    *
-   * This runs after queue evaluation to avoid mutating rule indices mid-eval.
+   * This runs after source-order evaluation to avoid mutating rule indices
+   * mid-eval.
    */
   private _normalizeCallDeclarationRulesOrder(rules: Rules): void {
     const firstNestedIdx = rules.value.findIndex(n => isNode(n, N.Ruleset | N.AtRule));
@@ -3249,7 +3167,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   /**
-   * After registration prep: ensure root on extend stack, build eval queue, run evaluation.
+   * After registration prep: ensure root on extend stack, then evaluate
+   * children in source order.
    */
   private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._ensureRootExtendStack(rules, context);
@@ -3257,17 +3176,16 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return { rules, rulesToHoist: false };
     }
     this._assignRootDocumentOrder(rules, context);
-    const evalQueue = this._buildEvalQueue(rules);
-    const maybeHoist = this._evaluateQueue(rules, evalQueue, context);
+    const maybeHoist = this._evaluateSourceOrder(rules, context);
     if (isThenable(maybeHoist)) {
       return (maybeHoist as Promise<boolean>).then(rulesToHoist =>
-        this._finishQueueEvaluation(rules, rulesToHoist)
+        this._finishSourceOrderEvaluation(rules, rulesToHoist)
       );
     }
-    return this._finishQueueEvaluation(rules, maybeHoist as boolean);
+    return this._finishSourceOrderEvaluation(rules, maybeHoist as boolean);
   }
 
-  private _finishQueueEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
+  private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
     this._normalizeCallDeclarationRulesOrder(rules);
     this._coalesceMergedDeclarations(rules);
     return {
@@ -3355,6 +3273,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _ensureRegistrationPrep(context: Context): MaybePromise<Rules> {
     if (this.preEvaluated) {
+      if (!this._registrationPrepared) {
+        return this._prepareRegistrationOnce(context);
+      }
       return this;
     }
     // Eval owns this bridge now, but the helper still performs the old
@@ -3466,8 +3387,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
 export const rules = defineType(Rules, 'Rules');
 
-type EvalQueueMap = Map<Priority, Array<[number, Node]>>;
-
 // Registration prep has two pending lanes. Declaration-name nodes own a local
 // fixed-point state because one declaration name can unblock another; every
 // other unresolved identity stays in one source-ordered lane for now.
@@ -3492,32 +3411,6 @@ type PendingIdentity = {
   kind: PendingIdentityKind;
   node: Node;
 };
-
-/**
- * @todo - Will need lots of massaging, to resolve things like
- * mixins which rely on variables which have interpolated names,
- * and variables with interpolated names that rely on mixins.
- *
- * @note - Registration prep should have registered stable declaration names,
- * mixins, and selectors before the eval queue reaches executable rules.
- */
-const NodeTypeToPriority = new Map([
-  /** First, resolve imports */
-  ['StyleImport', Priority.Highest],
-  /** Then, resolve calls */
-  ['Call', Priority.High],
-  /** Then, resolve declarations */
-  ['VarDeclaration', Priority.Medium],
-  ['Declaration', Priority.Medium],
-  /** Then... */
-  ['Mixin', Priority.Low],
-  ['Ruleset', Priority.Low],
-  /** Extend should evaluate at the same priority as Ruleset to ensure it evaluates before nested rulesets */
-  ['Extend', Priority.Low],
-  /** AtRule (e.g., @media) should evaluate at the same priority as Ruleset to preserve source order */
-  ['AtRule', Priority.Low]
-  /** Then, everything else? */
-]);
 
 // const TypeToNodeType = new Map([
 //   ['Mixin', NodeType.MIXIN],

@@ -974,6 +974,10 @@ export abstract class Node<
     return this.prepareRegistration(context);
   }
 
+  protected shouldPrepareEval(_context: Context, needsReeval: boolean): boolean {
+    return !this.preEvaluated || needsReeval;
+  }
+
   /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
@@ -1017,7 +1021,7 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node.preEvaluated || needsReeval) {
+        if (node.shouldPrepareEval(context, needsReeval)) {
           return node.prepareEval(context);
         }
         return node;
@@ -1046,7 +1050,7 @@ export abstract class Node<
   private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
     let preparedNode: Node;
 
-    if (!node.preEvaluated || needsReeval) {
+    if (node.shouldPrepareEval(context, needsReeval)) {
       preparedNode = mustBeNode(node.prepareEval(context));
     } else {
       preparedNode = node;

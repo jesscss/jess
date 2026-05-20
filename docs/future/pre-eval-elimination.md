@@ -33,8 +33,8 @@ focused test proves a missing semantic constraint.
 
 ## Why `Rules` Is The Choke Point
 
-Today, `Rules.evalNode()` in `packages/core/src/tree/rules.ts` assumes the tree
-has already been prepared by `Rules.preEval()`.
+Today, `Rules.evalNode()` in `packages/core/src/tree/rules.ts` owns the
+registration-prep bridge before it evaluates children.
 
 That preparation currently includes several separate concerns:
 
@@ -43,16 +43,17 @@ That preparation currently includes several separate concerns:
 - root and extend-root registration
 - static-name registration
 - multi-pass retry for dynamic declaration names
-- depth-first child `preEval()` for nested `Rules`, `Ruleset`, and `AtRule`
+- depth-first child prep for nested `Rules`, `Ruleset`, and `AtRule`
 
-Only after that does `Rules.evalNode()` build its priority queue and run actual
-evaluation.
+Only after that does `Rules.evalNode()` run the source-order child evaluation
+walk.
 
 That means Jess pays for:
 
 - one pass to discover what can be registered
 - one pass to actually evaluate
-- extra retries inside `preEval()` before the eval queue even starts
+- extra retries during registration prep before the source-order eval walk even
+  starts
 
 If `preEval` goes away, `Rules.evalNode()` has to become the single
 orchestrator for all of that.
@@ -90,21 +91,22 @@ The current runtime uses `.index` for:
 So if `preEval` goes away, index assignment still needs to happen early inside
 `Rules.evalNode()`, before any linear lookups can run.
 
-That does **not** mean evaluation itself has to become source-ordered.
+That also means evaluation itself can now be source-ordered.
 
 The cleaner model is:
 
 - assign `.index` from the current child array in source order as an initial
   setup step
-- build the eval queue after those indices exist
-- evaluate in whatever priority order the queue needs
+- run child evaluation in source order after those indices exist
+- use narrow pending lanes only for proven blockers
 - preserve `.index` when a node is replaced by its resolved/evaluated form
 - assign a derived source position to nodes that are materialized later
   (imports, call results, mixin outputs) based on the source position that
   emitted them
 
-So the rule is "source position must exist before lookup", not
-"evaluation must happen in source order".
+So the rule is "source position must exist before lookup"; source order is the
+normal eval/render order unless a focused test proves a specific pending lane is
+needed.
 
 That makes indexing a setup concern, not a reason to keep a separate pass.
 
@@ -143,7 +145,7 @@ The future model should be:
 - `Rules.evalNode()` does one shallow setup step
 - nodes register themselves when they become lookup-ready
 - unresolved names stay pending instead of forcing a whole-tree pre-pass
-- evaluation requeues only nodes that gained new prerequisites
+- evaluation defers only the narrow blockers that gained new prerequisites
 
 That implies a new contract:
 
@@ -155,8 +157,8 @@ That implies a new contract:
 
 ## Evaluation Order Decision
 
-The target order is **source-order render/eval with local prep**, not the
-current broad priority queue.
+The target order is **source-order render/eval with local prep**, not a broad
+priority queue.
 
 That does not mean "evaluate every child before registration" or "serialize raw
 source text directly." It means `Rules` owns one local walk with a few explicit
@@ -183,20 +185,27 @@ preconditions:
 6. **Typed deferral for real misses.** If a value is needed only for final
    output and is not currently resolvable, emit a typed pending slot and record
    the miss. Do not reintroduce a general priority queue.
-7. **Drain narrow pending work.** Run fixed-point drains only for the specific
+7. **Run narrow semantic side-effect lanes.** Keep these explicit and small:
+   - engine imports evaluate before ordinary rules so imported symbols are
+     available to the file that imports them
+   - mixin/function calls evaluate before ordinary declarations/rulesets in the
+     same `Rules` so Less property accessors can see call-produced declarations
+8. **Drain narrow pending work.** Run fixed-point drains only for the specific
    shapes that genuinely need them:
    - dynamic declaration names in the current `Rules`
    - `StyleImport` path interpolation
    - pending render slots that could not resolve during the linear walk
-8. **Finalize after nested containers have been visited.** `processExtends`
+9. **Finalize after nested containers have been visited.** `processExtends`
    still runs only after the outermost root has evaluated enough of the tree for
    every extend-relevant ruleset to be registered to the correct extend root.
 
-The current `NodeTypeToPriority` queue was useful as a bridge because preEval
-made lookup state exist before output evaluation. It should not be preserved as
-the normal renderer. Its only durable lessons are the two narrow blockers above:
-imports can be blocked on path identity, and dynamic declaration keys can be
-blocked on other declaration identities.
+The old `NodeTypeToPriority` queue was useful as a bridge because preEval made
+lookup state exist before output evaluation. It has been removed from
+`Rules.evalNode()` and should not come back as the normal renderer. Its only
+durable lessons were the narrow blockers above: imports carry symbol side
+effects and can be blocked on path identity, calls can produce declarations that
+Less property accessors read, and dynamic declaration keys can be blocked on
+other declaration identities.
 
 ## Why We Pre-Evaluated Parts First
 
@@ -226,7 +235,7 @@ One plausible future structure:
 
 1. Do non-semantic setup once.
    Set `context.root`, establish the correct extend root, snapshot context, and
-   assign child indices before any registration or queue scheduling.
+   assign child indices before registration and eval-owned side-effect lanes.
 
 2. Register immediately stable identities.
    This can reuse pieces of `_indexRules()` and `registerNode()`, but it must
@@ -321,7 +330,7 @@ A future split could look more like:
 - `enterRulesetScope(context)`
   Push selector / frame state only while evaluating the ruleset body.
 - `evaluateRulesetBody(context)`
-  Evaluate nested `Rules` when the queue reaches them.
+  Evaluate nested `Rules` when the source-order walk reaches them.
 
 That would keep selector prep local without requiring a full depth-first
 pre-pass.
@@ -400,7 +409,7 @@ currently owns orchestration:
 - extend-root setup
 - child indexing
 - pending registration management
-- eval queue scheduling
+- source-order evaluation
 
 Indexing is especially important here: the future model still needs a stable
 source-position identity on the node itself for linear lookup semantics,
@@ -553,12 +562,12 @@ mark-only clone step.
 Control nodes do not participate in registration-by-name, and they should not
 require a separate prep phase.
 
-The only real concern is queue placement:
+The only real concern is eval placement:
 
-- control nodes should stay in the eval scheduler at the right priority
+- control nodes should run when the source-order walk reaches them
 - any rules they emit should register as they materialize
 
-That is an eval-scheduler problem, not a reason to preserve `preEval()`.
+That is an eval/materialization problem, not a reason to preserve `preEval()`.
 
 ## Extends Are The Main Semantic Constraint
 
@@ -585,9 +594,9 @@ That suggests a simpler contract:
   extend processing
 - but they do not all need a dedicated prep pass up front
 
-In practice, that means the future queue probably still needs depth-first
-behavior for extend-relevant containers, just folded into eval rather than split
-across `preEval` and `eval`.
+In practice, that means extend-relevant containers still need to be visited
+before finalization, just folded into eval rather than split across `preEval`
+and `eval`.
 
 ## How To Reduce Iterations
 
@@ -614,11 +623,11 @@ in that same `Rules` unless there is a proven cross-boundary dependency.
 
 ### 4. Make Ordering Explicit In The Walk
 
-The existing priority queue documents which concerns were order-sensitive, but
-it should not survive as a broad renderer. Treat it as evidence for narrow
-blockers, not as the target architecture:
+The removed priority queue documented which concerns were order-sensitive.
+Treat it as evidence for narrow blockers, not as the target architecture:
 
 - import path identity can need retry
+- call output can define properties read elsewhere in the same scope
 - dynamic declaration keys can need a fixed-point pass
 - ruleset/extend identity must be known before final extend processing
 
@@ -642,12 +651,12 @@ The more of that moves to serialization, the less work eval has to front-load.
 ## Decision: Linear Render With Deferred Misses
 
 Status: decided for the Track 5 target. Use Shape B as the default runtime
-shape: linear render/eval with explicit pending slots for misses. Do not carry
-the current broad priority queue forward as the normal renderer.
+shape: linear render/eval with explicit pending slots for misses. Do not bring
+back a broad priority queue as the normal renderer.
 
-The discussion above assumes the existing priority queue is the right shape and
-the work is to lean into it harder. That assumption is worth testing. There is a
-competing shape that may be cheaper in practice.
+The rejected alternative was to treat the old priority queue as the right shape
+and lean into it harder. That assumption did not match the desired eval/render
+architecture.
 
 ### Shape A — Prioritized queue (current direction)
 
@@ -690,11 +699,14 @@ Default to Shape B. Keep narrow schedulers only where the current code already
 shows a real blocking shape:
 
 - `StyleImport` path interpolation can fail before the import path is known.
-  Current `Rules._evaluateQueue(...)` retries only this tagged path-resolution
-  error; content evaluation errors are not retried.
+  `Rules._evaluateSourceOrder(...)` keeps a narrow pending-import lane for this
+  tagged path-resolution error; content evaluation errors are not retried.
+- `Call` output can add declarations before ordinary declarations and nested
+  rulesets serialize. This is needed for Less property accessors, where `$color`
+  can read a declaration produced by a mixin call in the same `Rules`.
 - Dynamic declaration names can depend on other dynamic declaration names.
-  Current `Rules._resolvePendingRegistration(...)` already handles this as a local
-  fixed-point loop with a small retry cap.
+  `Rules._resolvePendingDeclarationNamesFixedPoint(...)` already handles this
+  as a local fixed-point loop with a small retry cap.
 
 Everything else should either resolve from indexed scope state or emit a typed
 pending segment with an explicit drain step. The future renderer should not keep
@@ -715,9 +727,9 @@ general priority queue.
 - Worst-case cascade depth for fixed-point drain (expected: 1–2 in realistic
   code; pathological cases can be capped with an explicit iteration limit).
 
-Use those numbers to validate the pending-slot implementation and decide where
-the two narrow schedulers belong. Do not use the current queue's existence as
-evidence that the broad queue is the target architecture.
+Use those numbers to validate the pending-slot implementation and decide whether
+the remaining narrow lanes can shrink further. Do not use the old queue's
+existence as evidence that a broad queue is the target architecture.
 
 ## A Conservative Migration Path
 
@@ -756,8 +768,7 @@ A safer order is:
    - `pendingSelectorIdentity`
    - `pendingImportPaths`
 
-   The first useful implementation can keep the existing eval queue for output,
-   but registration should stop depending on a completed tree-wide pre-pass.
+   Registration should stop depending on a completed tree-wide pre-pass.
 
 5. **Fold recursive child preEval into container eval.**
    `Ruleset` and `AtRule` should evaluate child `Rules` when the source-order
@@ -765,9 +776,10 @@ A safer order is:
    but they should not force a depth-first preparatory traversal just to make
    rendering possible.
 
-6. **Replace the broad priority queue with source-order render/eval.**
-   Keep only the two proven narrow schedulers:
-   - import path retry
+6. **Keep source-order render/eval as the normal path.**
+   Keep only proven narrow lanes:
+   - import symbol side effects and path retry
+   - call output side effects for Less property accessors
    - dynamic declaration-key fixed point
 
    Everything else resolves from indexed scope state, evaluates locally, or
@@ -798,15 +810,15 @@ halfway between the old public phase name and the target eval-owned setup:
 - Declaration assignment/value prep still runs during registration prep today.
   Moving it into `Declaration.evalNode()` needs focused assignment and merge
   tests, because that rewrite creates semantic references and value containers.
-- `Ruleset` and `AtRule` body traversal still happens during registration prep
-  where extend-root registration depends on it. Moving those bodies into normal
-  source-order eval is the major remaining semantic migration.
+- `Ruleset` and `AtRule` body traversal now happens from eval-owned setup rather
+  than through base `prepareEval()`. Some registration prep remains inside those
+  nodes where extend-root and selector identity need it.
 
-The next step is to make `Rules.evalNode()` own more of the declaration-name and
-body-prep timing directly instead of reaching it through the shared registration
-scan. Do not split the ordered non-declaration identity list into separate
-schedulers unless focused tests prove each surface can move independently
-without changing registration or import retry timing.
+The next step is to shrink the remaining node-local registration prep that still
+does semantic rewrites before the source-order eval walk reaches the node. Do
+not split the ordered non-declaration identity list into separate schedulers
+unless focused tests prove each surface can move independently without changing
+registration or import retry timing.
 
 Do not simply override `Rules.eval()` to skip the public `preEval()` wrapper.
 That changes when registration prep runs relative to `rulesEvalStack` setup and

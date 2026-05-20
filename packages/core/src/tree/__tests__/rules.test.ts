@@ -157,6 +157,24 @@ describe('Rules', () => {
     expect(options.referenceRenderEnabled).toBe(true);
   });
 
+  it('lets Rules.evalNode own registration prep instead of using prepareEval', async () => {
+    const node = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+    Object.defineProperty(node, 'prepareEval', {
+      value: () => {
+        throw new Error('Rules eval should not use prepareEval for registration');
+      }
+    });
+
+    const evaluated = await node.eval(context);
+
+    expect(evaluated.toTrimmedString()).toBe('color: red;');
+    expect(node.preEvaluated).toBe(true);
+    expect(node.evaluated).toBe(true);
+  });
+
   it('reuses context-owned render state without accumulating prior output', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })
