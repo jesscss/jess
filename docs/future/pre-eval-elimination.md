@@ -801,7 +801,8 @@ ordinary eval/render must not call a hidden recursive registration pass.
 
 - `Node.prepareRegistration()` is the explicit registration identity hook.
 - `Node.evalStatic()` calls `evalNode()` directly; there is no eval-time
-  preparation hook in the base node path.
+  preparation hook in the base node path, and base eval no longer marks nodes
+  as registration-prepared.
 - Node classes no longer carry redundant `preEval()` overrides that only
   delegate to `prepareRegistration()`.
 - `Rules` owns pending registration state for two proven surfaces:

@@ -992,7 +992,6 @@ export abstract class Node<
       return Node._evalStaticSync(node, context, needsReeval);
     }
 
-    node.preEvaluated = true;
     const evaluated = node.evaluated && !needsReeval
       ? node
       : node.evalNode(context);
@@ -1013,7 +1012,6 @@ export abstract class Node<
   }
 
   private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
-    node.preEvaluated = true;
     let evald: Node;
     if (!node.evaluated || needsReeval) {
       evald = mustBeNode(node.evalNode(context));
