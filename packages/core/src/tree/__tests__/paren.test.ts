@@ -57,9 +57,15 @@ describe('Paren', () => {
     context.rulesContext = evald as RulesClass;
 
     const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
+    let parenResolveCalls = 0;
+    parenNode.resolve = (renderContext: Context) => {
+      parenResolveCalls++;
+      return parenNode.evalNode(renderContext);
+    };
     const rendered = parenNode.render(context);
 
     expect(rendered).toBe('(foo)');
+    expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.preEvaluated).toBe(false);
   });

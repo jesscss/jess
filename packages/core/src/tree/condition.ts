@@ -1,7 +1,7 @@
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation, type TreeContext } from './node.js';
 import { Bool } from './bool.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
@@ -88,7 +88,11 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         options
       );
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evaluateCondition(context, 'resolve');
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? this.toTrimmedString(prepared)
+      : value.toTrimmedString(prepared);
   }
 
   static getBool(node: Node, negated: boolean): Bool {

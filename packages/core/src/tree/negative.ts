@@ -1,8 +1,8 @@
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
-import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, type PrintOptions } from './util/print.js';
+import { isThenable, type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
+import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -35,7 +35,11 @@ export class Negative extends Node<Node> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evalNode(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? this.toTrimmedString(prepared)
+      : (value as Node).toTrimmedString(prepared);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

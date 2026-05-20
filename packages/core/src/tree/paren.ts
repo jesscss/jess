@@ -6,7 +6,7 @@ import { Node, defineType, F_NON_STATIC, type NodeLocation, type TreeContext } f
 import { Dimension } from './dimension.js';
 import { List } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -137,7 +137,11 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         options
       );
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evaluateValue(context, 'resolve');
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? this.toTrimmedString(prepared)
+      : value.toTrimmedString(prepared);
   }
 
   private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {

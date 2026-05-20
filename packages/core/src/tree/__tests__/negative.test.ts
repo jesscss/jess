@@ -34,9 +34,15 @@ describe('Negative', () => {
     context.rulesContext = evald as RulesClass;
 
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+    let negativeResolveCalls = 0;
+    negativeNode.resolve = (renderContext: Context) => {
+      negativeResolveCalls++;
+      return negativeNode.evalNode(renderContext);
+    };
     const rendered = negativeNode.render(context);
 
     expect(rendered).toBe('-20');
+    expect(negativeResolveCalls).toBe(0);
     expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.preEvaluated).toBe(false);
   });
