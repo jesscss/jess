@@ -180,7 +180,7 @@ describe('Control Nodes', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -348,7 +348,7 @@ describe('Control Nodes', () => {
     expect(resolved.toTrimmedString()).toContain('item: a');
     expect(resolved.toTrimmedString()).toContain('item: b');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -380,7 +380,7 @@ describe('Control Nodes', () => {
     expect(buffer.segments.join('')).toBe(rendered);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('serializes $while source syntax through toTrimmedString()', () => {
@@ -427,7 +427,7 @@ describe('Control Nodes', () => {
     expect(resolved).toBeInstanceOf(Rules);
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

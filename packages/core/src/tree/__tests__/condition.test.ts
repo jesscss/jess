@@ -71,7 +71,7 @@ describe('Condition', () => {
       expect(node.render(context)).toBe('false');
       expect(conditionResolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
 
     it('writes evaluated condition render output into flat buffers', async () => {
@@ -91,7 +91,7 @@ describe('Condition', () => {
       expect(buffer.parts).toEqual(['false']);
       expect(conditionResolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
 
     it('resolves conditions without touching render state', async () => {
@@ -105,7 +105,7 @@ describe('Condition', () => {
 
       expect(resolved.toTrimmedString()).toBe('false');
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 

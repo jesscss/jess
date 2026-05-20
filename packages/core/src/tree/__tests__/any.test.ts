@@ -14,12 +14,12 @@ describe('Any and Keyword', () => {
 
     expect(node.render(renderContext)).toBe('foo');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('foo');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
 
@@ -49,12 +49,12 @@ describe('Any and Keyword', () => {
 
     expect(node.render(renderContext)).toBe('inherit');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('inherit');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
 });

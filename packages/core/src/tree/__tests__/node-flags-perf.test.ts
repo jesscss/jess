@@ -60,14 +60,14 @@ function evalStaticWithRegistrationPrep(node: Node, context: Context): any {
 
   return pipe(
     () => {
-      if (!node.preEvaluated) {
+      if (!node.registrationPrepared) {
         return node.prepareRegistration(context);
       }
       return node;
     },
     (prepared: Node) => {
       preparedNode = prepared;
-      preparedNode.preEvaluated = true;
+      preparedNode.registrationPrepared = true;
       if (prepared !== node) {
         preparedNode.inherit(node);
       }
@@ -128,7 +128,6 @@ describe('Node Flags Performance', () => {
     expect(result).toBe(node);
     expect(node.registrationCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
-    expect(node.preEvaluated).toBe(false);
     expect(node.evaluated).toBe(true);
   });
 

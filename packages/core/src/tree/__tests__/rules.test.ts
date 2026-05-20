@@ -166,7 +166,7 @@ describe('Rules', () => {
     const evaluated = await node.eval(context);
 
     expect(evaluated.toTrimmedString()).toBe('color: red;');
-    expect(node.preEvaluated).toBe(true);
+    expect(node.registrationPrepared).toBe(true);
     expect(node.evaluated).toBe(true);
   });
 
@@ -205,7 +205,7 @@ describe('Rules', () => {
     expect(buffer.parts).toEqual(['color: red;\n']);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('renders rules body output directly without public resolve', async () => {
@@ -219,7 +219,7 @@ describe('Rules', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('writes root-owned charset and imports into render buffers', async () => {
@@ -249,7 +249,7 @@ describe('Rules', () => {
     expect(buffer.segments).toEqual([rendered]);
     expect(resolveCalls).toBe(0);
     expect(root.evaluated).toBe(false);
-    expect(root.preEvaluated).toBe(false);
+    expect(root.registrationPrepared).toBe(false);
   });
 
   it('renders root-owned charset and imports directly without public resolve', async () => {
@@ -268,7 +268,7 @@ describe('Rules', () => {
 
     await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(root.evaluated).toBe(false);
-    expect(root.preEvaluated).toBe(false);
+    expect(root.registrationPrepared).toBe(false);
   });
 
   it('derives rules resolve wrappers without shallow-cloning the source rules', async () => {

@@ -52,7 +52,7 @@ describe('InterpolatedSelector', () => {
 
     expect(rendered).toBe('.foo');
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved interpolated selector output into flat buffers', async () => {
@@ -85,7 +85,7 @@ describe('InterpolatedSelector', () => {
     expect(buffer.parts).toEqual(['.foo']);
     expect(resolveCalls).toBe(0);
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved interpolated selector output directly without public resolve', async () => {
@@ -109,7 +109,7 @@ describe('InterpolatedSelector', () => {
 
     expect(selectorNode.render(context)).toBe('.foo');
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('resolves interpolated selectors without touching render state', async () => {
@@ -131,7 +131,7 @@ describe('InterpolatedSelector', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo');
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

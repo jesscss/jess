@@ -60,7 +60,7 @@ describe('url', () => {
     expect(rendered).toBe('url("image.png")');
     expect(urlResolveCalls).toBe(0);
     expect(urlNode.evaluated).toBe(false);
-    expect(urlNode.preEvaluated).toBe(false);
+    expect(urlNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved url render output into flat buffers', async () => {
@@ -87,7 +87,7 @@ describe('url', () => {
     expect(buffer.parts).toEqual(['url("image.png")']);
     expect(urlResolveCalls).toBe(0);
     expect(urlNode.evaluated).toBe(false);
-    expect(urlNode.preEvaluated).toBe(false);
+    expect(urlNode.registrationPrepared).toBe(false);
   });
 
   it('does not render pure source whitespace inside url syntax', () => {
@@ -133,7 +133,7 @@ describe('url', () => {
 
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
     expect(urlNode.evaluated).toBe(false);
-    expect(urlNode.preEvaluated).toBe(false);
+    expect(urlNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

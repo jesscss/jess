@@ -67,7 +67,7 @@ describe('quoted', () => {
     expect(rendered).toBe('"hello"');
     expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
-    expect(quotedNode.preEvaluated).toBe(false);
+    expect(quotedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved quoted render output into flat buffers', async () => {
@@ -94,7 +94,7 @@ describe('quoted', () => {
     expect(buffer.parts).toEqual(['"hello"']);
     expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
-    expect(quotedNode.preEvaluated).toBe(false);
+    expect(quotedNode.registrationPrepared).toBe(false);
   });
 
   it('does not emit source trivia from resolved quoted value children', () => {
@@ -139,7 +139,7 @@ describe('quoted', () => {
 
     expect(resolved.toTrimmedString()).toBe('"hello"');
     expect(quotedNode.evaluated).toBe(false);
-    expect(quotedNode.preEvaluated).toBe(false);
+    expect(quotedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

@@ -105,7 +105,7 @@ describe('Ampersand', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo-bar');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

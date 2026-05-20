@@ -22,7 +22,7 @@ describe('RawRules', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -42,7 +42,7 @@ describe('RawRules', () => {
     expect(buffer.segments).toEqual(['color: red']);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('renders raw child output directly without public resolve', () => {
@@ -56,6 +56,6 @@ describe('RawRules', () => {
 
     expect(node.render(context)).toBe('color: red');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 });

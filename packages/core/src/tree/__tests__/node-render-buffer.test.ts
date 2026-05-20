@@ -590,6 +590,6 @@ describe('renderNodeToBuffer', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 });

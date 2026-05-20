@@ -89,7 +89,7 @@ describe('reference', () => {
 
       expect(rendered).toBe('red');
       expect(refNode.evaluated).toBe(false);
-      expect(refNode.preEvaluated).toBe(false);
+      expect(refNode.registrationPrepared).toBe(false);
     });
 
     it('writes resolved reference output into segmented buffers', async () => {
@@ -118,7 +118,7 @@ describe('reference', () => {
       expect(buffer.segments).toEqual(['red']);
       expect(resolveCalls).toBe(0);
       expect(refNode.evaluated).toBe(false);
-      expect(refNode.preEvaluated).toBe(false);
+      expect(refNode.registrationPrepared).toBe(false);
     });
 
     it('renders resolved reference output directly without public resolve', async () => {
@@ -138,7 +138,7 @@ describe('reference', () => {
 
       expect(refNode.render(context)).toBe('red');
       expect(refNode.evaluated).toBe(false);
-      expect(refNode.preEvaluated).toBe(false);
+      expect(refNode.registrationPrepared).toBe(false);
     });
 
     it('keeps definition rules context until async live-slot value eval settles', async () => {
@@ -183,7 +183,7 @@ describe('reference', () => {
 
       expect(resolved.toTrimmedString()).toBe('red');
       expect(refNode.evaluated).toBe(false);
-      expect(refNode.preEvaluated).toBe(false);
+      expect(refNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 
@@ -405,7 +405,7 @@ describe('reference', () => {
 
       expect(resolvedAgain).toBe(resolved);
       expect(resolved.evaluated).toBe(false);
-      expect(resolved.preEvaluated).toBe(false);
+      expect(resolved.registrationPrepared).toBe(false);
     });
 
     it('should get a variable from scope', async () => {
@@ -1066,7 +1066,7 @@ describe('reference', () => {
       expect(await renderNodeToString(evald, context)).toBeString(`
         color: final;
       `);
-      expect(node.preEvaluated).toBe(true);
+      expect(node.registrationPrepared).toBe(true);
     });
 
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {

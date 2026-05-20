@@ -147,7 +147,7 @@ describe('List', () => {
     expect(rendered).toBe('1 2 3, four');
     expect(resolveCalls).toBe(0);
     expect(listNode.evaluated).toBe(false);
-    expect(listNode.preEvaluated).toBe(false);
+    expect(listNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved list render output into flat buffers', async () => {
@@ -180,7 +180,7 @@ describe('List', () => {
     expect(buffer.parts).toEqual(['1 2 3, four']);
     expect(resolveCalls).toBe(0);
     expect(listNode.evaluated).toBe(false);
-    expect(listNode.preEvaluated).toBe(false);
+    expect(listNode.registrationPrepared).toBe(false);
   });
 
   it('resolves list values without touching render state', async () => {
@@ -202,7 +202,7 @@ describe('List', () => {
 
     expect(resolved.toTrimmedString()).toBe('1 2 3, four');
     expect(listNode.evaluated).toBe(false);
-    expect(listNode.preEvaluated).toBe(false);
+    expect(listNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

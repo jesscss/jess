@@ -32,7 +32,7 @@ describe('Comment', () => {
 
     expect(node.render(context)).toBe('/* keep me */');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('writes visible comment render output into flat buffers', async () => {
@@ -206,7 +206,7 @@ describe('Comment', () => {
 
     expect(resolved.toTrimmedString()).toBe('/* keep me */');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

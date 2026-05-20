@@ -71,7 +71,7 @@ describe('Range', () => {
     expect(node.render(context)).toBe('1 to 3 step 2');
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('resolves ranges without touching render state', async () => {
@@ -86,7 +86,7 @@ describe('Range', () => {
 
     expect(resolved.toTrimmedString()).toBe('1 to 3 step 2');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -108,6 +108,6 @@ describe('Range', () => {
     expect(buffer.parts).toEqual(['1 to 3 step 2']);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 });

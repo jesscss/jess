@@ -3061,7 +3061,7 @@ describe('Style import', () => {
       expect(isNode(resolved, N.Rules)).toBe(true);
       expect((resolved as Rules).value.length).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 
@@ -3102,7 +3102,7 @@ describe('Style import', () => {
       expect(buffer.segments).toEqual([rendered]);
       expect(resolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
 
     it('renders resolved style import output directly without public resolve', async () => {
@@ -3131,7 +3131,7 @@ describe('Style import', () => {
         }
       `);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
   });
 

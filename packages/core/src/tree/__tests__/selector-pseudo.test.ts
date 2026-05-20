@@ -103,7 +103,7 @@ describe('PseudoSelector', () => {
 
     expect(rendered).toBe(':is(.foo, .bar)');
     expect(pseudoNode.evaluated).toBe(false);
-    expect(pseudoNode.preEvaluated).toBe(false);
+    expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved pseudo selector output into segmented buffers', async () => {
@@ -137,7 +137,7 @@ describe('PseudoSelector', () => {
     expect(buffer.segments).toEqual([':is(.foo, .bar)']);
     expect(resolveCalls).toBe(0);
     expect(pseudoNode.evaluated).toBe(false);
-    expect(pseudoNode.preEvaluated).toBe(false);
+    expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
   it('resolves pseudo selector values without touching render state', async () => {
@@ -159,7 +159,7 @@ describe('PseudoSelector', () => {
 
     expect(resolved.toTrimmedString()).toBe(':is(.foo, .bar)');
     expect(pseudoNode.evaluated).toBe(false);
-    expect(pseudoNode.preEvaluated).toBe(false);
+    expect(pseudoNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

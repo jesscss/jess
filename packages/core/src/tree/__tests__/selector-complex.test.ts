@@ -169,7 +169,7 @@ describe('Complex selector', () => {
 
       expect(resolved.toTrimmedString()).toBe('a[data=foo] > .foo');
       expect(selector.evaluated).toBe(false);
-      expect(selector.preEvaluated).toBe(false);
+      expect(selector.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 

@@ -60,7 +60,7 @@ describe('Attribute Selector', () => {
 
     expect(rendered).toBe('[data=foo]');
     expect(attrNode.evaluated).toBe(false);
-    expect(attrNode.preEvaluated).toBe(false);
+    expect(attrNode.registrationPrepared).toBe(false);
   });
 
   test('writes resolved attribute selector output into segmented buffers', async () => {
@@ -95,7 +95,7 @@ describe('Attribute Selector', () => {
     expect(buffer.segments).toEqual(['[data=foo]']);
     expect(resolveCalls).toBe(0);
     expect(attrNode.evaluated).toBe(false);
-    expect(attrNode.preEvaluated).toBe(false);
+    expect(attrNode.registrationPrepared).toBe(false);
   });
 
   test('resolves attribute selector values without touching render state', async () => {
@@ -118,7 +118,7 @@ describe('Attribute Selector', () => {
 
     expect(resolved.toTrimmedString()).toBe('[data=foo]');
     expect(attrNode.evaluated).toBe(false);
-    expect(attrNode.preEvaluated).toBe(false);
+    expect(attrNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

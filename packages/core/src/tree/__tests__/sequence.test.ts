@@ -90,7 +90,7 @@ describe('Sequence', () => {
     expect(rendered).toBe('10 20 30');
     expect(resolveCalls).toBe(0);
     expect(sequenceNode.evaluated).toBe(false);
-    expect(sequenceNode.preEvaluated).toBe(false);
+    expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved sequence render output into flat buffers', async () => {
@@ -124,7 +124,7 @@ describe('Sequence', () => {
     expect(buffer.parts).toEqual(['10 20 30']);
     expect(resolveCalls).toBe(0);
     expect(sequenceNode.evaluated).toBe(false);
-    expect(sequenceNode.preEvaluated).toBe(false);
+    expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
   it('resolves sequence values without touching render state', async () => {
@@ -147,7 +147,7 @@ describe('Sequence', () => {
 
     expect(resolved.toTrimmedString()).toBe('10 20 30');
     expect(sequenceNode.evaluated).toBe(false);
-    expect(sequenceNode.preEvaluated).toBe(false);
+    expect(sequenceNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

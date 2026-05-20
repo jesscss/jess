@@ -67,7 +67,7 @@ describe('Paren', () => {
     expect(rendered).toBe('(foo)');
     expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
-    expect(parenNode.preEvaluated).toBe(false);
+    expect(parenNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved paren render output into flat buffers', async () => {
@@ -93,7 +93,7 @@ describe('Paren', () => {
     expect(buffer.parts).toEqual(['(foo)']);
     expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
-    expect(parenNode.preEvaluated).toBe(false);
+    expect(parenNode.registrationPrepared).toBe(false);
   });
 
   it('streams paren values without capture scaffolding', () => {
@@ -125,7 +125,7 @@ describe('Paren', () => {
 
     expect(resolved.toTrimmedString()).toBe('(foo)');
     expect(parenNode.evaluated).toBe(false);
-    expect(parenNode.preEvaluated).toBe(false);
+    expect(parenNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

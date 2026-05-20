@@ -100,7 +100,7 @@ describe('Call', () => {
 
     expect(rule.render(context)).toBe('rgb(100, 100, 100)');
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('writes call render output into flat buffers', async () => {
@@ -113,7 +113,7 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('writes CSS call arguments without resolving child wrappers', async () => {
@@ -146,7 +146,7 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
     expect(argResolveCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('writes async CSS call arguments into flat buffers', async () => {
@@ -161,7 +161,7 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['rgb(10, 20, 30)']);
     expect(arg.parent).toBe(rule.value.args);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('renders async CSS call arguments directly without public resolve', async () => {
@@ -177,7 +177,7 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
     expect(arg.parent).toBe(rule.value.args);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('writes async CSS call content into flat buffers', async () => {
@@ -193,7 +193,7 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['wrap(): body-output']);
     expect(content.parent).toBe(rule);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('renders async CSS call content directly without public resolve', async () => {
@@ -210,7 +210,7 @@ describe('Call', () => {
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
     expect(content.parent).toBe(rule);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('restores calc render frames when async CSS call argument rendering rejects', async () => {
@@ -251,7 +251,7 @@ describe('Call', () => {
     expect(buffer.parts).toEqual(['ok']);
     expect(resolveCalls).toBe(0);
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('renders resolved non-string call output directly without public resolve', async () => {
@@ -272,7 +272,7 @@ describe('Call', () => {
 
     await expect(Promise.resolve(rule.render(context))).resolves.toBe('ok');
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
   });
 
   it('writes finalized CSS call output into segmented buffers', () => {
@@ -309,7 +309,7 @@ describe('Call', () => {
     expect(isNode(resolved, N.Call)).toBe(true);
     expect(resolved.toTrimmedString()).toBe('rgb(100, 100, 100)');
     expect(rule.evaluated).toBe(false);
-    expect(rule.preEvaluated).toBe(false);
+    expect(rule.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -383,7 +383,7 @@ describe('Call', () => {
       expect(clonedLists).toBe(0);
       expect(args.parent).toBe(rule);
       expect(rule.evaluated).toBe(false);
-      expect(rule.preEvaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
     } finally {
       List.prototype.clone = originalClone;
     }

@@ -118,7 +118,7 @@ describe('Declaration', () => {
 
     expect(node.render(context)).toBe('color: red');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
@@ -157,7 +157,7 @@ describe('Declaration', () => {
     expect(resolved.toTrimmedString()).toBe('color: red');
     expect(sourceValue.parent).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -179,7 +179,7 @@ describe('Declaration', () => {
     expect(prepared.value.value.type).toBe('Sequence');
     expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
     expect(valuePrepCalls).toBe(0);
-    expect(value.preEvaluated).toBe(false);
+    expect(value.registrationPrepared).toBe(false);
   });
 
   it('reuses source-free scalar leaves when deriving interpolated declaration names', async () => {
@@ -240,7 +240,7 @@ describe('Declaration', () => {
 
     expect(resolved.toTrimmedString()).toBe('--color:red');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.inCustom).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

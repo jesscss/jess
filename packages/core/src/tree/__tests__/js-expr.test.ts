@@ -17,7 +17,7 @@ describe('JsExpression', () => {
 
     expect(resolved.toTrimmedString()).toBe('blue');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -40,7 +40,7 @@ describe('JsExpression', () => {
     expect(buffer.segments).toEqual(['blue']);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('renders evaluated JavaScript expression output directly without public resolve', async () => {
@@ -51,6 +51,6 @@ describe('JsExpression', () => {
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('blue');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 });

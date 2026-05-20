@@ -141,7 +141,7 @@ describe('Rule', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('restores parent ruleset frame when child registration prep throws', () => {
@@ -295,7 +295,7 @@ describe('Rule', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

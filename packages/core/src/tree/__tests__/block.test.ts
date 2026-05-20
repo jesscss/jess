@@ -72,7 +72,7 @@ describe('Block', () => {
     expect(rendered).toBe('{foo}');
     expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
-    expect(blockNode.preEvaluated).toBe(false);
+    expect(blockNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved block render output into flat buffers', async () => {
@@ -102,7 +102,7 @@ describe('Block', () => {
     expect(buffer.parts).toEqual(['{foo}']);
     expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
-    expect(blockNode.preEvaluated).toBe(false);
+    expect(blockNode.registrationPrepared).toBe(false);
   });
 
   it('resolves block values without touching render state', async () => {
@@ -121,7 +121,7 @@ describe('Block', () => {
 
     expect(resolved.toTrimmedString()).toBe('{foo}');
     expect(blockNode.evaluated).toBe(false);
-    expect(blockNode.preEvaluated).toBe(false);
+    expect(blockNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

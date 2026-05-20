@@ -55,7 +55,7 @@ describe('Collection', () => {
     expect(buffer.segments).toEqual([rendered]);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('renders collection output directly without public resolve', () => {
@@ -72,7 +72,7 @@ describe('Collection', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('resolves collections without touching render state', async () => {
@@ -88,7 +88,7 @@ describe('Collection', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

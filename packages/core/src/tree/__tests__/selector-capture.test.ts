@@ -30,7 +30,7 @@ describe('SelectorCapture', () => {
 
     expect(rendered).toBe('.foo');
     expect(captureNode.evaluated).toBe(false);
-    expect(captureNode.preEvaluated).toBe(false);
+    expect(captureNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved selector capture output into flat buffers', async () => {
@@ -60,7 +60,7 @@ describe('SelectorCapture', () => {
     expect(buffer.parts).toEqual(['.foo']);
     expect(resolveCalls).toBe(0);
     expect(captureNode.evaluated).toBe(false);
-    expect(captureNode.preEvaluated).toBe(false);
+    expect(captureNode.registrationPrepared).toBe(false);
   });
 
   it('resolves selector capture values without touching render state', async () => {
@@ -79,7 +79,7 @@ describe('SelectorCapture', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo');
     expect(captureNode.evaluated).toBe(false);
-    expect(captureNode.preEvaluated).toBe(false);
+    expect(captureNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

@@ -40,7 +40,7 @@ describe('Expression', () => {
     expect(rendered).toBe('foo');
     expect(resolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
-    expect(renderedNode.preEvaluated).toBe(false);
+    expect(renderedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved expression render output into flat buffers', async () => {
@@ -78,7 +78,7 @@ describe('Expression', () => {
     expect(expressionResolveCalls).toBe(0);
     expect(childResolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
-    expect(renderedNode.preEvaluated).toBe(false);
+    expect(renderedNode.registrationPrepared).toBe(false);
   });
 
   it('resolves expression values without touching render state', async () => {
@@ -97,7 +97,7 @@ describe('Expression', () => {
 
     expect(resolved.toTrimmedString()).toBe('foo');
     expect(nodeToResolve.evaluated).toBe(false);
-    expect(nodeToResolve.preEvaluated).toBe(false);
+    expect(nodeToResolve.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

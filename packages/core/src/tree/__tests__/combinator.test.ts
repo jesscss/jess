@@ -22,9 +22,9 @@ describe('Combinator', () => {
     expect(child.render(context)).toBe('>');
     expect(adjacent.render(context)).toBe('+');
     expect(child.evaluated).toBe(false);
-    expect(child.preEvaluated).toBe(false);
+    expect(child.registrationPrepared).toBe(false);
     expect(adjacent.evaluated).toBe(false);
-    expect(adjacent.preEvaluated).toBe(false);
+    expect(adjacent.registrationPrepared).toBe(false);
   });
 
   it('writes combinator render output into flat buffers', async () => {
@@ -48,7 +48,7 @@ describe('Combinator', () => {
 
     expect(resolved.toTrimmedString()).toBe('>');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

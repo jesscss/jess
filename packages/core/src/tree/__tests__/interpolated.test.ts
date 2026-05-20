@@ -74,7 +74,7 @@ describe('Interpolated', () => {
 
     expect(rendered).toBe('hello-world');
     expect(interpolatedNode.evaluated).toBe(false);
-    expect(interpolatedNode.preEvaluated).toBe(false);
+    expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved interpolated output into flat buffers', async () => {
@@ -107,7 +107,7 @@ describe('Interpolated', () => {
     expect(buffer.parts).toEqual(['hello-world']);
     expect(resolveCalls).toBe(0);
     expect(interpolatedNode.evaluated).toBe(false);
-    expect(interpolatedNode.preEvaluated).toBe(false);
+    expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved interpolated output directly without public resolve', async () => {
@@ -131,7 +131,7 @@ describe('Interpolated', () => {
 
     expect(interpolatedNode.render(context)).toBe('hello-world');
     expect(interpolatedNode.evaluated).toBe(false);
-    expect(interpolatedNode.preEvaluated).toBe(false);
+    expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
   it('resolves interpolated values without touching render state', async () => {
@@ -153,7 +153,7 @@ describe('Interpolated', () => {
 
     expect(resolved.toTrimmedString()).toBe('hello-world');
     expect(interpolatedNode.evaluated).toBe(false);
-    expect(interpolatedNode.preEvaluated).toBe(false);
+    expect(interpolatedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

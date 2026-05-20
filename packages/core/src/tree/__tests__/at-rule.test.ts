@@ -55,11 +55,11 @@ describe('AtRule', () => {
     expect(prepared).toBe(node);
   });
 
-  it('keeps static at-rules canonical in registration prep when child rules are already preEvaluated', async () => {
+  it('keeps static at-rules canonical in registration prep when child rules are already registration-prepared', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
-    body.preEvaluated = true;
+    body.registrationPrepared = true;
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
       prelude: seq([any('screen', { role: 'keyword' })]),
@@ -303,7 +303,7 @@ describe('AtRule', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('resolves at-rules without touching render state', async () => {
@@ -339,7 +339,7 @@ describe('AtRule', () => {
     expect(sourcePrelude?.parent).toBe(node);
     expect(sourceRules?.parent).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

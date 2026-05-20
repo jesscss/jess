@@ -539,7 +539,7 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extend-chaining media with context.root set before eval (simulates jess getTree)', async () => {
-    // Same structure as below; eval sets context.root during preEval (no manual set).
+    // Same structure as below; eval sets context.root during registration setup (no manual set).
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
@@ -904,9 +904,9 @@ describe('extend integration (eval -> toString)', () => {
       })
     ]);
     const serializeOpts = { showValues: true, maxStringLength: 120 };
-    const preEvalSerialized = serializeTypes(root, serializeOpts);
-    expect(typeof preEvalSerialized).toBe('string');
-    expect(preEvalSerialized).toMatchSnapshot();
+    const registrationSerialized = serializeTypes(root, serializeOpts);
+    expect(typeof registrationSerialized).toBe('string');
+    expect(registrationSerialized).toMatchSnapshot();
 
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);

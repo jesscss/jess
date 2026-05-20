@@ -270,18 +270,6 @@ export abstract class Node<
   /** Runtime tracking: has this node completed registration identity prep? */
   registrationPrepared = false;
 
-  /**
-   * Compatibility alias for older callers/tests. Prefer registrationPrepared in
-   * runtime code; eval itself is tracked by `evaluated`.
-   */
-  get preEvaluated(): boolean {
-    return this.registrationPrepared;
-  }
-
-  set preEvaluated(value: boolean) {
-    this.registrationPrepared = value;
-  }
-
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
 

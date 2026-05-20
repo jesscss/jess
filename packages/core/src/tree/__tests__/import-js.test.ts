@@ -18,7 +18,7 @@ describe('JsImport', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -36,7 +36,7 @@ describe('JsImport', () => {
     expect(buffer.segments).toEqual(['@-use "foo.js" as foo;']);
     expect(resolveCalls).toBe(0);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('renders source import syntax directly without public resolve', () => {
@@ -48,6 +48,6 @@ describe('JsImport', () => {
 
     expect(node.render(context)).toBe('@-use "foo.js" as foo;');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 });

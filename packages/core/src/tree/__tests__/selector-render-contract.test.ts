@@ -59,7 +59,7 @@ describe('Selector render contract', () => {
 
     expect(selector.render(context)).toBe('.foo');
     expect(selector.evaluated).toBe(false);
-    expect(selector.preEvaluated).toBe(false);
+    expect(selector.registrationPrepared).toBe(false);
   });
 
   it('keeps pseudo-selector source serializers canonical while render(context) resolves selector-list arguments', async () => {
@@ -104,7 +104,7 @@ describe('Selector render contract', () => {
 
     expect(selector.render(context)).toBe(':is(.foo, .bar)');
     expect(selector.evaluated).toBe(false);
-    expect(selector.preEvaluated).toBe(false);
+    expect(selector.registrationPrepared).toBe(false);
   });
 
   it('keeps complex selector source serializers canonical while render(context) resolves nested selector values', async () => {

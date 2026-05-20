@@ -54,7 +54,7 @@ describe('Operation', () => {
 
     expect(rendered).toBe('30');
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved operation render output into flat buffers', async () => {
@@ -84,7 +84,7 @@ describe('Operation', () => {
     expect(buffer.parts).toEqual(['30']);
     expect(operationResolveCalls).toBe(0);
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved operation values directly without public resolve', async () => {
@@ -109,7 +109,7 @@ describe('Operation', () => {
 
     expect(operationNode.render(context)).toBe('30');
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
   });
 
   it('resolves operation values without touching render state', async () => {
@@ -132,7 +132,7 @@ describe('Operation', () => {
 
     expect(resolved.toTrimmedString()).toBe('30');
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

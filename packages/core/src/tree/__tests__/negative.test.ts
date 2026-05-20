@@ -44,7 +44,7 @@ describe('Negative', () => {
     expect(rendered).toBe('-20');
     expect(negativeResolveCalls).toBe(0);
     expect(negativeNode.evaluated).toBe(false);
-    expect(negativeNode.preEvaluated).toBe(false);
+    expect(negativeNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved negative render output into flat buffers', async () => {
@@ -71,7 +71,7 @@ describe('Negative', () => {
     expect(buffer.parts).toEqual(['-20']);
     expect(negativeResolveCalls).toBe(0);
     expect(negativeNode.evaluated).toBe(false);
-    expect(negativeNode.preEvaluated).toBe(false);
+    expect(negativeNode.registrationPrepared).toBe(false);
   });
 
   it('resolves negative values without touching render state', async () => {
@@ -90,7 +90,7 @@ describe('Negative', () => {
 
     expect(resolved.toTrimmedString()).toBe('-20');
     expect(negativeNode.evaluated).toBe(false);
-    expect(negativeNode.preEvaluated).toBe(false);
+    expect(negativeNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

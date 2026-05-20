@@ -91,7 +91,7 @@ describe('Mixin', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -105,9 +105,9 @@ describe('Mixin', () => {
 
     const prepared = await node.prepareRegistration(context);
 
-    expect(prepared.preEvaluated).toBe(true);
-    expect(body.preEvaluated).toBe(false);
-    expect(bodyDecl.preEvaluated).toBe(false);
+    expect(prepared.registrationPrepared).toBe(true);
+    expect(body.registrationPrepared).toBe(false);
+    expect(bodyDecl.registrationPrepared).toBe(false);
   });
 
   describe('calling', () => {
@@ -2601,7 +2601,7 @@ describe('Mixin', () => {
 
       expect(css).toContain('color: red;');
       expect(guard.evaluated).toBe(false);
-      expect(guard.preEvaluated).toBe(false);
+      expect(guard.registrationPrepared).toBe(false);
     });
 
     it('does not clone source-free scalar leaves inside copied dynamic guards', async () => {

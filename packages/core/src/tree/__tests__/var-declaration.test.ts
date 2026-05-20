@@ -99,7 +99,7 @@ describe('Let', () => {
       expect(buffer.segments).toEqual(['$tone']);
       expect(resolveCalls).toBe(0);
       expect(rule.evaluated).toBe(false);
-      expect(rule.preEvaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
     });
 
     it('resolves visible parameter vars without touching render state', async () => {
@@ -114,7 +114,7 @@ describe('Let', () => {
 
       expect(resolved.toTrimmedString()).toBe('$tone');
       expect(rule.evaluated).toBe(false);
-      expect(rule.preEvaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });

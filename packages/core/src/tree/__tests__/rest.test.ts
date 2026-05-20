@@ -22,9 +22,9 @@ describe('Rest', () => {
     expect(named.render(context)).toBe('...$$items');
     expect(nodeNamed.render(context)).toBe('...$items');
     expect(named.evaluated).toBe(false);
-    expect(named.preEvaluated).toBe(false);
+    expect(named.registrationPrepared).toBe(false);
     expect(nodeNamed.evaluated).toBe(false);
-    expect(nodeNamed.preEvaluated).toBe(false);
+    expect(nodeNamed.registrationPrepared).toBe(false);
   });
 
   it('writes rest render output into flat buffers', async () => {
@@ -48,7 +48,7 @@ describe('Rest', () => {
 
     expect(resolved.toTrimmedString()).toBe('...$$items');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

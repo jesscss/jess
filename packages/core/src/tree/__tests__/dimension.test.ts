@@ -49,9 +49,9 @@ describe('Dimension', () => {
       expect(sized.render(context)).toBe('10px');
       expect(unitless.render(context)).toBe('10');
       expect(sized.evaluated).toBe(false);
-      expect(sized.preEvaluated).toBe(false);
+      expect(sized.registrationPrepared).toBe(false);
       expect(unitless.evaluated).toBe(false);
-      expect(unitless.preEvaluated).toBe(false);
+      expect(unitless.registrationPrepared).toBe(false);
     });
 
     it('writes dimension render output into flat buffers', async () => {
@@ -75,7 +75,7 @@ describe('Dimension', () => {
 
       expect(resolved.toTrimmedString()).toBe('10px');
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });

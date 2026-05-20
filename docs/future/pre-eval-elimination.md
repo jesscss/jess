@@ -801,8 +801,8 @@ ordinary eval/render must not call a hidden recursive registration pass.
 
 - `Node.prepareRegistration()` is the explicit registration identity hook.
 - `Node.registrationPrepared` is the canonical internal flag for registration
-  identity setup. `preEvaluated` remains only as a compatibility alias while
-  tests and any external callers catch up.
+  identity setup. The old `preEvaluated` alias has been removed so eval state
+  and registration state are not blurred again.
 - `Node.evalStatic()` calls `evalNode()` directly; there is no eval-time
   preparation hook in the base node path, and base eval no longer marks nodes
   as registration-prepared.

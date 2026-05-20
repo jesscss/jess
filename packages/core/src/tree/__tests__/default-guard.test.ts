@@ -21,12 +21,12 @@ describe('DefaultGuard', () => {
     context.isDefault = true;
     expect(truthy.render(context)).toBe('true');
     expect(truthy.evaluated).toBe(false);
-    expect(truthy.preEvaluated).toBe(false);
+    expect(truthy.registrationPrepared).toBe(false);
 
     context.isDefault = false;
     expect(falsy.render(context)).toBe('false');
     expect(falsy.evaluated).toBe(false);
-    expect(falsy.preEvaluated).toBe(false);
+    expect(falsy.registrationPrepared).toBe(false);
   });
 
   it('writes resolved default guard render output into flat buffers', async () => {
@@ -53,7 +53,7 @@ describe('DefaultGuard', () => {
 
     expect(resolved.toTrimmedString()).toBe('true');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

@@ -50,7 +50,7 @@ describe('QueryCondition', () => {
 
     expect(rendered).toBe('screen and print');
     expect(queryNode.evaluated).toBe(false);
-    expect(queryNode.preEvaluated).toBe(false);
+    expect(queryNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved query-condition output into flat buffers', async () => {
@@ -70,7 +70,7 @@ describe('QueryCondition', () => {
     expect(await queryNode.render(context, buffer)).toBe('screen and print');
     expect(buffer.parts).toEqual(['screen and print']);
     expect(queryNode.evaluated).toBe(false);
-    expect(queryNode.preEvaluated).toBe(false);
+    expect(queryNode.registrationPrepared).toBe(false);
   });
 
   it('resolves query-condition values without touching render state', async () => {
@@ -89,7 +89,7 @@ describe('QueryCondition', () => {
 
     expect(resolved.toTrimmedString()).toBe('screen and print');
     expect(queryNode.evaluated).toBe(false);
-    expect(queryNode.preEvaluated).toBe(false);
+    expect(queryNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });
