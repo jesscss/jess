@@ -164,6 +164,22 @@ describe('Call', () => {
     expect(rule.preEvaluated).toBe(false);
   });
 
+  it('renders async CSS call arguments directly without public resolve', async () => {
+    const arg = new AsyncAny('20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+    rule.resolve = () => {
+      throw new Error('Call direct async arg render should stream plain CSS call');
+    };
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
+    expect(arg.parent).toBe(rule.value.args);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
   it('writes async CSS call content into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const content = new AsyncAny('body-output');
@@ -175,6 +191,23 @@ describe('Call', () => {
 
     expect(await rule.render(context, buffer)).toBe('wrap(): body-output');
     expect(buffer.parts).toEqual(['wrap(): body-output']);
+    expect(content.parent).toBe(rule);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('renders async CSS call content directly without public resolve', async () => {
+    const content = new AsyncAny('body-output');
+    const rule = call({
+      name: 'wrap',
+      args: list([]),
+      contentNode: content
+    });
+    rule.resolve = () => {
+      throw new Error('Call direct async content render should stream plain CSS call');
+    };
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
     expect(content.parent).toBe(rule);
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
@@ -217,6 +250,27 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('ok');
     expect(buffer.parts).toEqual(['ok']);
     expect(resolveCalls).toBe(0);
+    expect(rule.evaluated).toBe(false);
+    expect(rule.preEvaluated).toBe(false);
+  });
+
+  it('renders resolved non-string call output directly without public resolve', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'empty',
+      fn: () => any('ok')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'empty' }, { type: 'function' }),
+      args: list([])
+    });
+    rule.resolve = () => {
+      throw new Error('Call direct dynamic render should evaluate derived surface');
+    };
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('ok');
     expect(rule.evaluated).toBe(false);
     expect(rule.preEvaluated).toBe(false);
   });

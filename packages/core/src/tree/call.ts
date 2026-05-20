@@ -321,11 +321,15 @@ export class Call extends Node<CallValue, CallOptions> {
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (typeof this.value.name === 'string') {
       const rendered = this.renderPlainFunctionCall(this, context, prepared);
-      return isThenable(rendered)
-        ? super.render(context, bufferOrOptions)
-        : rendered;
+      if (this.value.name === 'calc' && isThenable(rendered)) {
+        return this.toTrimmedString(prepared);
+      }
+      return rendered;
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.deriveResolveSurface().eval(context);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

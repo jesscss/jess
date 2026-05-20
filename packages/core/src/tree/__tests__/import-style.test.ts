@@ -3104,6 +3104,35 @@ describe('Style import', () => {
       expect(node.evaluated).toBe(false);
       expect(node.preEvaluated).toBe(false);
     });
+
+    it('renders resolved style import output directly without public resolve', async () => {
+      context.sourceTrees.set('direct-import.jess', rules([
+        ruleset({
+          selector: el('.directed'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+      const node = style(
+        { path: quoted(any('direct-import.jess')) },
+        { type: 'import' }
+      );
+      const anchor = rules([node]);
+      context.root = anchor;
+      context.rulesContext = anchor;
+      node.resolve = () => {
+        throw new Error('StyleImport direct render should use evalNode');
+      };
+
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .directed {
+          color: red;
+        }
+      `);
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
+    });
   });
 
   describe('reference/multiple dedupe matrix', () => {

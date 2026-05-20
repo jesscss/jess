@@ -50,6 +50,7 @@ import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  renderedOutputToString,
   writeMaybeRootAwareRenderedOutput
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
@@ -70,6 +71,20 @@ function isStyleImportRegistrationNode(node: Node): node is StyleImportRegistrat
 
 function isCharsetNode(node: Node): node is Any<'charset'> {
   return node.type === 'Any' && node.options.role === 'charset';
+}
+
+function renderRulesToString(
+  source: Rules,
+  node: Node,
+  context: Context,
+  options: PrintOptions | undefined,
+  sourceWasRoot: boolean
+): string {
+  const rendered = renderedOutputToString(source, node, context, options);
+  if (sourceWasRoot || !rendered.endsWith('\n')) {
+    return rendered;
+  }
+  return rendered.slice(0, -1);
 }
 
 function childRulesOf(node: Node): Rules | undefined {
@@ -1880,7 +1895,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options
       );
     }
-    return super.render(context, bufferOrOptions);
+    const sourceWasRoot = this === context.root;
+    const value = this.derive().eval(context);
+    return isThenable(value)
+      ? value.then(node => renderRulesToString(this, node, context, bufferOrOptions, sourceWasRoot))
+      : renderRulesToString(this, value, context, bufferOrOptions, sourceWasRoot);
   }
 
   /** All rules, with nested rules flattened */

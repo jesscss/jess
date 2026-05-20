@@ -195,6 +195,20 @@ describe('Rules', () => {
     expect(node.preEvaluated).toBe(false);
   });
 
+  it('renders rules body output directly without public resolve', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    context.root = rules([]);
+    node.resolve = () => {
+      throw new Error('Rules direct body render should evaluate natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
   it('writes root-owned charset and imports into render buffers', async () => {
     const root = rules([]);
     const buffer = createRenderBuffer('segmented');
@@ -221,6 +235,25 @@ describe('Rules', () => {
     expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(buffer.segments).toEqual([rendered]);
     expect(resolveCalls).toBe(0);
+    expect(root.evaluated).toBe(false);
+    expect(root.preEvaluated).toBe(false);
+  });
+
+  it('renders root-owned charset and imports directly without public resolve', async () => {
+    const root = rules([]);
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css'))
+      })
+    ];
+    root.resolve = () => {
+      throw new Error('Root Rules direct render should keep root-aware output native');
+    };
+
+    await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(root.evaluated).toBe(false);
     expect(root.preEvaluated).toBe(false);
   });

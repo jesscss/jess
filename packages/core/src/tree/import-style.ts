@@ -16,7 +16,7 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
-import { type PrintOptions } from './util/print.js';
+import { type PrintOptions, prepareRenderPrintState } from './util/print.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -849,7 +849,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.evalNode(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

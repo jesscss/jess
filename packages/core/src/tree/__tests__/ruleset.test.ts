@@ -124,6 +124,26 @@ describe('Rule', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('renders finalized ruleset output directly without public resolve', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.resolve = () => {
+      throw new Error('Ruleset direct render should evaluate natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+  });
+
   it('restores parent ruleset frame when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.saved'),

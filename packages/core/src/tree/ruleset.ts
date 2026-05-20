@@ -21,7 +21,8 @@ import {
   savePrintState,
   restorePrintState,
   getCachedComposedSelector,
-  setCachedComposedSelector
+  setCachedComposedSelector,
+  prepareRenderPrintState
 } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
@@ -579,7 +580,11 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.eval(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    const value = this.eval(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? value.then(node => node.toTrimmedString(prepared))
+      : value.toTrimmedString(prepared);
   }
 
   /**
