@@ -2166,14 +2166,6 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._prepareRegistrationOnce(context);
   }
 
-  protected override prepareEval(_context: Context): MaybePromise<this> {
-    return this;
-  }
-
-  protected override shouldPrepareEval(_context: Context, _needsReeval: boolean): boolean {
-    return false;
-  }
-
   private _prepareRegistrationOnce(context: Context): MaybePromise<this> {
     if (!this._registrationPrepared) {
       context.depth++;

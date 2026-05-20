@@ -799,9 +799,9 @@ The public `preEval()` method is gone. The current bridge is now explicit:
 registration identity setup lives behind `prepareRegistration()`, while
 ordinary eval/render must not call a hidden recursive registration pass.
 
-- `Node.prepareEval()` is intentionally a no-op by default. It is for local
-  eval-time setup only, not registration.
 - `Node.prepareRegistration()` is the explicit registration identity hook.
+- `Node.evalStatic()` calls `evalNode()` directly; there is no eval-time
+  preparation hook in the base node path.
 - Node classes no longer carry redundant `preEval()` overrides that only
   delegate to `prepareRegistration()`.
 - `Rules` owns pending registration state for two proven surfaces:
@@ -811,9 +811,9 @@ ordinary eval/render must not call a hidden recursive registration pass.
   wrappers only. Declaration values are left for source-order eval/render so
   value containers such as `Collection` and control nodes do not need mark-only
   registration hooks.
-- `Ruleset` and `AtRule` body traversal now happens from eval-owned setup rather
-  than through base `prepareEval()`. Some explicit registration prep remains
-  inside those nodes where extend-root and selector identity need it.
+- `Ruleset` and `AtRule` body traversal now happens from eval-owned setup. Some
+  explicit registration prep remains inside those nodes where extend-root and
+  selector identity need it.
 
 The next step is to shrink the remaining node-local registration prep that still
 does semantic rewrites before the source-order eval walk reaches the node. Do

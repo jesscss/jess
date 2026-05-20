@@ -157,16 +157,11 @@ describe('Rules', () => {
     expect(options.referenceRenderEnabled).toBe(true);
   });
 
-  it('lets Rules.evalNode own registration prep instead of using prepareEval', async () => {
+  it('lets Rules.evalNode own registration prep', async () => {
     const node = rules([
       vardecl({ name: 'brand', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
     ]);
-    Object.defineProperty(node, 'prepareEval', {
-      value: () => {
-        throw new Error('Rules eval should not use prepareEval for registration');
-      }
-    });
 
     const evaluated = await node.eval(context);
 

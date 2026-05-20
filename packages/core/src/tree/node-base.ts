@@ -12,7 +12,7 @@ import {
   prepareRenderPrintState
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
@@ -954,21 +954,6 @@ export abstract class Node<
   }
 
   /**
-   * Internal eval-time preparation hook.
-   *
-   * The default is intentionally a no-op. Registration prep is for named
-   * lookup identity; ordinary eval should evaluate the current node, not run a
-   * hidden recursive registration pass first.
-   */
-  protected prepareEval(_context: Context): MaybePromise<Node> {
-    return this;
-  }
-
-  protected shouldPrepareEval(_context: Context, needsReeval: boolean): boolean {
-    return !this.preEvaluated || needsReeval;
-  }
-
-  /**
    * This is the method all nodes will override.
    * Individual nodes will specify / narrow return type
    *
@@ -1007,58 +992,37 @@ export abstract class Node<
       return Node._evalStaticSync(node, context, needsReeval);
     }
 
-    let preparedNode: Node;
-
-    return pipe(
-      () => {
-        if (node.shouldPrepareEval(context, needsReeval)) {
-          return node.prepareEval(context);
-        }
-        return node;
-      },
-      (prepared) => {
-        preparedNode = prepared;
-        preparedNode.preEvaluated = true;
-        if (prepared !== node) {
-          preparedNode.inherit(node);
-        }
-        if (!preparedNode.evaluated || needsReeval) {
-          return preparedNode.evalNode(context);
-        }
-        return preparedNode;
-      },
-      (evald) => {
+    node.preEvaluated = true;
+    const evaluated = node.evaluated && !needsReeval
+      ? node
+      : node.evalNode(context);
+    if (isThenable(evaluated)) {
+      return (evaluated as Promise<Node>).then((evald) => {
         evald.evaluated = true;
-        if (preparedNode !== evald) {
-          evald.inherit(preparedNode);
+        if (node !== evald) {
+          evald.inherit(node);
         }
         return evald;
-      }
-    );
+      });
+    }
+    evaluated.evaluated = true;
+    if (node !== evaluated) {
+      evaluated.inherit(node);
+    }
+    return evaluated;
   }
 
   private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
-    let preparedNode: Node;
-
-    if (node.shouldPrepareEval(context, needsReeval)) {
-      preparedNode = mustBeNode(node.prepareEval(context));
-    } else {
-      preparedNode = node;
-    }
-    preparedNode.preEvaluated = true;
-    if (preparedNode !== node) {
-      preparedNode.inherit(node);
-    }
-
+    node.preEvaluated = true;
     let evald: Node;
-    if (!preparedNode.evaluated || needsReeval) {
-      evald = mustBeNode(preparedNode.evalNode(context));
+    if (!node.evaluated || needsReeval) {
+      evald = mustBeNode(node.evalNode(context));
     } else {
-      evald = preparedNode;
+      evald = node;
     }
     evald.evaluated = true;
-    if (preparedNode !== evald && typeof evald.inherit === 'function') {
-      evald.inherit(preparedNode);
+    if (node !== evald && typeof evald.inherit === 'function') {
+      evald.inherit(node);
     }
     return evald;
   }
