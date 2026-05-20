@@ -739,7 +739,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         context.frames.pop();
         let rules = node.value.rules;
         if (rules && rules.visibleRules().length === 0) {
-          this.removeFlag(F_VISIBLE);
+          node.removeFlag(F_VISIBLE);
         }
         return node;
       }

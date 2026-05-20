@@ -638,7 +638,7 @@ export class Context {
     }
 
     if (parseResult.tree) {
-      // Set context.root so preEval visitors can check if this is the root
+      // Set context.root so early visitors can check if this is the root.
       // parseResult.tree should be a Rules node (the root of the parsed tree)
       if (!this.root && isNode(parseResult.tree, N.Rules)) {
         this.root = parseResult.tree;

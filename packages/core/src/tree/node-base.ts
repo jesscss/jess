@@ -925,16 +925,6 @@ export abstract class Node<
   }
 
   /**
-   * Compatibility entrypoint for older callers.
-   *
-   * New preparation work should use `prepareRegistration()` or
-   * `prepareEval()` so the caller states which phase it needs.
-   */
-  preEval(context: Context): MaybePromise<Node> {
-    return this.prepareRegistration(context);
-  }
-
-  /**
    * Registration-time identity preparation.
    *
    * The default recursively prepares children for registration. Nodes with
@@ -966,12 +956,12 @@ export abstract class Node<
   /**
    * Internal eval-time preparation hook.
    *
-   * The default uses registration prep until eval owns narrower setup directly.
-   * Nodes that have split their setup into narrower eval-owned work should
-   * override this instead of making eval depend on the public preEval phase name.
+   * The default is intentionally a no-op. Registration prep is for named
+   * lookup identity; ordinary eval should evaluate the current node, not run a
+   * hidden recursive registration pass first.
    */
-  protected prepareEval(context: Context): MaybePromise<Node> {
-    return this.prepareRegistration(context);
+  protected prepareEval(_context: Context): MaybePromise<Node> {
+    return this;
   }
 
   protected shouldPrepareEval(_context: Context, needsReeval: boolean): boolean {

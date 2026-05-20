@@ -55,35 +55,53 @@ function buildDeclTree(count: number, staticRatio: number = 1.0): Node[] {
   return decls;
 }
 
-function evalStaticLegacy(node: Node, context: Context): any {
-  let preEvaluatedNode: Node;
+function evalStaticWithRegistrationPrep(node: Node, context: Context): any {
+  let preparedNode: Node;
 
   return pipe(
     () => {
       if (!node.preEvaluated) {
-        return node.preEval(context);
+        return node.prepareRegistration(context);
       }
       return node;
     },
-    (preEvald: Node) => {
-      preEvaluatedNode = preEvald;
-      preEvaluatedNode.preEvaluated = true;
-      if (preEvald !== node) {
-        preEvaluatedNode.inherit(node);
+    (prepared: Node) => {
+      preparedNode = prepared;
+      preparedNode.preEvaluated = true;
+      if (prepared !== node) {
+        preparedNode.inherit(node);
       }
-      if (!preEvaluatedNode.evaluated) {
-        return preEvaluatedNode['evalNode'](context);
+      if (!preparedNode.evaluated) {
+        return preparedNode['evalNode'](context);
       }
-      return preEvaluatedNode;
+      return preparedNode;
     },
     (evald: Node) => {
       evald.evaluated = true;
-      if (preEvaluatedNode !== evald) {
-        evald.inherit(preEvaluatedNode);
+      if (preparedNode !== evald) {
+        evald.inherit(preparedNode);
       }
       return evald;
     }
   );
+}
+
+class RegistrationCountingNode extends Node<Node> {
+  registrationCalls = 0;
+
+  constructor(value: Node) {
+    super(value);
+    this.addFlag(F_NON_STATIC);
+  }
+
+  override prepareRegistration(context: Context): Node {
+    this.registrationCalls++;
+    const prepared = super.prepareRegistration(context);
+    if (prepared instanceof Node) {
+      return prepared;
+    }
+    throw new TypeError('Expected sync registration prep in test node');
+  }
 }
 
 describe('Node Flags Performance', () => {
@@ -101,7 +119,19 @@ describe('Node Flags Performance', () => {
     expect(result).not.toBeInstanceOf(Promise);
   });
 
-  it('benchmark: optimized vs legacy evalStatic for static declarations', () => {
+  it('base eval does not run registration prep as hidden eval setup', () => {
+    const context = new Context();
+    const node = new RegistrationCountingNode(any('leaf'));
+
+    const result = Node.evalStatic(node, context);
+
+    expect(result).toBe(node);
+    expect(node.registrationCalls).toBe(0);
+    expect(node.preEvaluated).toBe(true);
+    expect(node.evaluated).toBe(true);
+  });
+
+  it('benchmark: optimized vs registration-prep evalStatic for static declarations', () => {
     const iterations = 1000;
 
     // Optimized path
@@ -118,22 +148,22 @@ describe('Node Flags Performance', () => {
       console.log(`  Optimized: ${fmt(optimized)} for ${iterations * 10} static decls`);
     }
 
-    // Legacy path (always uses pipe)
+    // Registration-prep path (always uses pipe)
     {
       const context = new Context();
       const declSets = Array.from({ length: iterations }, () => buildDeclTree(10, 1.0));
       const start = performance.now();
       for (let i = 0; i < iterations; i++) {
         for (const d of declSets[i]!) {
-          void evalStaticLegacy(d, context);
+          void evalStaticWithRegistrationPrep(d, context);
         }
       }
       const legacy = performance.now() - start;
-      console.log(`  Legacy:    ${fmt(legacy)} for ${iterations * 10} static decls`);
+      console.log(`  With prep: ${fmt(legacy)} for ${iterations * 10} static decls`);
     }
   });
 
-  it('benchmark: optimized vs legacy evalStatic for static trees', () => {
+  it('benchmark: optimized vs registration-prep evalStatic for static trees', () => {
     const iterations = 200;
 
     // Optimized path
@@ -148,16 +178,16 @@ describe('Node Flags Performance', () => {
       console.log(`  Optimized: ${fmt(optimized)} for ${iterations} static trees (depth=3, breadth=5)`);
     }
 
-    // Legacy path
+    // Registration-prep path
     {
       const context = new Context();
       const trees = Array.from({ length: iterations }, () => buildStaticTree(3, 5));
       const start = performance.now();
       for (let i = 0; i < iterations; i++) {
-        void evalStaticLegacy(trees[i]!, context);
+        void evalStaticWithRegistrationPrep(trees[i]!, context);
       }
       const legacy = performance.now() - start;
-      console.log(`  Legacy:    ${fmt(legacy)} for ${iterations} static trees (depth=3, breadth=5)`);
+      console.log(`  With prep: ${fmt(legacy)} for ${iterations} static trees (depth=3, breadth=5)`);
     }
   });
 

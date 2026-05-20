@@ -328,14 +328,25 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const value = this.evalPrepared(context);
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.eval(context), context, options);
+      return writeMaybeRenderedOutput(bufferOrOptions, value, context, options);
     }
-    const value = this.eval(context);
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     return isThenable(value)
       ? value.then(node => node.toTrimmedString(prepared))
       : value.toTrimmedString(prepared);
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalPrepared(context);
+  }
+
+  private evalPrepared(context: Context): MaybePromise<Node> {
+    return pipe(
+      () => this.prepareRegistration(context),
+      node => node.evalNode(context)
+    );
   }
 
   override prepareRegistration(context: Context): MaybePromise<this> {

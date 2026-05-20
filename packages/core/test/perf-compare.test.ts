@@ -4,7 +4,7 @@ import type { Context } from '../src/context.js';
 import type { ImportOptions } from '../src/tree/import-style.js';
 import type { Rules } from '../src/tree/rules.js';
 
-type EvalKey = 'eval' | 'evalNode' | 'preEval';
+type EvalKey = 'eval' | 'evalNode';
 type EvalMethod = (this: unknown, ...args: unknown[]) => unknown;
 type PatchablePrototype = Partial<Record<EvalKey, EvalMethod>> & Record<string, unknown>;
 type ConstructorLike = { prototype?: PatchablePrototype };
@@ -51,7 +51,6 @@ function patchAllEvalAsync(treeModule: Record<string, unknown>): () => void {
   };
   for (const v of Object.values(treeModule)) {
     const proto = getPatchablePrototype(v);
-    wrap(proto, 'preEval');
     wrap(proto, 'evalNode');
     wrap(proto, 'eval');
   }

@@ -445,9 +445,10 @@ export class For extends Node<StructuredLoopValue> {
       let counter = 1;
       const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
+      const preparedOriginalRules = await originalRules.prepareRegistration(context);
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
         const iterationRules = await createForIterationSurface(
-          originalRules,
+          preparedOriginalRules,
           context,
           bindingDecls,
           bindingNames,
@@ -466,12 +467,12 @@ export class For extends Node<StructuredLoopValue> {
         }
       }
       if (outputRules.length === 0) {
-        return createDerivedIterationOutputSurface(originalRules);
+        return createDerivedIterationOutputSurface(preparedOriginalRules);
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createDerivedIterationOutputSurface(originalRules, outputRules);
+      return createDerivedIterationOutputSurface(preparedOriginalRules, outputRules);
     };
     return run();
   }
@@ -541,11 +542,12 @@ export class For extends Node<StructuredLoopValue> {
     const { pattern, iterable, rules: originalRules } = this.value;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const evaluatedIterable = await iterableToNode(iterable).eval(context);
+    const preparedOriginalRules = await originalRules.prepareRegistration(context);
     let counter = 1;
     let output = '';
     for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
       const iterationRules = await createForIterationSurface(
-        originalRules,
+        preparedOriginalRules,
         context,
         bindingDecls,
         bindingNames,

@@ -6,7 +6,7 @@ Shrink evaluation down to one real pass: `eval()`.
 
 The desired future shape is not "do the same work inside `evalNode()`". It is:
 
-- remove the mandatory tree-wide `preEval()` phase
+- remove the public tree-wide `preEval()` phase
 - keep any required setup local and incremental
 - let `Rules.evalNode()` drive registration and evaluation together
 - reduce retries to the smallest set of nodes that are actually blocked
@@ -58,11 +58,11 @@ That means Jess pays for:
 If `preEval` goes away, `Rules.evalNode()` has to become the single
 orchestrator for all of that.
 
-## Current `preEval` Responsibilities
+## Registration Prep Responsibilities
 
 ### Root And Extend Setup
 
-`Rules.preEval()` currently decides:
+`Rules` registration setup decides:
 
 - what `context.root` is
 - when to register the main root in `extendRoots`
@@ -73,7 +73,7 @@ That setup is real, but it does not need to live in a separate semantic pass.
 
 ### Indexing And Source Order
 
-`Rules.preEval()` also assigns stable child indices up front.
+`Rules` registration setup also assigns stable child indices up front.
 
 That is not just bookkeeping. The important contract is the node's own `.index`
 property, not registry insertion order.
@@ -88,8 +88,9 @@ The current runtime uses `.index` for:
 - preserving the source position of a node when a resolved replacement inherits
   the original node's identity
 
-So if `preEval` goes away, index assignment still needs to happen early inside
-`Rules.evalNode()`, before any linear lookups can run.
+So removing the public `preEval` phase does not remove index assignment. It
+still needs to happen early inside `Rules.evalNode()`, before any linear
+lookups can run.
 
 That also means evaluation itself can now be source-ordered.
 
@@ -112,27 +113,28 @@ That makes indexing a setup concern, not a reason to keep a separate pass.
 
 ### Registration Before Evaluation
 
-`Rules._prepareRegistration()` still tries to make the tree lookup-ready before
-evaluation starts:
+`Rules` still has registration prep that tries to make the tree lookup-ready
+before child evaluation starts:
 
 - register declarations, mixins, and rulesets with static names
 - retry dynamic declaration names up to a fixed cap
 - attempt other dynamic names once
 - recurse into child rules so nested rulesets are registered before extends run
 
-This is the main reason `preEval()` exists today.
+This is the remaining registration-prep work that has to keep shrinking.
 
 ### Node-Specific Structural Prep
 
-Several nodes currently depend on `preEval()` for local rewrites:
+Several nodes still have local registration-prep work that used to live behind
+the removed public `preEval()` method:
 
-- `Ruleset.preEval()` composes selectors, stores `ownSelector`, registers the
-  ruleset to the current extend root, and eagerly `preEval`s child `Rules`
-- `Declaration.preEval()` resolves interpolated property names and normalizes
+- `Ruleset` selector prep composes selectors, stores `ownSelector`, registers the
+  ruleset to the current extend root, and still prepares child `Rules`
+- `Declaration` key prep resolves interpolated property names and normalizes
   assignment operators into reference-based value forms
-- `AtRule.preEval()` resolves interpolated at-rule names, queues top-level
-  `@import`, and eagerly `preEval`s child `Rules`
-- `Mixin.preEval()` resolves interpolated mixin names and mutates body
+- `AtRule` name prep resolves interpolated at-rule names, queues top-level
+  `@import`, and still prepares child `Rules`
+- `Mixin` identity prep resolves interpolated mixin names and mutates body
   visibility rules
 
 Those are the specific surfaces that would need to be split into
@@ -311,12 +313,12 @@ run again.
 
 ## Likely Node Splits
 
-Removing `preEval()` probably means splitting current node behavior into smaller
+Removing the public `preEval()` method means splitting node behavior into smaller
 hooks, even if they stay private.
 
 ### `Ruleset`
 
-Current `Ruleset.preEval()` mixes together:
+Ruleset registration prep still mixes together:
 
 - selector composition against parent selector frames
 - extend-root registration
@@ -337,7 +339,7 @@ pre-pass.
 
 ### `Declaration`
 
-Current `Declaration.preEval()` is mostly:
+Declaration registration prep is mostly:
 
 - resolve interpolated property name
 - normalize assignment operators into explicit reference/value structures
@@ -359,7 +361,7 @@ may belong in an early step inside `evalNode()` instead.
 
 ### `AtRule`
 
-Current `AtRule.preEval()` handles three different concerns:
+AtRule registration prep handles three different concerns:
 
 - interpolated at-rule names
 - child `Rules` traversal
@@ -383,7 +385,7 @@ frames. The guard tests live in `src/tree/__tests__/at-rule.test.ts`,
 
 ### `Mixin`
 
-`Mixin.preEval()` mostly resolves name identity and mutates body visibility.
+Mixin registration prep mostly resolves name identity and mutates body visibility.
 
 That should be one of the easier surfaces to fold into registration-time work
 inside `Rules.evalNode()`.
@@ -422,7 +424,7 @@ tree pass.
 
 Keep only the identity-relevant subset.
 
-`Ruleset.preEval()` is currently overloaded. The likely split is:
+Ruleset registration prep is currently overloaded. The likely split is:
 
 - keep selector-identity preparation near registration
 - keep extend-root registration tied to the point where the selector identity is
@@ -460,7 +462,7 @@ This should become local node preparation, not part of a tree-wide pass.
 
 Split aggressively.
 
-`AtRule.preEval()` currently mixes:
+AtRule registration prep currently mixes:
 
 - at-rule name identity
 - child traversal
@@ -479,8 +481,8 @@ correct extend-root and frame semantics without forcing an eager recursive walk.
 
 Mostly keep as registration prep.
 
-`Mixin.preEval()` is close to the kind of small hook that still makes sense in a
-preEval-free model:
+Mixin registration prep is close to the kind of small hook that still makes
+sense in a preEval-free model:
 
 - resolve interpolated mixin name if needed
 - establish body visibility defaults
@@ -493,7 +495,7 @@ This likely becomes a cheap "prepare callable identity" step used by
 
 Do not preserve as a general pre-pass hook.
 
-`Any.preEval()` only has one meaningful side effect today:
+Any registration prep only has one meaningful side effect today:
 
 - role=`charset` records `context.currentCharset` and returns `Nil`
 
@@ -510,11 +512,11 @@ Either way, this should not justify a global `preEval` contract for all nodes.
 
 Probably delete as a distinct phase hook.
 
-`List.preEval()` mostly:
+List registration prep mostly:
 
 - clones
 - marks pre-evaluated
-- recursively `preEval`s children
+- recursively prepares children
 
 That is container mechanics, not standalone semantics.
 
@@ -525,7 +527,7 @@ In a preEval-free design, lists should usually just:
   that actually needs lookup identity before full eval
 
 The important gotcha is selector-bearing lists. If any current caller relies on
-`List.preEval()` to recursively stabilize selector identity before registration,
+List registration prep to recursively stabilize selector identity before registration,
 that caller should ask for selector preparation explicitly instead of depending
 on generic list recursion.
 
@@ -533,7 +535,7 @@ on generic list recursion.
 
 Probably fold into selector preparation.
 
-`SelectorCapture.preEval()` just forwards preparation to its wrapped selector.
+SelectorCapture registration prep just forwards preparation to its wrapped selector.
 That suggests it should not remain an independently important phase boundary.
 
 Future treatment is likely:
@@ -732,12 +734,12 @@ This probably should not be attempted as one large rewrite.
 
 A safer order is:
 
-1. **Characterize current hidden preEval work.**
+1. **Characterize current hidden registration-prep work.**
    Add focused tests or debug counters for:
-   - which nodes register during `Rules.preEval()`
+   - which nodes register during `Rules` registration prep
    - which dynamic declaration names actually need more than one retry
    - which `StyleImport` retries are path-identity failures
-   - which rulesets are registered only because of recursive child preEval
+   - which rulesets are registered only because of recursive child prep
 
 2. **Introduce explicit identity-prep helpers without changing behavior.**
    Add small private helpers for the real identity surfaces:
@@ -747,8 +749,9 @@ A safer order is:
    - ruleset selector identity prep
    - at-rule name prep
 
-   Initially these helpers can be called from existing `preEval()` methods so
-   tests stay stable, but the helper names should describe the smaller concern.
+   Initially these helpers can be called from existing registration-prep methods
+   so tests stay stable, but the helper names should describe the smaller
+   concern.
 
 3. **Move mark-only hooks out of the way.**
    Done for `Collection` and control nodes. Keep this boundary intact: if a
@@ -764,7 +767,7 @@ A safer order is:
 
    Registration should stop depending on a completed tree-wide pre-pass.
 
-5. **Fold recursive child preEval into container eval.**
+5. **Fold recursive child prep into container eval.**
    `Ruleset` and `AtRule` should evaluate child `Rules` when the source-order
    walk reaches their body. They may still prepare identity before registration,
    but they should not force a depth-first preparatory traversal just to make
@@ -784,20 +787,23 @@ A safer order is:
    traversal, remove the public contract that `eval()` implies a prior
    tree-wide `preEval()`.
 
+   The public method is removed. The remaining work is shrinking explicit
+   registration prep until `Rules.evalNode()` owns the setup/eval/render order
+   directly.
+
 This keeps the intermediate states understandable and testable.
 
 ## Current Implementation State
 
-Do not start by deleting `preEval()`. The current bridge is intentionally
-halfway between the old public phase name and the target eval-owned setup:
+The public `preEval()` method is gone. The current bridge is now explicit:
+registration identity setup lives behind `prepareRegistration()`, while
+ordinary eval/render must not call a hidden recursive registration pass.
 
-- `Node.prepareEval()` and `Node.prepareRegistration()` are the migration
-  surfaces for local setup.
-- Public `preEval()` remains as a compatibility delegate while callers still
-  depend on the old phase shape. Node classes no longer carry redundant
-  `preEval()` overrides that only delegate to `prepareRegistration()`;
-  node-specific setup should live in `prepareRegistration()` or
-  `prepareEval()`.
+- `Node.prepareEval()` is intentionally a no-op by default. It is for local
+  eval-time setup only, not registration.
+- `Node.prepareRegistration()` is the explicit registration identity hook.
+- Node classes no longer carry redundant `preEval()` overrides that only
+  delegate to `prepareRegistration()`.
 - `Rules` owns pending registration state for two proven surfaces:
   - dynamic declaration names use a local fixed-point bucket.
   - callable, selector, and import identities stay in one source-ordered list.
@@ -806,8 +812,8 @@ halfway between the old public phase name and the target eval-owned setup:
   value containers such as `Collection` and control nodes do not need mark-only
   registration hooks.
 - `Ruleset` and `AtRule` body traversal now happens from eval-owned setup rather
-  than through base `prepareEval()`. Some registration prep remains inside those
-  nodes where extend-root and selector identity need it.
+  than through base `prepareEval()`. Some explicit registration prep remains
+  inside those nodes where extend-root and selector identity need it.
 
 The next step is to shrink the remaining node-local registration prep that still
 does semantic rewrites before the source-order eval walk reaches the node. Do
@@ -815,9 +821,10 @@ not split the ordered non-declaration identity list into separate schedulers
 unless focused tests prove each surface can move independently without changing
 registration or import retry timing.
 
-Do not simply override `Rules.eval()` to skip the public `preEval()` wrapper.
-That changes when registration prep runs relative to `rulesEvalStack` setup and
-can break root-final extend serialization. A concrete guard is
+Do not bypass `Rules` registration setup just because the public `preEval()`
+method is gone. Changing when registration prep runs relative to
+`rulesEvalStack` setup can break root-final extend serialization. A concrete
+guard is
 `src/tree/__tests__/extend-rules.test.ts`'s pseudo-class same-header extend
 case: `.btn:hover` must coalesce declarations when the selector was
 extend-mutated, while plain duplicate sibling selectors must remain separate.

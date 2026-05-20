@@ -3,7 +3,7 @@
  *
  * Tests that @plugin directives are processed correctly and that
  * plugins loaded via @plugin have their visitors run on subsequent nodes.
- * This matches Less.js behavior where @plugin is processed in preEval phase.
+ * This matches Less.js behavior where @plugin is processed before evaluation.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -394,9 +394,9 @@ describe('@plugin directive processing', () => {
     expect(functionRegistered).toBe(false); // Function is registered but not called in visitor phase
   });
 
-  it('should process @plugin and ensure visitors run in preEval phase (before evaluation)', () => {
+  it('should process @plugin and ensure visitors run before evaluation', () => {
     const source = `
-      @plugin "preEval-plugin";
+      @plugin "early-plugin";
       .test {
         color: red;
       }
@@ -407,16 +407,16 @@ describe('@plugin directive processing', () => {
       throw new Error('Failed to parse');
     }
 
-    let preEvalVisitorRan = false;
+    let earlyVisitorRan = false;
 
-    const preEvalPlugin = {
+    const earlyPlugin = {
       install(less: any, manager: any, registry: any) {
-        // Add a visitor that should run in preEval phase
-        // In Less.js, @plugin is processed in preEval, so visitors added here
+        // Add a visitor that should run before evaluation.
+        // In Less.js, @plugin is processed early, so visitors added here
         // are available for the entire tree traversal
         manager.addVisitor({
           visitRuleset(node: any) {
-            preEvalVisitorRan = true;
+            earlyVisitorRan = true;
             // Visitor can modify nodes before evaluation
             return node;
           }
@@ -428,7 +428,7 @@ describe('@plugin directive processing', () => {
     const plugin = lessCompatPlugin({
       pluginRegistry: {
         // eslint-disable-next-line @typescript-eslint/naming-convention
-        'preEval-plugin': preEvalPlugin
+        'early-plugin': earlyPlugin
       }
     });
 
@@ -443,8 +443,8 @@ describe('@plugin directive processing', () => {
       tree.accept(visitor);
     }
 
-    // Verify that the preEval visitor ran
-    // In Less.js, this happens because @plugin is processed in preEval
-    expect(preEvalVisitorRan).toBe(true);
+    // Verify that the early visitor ran.
+    // In Less.js, this happens because @plugin is processed before evaluation.
+    expect(earlyVisitorRan).toBe(true);
   });
 });

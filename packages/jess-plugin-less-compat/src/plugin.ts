@@ -112,13 +112,13 @@ export class LessCompatPlugin extends AbstractPlugin {
   }
 
   /**
-   * Return the visitor as a preEval visitor so it runs before evaluation.
-   * This ensures @plugin directives are processed early, allowing their visitors
-   * to run on subsequent nodes during the preEval phase.
+   * Return the visitor through the early visitor hook so it runs before
+   * evaluation. This keeps Less plugin visitors and preprocessors early without
+   * bringing back a public node preEval pass.
    *
    * Less plugins can register visitors via:
-   * - addVisitor() - these will run during preEval (default)
-   * - addPreProcessor() - these will run during preEval
+   * - addVisitor() - these run early by default
+   * - addPreProcessor() - these run early
    * - addPostProcessor() - these run on serialized CSS after render
    */
   get preEvalVisitor(): PluginInterface['preEvalVisitor'] {
@@ -593,13 +593,13 @@ export class LessCompatPlugin extends AbstractPlugin {
     // Track if we're currently inside a Less visitor traversal
     // This prevents the plugin visitor from being triggered when visitArray calls visit()
     let insideLessTraversal = false;
-    // Jess runs pre-eval visitors in two passes; ensure we only process each @plugin directive once.
+    // Jess runs early visitors in two passes; ensure we only process each @plugin directive once.
     const processedPluginDirectives = new WeakSet<object>();
 
     // Create a visitor object that implements the Visitor interface
     const visitor = {
-      // Handle @plugin at-rules - these should be processed early (like Less.js preEval)
-      // In Less.js, @plugin is processed in preEval phase before the tree is evaluated
+      // Handle @plugin at-rules - these should be processed early, before evaluation.
+      // Less.js also processes @plugin before the tree is evaluated.
       // This ensures plugins loaded via @plugin have their visitors available for subsequent nodes
       atRule: (node: any, _ctx?: any): any => {
         // Check if this is a @plugin directive

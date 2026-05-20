@@ -73,6 +73,11 @@ function isCharsetNode(node: Node): node is Any<'charset'> {
   return node.type === 'Any' && node.options.role === 'charset';
 }
 
+function isImportAtRule(node: Node): node is AtRule {
+  return isNode(node, N.AtRule)
+    && String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim() === '@import';
+}
+
 function renderRulesToString(
   source: Rules,
   node: Node,
@@ -2252,8 +2257,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   /**
    * Registration prep for the current Rules surface.
    *
-   * This can still be reached through the public preEval compatibility bridge,
-   * but the work is registration setup:
+   * This is registration setup:
    * assign source-order indices, stabilize registerable identities, register
    * static names, and leave genuinely blocked names in narrow pending buckets.
    */
@@ -2283,6 +2287,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const processResult = serialForEach(rules.value, (node, index) => {
       const nodeIndex = isIndexedRuleChild(node) ? indexedRuleCount++ : undefined;
       if (this._prepareCharsetNode(rules, node, index, nodeIndex, context)) {
+        return;
+      }
+      const outputOrderPrep = this._prepareOutputOrderAtRule(rules, node, index, nodeIndex, context);
+      if (isThenable(outputOrderPrep)) {
+        return outputOrderPrep;
+      }
+      if (outputOrderPrep) {
         return;
       }
       // Nodes that don't register by name (Call, Expression, etc.) skip
@@ -2349,6 +2360,29 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
     // Charset is root output-order bookkeeping, not name registration.
     rules.value[index] = node.prepareRegistration(context);
+    Reflect.set(rules.value[index]!, 'index', nodeIndex);
+    return true;
+  }
+
+  private _prepareOutputOrderAtRule(
+    rules: Rules,
+    node: Node,
+    index: number,
+    nodeIndex: number | undefined,
+    context: Context
+  ): boolean | MaybePromise<void> {
+    if (!isImportAtRule(node)) {
+      return false;
+    }
+    // CSS @import hoisting is output-order bookkeeping, not name registration.
+    const prepared = node.prepareRegistration(context);
+    if (isThenable(prepared)) {
+      return (prepared as Promise<Node>).then((preparedNode) => {
+        rules.value[index] = preparedNode;
+        Reflect.set(preparedNode, 'index', nodeIndex);
+      });
+    }
+    rules.value[index] = prepared as Node;
     Reflect.set(rules.value[index]!, 'index', nodeIndex);
     return true;
   }
