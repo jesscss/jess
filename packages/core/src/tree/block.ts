@@ -1,6 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
@@ -34,7 +34,7 @@ export class Block extends Node<Node, BlockOptions> {
     ).inherit(this);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
+  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -42,7 +42,7 @@ export class Block extends Node<Node, BlockOptions> {
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
-    super.toTrimmedString(options);
+    value.toString(options);
     const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
@@ -51,13 +51,24 @@ export class Block extends Node<Node, BlockOptions> {
     return w.getSince(mark);
   }
 
+  override toTrimmedString(options?: PrintOptions) {
+    return this.renderBlockSyntax(this.value, options);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    if (this.hasFlag(F_STATIC)) {
+      return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
+    }
+    const value = this.value.resolve(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(value)
+      ? this.toTrimmedString(prepared)
+      : this.renderBlockSyntax(value as Node, prepared);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

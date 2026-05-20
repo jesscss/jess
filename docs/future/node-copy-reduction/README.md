@@ -72,8 +72,10 @@ selector placement truly needs one.
   reparenting the canonical body. A focused guard keeps stateful `$while`/`$for`
   native render aligned with eval serialization; changing same-iteration
   `$while` mutation visibility is a semantics decision, not a copy-reduction
-  cleanup. Direct sync `render(context)` remains source syntax for
-  compatibility.
+  cleanup.
+- The base direct sync `Node.render(context)` fallback remains a compatibility
+  path, but native sync overloads should bypass it when a node can resolve
+  locally and serialize the chosen value without creating an evaluated wrapper.
 
 ## Remaining Architecture Work
 
@@ -86,7 +88,9 @@ Priority seams:
 1. **Legacy direct render fallback**: `Node.render(context)` still has a
    synchronous resolve-then-serialize compatibility fallback. Keep it until the
    public sync callers are audited, but do not route new compiler behavior
-   through it.
+   through it. When narrowing it, prefer node-local sync render paths that reuse
+   the same syntax serializer with resolved values instead of constructing a
+   temporary output tree.
 2. **Materialization seam**: shrink the expected
    `verify:materialization-frontier` entry only when focused tests prove the
    compatibility path can stream children or use a smaller owned output surface

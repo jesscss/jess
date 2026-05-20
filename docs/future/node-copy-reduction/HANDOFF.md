@@ -53,7 +53,10 @@ it is for the current direction and next seams, not a historical pass log.
   render. `$if` renders only the selected branch output; `$for` and `$while`
   render per iteration. `$while` loop-body variable mutation is carried in a
   live `ScopeFrame` surface between iterations, not in a full output tree.
-  Direct sync `render(context)` remains source syntax for compatibility.
+- The base direct sync `Node.render(context)` fallback remains a compatibility
+  seam. Native sync overloads may bypass it when they can resolve children
+  locally and serialize the chosen value without materializing an evaluated
+  wrapper.
 - `$while` currently has explicit focused guards for native buffer rendering,
   no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
   per-iteration body copies. `$for` and `$while` reuse static and dynamic direct

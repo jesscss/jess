@@ -26,9 +26,19 @@ describe('Expression', () => {
     context.rulesContext = evald as RulesClass;
 
     const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const originalResolve = renderedNode.resolve;
+    let resolveCalls = 0;
+    renderedNode.resolve = function countResolveCalls(
+      this: typeof renderedNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = renderedNode.render(context);
 
     expect(rendered).toBe('foo');
+    expect(resolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.preEvaluated).toBe(false);
   });

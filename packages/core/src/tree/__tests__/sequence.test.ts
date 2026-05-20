@@ -76,9 +76,19 @@ describe('Sequence', () => {
       ref({ key: 'mid' }, { type: 'variable' }),
       num(30)
     ]);
+    const originalResolve = sequenceNode.resolve;
+    let resolveCalls = 0;
+    sequenceNode.resolve = function countResolveCalls(
+      this: typeof sequenceNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = sequenceNode.render(context);
 
     expect(rendered).toBe('10 20 30');
+    expect(resolveCalls).toBe(0);
     expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.preEvaluated).toBe(false);
   });

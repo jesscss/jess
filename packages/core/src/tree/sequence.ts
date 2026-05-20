@@ -6,7 +6,7 @@ import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
@@ -101,14 +101,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return undefined;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
+  private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (printOptions.inCustom) {
-      return super.toTrimmedString(printOptions);
+      const w = printOptions.writer!;
+      const mark = w.mark();
+      for (const node of value) {
+        node.toString(printOptions);
+      }
+      return w.getSince(mark);
     }
     const w = printOptions.writer;
     const mark = w.mark();
-    const { value } = this;
     const length = value.length;
 
     if (length === 0) {
@@ -162,13 +166,29 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return w.getSince(mark);
   }
 
+  override toTrimmedString(options?: PrintOptions): string {
+    return this.renderSequenceSyntax(this.value, options);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    if (this.hasFlag(F_STATIC)) {
+      return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
+    }
+    const values = this.evaluateValues(context, 'resolve');
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    if (isThenable(values)) {
+      return this.toTrimmedString(prepared);
+    }
+    const filtered = values.filter(n => n && !(n instanceof Nil));
+    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
+      return filtered[0]!.toTrimmedString(prepared);
+    }
+    return this.renderSequenceSyntax(filtered, prepared);
   }
 
   override operate(b: Node, op: string, _context: Context): Sequence | List {

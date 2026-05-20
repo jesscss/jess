@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { defineType, F_STATIC, Node } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -68,11 +68,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
-  private renderListSyntax(options?: PrintOptions): string {
+  private renderListSyntax(value = this.value, options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer;
     const sep = this._options?.sep ?? ',';
-    let { value } = this;
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
@@ -108,6 +107,23 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return w.getSince(mark);
   }
 
+  private resolveItems(context: Context): MaybePromise<Node[]> {
+    const values = new Array<Node>(this.value.length);
+    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
+      const out = item.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((resolved) => {
+          values[index] = resolved;
+        });
+      }
+      values[index] = out as Node;
+    });
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(() => values);
+    }
+    return values;
+  }
+
   get length() {
     return this.value.length;
   }
@@ -123,7 +139,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderListSyntax(options);
+    return this.renderListSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -132,7 +148,14 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return super.render(context, bufferOrOptions);
+    if (this.hasFlag(F_STATIC)) {
+      return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
+    }
+    const resolvedItems = this.resolveItems(context);
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    return isThenable(resolvedItems)
+      ? this.toTrimmedString(prepared)
+      : this.renderListSyntax(resolvedItems as Node[], prepared);
   }
 
   override compare(other: Node) {
@@ -171,26 +194,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const values = new Array<Node>(this.value.length);
-    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
-      const out = item.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((resolved) => {
-          values[index] = resolved;
-        });
-      }
-      values[index] = out as Node;
-    });
-
-    const finalize = (): Node => {
-      const unchanged = values.every((node, index) => node === this.value[index]);
-      return unchanged ? this : this.withResolvedValue(values);
-    };
-
-    if (isThenable(maybe)) {
-      return (maybe as Promise<void>).then(finalize);
+    const values = this.resolveItems(context);
+    if (isThenable(values)) {
+      return (values as Promise<Node[]>).then((resolvedValues) => {
+        const unchanged = resolvedValues.every((node, index) => node === this.value[index]);
+        return unchanged ? this : this.withResolvedValue(resolvedValues);
+      });
     }
-    return finalize();
+    const unchanged = values.every((node, index) => node === this.value[index]);
+    return unchanged ? this : this.withResolvedValue(values);
   }
 
   /** @todo? Lists should collapse nested lists? */

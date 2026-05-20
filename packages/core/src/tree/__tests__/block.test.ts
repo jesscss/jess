@@ -58,9 +58,19 @@ describe('Block', () => {
     context.rulesContext = evald as RulesClass;
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const originalResolve = blockNode.resolve;
+    let resolveCalls = 0;
+    blockNode.resolve = function countResolveCalls(
+      this: typeof blockNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = blockNode.render(context);
 
     expect(rendered).toBe('{foo}');
+    expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
     expect(blockNode.preEvaluated).toBe(false);
   });
