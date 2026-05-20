@@ -43,6 +43,9 @@ selector placement truly needs one.
 - `preRenderVisitor` is the direct hook name for visitors that run after
   evaluation and before serialization. `postEvalVisitor` remains a compatibility
   alias for older plugin callers.
+- The public `preEval()` phase and the old `preEvaluated` node flag are gone.
+  Runtime registration setup is tracked as `registrationPrepared`; do not add
+  new eval behavior that depends on a hidden tree-wide preparation pass.
 - The render-buffer frontier is not a per-node status list anymore. The
   important current facts are that the production bridge scan is green and
   that `$for` / `$while` stream each loop iteration through node render methods.
@@ -88,28 +91,25 @@ later serializer can walk them.
 
 Priority seams:
 
-1. **Legacy direct render fallback**: `Node.render(context)` still has a
-   synchronous resolve-then-serialize compatibility fallback. Keep it until the
-   public sync callers are audited, but do not route new compiler behavior
-   through it. When narrowing it, prefer node-local sync render paths that reuse
-   the same syntax serializer with resolved values instead of constructing a
-   temporary output tree.
-2. **Materialization seam**: shrink the expected
-   `verify:materialization-frontier` entry only when focused tests prove the
-   compatibility path can stream children or use a smaller owned output surface
-   without changing scope, registration, async, selector, or trivia behavior.
-3. **Loop eval surfaces**: direct loop-body child copying is no longer the
+1. **Legacy direct render fallback**: `Node.render(context)` is the only
+   expected materialization-frontier entry. It still has a synchronous
+   resolve-then-serialize compatibility fallback. Keep it until the public sync
+   callers are audited, but do not route new compiler behavior through it. When
+   narrowing it, prefer node-local sync render paths that reuse the same syntax
+   serializer with resolved values instead of constructing a temporary output
+   tree.
+2. **Loop eval surfaces**: direct loop-body child copying is no longer the
    active frontier. Keep the existing render, static-child, dynamic-child, and
    scalar-leaf guards green while reducing any remaining loop output surfaces.
-4. **Generated selector/output ownership**: selector expansion, extend output,
+3. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
    them by pattern.
-5. **Function/mixin argument surfaces**: metadata-backed functions still need
+4. **Function/mixin argument surfaces**: metadata-backed functions still need
    copied raw-argument ownership for `this.rawArgs`, `this.args()`,
    preprocessing, lazy params, validation, and `@arguments`-style behavior.
    Plain functions should keep receiving positional args directly.
-6. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
+5. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
    loop live slots, and similar render/eval shadow state are suspect surfaces.
    Keep them only where they express live scope or placement state better than
    copied nodes.

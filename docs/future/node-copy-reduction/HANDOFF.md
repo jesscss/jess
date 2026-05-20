@@ -46,6 +46,9 @@ it is for the current direction and next seams, not a historical pass log.
   `renderString(...)`, `renderToResult(...)`, and `safeRender(...)`.
   `safeCompile(...)` remains the compatibility/debug API for callers that need
   a tree surface.
+- The public `preEval()` method and the old `preEvaluated` flag are removed.
+  Registration identity setup is explicit through `prepareRegistration()` and
+  tracked with `registrationPrepared`.
 - The compiler render phase writes through `Rules.render(...)` into a flat
   render buffer. Production code should not call `renderNodeToBuffer(...)`,
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`.
@@ -75,9 +78,9 @@ it is for the current direction and next seams, not a historical pass log.
 
 ## Next Seams
 
-1. **Audit remaining materialization boundaries.**
+1. **Audit the remaining materialization boundary.**
    - `pnpm run verify:materialization-frontier` names the current expected
-     sync compatibility seams.
+     sync compatibility seam: the legacy `Node.render(context)` fallback.
    - Convert only when the node can stream children or keep a smaller owned
      surface without changing scope, registration, async, selector, or trivia
      behavior.
