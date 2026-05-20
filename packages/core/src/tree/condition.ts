@@ -91,7 +91,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const value = this.evaluateCondition(context, 'resolve');
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     return isThenable(value)
-      ? this.toTrimmedString(prepared)
+      ? value.then(node => node.toTrimmedString(prepared))
       : value.toTrimmedString(prepared);
   }
 

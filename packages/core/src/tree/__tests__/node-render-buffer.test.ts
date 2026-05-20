@@ -64,8 +64,8 @@ import {
 } from '../index.js';
 import { extendList } from '../extend-list.js';
 import { jsexpr } from '../js-expr.js';
-import { Node } from '../node-base.js';
-import { OutputWriter } from '../util/print.js';
+import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
   renderNodeToBuffer,
@@ -89,6 +89,30 @@ class AsyncResolvedNode extends Node<string> {
 class RejectingNode extends Node<string> {
   override resolve() {
     return Promise.reject(new Error('nope'));
+  }
+}
+
+class AsyncValueNode extends Node<string> {
+  constructor(
+    value: string,
+    private readonly resolved: Node = any(value)
+  ) {
+    super(value);
+    this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
+  }
+
+  override eval() {
+    return Promise.resolve(this.resolved);
+  }
+
+  override resolve() {
+    return Promise.resolve(this.resolved);
+  }
+
+  override toTrimmedString(options?: Parameters<Node['toTrimmedString']>[0]) {
+    const source = `source-${this.value}`;
+    getPrintOptions(options).writer.add(source);
+    return source;
   }
 }
 
@@ -437,6 +461,28 @@ describe('renderNodeToBuffer', () => {
       if (item.expected !== undefined) {
         expect(buffered, item.surface).toBe(item.expected);
       }
+    }
+  });
+
+  it('awaits async direct render values on expression-like node surfaces', async () => {
+    const context = new Context();
+    const cases: Array<{
+      surface: string;
+      node: Node;
+      expected: string;
+    }> = [
+      { surface: 'Expression', node: expr(new AsyncValueNode('value')), expected: 'value' },
+      { surface: 'Sequence', node: seq([any('one'), new AsyncValueNode('two')]), expected: 'one two' },
+      { surface: 'List', node: list([any('one'), new AsyncValueNode('two')]), expected: 'one, two' },
+      { surface: 'Paren', node: paren(new AsyncValueNode('value')), expected: '(value)' },
+      { surface: 'Condition', node: condition([new AsyncValueNode('truthy', bool(true))]), expected: 'true' },
+      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset')), expected: '"asset"' },
+      { surface: 'Url', node: url(new AsyncValueNode('asset')), expected: 'url(asset)' }
+    ];
+
+    for (const item of cases) {
+      await expect(Promise.resolve(item.node.render(context)), item.surface)
+        .resolves.toBe(item.expected);
     }
   });
 

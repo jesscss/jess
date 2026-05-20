@@ -182,7 +182,13 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const values = this.evaluateValues(context, 'resolve');
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (isThenable(values)) {
-      return this.toTrimmedString(prepared);
+      return values.then((resolvedValues) => {
+        const filtered = resolvedValues.filter(n => n && !(n instanceof Nil));
+        if (filtered.length === 1 && !this._options?.preserveWhitespace) {
+          return filtered[0]!.toTrimmedString(prepared);
+        }
+        return this.renderSequenceSyntax(filtered, prepared);
+      });
     }
     const filtered = values.filter(n => n && !(n instanceof Nil));
     if (filtered.length === 1 && !this._options?.preserveWhitespace) {

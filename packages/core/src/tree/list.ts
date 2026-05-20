@@ -154,7 +154,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const resolvedItems = this.resolveItems(context);
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     return isThenable(resolvedItems)
-      ? this.toTrimmedString(prepared)
+      ? resolvedItems.then(items => this.renderListSyntax(items, prepared))
       : this.renderListSyntax(resolvedItems as Node[], prepared);
   }
 

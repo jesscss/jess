@@ -56,7 +56,9 @@ it is for the current direction and next seams, not a historical pass log.
 - The base direct sync `Node.render(context)` fallback remains a compatibility
   seam. Native sync overloads may bypass it when they can resolve children
   locally and serialize the chosen value without materializing an evaluated
-  wrapper.
+  wrapper. If local child resolution is async, the native direct render path
+  should await that chosen value rather than serialize source syntax while the
+  buffer path emits evaluated output.
 - `$while` currently has explicit focused guards for native buffer rendering,
   no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
   per-iteration body copies. `$for` and `$while` reuse static and dynamic direct

@@ -68,7 +68,7 @@ export class Url extends Node<Node> {
     const value = this.resolveValue(context);
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     return isThenable(value)
-      ? this.toTrimmedString(prepared)
+      ? value.then(node => node.toTrimmedString(prepared))
       : value.toTrimmedString(prepared);
   }
 

@@ -81,7 +81,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     const value = this.evaluateValue(context, 'resolve');
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     return isThenable(value)
-      ? this.toTrimmedString(prepared)
+      ? value.then(node => node.toTrimmedString(prepared))
       : value.toTrimmedString(prepared);
   }
 

@@ -76,6 +76,9 @@ selector placement truly needs one.
 - The base direct sync `Node.render(context)` fallback remains a compatibility
   path, but native sync overloads should bypass it when a node can resolve
   locally and serialize the chosen value without creating an evaluated wrapper.
+  Expression-like native render overloads must also await async child
+  resolution instead of falling back to authored syntax; direct string render
+  and buffer render should choose the same evaluated value.
 
 ## Remaining Architecture Work
 
