@@ -115,6 +115,10 @@ Priority seams:
 
 - Base `Node.copy()` / `Node.clone()`, keyset copies, bitset copies, reusable
   leaf helpers, and test-only clones are infrastructure, not automatic wins.
+- `.value` is still the right shape for scalar and list/container nodes. Future
+  direct-field cleanup is only for record-shaped nodes where named fields would
+  reduce real indirection or ownership confusion; do not turn it into a broad
+  `.value` removal pass.
 - `prepareRenderPrintState(...)` is the central bridge for active writer,
   frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
 - Shared render-buffer helpers must stay narrow:

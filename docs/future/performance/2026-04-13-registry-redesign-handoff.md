@@ -83,25 +83,33 @@ generic `Node.evalStatic(...)` stamping path. Reopen Track 1C only with a
 focused failing test or code path showing direct `render(context)` /
 `resolve(context)` still stamps a canonical source node.
 
-### Track 2 — Node Shape: Direct Instance Fields
+### Track 2 — Record-Shaped Node Fields
 
 Open, not active.
 
-Goal: replace the current `value` proxy/object pattern with direct typed fields
-on node classes where that meaningfully reduces allocation and makes ownership
-clearer.
+The old transparent `value` proxy overhead has been removed. Do not read this
+track as "remove `.value` from every node."
+
+The remaining optional shape cleanup is narrower: record-shaped nodes may move
+from generic property bags such as `this.value.name`, `this.value.rules`, or
+`this.value.selector` to direct typed fields when that meaningfully reduces
+allocation, indirection, parent/adoption ambiguity, copy surfaces, or adapter
+glue.
+
+Nodes whose shape is naturally one payload should keep `.value`. That includes
+scalar nodes and list/container nodes such as `List`, `Sequence`, and `Rules`.
 
 Do not start this as a broad mechanical rewrite. The next useful pass should
-begin with one node family, focused tests, and a migration rule for parser and
-Less-compat call sites.
+begin with one record-shaped node family, focused tests, and a migration rule
+for parser and Less-compat call sites.
 
 ### Track 3 — Less-Compat Adapter Layer
 
 Mostly closed.
 
-The proxy-to-adapter switch has landed. Revisit after Track 2 changes the core
-node API; until then, avoid adapter churn unless it fixes a concrete API bug or
-removes stale field-mapping glue.
+The proxy-to-adapter switch has landed. Revisit only if a future record-shaped
+node-field pass changes the core node API, or if adapter code has concrete
+stale field-mapping glue to remove. Avoid adapter churn for its own sake.
 
 ### Track 4 — TriviaMap Cleanup
 
