@@ -161,6 +161,27 @@ describe('Declaration', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('normalizes assignment registration without preparing value subtrees', async () => {
+    const value = any('one');
+    let valuePrepCalls = 0;
+    const originalPrepareRegistration = value.prepareRegistration.bind(value);
+    value.prepareRegistration = (renderContext: Context) => {
+      valuePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const node = decl({
+      name: any('src'),
+      value
+    }, { assign: AssignmentType.MergeSequence });
+
+    const prepared = await Promise.resolve(node.prepareRegistration(context));
+
+    expect(prepared.value.value.type).toBe('Sequence');
+    expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
+    expect(valuePrepCalls).toBe(0);
+    expect(value.preEvaluated).toBe(false);
+  });
+
   it('reuses source-free scalar leaves when deriving interpolated declaration names', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })

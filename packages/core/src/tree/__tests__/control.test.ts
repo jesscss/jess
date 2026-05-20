@@ -1157,7 +1157,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(2);
+    expect(sourcePrepCalls).toBe(1);
     expect(colorDecl.parent).toBe(loopRules);
   });
 
@@ -1177,7 +1177,7 @@ describe('Control Nodes', () => {
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(2);
+    expect(sourcePrepCalls).toBe(1);
     expect(itemDecl.parent).toBe(loopRules);
   });
 

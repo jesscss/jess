@@ -1,4 +1,3 @@
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -29,11 +28,11 @@ export class Collection extends Rules {
    * Collection rules aren't evaluated by default. They're evaluated
    * at access time OR if assigned to a property.
    */
-  override evalNode(_context: Context): MaybePromise<this> {
+  override evalNode(_context: Context): this {
     return this;
   }
 
-  override resolve(context: Context): MaybePromise<this> {
+  override resolve(context: Context): this {
     return this.evalNode(context);
   }
 
@@ -47,14 +46,6 @@ export class Collection extends Rules {
       );
     }
     return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
-  }
-
-  override prepareRegistration(_context: Context): this | Promise<this> {
-    if (this.preEvaluated) {
-      return this;
-    }
-    this.preEvaluated = true;
-    return this;
   }
 }
 

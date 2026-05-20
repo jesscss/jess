@@ -220,11 +220,11 @@ evaluation:
 | Static declaration/mixin/ruleset registration | Forward refs and mixin calls need names/selectors indexed before first use. | Keep static identity registration before the source-order walk. Registration means "identity is stable," not "node is pre-evaluated." |
 | Dynamic declaration names | Declaration keys can be interpolated and can depend on other declarations. | Use a local fixed-point pending-name set for the current `Rules`; do not retry unrelated children. |
 | `Ruleset` selector prep | Mixin lookup and extends need a stable own selector and key sets. | Split into selector identity prep near registration. Body evaluation waits for source-order traversal. |
-| `Declaration` assignment normalization | `+=`, `+_=`/merge forms change the semantic value, not only the output text. | Move to an early one-time declaration eval/identity step; only key resolution belongs to registration prep. |
+| `Declaration` assignment normalization | `+=`, `+_=`/merge forms change the semantic value, not only the output text. | Normalize the assignment wrapper during declaration registration; leave the normalized value subtree for source-order eval/render. |
 | `AtRule` name/prelude prep | Interpolated names and import hoisting were mixed with child traversal. | Name identity is local prep; prelude evaluation stays in eval where live scope is correct; import hoisting moves to render/finalization. |
 | `Mixin` name prep | Callable registry needs a stable name, but mixin bodies must not be walked until call time. | Keep cheap callable identity prep; continue avoiding body traversal during registration. |
 | `Any(role='charset')` | Root output ordering needed to remember the first charset and hide duplicate/source token output. | Treat as root/render setup or charset collection, not a general node preEval hook. |
-| `Collection` / control mark-only overrides | These existed to avoid generic recursion or to mark phase completion. | Delete after base generic preEval is no longer part of the contract; do not replace them with new hooks. |
+| `Collection` / control mark-only overrides | These existed to avoid generic recursion or to mark phase completion. | Removed; do not replace them with new hooks. |
 
 The key rule is: **prepare the part that defines lookup identity; do not prepare
 the whole node unless full node evaluation is actually needed.**
@@ -543,20 +543,15 @@ Future treatment is likely:
 
 ### `Collection`
 
-Delete the hook.
+The mark-only hook is gone.
 
-`Collection.preEval()` is effectively a mark-only clone step. Collections are
-already lazy and `Collection.evalNode()` is a no-op.
-
-That means `Collection` is a good example of a node whose `preEval` override
-exists only because the phase exists.
+Collections are already lazy and `Collection.evalNode()` is a no-op. They
+should not be recursively prepared by declaration registration; declaration
+values now wait for source-order eval/render.
 
 ### Control Nodes
 
-Delete the hook.
-
-The control-node override in `packages/core/src/tree/control.ts` is also just a
-mark-only clone step.
+The mark-only hook is gone.
 
 `$if`, `$for`, and `$while` do real work in `evalNode()`, not `preEval()`.
 Control nodes do not participate in registration-by-name, and they should not
@@ -756,10 +751,9 @@ A safer order is:
    tests stay stable, but the helper names should describe the smaller concern.
 
 3. **Move mark-only hooks out of the way.**
-   Only after the base generic `preEval()` recursion is no longer needed, delete
-   mark-only overrides such as `Collection.preEval()` and the control-node
-   preEval. Removing them too early can accidentally re-enable broad child
-   recursion through `Node.preEval()`.
+   Done for `Collection` and control nodes. Keep this boundary intact: if a
+   future path reintroduces broad child recursion, fix the caller rather than
+   adding new mark-only hooks.
 
 4. **Teach `Rules` local pending registration.**
    Replace `_prepareRegistration()` with `Rules`-owned local state:
@@ -807,9 +801,10 @@ halfway between the old public phase name and the target eval-owned setup:
 - `Rules` owns pending registration state for two proven surfaces:
   - dynamic declaration names use a local fixed-point bucket.
   - callable, selector, and import identities stay in one source-ordered list.
-- Declaration assignment/value prep still runs during registration prep today.
-  Moving it into `Declaration.evalNode()` needs focused assignment and merge
-  tests, because that rewrite creates semantic references and value containers.
+- Declaration registration prep now stabilizes names and normalizes assignment
+  wrappers only. Declaration values are left for source-order eval/render so
+  value containers such as `Collection` and control nodes do not need mark-only
+  registration hooks.
 - `Ruleset` and `AtRule` body traversal now happens from eval-owned setup rather
   than through base `prepareEval()`. Some registration prep remains inside those
   nodes where extend-root and selector identity need it.

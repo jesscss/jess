@@ -370,9 +370,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return name;
   }
 
-  private _finishDeclarationRegistrationPrep(node: this, name: Any<'property'>, context: Context): MaybePromise<this> {
+  private _finishDeclarationRegistrationPrep(node: this, name: Any<'property'>, _context: Context): MaybePromise<this> {
     this._normalizeAssignmentValue(node, name);
-    return this._prepareDeclarationValueForCurrentPrep(node, context);
+    return node;
   }
 
   private _normalizeAssignmentValue(node: this, key: Any<'property'>): void {
@@ -465,21 +465,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       node.options.normalizedFromAssign = normalizedAssign;
     }
-  }
-
-  private _prepareDeclarationValueForCurrentPrep(node: this, context: Context): MaybePromise<this> {
-    const setValue = (newValue: Node) => {
-      node.set('value', newValue);
-    };
-    const out = node.value.value.prepareRegistration(context);
-    if (isThenable(out)) {
-      return out.then((value) => {
-        setValue(value);
-        return node;
-      });
-    }
-    setValue(out);
-    return node;
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {

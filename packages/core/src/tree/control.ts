@@ -437,14 +437,6 @@ export class For extends Node<StructuredLoopValue> {
     makeDirectiveRulesPublic(value.rules);
   }
 
-  override prepareRegistration(_context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
-      this.preEvaluated = true;
-      return this;
-    }
-    return this;
-  }
-
   override evalNode(context: Context): MaybePromise<Node> {
     const { pattern, iterable } = this.value;
     const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
