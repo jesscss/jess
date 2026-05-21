@@ -144,6 +144,25 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
     : writeRenderText(buffer, text);
 }
 
+export function renderSourceOutput(
+  context: Context,
+  node: RenderableOutput,
+  bufferOrOptions?: RenderBuffer | PrintOptions,
+  options?: PrintOptions
+): string {
+  let renderOptions: PrintOptions | undefined;
+  if (isRenderBuffer(bufferOrOptions)) {
+    renderOptions = { ...options };
+    delete renderOptions.writer;
+  } else {
+    renderOptions = bufferOrOptions;
+  }
+  const out = node.toTrimmedString(prepareRenderPrintState(context, renderOptions));
+  return isRenderBuffer(bufferOrOptions)
+    ? writeRenderText(bufferOrOptions, out)
+    : out;
+}
+
 export function renderNoOutput(effect: MaybePromise<unknown>): MaybePromise<string> {
   return isThenable(effect)
     ? effect.then(() => '')

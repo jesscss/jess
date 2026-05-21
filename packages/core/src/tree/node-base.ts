@@ -8,8 +8,7 @@ import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
-  getPrintOptions,
-  prepareRenderPrintState
+  getPrintOptions
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -18,9 +17,8 @@ import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
 import { isPlainObject } from './util/collections.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
+  renderSourceOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 const { isArray } = Array;
@@ -1166,19 +1164,7 @@ export abstract class Node<
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   render(context: Context, options?: PrintOptions): string;
   render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    let renderOptions: PrintOptions | undefined;
-    if (isRenderBuffer(bufferOrOptions)) {
-      const bufferOptions = { ...options };
-      delete bufferOptions.writer;
-      renderOptions = bufferOptions;
-    } else {
-      renderOptions = bufferOrOptions;
-    }
-    const prepared = prepareRenderPrintState(context, renderOptions);
-    const out = this.toTrimmedString(prepared);
-    return isRenderBuffer(bufferOrOptions)
-      ? writeRenderText(bufferOrOptions, out)
-      : out;
+    return renderSourceOutput(context, this, bufferOrOptions, options);
   }
 
   /**
