@@ -176,6 +176,11 @@ pnpm run verify:baseline
 pnpm run verify:baseline -- --changed
 ```
 
+`verify:materialization-frontier` guards against direct eval/resolve output
+being serialized as a completed tree surface. If it trips, either shrink that
+path into contextual render output or document the remaining ownership need in
+this handoff before allowing it.
+
 ## Working Rule
 
 Pick one narrow production seam, prove it with the closest focused test, then
