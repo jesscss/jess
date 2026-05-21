@@ -188,7 +188,7 @@ export function renderNoOutputEffect(
     : renderNoOutput(effect);
 }
 
-export function writeRenderedOutput(
+function writeRenderedOutput(
   buffer: RenderBuffer,
   node: RenderableOutput,
   context: Context,

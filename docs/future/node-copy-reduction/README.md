@@ -141,7 +141,6 @@ Priority seams:
     caller-owned writers before anything writes into a render buffer.
   - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
     intentionally emits nothing through either string or buffer render.
-  - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
   - `renderChosenOutput(...)` routes an already-chosen evaluated node through
     string or buffer render overloads without duplicating node-local promise
     plumbing.

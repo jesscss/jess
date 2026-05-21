@@ -123,7 +123,6 @@ it is for the current direction and next seams, not a historical pass log.
     caller-owned writers before anything writes into a render buffer.
   - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
     intentionally emits nothing through either string or buffer render.
-  - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
   - `renderChosenOutput(...)` routes an already-chosen evaluated node through
     direct string or buffer render overloads without letting individual node
     classes duplicate promise/buffer branching.
