@@ -68,6 +68,7 @@ import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
+  renderChosenOutput,
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
@@ -285,6 +286,19 @@ describe('renderNodeToBuffer', () => {
     expect(syncBuffer.parts).toEqual(['sync']);
     expect(asyncBuffer.parts).toEqual(['async']);
     expect(rejectedBuffer.parts).toEqual([]);
+  });
+
+  it('routes chosen output through string and buffer render surfaces', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const writer = new OutputWriter();
+
+    expect(renderChosenOutput(context, any('direct'), { writer })).toBe('direct');
+    await expect(renderChosenOutput(context, Promise.resolve(any('buffered')), buffer))
+      .resolves.toBe('buffered');
+
+    expect(writer.toString()).toBe('direct');
+    expect(buffer.parts).toEqual(['buffered']);
   });
 
   it('writes invisible effect output without mutating rejected buffers', async () => {

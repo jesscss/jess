@@ -190,6 +190,17 @@ export function renderSelectedOutput(
     : render(node);
 }
 
+export function renderChosenOutput(
+  context: Context,
+  node: MaybePromise<RenderableOutput>,
+  bufferOrOptions?: RenderBuffer | PrintOptions,
+  options?: PrintOptions
+): MaybePromise<string> {
+  return isRenderBuffer(bufferOrOptions)
+    ? writeSelectedOutput(bufferOrOptions, node, context, options)
+    : renderSelectedOutput(node, context, bufferOrOptions);
+}
+
 export function renderedOutputToString(
   source: RenderBufferNode,
   node: RenderableOutput,
