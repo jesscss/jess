@@ -69,10 +69,10 @@ import { OutputWriter, getPrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
   renderChosenOutput,
+  renderNoOutputEffect,
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
-  writeNoOutput,
   writeRootAwareChosenOutput,
   writeRootAwareOutput
 } from '../util/render-buffer.js';
@@ -318,9 +318,9 @@ describe('renderNodeToBuffer', () => {
     const asyncBuffer = createRenderBuffer('flat');
     const rejectedBuffer = createRenderBuffer('flat');
 
-    expect(writeNoOutput(syncBuffer, undefined)).toBe('');
-    await expect(writeNoOutput(asyncBuffer, Promise.resolve(any('ignored')))).resolves.toBe('');
-    await expect(writeNoOutput(rejectedBuffer, Promise.reject(new Error('nope')))).rejects.toThrow('nope');
+    expect(renderNoOutputEffect(undefined, syncBuffer)).toBe('');
+    await expect(renderNoOutputEffect(Promise.resolve(any('ignored')), asyncBuffer)).resolves.toBe('');
+    await expect(renderNoOutputEffect(Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
 
     expect(syncBuffer.parts).toEqual([]);
     expect(asyncBuffer.parts).toEqual([]);

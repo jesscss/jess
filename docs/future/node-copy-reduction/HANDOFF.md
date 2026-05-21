@@ -121,8 +121,8 @@ it is for the current direction and next seams, not a historical pass log.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.
   - `prepareBufferPrintState(...)` preserves render state while detaching
     caller-owned writers before anything writes into a render buffer.
-  - `writeNoOutput(...)` / `renderNoOutput(...)` evaluate invisible
-    side-effect output and intentionally emit nothing.
+  - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
+    intentionally emits nothing through either string or buffer render.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
   - `renderChosenOutput(...)` routes an already-chosen evaluated node through
     direct string or buffer render overloads without letting individual node

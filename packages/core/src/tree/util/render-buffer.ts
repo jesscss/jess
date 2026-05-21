@@ -172,13 +172,13 @@ export function renderSourceOutput(
     : out;
 }
 
-export function renderNoOutput(effect: MaybePromise<unknown>): MaybePromise<string> {
+function renderNoOutput(effect: MaybePromise<unknown>): MaybePromise<string> {
   return isThenable(effect)
     ? effect.then(() => '')
     : '';
 }
 
-export function writeNoOutput(buffer: RenderBuffer, effect: MaybePromise<unknown>): MaybePromise<string> {
+function writeNoOutput(buffer: RenderBuffer, effect: MaybePromise<unknown>): MaybePromise<string> {
   return writeRenderTextResult(buffer, renderNoOutput(effect));
 }
 
