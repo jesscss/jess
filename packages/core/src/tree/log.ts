@@ -5,10 +5,8 @@ import { logger } from '../logger.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
 import {
-  isRenderBuffer,
   type RenderBuffer,
-  renderNoOutput,
-  writeNoOutput
+  renderNoOutputEffect
 } from './util/render-buffer.js';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
@@ -74,10 +72,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeNoOutput(bufferOrOptions, this.evalNode(context));
-    }
-    return renderNoOutput(this.evalNode(context));
+    return renderNoOutputEffect(this.evalNode(context), bufferOrOptions);
   }
 
   private _logMessage(message: Node): void {

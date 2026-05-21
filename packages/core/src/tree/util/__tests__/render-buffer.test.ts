@@ -14,6 +14,7 @@ import {
   finalizeRenderBuffer,
   isRenderBuffer,
   pushRenderSegment,
+  renderNoOutputEffect,
   renderSourceOutput,
   writeSegmentText,
   writeRenderText,
@@ -153,5 +154,14 @@ describe('RenderBuffer', () => {
     expect(buffer.extendRecords).toHaveLength(1);
     expect(buffer.extendRecords[0]?.sourceBlock).toBe(sourceBlock);
     expect(buffer.extendRecords[0]?.targetSelector.valueOf()).toBe('.target');
+  });
+
+  it('routes no-output effects through string and buffer surfaces', async () => {
+    const directEffect = Promise.resolve('ignored');
+    const buffer = createRenderBuffer('flat');
+
+    await expect(renderNoOutputEffect(directEffect)).resolves.toBe('');
+    expect(renderNoOutputEffect(undefined, buffer)).toBe('');
+    expect(buffer.parts).toEqual([]);
   });
 });

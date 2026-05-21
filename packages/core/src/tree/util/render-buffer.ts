@@ -173,6 +173,15 @@ export function writeNoOutput(buffer: RenderBuffer, effect: MaybePromise<unknown
   return writeRenderTextResult(buffer, renderNoOutput(effect));
 }
 
+export function renderNoOutputEffect(
+  effect: MaybePromise<unknown>,
+  bufferOrOptions?: RenderBuffer | PrintOptions
+): MaybePromise<string> {
+  return isRenderBuffer(bufferOrOptions)
+    ? writeNoOutput(bufferOrOptions, effect)
+    : renderNoOutput(effect);
+}
+
 export function writeRenderedOutput(
   buffer: RenderBuffer,
   node: RenderableOutput,
