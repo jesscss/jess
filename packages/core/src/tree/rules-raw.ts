@@ -2,11 +2,10 @@ import { defineType } from './node.js';
 import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
+  renderSourceOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 /**
@@ -48,13 +47,7 @@ export class RawRules extends Rules {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderText(
-        bufferOrOptions,
-        this.toTrimmedString(getPrintOptions({ ...options, context }))
-      );
-    }
-    return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
+    return renderSourceOutput(context, this, bufferOrOptions, options);
   }
 }
 
