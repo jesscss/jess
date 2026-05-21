@@ -183,6 +183,16 @@ describe('renderNodeToBuffer', () => {
     await expect(renderNodeToString(asyncResolvedBridgeNode, context)).resolves.toBe('resolved');
   });
 
+  it('renders non-native bridge strings without mutating a provided writer', async () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+
+    await expect(renderNodeToString(asyncResolvedBridgeNode, context, { writer }))
+      .resolves.toBe('resolved');
+
+    expect(writer.toString()).toBe('');
+  });
+
   it('uses inherited base render as direct source serialization', () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
