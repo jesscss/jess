@@ -13,12 +13,7 @@ const ignoredSegments = new Set([
 ]);
 
 const frontierPattern = /\b(?:resolved|evald|evaluated)\.toTrimmedString\(\s*prepared\s*\)/u;
-const expectedRemaining = new Map([
-  [
-    'packages/core/src/tree/node-base.ts',
-    'legacy sync Node.render(context) compatibility fallback'
-  ]
-]);
+const expectedRemaining = new Map();
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -60,11 +55,15 @@ const missingExpected = [...expectedRemaining.keys()].filter(file => !files.incl
 
 console.log('Materialization frontier scan');
 console.log('');
-console.log('Expected remaining sync compatibility seams:');
-for (const [file, reason] of expectedRemaining) {
-  console.log(`- ${file}: ${reason}`);
-  for (const match of matches.filter(match => match.file === file)) {
-    console.log(`  ${match.line}: ${match.text}`);
+if (expectedRemaining.size === 0) {
+  console.log('Expected remaining resolve/eval-then-serialize seams: none');
+} else {
+  console.log('Expected remaining resolve/eval-then-serialize seams:');
+  for (const [file, reason] of expectedRemaining) {
+    console.log(`- ${file}: ${reason}`);
+    for (const match of matches.filter(match => match.file === file)) {
+      console.log(`  ${match.line}: ${match.text}`);
+    }
   }
 }
 

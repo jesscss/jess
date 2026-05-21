@@ -76,12 +76,14 @@ selector placement truly needs one.
   native render aligned with eval serialization; changing same-iteration
   `$while` mutation visibility is a semantics decision, not a copy-reduction
   cleanup.
-- The base direct sync `Node.render(context)` fallback remains a compatibility
-  path, but native sync overloads should bypass it when a node can resolve
-  locally and serialize the chosen value without creating an evaluated wrapper.
-  Expression-like native render overloads must also await async child
-  resolution instead of falling back to authored syntax; direct string render
-  and buffer render should choose the same evaluated value.
+- The base `Node.render(context)` implementation is the inherited
+  static/source serializer. It does not call `resolve()` or serialize an
+  evaluated wrapper. Nodes whose output depends on context must override
+  `render(...)`, choose the evaluated value locally, and serialize that value
+  through the same print-state machinery. Expression-like native render
+  overloads must also await async child resolution instead of falling back to
+  authored syntax; direct string render and buffer render should choose the
+  same evaluated value.
 
 ## Remaining Architecture Work
 
@@ -91,25 +93,18 @@ later serializer can walk them.
 
 Priority seams:
 
-1. **Legacy direct render fallback**: `Node.render(context)` is the only
-   expected materialization-frontier entry. It still has a synchronous
-   resolve-then-serialize compatibility fallback. Keep it until the public sync
-   callers are audited, but do not route new compiler behavior through it. When
-   narrowing it, prefer node-local sync render paths that reuse the same syntax
-   serializer with resolved values instead of constructing a temporary output
-   tree.
-2. **Loop eval surfaces**: direct loop-body child copying is no longer the
+1. **Loop eval surfaces**: direct loop-body child copying is no longer the
    active frontier. Keep the existing render, static-child, dynamic-child, and
    scalar-leaf guards green while reducing any remaining loop output surfaces.
-3. **Generated selector/output ownership**: selector expansion, extend output,
+2. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
    them by pattern.
-4. **Function/mixin argument surfaces**: metadata-backed functions still need
+3. **Function/mixin argument surfaces**: metadata-backed functions still need
    copied raw-argument ownership for `this.rawArgs`, `this.args()`,
    preprocessing, lazy params, validation, and `@arguments`-style behavior.
    Plain functions should keep receiving positional args directly.
-5. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
+4. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
    loop live slots, and similar render/eval shadow state are suspect surfaces.
    Keep them only where they express live scope or placement state better than
    copied nodes.

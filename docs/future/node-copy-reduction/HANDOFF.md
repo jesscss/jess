@@ -56,12 +56,12 @@ it is for the current direction and next seams, not a historical pass log.
   render. `$if` renders only the selected branch output; `$for` and `$while`
   render per iteration. `$while` loop-body variable mutation is carried in a
   live `ScopeFrame` surface between iterations, not in a full output tree.
-- The base direct sync `Node.render(context)` fallback remains a compatibility
-  seam. Native sync overloads may bypass it when they can resolve children
-  locally and serialize the chosen value without materializing an evaluated
-  wrapper. If local child resolution is async, the native direct render path
-  should await that chosen value rather than serialize source syntax while the
-  buffer path emits evaluated output.
+- The base `Node.render(context)` implementation is a direct source serializer,
+  not a resolve/eval-then-serialize fallback. Context-dependent nodes must
+  override `render(...)`, choose the evaluated value locally, and serialize that
+  value through the shared print-state machinery. If local child resolution is
+  async, the native direct render path should await that chosen value rather
+  than serialize source syntax while the buffer path emits evaluated output.
 - `$while` currently has explicit focused guards for native buffer rendering,
   no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
   per-iteration body copies. `$for` and `$while` reuse static and dynamic direct
@@ -78,13 +78,7 @@ it is for the current direction and next seams, not a historical pass log.
 
 ## Next Seams
 
-1. **Audit the remaining materialization boundary.**
-   - `pnpm run verify:materialization-frontier` names the current expected
-     sync compatibility seam: the legacy `Node.render(context)` fallback.
-   - Convert only when the node can stream children or keep a smaller owned
-     surface without changing scope, registration, async, selector, or trivia
-     behavior.
-2. **Keep copy/clone pressure low.**
+1. **Keep copy/clone pressure low.**
    - A new production `.copy()` or `.clone()` site is a regression unless it
      carries explicit scope, registry, import/reference, merge, generated
      selector placement, or output ownership.
@@ -92,23 +86,23 @@ it is for the current direction and next seams, not a historical pass log.
      they need an owned surface.
    - The node-copy frontier intentionally ignores BitSet `.clone()` calls;
      those are selector-index data copies, not AST ownership copies.
-3. **Replace loop eval surfaces without losing semantics.**
+2. **Replace loop eval surfaces without losing semantics.**
    - `$for` and `$while` no longer copy direct loop-body children into the
      iteration eval surface. The next win is to shrink any remaining owned loop
      output surfaces while preserving per-iteration scope, rule visibility, and
      `$while` mutation.
    - Keep `verify:render-buffer-frontier` and the focused control tests green
      while changing this.
-4. **Reduce generated-output ownership carefully.**
+3. **Reduce generated-output ownership carefully.**
    - Selector expansion, extend output, direct comment children, and root
      `Rules` serializer behavior are special because they produce placement
      output. Change them only with parentage, visibility, and output-order tests.
-5. **Preserve function/mixin raw argument contracts.**
+4. **Preserve function/mixin raw argument contracts.**
    - Metadata-backed functions may need copied raw args for `this.rawArgs`,
      `this.args()`, preprocessing, lazy params, validation, and
      `@arguments`-style behavior.
    - Plain functions should keep receiving positional args directly.
-6. **Audit context shadow state.**
+5. **Audit context shadow state.**
    - `Context.rulesContext`, `ScopeFrame.fallbackFrame`, loop live slots, and
      similar state are acceptable only when they model live scope or placement
      better than copied nodes.

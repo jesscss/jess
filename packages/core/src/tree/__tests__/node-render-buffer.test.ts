@@ -76,19 +76,26 @@ import {
   writeRootAwareRenderedOutput
 } from '../util/render-buffer.js';
 
-class AsyncResolvedNode extends Node<string> {
-  override resolve() {
+const asyncResolvedBridgeNode = {
+  resolve() {
     return Promise.resolve(any('resolved'));
   }
+};
 
-  override toTrimmedString() {
-    return 'source';
-  }
-}
-
-class RejectingNode extends Node<string> {
-  override resolve() {
+const rejectingBridgeNode = {
+  resolve() {
     return Promise.reject(new Error('nope'));
+  }
+};
+
+class SourceOnlyNode extends Node<string> {
+  override resolve() {
+    throw new Error('base render should not resolve source-only nodes');
+  }
+
+  override toTrimmedString(options?: Parameters<Node['toTrimmedString']>[0]) {
+    getPrintOptions(options).writer.add('source');
+    return 'source';
   }
 }
 
@@ -141,29 +148,36 @@ describe('renderNodeToBuffer', () => {
     expect(node.render(context)).toBe('blue');
   });
 
-  it('keeps async resolution on the explicit buffer path', async () => {
+  it('keeps async resolution on the explicit non-native bridge path', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
-    const node = new AsyncResolvedNode('source');
 
-    await expect(renderNodeToBuffer(node, context, buffer)).resolves.toBe('resolved');
+    await expect(renderNodeToBuffer(asyncResolvedBridgeNode, context, buffer)).resolves.toBe('resolved');
     expect(buffer.parts).toEqual(['resolved']);
   });
 
-  it('does not write rejected async output into flat buffers', async () => {
+  it('does not write rejected async non-native bridge output into flat buffers', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
-    const node = new RejectingNode('source');
 
-    await expect(renderNodeToBuffer(node, context, buffer)).rejects.toThrow('nope');
+    await expect(renderNodeToBuffer(rejectingBridgeNode, context, buffer)).rejects.toThrow('nope');
     expect(buffer.parts).toEqual([]);
   });
 
-  it('renders async resolved output to strings without eval pre-materialization', async () => {
+  it('renders async non-native bridge output to strings without eval pre-materialization', async () => {
     const context = new Context();
-    const node = new AsyncResolvedNode('source');
 
-    await expect(renderNodeToString(node, context)).resolves.toBe('resolved');
+    await expect(renderNodeToString(asyncResolvedBridgeNode, context)).resolves.toBe('resolved');
+  });
+
+  it('uses inherited base render as direct source serialization', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const node = new SourceOnlyNode('source');
+
+    expect(node.render(context)).toBe('source');
+    expect(renderNodeToBuffer(node, context, buffer)).toBe('source');
+    expect(buffer.parts).toEqual(['source']);
   });
 
   it('renders native buffer output to strings without reusing a provided writer', () => {

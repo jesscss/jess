@@ -17,6 +17,11 @@ import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
 import { isPlainObject } from './util/collections.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  writeRenderText
+} from './util/render-buffer.js';
 
 const { isArray } = Array;
 
@@ -1151,23 +1156,22 @@ export abstract class Node<
   }
 
   /**
-   * Renders evaluated output for this node through the context-owned print
-   * state. This is the live-binding render path, not a source serializer.
+   * Renders this node's direct syntax through the context-owned print state.
    *
-   * This legacy string overload is intentionally synchronous. Nodes whose
-   * contextual resolution is async must use the buffer/async render bridge
-   * until the top-level compile path owns async render directly. For now, the
-   * sync overload keeps the old source-serializer fallback so legacy sync
-   * formatting paths can continue while they are converted.
+   * The base implementation is only the inherited static/source serializer. It
+   * must not resolve/evaluate the node first. Nodes whose output depends on
+   * context override this method and serialize the chosen evaluated value
+   * through the same print-state machinery.
    */
-  render(context: Context, options?: PrintOptions): string {
-    const prepared = prepareRenderPrintState(context, options);
-    const resolved = this.resolve(context);
-    if (!isThenable(resolved)) {
-      return resolved.toTrimmedString(prepared);
-    }
-    const printOptions = getPrintOptions(prepared);
-    return this.toTrimmedString(printOptions);
+  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  render(context: Context, options?: PrintOptions): string;
+  render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    const renderOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const prepared = prepareRenderPrintState(context, renderOptions);
+    const out = this.toTrimmedString(prepared);
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderText(bufferOrOptions, out)
+      : out;
   }
 
   /**

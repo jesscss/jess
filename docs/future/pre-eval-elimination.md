@@ -64,9 +64,12 @@ does lookup identity work:
 - import identity and retry timing
 - extend-root registration timing
 
-The other visible bridge is the legacy sync `Node.render(context)` fallback,
-which still resolves a node and serializes the resolved result for compatibility.
-`pnpm run verify:materialization-frontier` tracks that seam.
+`Node.render(context)` is no longer a resolve/eval-then-serialize fallback. The
+base implementation is a direct source serializer for static/source nodes.
+Context-dependent nodes must override `render(...)`, choose the evaluated value
+locally, and serialize that value through the shared print-state machinery.
+`pnpm run verify:materialization-frontier` guards against reintroducing broad
+resolve/eval-then-serialize seams.
 
 ## Non-Goals
 
