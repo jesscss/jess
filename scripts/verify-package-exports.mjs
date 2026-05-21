@@ -65,11 +65,11 @@ for (const dirent of fs.readdirSync(packagesDir, { withFileTypes: true })) {
 }
 
 if (failures.length > 0) {
-  console.error('Package export condition ordering failed:');
+  console.error('Package export verification failed:');
   for (const failure of failures) {
     console.error(`- ${failure}`);
   }
   process.exit(1);
 }
 
-console.log('Package export condition ordering passed.');
+console.log('Package export verification passed.');
