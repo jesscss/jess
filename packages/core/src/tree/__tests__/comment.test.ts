@@ -49,6 +49,19 @@ describe('Comment', () => {
     expect(resolveCalls).toBe(0);
   });
 
+  it('keeps source-only line comments out of render buffers unless full render is enabled', () => {
+    const hiddenBuffer = createRenderBuffer('flat');
+    const fullBuffer = createRenderBuffer('flat');
+    const hidden = comment('// source-only', { lineComment: true });
+    const full = comment('// source-only', { lineComment: true });
+    full.fullRender = true;
+
+    expect(hidden.render(context, hiddenBuffer)).toBe('');
+    expect(hiddenBuffer.parts).toEqual([]);
+    expect(full.render(context, fullBuffer)).toBe('// source-only');
+    expect(fullBuffer.parts).toEqual(['// source-only']);
+  });
+
   it('preserves printable block trivia before invisible nodes', () => {
     const hidden = vardecl({ name: 'tone', value: any('red') });
     hidden._location = [100, 1, 1, 110, 1, 11];

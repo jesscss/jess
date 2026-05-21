@@ -1,10 +1,9 @@
 import { type Context } from '../context.js';
 import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { PrintOptions } from './util/print.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
+  renderSourceOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -37,10 +36,7 @@ export class Comment extends Node<string, CommentOptions> {
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderText(bufferOrOptions, this.toTrimmedString(options));
-    }
-    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
+    return renderSourceOutput(context, this, bufferOrOptions, options);
   }
 
   override resolve(_context: Context): this {
