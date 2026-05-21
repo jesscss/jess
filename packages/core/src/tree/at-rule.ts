@@ -9,10 +9,8 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
@@ -150,15 +148,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(
-        bufferOrOptions,
-        this.deriveAtRule(this.value).eval(context),
-        context,
-        options
-      );
-    }
-    return renderSelectedOutput(this.deriveAtRule(this.value).eval(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.deriveAtRule(this.value).eval(context), bufferOrOptions, options);
   }
 
   /**

@@ -14,10 +14,9 @@ import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
   isRenderBuffer,
-  renderSelectedOutput,
+  renderChosenOutput,
   type RenderBuffer,
-  writeRenderTextResult,
-  writeSelectedOutput
+  writeRenderTextResult
 } from './util/render-buffer.js';
 
 function stringifyValueOf(value: unknown): string {
@@ -304,10 +303,10 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       if (typeof this.value.name !== 'string') {
-        return writeSelectedOutput(
-          bufferOrOptions,
-          this.deriveResolveSurface().eval(context),
+        return renderChosenOutput(
           context,
+          this.deriveResolveSurface().eval(context),
+          bufferOrOptions,
           options
         );
       }
@@ -327,7 +326,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return rendered;
     }
-    return renderSelectedOutput(this.deriveResolveSurface().eval(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.deriveResolveSurface().eval(context), bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

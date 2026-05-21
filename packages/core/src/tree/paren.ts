@@ -9,10 +9,8 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 function getCallReferenceKey(name: unknown): string {
@@ -130,15 +128,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(
-        bufferOrOptions,
-        this.evaluateValue(context, 'resolve'),
-        context,
-        options
-      );
-    }
-    return renderSelectedOutput(this.evaluateValue(context, 'resolve'), context, bufferOrOptions);
+    return renderChosenOutput(context, this.evaluateValue(context, 'resolve'), bufferOrOptions, options);
   }
 
   private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {

@@ -9,10 +9,8 @@ import { Call } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -81,15 +79,7 @@ export class Operation extends Node<OperationValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(
-        bufferOrOptions,
-        this.evaluateOperands(context, 'resolve'),
-        context,
-        options
-      );
-    }
-    return renderSelectedOutput(this.evaluateOperands(context, 'resolve'), context, bufferOrOptions);
+    return renderChosenOutput(context, this.evaluateOperands(context, 'resolve'), bufferOrOptions, options);
   }
 
   private evaluateOperands(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
