@@ -144,6 +144,16 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
     : writeRenderText(buffer, text);
 }
 
+export function renderNoOutput(effect: MaybePromise<unknown>): MaybePromise<string> {
+  return isThenable(effect)
+    ? effect.then(() => '')
+    : '';
+}
+
+export function writeNoOutput(buffer: RenderBuffer, effect: MaybePromise<unknown>): MaybePromise<string> {
+  return writeRenderTextResult(buffer, renderNoOutput(effect));
+}
+
 export function writeRenderedOutput(
   buffer: RenderBuffer,
   node: RenderableOutput,

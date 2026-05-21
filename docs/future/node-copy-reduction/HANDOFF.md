@@ -114,6 +114,8 @@ it is for the current direction and next seams, not a historical pass log.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.
+  - `writeNoOutput(...)` / `renderNoOutput(...)` evaluate invisible
+    side-effect output and intentionally emit nothing.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.

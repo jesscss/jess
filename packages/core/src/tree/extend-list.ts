@@ -2,11 +2,12 @@ import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions, type 
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderTextResult
+  renderNoOutput,
+  writeNoOutput
 } from './util/render-buffer.js';
 
 /**
@@ -45,14 +46,10 @@ export class ExtendList extends Node<Extend[]> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    const renderExtendList = (): MaybePromise<string> => {
-      const value = this.evalNode(context);
-      return isThenable(value) ? value.then(() => '') : '';
-    };
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderTextResult(bufferOrOptions, renderExtendList());
+      return writeNoOutput(bufferOrOptions, this.evalNode(context));
     }
-    return renderExtendList();
+    return renderNoOutput(this.evalNode(context));
   }
 }
 

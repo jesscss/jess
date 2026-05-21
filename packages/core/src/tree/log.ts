@@ -7,7 +7,8 @@ import type { PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderTextResult
+  renderNoOutput,
+  writeNoOutput
 } from './util/render-buffer.js';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
@@ -73,14 +74,10 @@ export class Log extends Node<LogValue, NodeOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    const renderLog = (): MaybePromise<string> => {
-      const value = this.evalNode(context);
-      return isThenable(value) ? value.then(() => '') : '';
-    };
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderTextResult(bufferOrOptions, renderLog());
+      return writeNoOutput(bufferOrOptions, this.evalNode(context));
     }
-    return renderLog();
+    return renderNoOutput(this.evalNode(context));
   }
 
   private _logMessage(message: Node): void {
