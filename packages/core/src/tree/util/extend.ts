@@ -494,7 +494,7 @@ function applyBatchedExtend(
       return null;
     }
     const processedArray = isArray(processed) ? processed : [processed];
-    return SelectorList.create(processedArray).inherit(selector) as Selector;
+    return expectSelector(SelectorList.create(processedArray).inherit(selector));
   }
 
   // Generic fallback: apply each extendWith sequentially.
@@ -2188,7 +2188,7 @@ function extendSelectorList(
         newSelectors.push(
           ...extended.value
             .slice(1)
-            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector)))
+            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template, s)))
             .map(s => copySelectorForExtend(s))
         );
         appendedVariant = true;
@@ -2978,14 +2978,16 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
   // Basic deduplication here to avoid obvious duplicates
   // Full normalization (flattening) will be handled by createProcessedSelector
   // when the result is processed through createExtendedSelectorList
+  // Callers pass owned selector copies so this helper can attach the list
+  // without another placement-copy pass.
   const deduplicated = deduplicateSelectors(selectors);
-  const selectorList = SelectorList.create(copySelectorsForPlacement(deduplicated));
+  const selectorList = SelectorList.create(deduplicated);
 
   // Create PseudoSelector using the create factory method - same signature as constructor but marks as generated
   const pseudoSelector = PseudoSelector.create({
     name: ':is',
     arg: selectorList
-  }).inherit(inheritFrom) as PseudoSelector;
+  }).inherit(inheritFrom);
   // Ensure downstream normalization can unwrap/merge this wrapper when appropriate.
   pseudoSelector.generated = true;
 
@@ -3695,14 +3697,14 @@ function collectSelectorSubtreeValues(
 
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      collectSelectorSubtreeValues(item as Selector, values);
+      collectSelectorSubtreeValues(item, values);
     }
     return values;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
     for (const item of selector.value) {
-      collectSelectorSubtreeValues(item as Selector, values);
+      collectSelectorSubtreeValues(item, values);
     }
     return values;
   }
@@ -3712,7 +3714,9 @@ function collectSelectorSubtreeValues(
       if (isNode(item, N.Combinator)) {
         continue;
       }
-      collectSelectorSubtreeValues(item as Selector, values);
+      if (isSelectorNode(item)) {
+        collectSelectorSubtreeValues(item, values);
+      }
     }
     return values;
   }
@@ -3741,14 +3745,14 @@ function collectNewSelectorCandidates(
 
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      collectNewSelectorCandidates(item as Selector, originalValues, candidates, seenValues);
+      collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
     }
     return candidates;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
     for (const item of selector.value) {
-      collectNewSelectorCandidates(item as Selector, originalValues, candidates, seenValues);
+      collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
     }
     return candidates;
   }
@@ -3758,7 +3762,9 @@ function collectNewSelectorCandidates(
       if (isNode(item, N.Combinator)) {
         continue;
       }
-      collectNewSelectorCandidates(item as Selector, originalValues, candidates, seenValues);
+      if (isSelectorNode(item)) {
+        collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
+      }
     }
     return candidates;
   }
@@ -4048,17 +4054,19 @@ function applyExtensionAtPath(
         const newSelectors = [...arg.value, extendWith];
         newArg = SelectorList.create(newSelectors).inherit(arg);
       } else {
-        newArg = SelectorList.create([arg as Selector, extendWith]);
+        newArg = SelectorList.create([arg, extendWith]);
       }
 
-      const processedArg = createProcessedSelector(newArg as Selector, true);
+      const processedArg = createProcessedSelector(newArg, true);
       if (typeof processedArg === 'string') {
         return processedArg;
       }
-      const normalizedArg = isArray(processedArg) ? SelectorList.create(processedArg as Selector[]) : processedArg;
+      const normalizedArg = isArray(processedArg)
+        ? SelectorList.create(expectSelectorArray(processedArg))
+        : expectSelector(processedArg);
       const result = PseudoSelector.create({
         name: current.value.name,
-        arg: normalizedArg as Selector
+        arg: normalizedArg
       }).inherit(current);
       return result;
     } else {
@@ -4067,14 +4075,16 @@ function applyExtensionAtPath(
       if (typeof newArg === 'string') {
         return newArg;
       }
-      const processedArg = createProcessedSelector(newArg as Selector, true);
+      const processedArg = createProcessedSelector(newArg, true);
       if (typeof processedArg === 'string') {
         return processedArg;
       }
-      const normalizedArg = isArray(processedArg) ? SelectorList.create(processedArg as Selector[]) : processedArg;
+      const normalizedArg = isArray(processedArg)
+        ? SelectorList.create(expectSelectorArray(processedArg))
+        : expectSelector(processedArg);
       const nestedResult = PseudoSelector.create({
         name: current.value.name,
-        arg: normalizedArg as Selector
+        arg: normalizedArg
       }).inherit(current);
       return nestedResult;
     }

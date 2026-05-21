@@ -51,6 +51,9 @@ current state, immediate queue, and verification commands.
   sync and async selector eval. Parent-list composition, implicit ampersand
   materialization, reference-scope tagging, and document-order capture should
   stay centralized there.
+- Generated `:is(...)` wrappers now consume the already-owned selector copies
+  produced by validation/decorating instead of copying those selectors a
+  second time while building the wrapper argument list.
 
 ## Immediate Queue
 
@@ -60,9 +63,10 @@ hotter.
 1. **Generated selector and output ownership.**
    - Goal: reduce owned placement surfaces only where tests prove they are
      bookkeeping, not semantics.
-   - Next start in extend output application and selector finalization. The
-     extend declaration registration branch has been centralized; do not split
-     sync and async registration ownership again.
+   - Next start in selector-list append paths and boundary-crossing
+     finalization. The extend declaration registration branch has been
+     centralized, and generated `:is(...)` wrapper construction now has one
+     placement-copy step; do not split those ownership paths again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**
