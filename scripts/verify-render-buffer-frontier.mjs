@@ -8,8 +8,7 @@ const scanRoots = [
   path.join(rootDir, 'packages/jess/src')
 ];
 const ignoredSegments = new Set([
-  '__tests__',
-  'util'
+  '__tests__'
 ]);
 const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
 const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput)\b/u;
