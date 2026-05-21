@@ -54,6 +54,51 @@ type AtRuleBodyRegistrationContext = {
   savedRulesetFrames: Context['rulesetFrames'] | undefined;
 };
 
+function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
+  let cursor = rulesContext;
+  let depth = 0;
+  while (cursor?.parent && depth++ < 10) {
+    const parent = cursor.parent;
+    const grandparent = parent.parent;
+    if (isNode(parent, N.AtRule) && isNode(grandparent, N.Rules)) {
+      cursor = grandparent;
+      continue;
+    }
+    break;
+  }
+  return cursor;
+}
+
+function withRulesContext<T>(
+  context: Context,
+  rulesContext: Context['rulesContext'],
+  run: () => MaybePromise<T>
+): MaybePromise<T> {
+  const savedRulesContext = context.rulesContext;
+  context.rulesContext = rulesContext;
+  let result: MaybePromise<T>;
+  try {
+    result = run();
+  } catch (error) {
+    context.rulesContext = savedRulesContext;
+    throw error;
+  }
+  if (isThenable(result)) {
+    return Promise.resolve(result).then(
+      (value) => {
+        context.rulesContext = savedRulesContext;
+        return value;
+      },
+      (error: unknown) => {
+        context.rulesContext = savedRulesContext;
+        throw error;
+      }
+    );
+  }
+  context.rulesContext = savedRulesContext;
+  return result;
+}
+
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
 export const ROOT_ONLY_AT_RULES = [
   '@charset',
@@ -505,44 +550,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (prelude) {
           // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
           // This matches Less behavior for mixin parameters referenced from nested @media preludes.
-          const savedRulesContext = context.rulesContext;
-          let liftedRulesContext = savedRulesContext;
-          // If our current rulesContext is a Rules whose parent is an AtRule, lift to the enclosing Rules.
-          if (liftedRulesContext && isNode(liftedRulesContext, N.Rules)) {
-            let cursor: any = liftedRulesContext;
-            let depth = 0;
-            while (cursor?.parent && depth++ < 10) {
-              if (isNode(cursor.parent, N.AtRule) && isNode(cursor.parent.parent, N.Rules)) {
-                cursor = cursor.parent.parent;
-                continue;
-              }
-              break;
-            }
-            liftedRulesContext = cursor;
-          }
-          context.rulesContext = liftedRulesContext;
-          let out: MaybePromise<Node>;
-          try {
-            out = prelude.eval(context);
-          } catch (error) {
-            context.rulesContext = savedRulesContext;
-            throw error;
-          }
+          const out = withRulesContext(
+            context,
+            liftedAtRulePreludeRulesContext(context.rulesContext),
+            () => prelude.eval(context)
+          );
           if (isThenable(out)) {
-            return (out as Promise<Node>).then(
+            return Promise.resolve(out).then(
               (n) => {
                 node.value.prelude = n;
-                context.rulesContext = savedRulesContext;
                 return undefined;
-              },
-              (error: unknown) => {
-                context.rulesContext = savedRulesContext;
-                throw error;
               }
             );
           }
-          node.value.prelude = out as Node;
-          context.rulesContext = savedRulesContext;
+          node.value.prelude = out;
         }
       },
       () => {
