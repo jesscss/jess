@@ -54,6 +54,9 @@ current state, immediate queue, and verification commands.
 - Generated `:is(...)` wrappers now consume the already-owned selector copies
   produced by validation/decorating instead of copying those selectors a
   second time while building the wrapper argument list.
+- `extend-walk.ts` is lint-clean for selector/container ownership assertions.
+  Traversal code now uses real selector guards at parent boundaries instead of
+  assertion casts when rebuilding compound, complex, pseudo, and list surfaces.
 
 ## Immediate Queue
 
@@ -66,7 +69,8 @@ hotter.
    - Next start in selector-list append paths and boundary-crossing
      finalization. The extend declaration registration branch has been
      centralized, and generated `:is(...)` wrapper construction now has one
-     placement-copy step; do not split those ownership paths again.
+     placement-copy step. The walk path is assertion-clean now; do not split
+     those ownership paths again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**

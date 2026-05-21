@@ -81,6 +81,20 @@ function isSelectorNode(value: unknown): value is Selector {
     && (value as { isSelector?: unknown }).isSelector === true;
 }
 
+function expectSelector(value: unknown): Selector {
+  if (isSelectorNode(value)) {
+    return value;
+  }
+  throw new TypeError('Expected selector');
+}
+
+function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
+  return value instanceof SimpleSelector
+    || value instanceof CompoundSelector
+    || value instanceof ComplexSelector
+    || value instanceof Combinator;
+}
+
 function selectorArgOf(pseudo: PseudoSelector): Selector | undefined {
   const arg = pseudo.value.arg;
   return isSelectorNode(arg) ? arg : undefined;
@@ -112,20 +126,20 @@ function decomposeFind(find: Selector): FindSpec {
   if (isNode(find, N.ComplexSelector)) {
     const positions: Selector[][] = [];
     const combinators: string[] = [];
-    for (const comp of (find as ComplexSelector).value) {
-      if (isNode(comp, N.Combinator)) {
-        combinators.push((comp as Combinator).value);
-      } else if (isNode(comp, N.CompoundSelector)) {
-        positions.push([...(comp as CompoundSelector).value as Selector[]]);
-      } else {
-        positions.push([comp as Selector]);
+    for (const comp of find.value) {
+      if (comp instanceof Combinator) {
+        combinators.push(comp.value);
+      } else if (comp instanceof CompoundSelector) {
+        positions.push([...comp.value]);
+      } else if (isSelectorNode(comp)) {
+        positions.push([comp]);
       }
     }
     return { positions, combinators, original: find };
   }
   if (isNode(find, N.CompoundSelector)) {
     return {
-      positions: [[...(find as CompoundSelector).value as Selector[]]],
+      positions: [[...find.value]],
       combinators: [],
       original: find
     };
@@ -303,8 +317,8 @@ function positionSimpleMatches(find: Selector, target: Selector): boolean {
  * Handles :is() as OR alternatives (tail-aware) and compound equivalence.
  */
 function positionComponentMatches(findComp: Selector, targetComp: Selector): boolean {
-  if (isNode(findComp, N.CompoundSelector) && isNode(targetComp, N.CompoundSelector)) {
-    return areCompoundsEquivalent(findComp as CompoundSelector, targetComp as CompoundSelector);
+  if (findComp instanceof CompoundSelector && targetComp instanceof CompoundSelector) {
+    return areCompoundsEquivalent(findComp, targetComp);
   }
   return positionSimpleMatches(findComp, targetComp);
 }
@@ -349,10 +363,10 @@ function findSubsequence(
         }
         if (fc._isVirtual) {
           // Virtual compound: check if all simples match the target component
-          if (isNode(tc, N.CompoundSelector)) {
+          if (tc instanceof CompoundSelector) {
             if (!areCompoundsEquivalent(
-              CompoundSelector.create(fc.simples) as CompoundSelector,
-              tc as CompoundSelector
+              CompoundSelector.create(fc.simples),
+              tc
             )) {
               matches = false;
               break;
@@ -557,7 +571,7 @@ function walkSelectorList(
   let anyChanged = false;
 
   for (let i = 0; i < items.length; i++) {
-    const item = items[i]! as Selector;
+    const item = items[i]!;
     const childCtx: WalkContext = {
       isRoot: false,
       parentType: 'SelectorList',
@@ -570,7 +584,7 @@ function walkSelectorList(
     if (extended === item) {
       originals.push(item);
     } else if (isNode(extended, N.SelectorList)) {
-      const extItems = extended.value as Selector[];
+      const extItems = extended.value;
       const first = extItems[0]!;
       first.addFlag(F_EXTENDED);
       // Parity with the non-batched extend path (extend.ts `wrapMatchInIs`),
@@ -581,7 +595,7 @@ function walkSelectorList(
       first.addFlag(F_EXTEND_TARGET);
       originals.push(first);
       for (let j = 1; j < extItems.length; j++) {
-        const ext = extItems[j]! as Selector;
+        const ext = extItems[j]!;
         ext.addFlag(F_EXTENDED);
         appended.push(ext);
       }
@@ -603,7 +617,7 @@ function walkSelectorList(
     return list;
   }
   const processedArray = isArray(processed) ? processed : [processed];
-  return SelectorList.create(copySelectorsForPlacement(processedArray)).inherit(list) as Selector;
+  return SelectorList.create(copySelectorsForPlacement(processedArray)).inherit(list);
 }
 
 function walkComplexSelector(
@@ -638,7 +652,10 @@ function walkComplexSelector(
 
     const extended = walkNode(comp, spec, extendWith, partial, childCtx);
     if (extended !== comp) {
-      newComponents[i] = extended as ComplexSelectorComponent;
+      if (!isComplexComponent(extended)) {
+        throw new TypeError('Expected complex selector component');
+      }
+      newComponents[i] = extended;
       anyChanged = true;
     }
   }
@@ -646,7 +663,7 @@ function walkComplexSelector(
   if (!anyChanged) {
     return complex;
   }
-  return ComplexSelector.create(newComponents).inherit(complex) as Selector;
+  return ComplexSelector.create(newComponents).inherit(complex);
 }
 
 function walkCompoundSelector(
@@ -682,7 +699,10 @@ function walkCompoundSelector(
 
     const extended = walkNode(comp, spec, extendWith, partial, childCtx);
     if (extended !== comp) {
-      newComponents[i] = extended as SimpleSelector;
+      if (!(extended instanceof SimpleSelector)) {
+        throw new TypeError('Expected simple selector');
+      }
+      newComponents[i] = extended;
       anyChanged = true;
     }
   }
@@ -690,7 +710,7 @@ function walkCompoundSelector(
   if (!anyChanged) {
     return compound;
   }
-  return CompoundSelector.create(newComponents).inherit(compound) as Selector;
+  return CompoundSelector.create(newComponents).inherit(compound);
 }
 
 /**
@@ -725,7 +745,7 @@ function consumeSimplesFromCompound(
   const newComponents: SimpleSelector[] = [isWrapper, ...remainders];
   const result = CompoundSelector.create(newComponents).inherit(compound);
   result.addFlag(F_EXTENDED);
-  return result as Selector;
+  return result;
 }
 
 /**
@@ -762,14 +782,14 @@ function consumePositionsFromComplex(
   // Wrap the matched segment
   const matchedSegment = targetComps.slice(start, end);
   const matchedComplex = ComplexSelector.create(matchedSegment).inherit(complex);
-  const isWrapper = wrapInIs(matchedComplex as Selector, extendWith);
+  const isWrapper = wrapInIs(matchedComplex, extendWith);
 
   const before = targetComps.slice(0, start);
   const after = targetComps.slice(end);
   const newComps = [...before, isWrapper, ...after];
   const result = ComplexSelector.create(newComps).inherit(complex);
   result.addFlag(F_EXTENDED);
-  return result as Selector;
+  return result;
 }
 
 function walkPseudoSelector(
@@ -812,7 +832,7 @@ function walkPseudoSelector(
     arg: extendedArg
   }).inherit(pseudo);
   result.generated = pseudo.generated;
-  return result as Selector;
+  return result;
 }
 
 /**
@@ -829,22 +849,22 @@ function walkPseudoTailAware(
   ctx: WalkContext
 ): Selector {
   if (isNode(arg, N.SelectorList)) {
-    const items = (arg as SelectorList).value;
+    const items = arg.value;
     let anyChanged = false;
     const originals: Selector[] = [];
     const appended: Selector[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      const alt = items[i]! as Selector;
+      const alt = items[i]!;
       const extended = walkAlternativeTailAware(alt, spec, extendWith, partial);
       if (extended === alt) {
         originals.push(alt);
       } else if (isNode(extended, N.SelectorList)) {
         // Decompose: first item stays in position, rest appended at end
-        const extItems = extended.value as Selector[];
+        const extItems = extended.value;
         originals.push(extItems[0]!);
         for (let j = 1; j < extItems.length; j++) {
-          appended.push(extItems[j]! as Selector);
+          appended.push(extItems[j]!);
         }
         anyChanged = true;
       } else {
@@ -867,7 +887,7 @@ function walkPseudoTailAware(
       arg: newList
     }).inherit(pseudo);
     result.generated = pseudo.generated;
-    return result as Selector;
+    return result;
   }
 
   // Single alternative
@@ -885,7 +905,7 @@ function walkPseudoTailAware(
     arg: extended
   }).inherit(pseudo);
   result.generated = pseudo.generated;
-  return result as Selector;
+  return result;
 }
 
 /**
@@ -910,7 +930,7 @@ function walkAlternativeTailAware(
   }
 
   // Complex alternative: only walk the tail
-  const comps = (alt as ComplexSelector).value;
+  const comps = alt.value;
   let tailIdx = -1;
   for (let i = comps.length - 1; i >= 0; i--) {
     if (!isNode(comps[i], N.Combinator)) {
@@ -922,7 +942,7 @@ function walkAlternativeTailAware(
     return alt;
   }
 
-  const tail = comps[tailIdx]! as Selector;
+  const tail = expectSelector(comps[tailIdx]!);
   // The tail is at the compound position — walk it as if it were a compound child
   const tailCtx: WalkContext = {
     isRoot: false,
@@ -937,8 +957,11 @@ function walkAlternativeTailAware(
 
   // Reconstruct complex with modified tail, keeping prefix intact
   const newComps = [...comps];
-  newComps[tailIdx] = extendedTail as ComplexSelectorComponent;
-  return ComplexSelector.create(newComps).inherit(alt) as Selector;
+  if (!isComplexComponent(extendedTail)) {
+    throw new TypeError('Expected complex selector component');
+  }
+  newComps[tailIdx] = extendedTail;
+  return ComplexSelector.create(newComps).inherit(alt);
 }
 
 // ─────────────────────────────────────────────────
@@ -968,7 +991,7 @@ function makeList(original: Selector, extendWith: Selector, _partial: boolean = 
     return original;
   }
   const processedArray = isArray(processed) ? processed : [processed];
-  return SelectorList.create(processedArray).inherit(original) as Selector;
+  return SelectorList.create(processedArray).inherit(original);
 }
 
 function extractIsArgs(selector: Selector): Selector[] {
@@ -1012,13 +1035,13 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
     const list = SelectorList.create(merged);
     const result = PseudoSelector.create({ name: ':is', arg: list }).inherit(matched);
     result.generated = true;
-    return result as Selector;
+    return result;
   }
 
   const list = SelectorList.create([a, ...extendCopies]);
   const result = PseudoSelector.create({ name: ':is', arg: list }).inherit(matched);
   result.generated = true;
-  return result as Selector;
+  return result;
 }
 
 // ─────────────────────────────────────────────────
@@ -1038,15 +1061,15 @@ function parentContainsTarget(parent: Selector, target: Selector): boolean {
     return true;
   }
   if (isNode(parent, N.SelectorList)) {
-    return (parent as SelectorList).value.some(item => parentContainsTarget(item as Selector, target));
+    return parent.value.some(item => parentContainsTarget(item, target));
   }
   if (isNode(parent, N.ComplexSelector)) {
-    return (parent as ComplexSelector).value.some(comp =>
-      !isNode(comp, N.Combinator) && parentContainsTarget(comp as Selector, target)
+    return parent.value.some(comp =>
+      !isNode(comp, N.Combinator) && isSelectorNode(comp) && parentContainsTarget(comp, target)
     );
   }
   if (isNode(parent, N.CompoundSelector)) {
-    return (parent as CompoundSelector).value.some(comp => parentContainsTarget(comp as Selector, target));
+    return parent.value.some(comp => parentContainsTarget(comp, target));
   }
   return false;
 }
