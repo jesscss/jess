@@ -378,23 +378,14 @@ describe('Control Nodes', () => {
     `);
   });
 
-  it('keeps direct $while render(context) on source syntax', () => {
+  it('renders false $while output through direct render(context)', async () => {
     const context = new Context();
     const node = new While({
-      condition: bool(true),
+      condition: bool(false),
       rules: rules([decl({ name: 'color', value: any('red') })])
     });
 
-    expect(node.render(context)).toBeString(`
-      $while (true) {
-        color: red;
-      }
-    `);
-    expect(context.printState.writer?.toString()).toBeString(`
-      $while (true) {
-        color: red;
-      }
-    `);
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
   });
 
   it('resolves false $while output without touching render state', async () => {

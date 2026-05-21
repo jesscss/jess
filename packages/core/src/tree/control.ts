@@ -34,17 +34,6 @@ function makeDirectiveRulesPublic(rules: Rules) {
   };
 }
 
-function renderControlSourceSyntax(node: Node, context: Context, options?: PrintOptions): string {
-  const printOptions = getPrintOptions({ ...options, context });
-  const savedContext = printOptions.context;
-  printOptions.context = undefined;
-  try {
-    return node.toTrimmedString(printOptions);
-  } finally {
-    printOptions.context = savedContext;
-  }
-}
-
 function writeEvaluatedControlOutput(
   node: Node,
   context: Context,
@@ -683,7 +672,7 @@ export class While extends Node<WhileValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderIterations(context, bufferOrOptions, options);
     }
-    return renderControlSourceSyntax(this, context, options);
+    return this.renderIterations(context, createRenderBuffer('flat'), bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
