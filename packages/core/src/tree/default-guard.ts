@@ -3,9 +3,8 @@ import { Node, defineType } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
@@ -32,15 +31,8 @@ export class DefaultGuard extends Node<string> {
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderText(bufferOrOptions, context.isDefault ? 'true' : 'false');
-    }
-    const printOptions = getPrintOptions({ ...bufferOrOptions, context });
-    const w = printOptions.writer!;
-    const mark = w.mark();
-    w.add(context.isDefault ? 'true' : 'false', this);
-    return w.getSince(mark);
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
   }
 }
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');
