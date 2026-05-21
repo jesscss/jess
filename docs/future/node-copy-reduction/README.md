@@ -146,8 +146,8 @@ Priority seams:
     plumbing.
   - helper-local chosen-output string/write functions only remove promise and
     buffer branching from node classes.
-  - root-aware chosen-output helpers only preserve the `Rules` root
-    serializer exception.
+  - `writeRootAwareChosenOutput(...)` only preserves the `Rules` root
+    serializer exception while writing an already-chosen output node.
 - These helpers describe the current serializer boundary, not a desired
   long-term abstraction family. Do not add new wrapper layers around them;
   prefer shrinking or deleting helpers when the surrounding render path no

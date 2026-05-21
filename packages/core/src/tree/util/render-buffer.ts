@@ -257,7 +257,7 @@ function renderedOutputToPreparedString(
   return node.toTrimmedString(prepared);
 }
 
-export function writeRootAwareOutput(
+function writeRootAwareOutput(
   buffer: RenderBuffer,
   source: RenderBufferNode,
   node: RenderableOutput,

@@ -128,8 +128,8 @@ it is for the current direction and next seams, not a historical pass log.
     classes duplicate promise/buffer branching.
   - helper-local chosen-output string/write functions only remove promise and
     buffer branching from node classes.
-  - root-aware chosen-output helpers only preserve the `Rules` root
-    serializer exception.
+  - `writeRootAwareChosenOutput(...)` only preserves the `Rules` root
+    serializer exception while writing an already-chosen output node.
 - Treat `renderChosenOutput(...)` as transitional overload plumbing. It is
   acceptable for current node render overloads, but chosen-output string/write
   branching should stay helper-local unless a focused test proves another real

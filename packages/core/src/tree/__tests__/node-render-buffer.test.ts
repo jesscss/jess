@@ -73,8 +73,7 @@ import {
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
-  writeRootAwareChosenOutput,
-  writeRootAwareOutput
+  writeRootAwareChosenOutput
 } from '../util/render-buffer.js';
 
 const asyncResolvedBridgeNode = {
@@ -273,7 +272,7 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    const text = writeRootAwareOutput(buffer, root, root, context, { context });
+    const text = writeRootAwareChosenOutput(buffer, root, root, context, { context });
 
     expect(text).toBe('@charset "utf-8";\n');
     expect(buffer.parts).toEqual(['@charset "utf-8";\n']);
@@ -287,7 +286,7 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    const text = writeRootAwareOutput(buffer, childRules, childRules, context, { context });
+    const text = writeRootAwareChosenOutput(buffer, childRules, childRules, context, { context });
 
     expect(text).toBe('color: red;');
     expect(buffer.parts).toEqual(['color: red;']);
