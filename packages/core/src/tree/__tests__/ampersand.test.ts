@@ -145,6 +145,28 @@ describe('Ampersand', () => {
     }
   });
 
+  it('derives appended framed complex selectors without reparenting source selector children', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo'), co(' '), el('.bar')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const sourceSelector = frame.value.selector;
+    expect(sourceSelector).toBeInstanceOf(Selector);
+    if (!(sourceSelector instanceof Selector)) {
+      throw new Error(`Expected Selector, got ${sourceSelector.type}`);
+    }
+    const sourceChildren = [...sourceSelector.value];
+
+    const resolved = await amp('-baz').resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('.foo .bar-baz');
+    expect(resolved).not.toBe(sourceSelector);
+    expect(frame.value.selector).toBe(sourceSelector);
+    expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
+    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+  });
+
   it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
     const originalClone = Ampersand.prototype.clone;
     let clonedAmpersands = 0;

@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { copyOwnedWithReusableLeaves, copyWithReusableLeaves } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
   /**
@@ -91,11 +91,38 @@ type AppendSelectorResult<T extends Selector = Selector> = {
 };
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = copyWithReusableLeaves(selector);
+  const owned = copyOwnedWithReusableLeaves(selector);
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
   return owned;
+}
+
+function expectComplexAppendResult(selector: Selector): ComplexSelectorComponent {
+  if (
+    isNode(selector, N.SimpleSelector)
+    || isNode(selector, N.CompoundSelector)
+    || isNode(selector, N.ComplexSelector)
+  ) {
+    return selector;
+  }
+  throw new TypeError('Expected complex selector component');
+}
+
+function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
+  if (
+    isNode(node, N.SimpleSelector)
+    || isNode(node, N.CompoundSelector)
+    || isNode(node, N.ComplexSelector)
+    || isNode(node, N.Combinator)
+  ) {
+    return node;
+  }
+  throw new TypeError('Expected complex selector component');
+}
+
+function ownComplexComponentForAppend(component: ComplexSelectorComponent): ComplexSelectorComponent {
+  return expectComplexAppendComponent(copyOwnedWithReusableLeaves(component));
 }
 
 function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
@@ -145,14 +172,14 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
       if (isNode(component, N.Combinator)) {
         continue;
       }
-      const result = appendSelector(component as Selector, appendValue);
+      const result = appendSelector(component, appendValue);
       if (!result.appended) {
         continue;
       }
       const components = selector.value.map((item, idx) => (
         idx === i
-          ? result.selector as ComplexSelectorComponent
-          : ownSelectorForAppend(item as Selector) as ComplexSelectorComponent
+          ? expectComplexAppendResult(result.selector)
+          : ownComplexComponentForAppend(item)
       ));
       return {
         selector: ComplexSelector.create(components).inherit(selector),

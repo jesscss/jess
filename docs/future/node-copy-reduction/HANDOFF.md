@@ -80,6 +80,9 @@ current state, immediate queue, and verification commands.
 - The walk-and-consume extend path now also copies unchanged `:is(...)`
   alternatives into generated argument lists instead of reparenting source
   alternatives.
+- Framed ampersand append now owns unchanged complex-selector components for
+  the generated placement, with a parentage test proving source selector
+  children stay attached to the frame selector.
 
 ## Immediate Queue
 
@@ -94,7 +97,8 @@ hotter.
      centralized, generated `:is(...)` wrapper construction now has one
      placement-copy step, pseudo-argument appends route through owned placement
      copies, and the walk path is assertion-clean and uses placement copies for
-     changed `:is(...)` argument lists. Do not split those ownership paths
+     changed `:is(...)` argument lists. Framed ampersand append also uses owned
+     complex-component placement copies. Do not split those ownership paths
      again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
