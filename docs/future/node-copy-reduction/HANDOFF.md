@@ -47,6 +47,10 @@ current state, immediate queue, and verification commands.
 - Remaining wrapper/helper surfaces are not automatically bugs. Keep a wrapper
   when it carries real scope, registry, import/reference, merge, generated
   selector placement, delayed output, or ownership state.
+- Extend registration now shares one generated-selector registration path for
+  sync and async selector eval. Parent-list composition, implicit ampersand
+  materialization, reference-scope tagging, and document-order capture should
+  stay centralized there.
 
 ## Immediate Queue
 
@@ -56,8 +60,9 @@ hotter.
 1. **Generated selector and output ownership.**
    - Goal: reduce owned placement surfaces only where tests prove they are
      bookkeeping, not semantics.
-   - Start in selector extension, ruleset/rules output, and generated selector
-     finalization code. Inspect extend output before editing.
+   - Next start in extend output application and selector finalization. The
+     extend declaration registration branch has been centralized; do not split
+     sync and async registration ownership again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**
