@@ -132,7 +132,7 @@ describe('Control Nodes', () => {
     `);
   });
 
-  it('keeps legacy direct $if render(context) on source syntax', () => {
+  it('renders selected $if branch through direct render(context)', async () => {
     const context = new Context();
     const node = new If({
       branches: [
@@ -146,20 +146,8 @@ describe('Control Nodes', () => {
       ]
     });
 
-    expect(node.render(context)).toBeString(`
-      $if (true) {
-        color: red;
-      } $else {
-        color: blue;
-      }
-    `);
-    expect(context.printState.writer?.toString()).toBeString(`
-      $if (true) {
-        color: red;
-      } $else {
-        color: blue;
-      }
-    `);
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
   it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {

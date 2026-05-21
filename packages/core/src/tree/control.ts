@@ -13,6 +13,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 import {
+  createRenderBuffer,
   isRenderBuffer,
   type RenderBuffer,
   writeRenderedOutput
@@ -397,7 +398,7 @@ export class If extends Node<IfValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderSelectedBranch(context, bufferOrOptions, options);
     }
-    return renderControlSourceSyntax(this, context, options);
+    return this.renderSelectedBranch(context, createRenderBuffer('flat'), bufferOrOptions);
   }
 
   override resolve(_context: Context): this {
