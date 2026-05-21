@@ -145,8 +145,8 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
 }
 
 export function prepareBufferPrintState(context: Context, options?: PrintOptions): FinalPrintOptions {
-  if (!options?.writer) {
-    return prepareRenderPrintState(context, options);
+  if (!options) {
+    return prepareRenderPrintState(context);
   }
   const detached = { ...options };
   delete detached.writer;

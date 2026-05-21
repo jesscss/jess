@@ -322,6 +322,19 @@ describe('renderNodeToBuffer', () => {
     expect(buffer.parts).toEqual(['buffered']);
   });
 
+  it('keeps buffer render from adding a writer to caller-owned frame state', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const frameHeaders: string[] = [];
+    const options = { context, frameHeaders };
+
+    expect(renderChosenOutput(context, any('buffered'), buffer, options)).toBe('buffered');
+
+    expect(buffer.parts).toEqual(['buffered']);
+    expect(options.frameHeaders).toBe(frameHeaders);
+    expect('writer' in options).toBe(false);
+  });
+
   it('writes invisible effect output without mutating rejected buffers', async () => {
     const syncBuffer = createRenderBuffer('flat');
     const asyncBuffer = createRenderBuffer('flat');
