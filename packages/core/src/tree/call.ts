@@ -14,6 +14,7 @@ import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
   isRenderBuffer,
+  prepareBufferPrintState,
   renderChosenOutput,
   type RenderBuffer,
   writeRenderTextResult
@@ -312,7 +313,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
-      const prepared = prepareRenderPrintState(context, options);
+      const prepared = prepareBufferPrintState(context, options);
       return writeRenderTextResult(
         bufferOrOptions,
         this.renderPlainFunctionCall(this, context, prepared)

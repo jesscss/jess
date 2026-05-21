@@ -144,13 +144,13 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
     : writeRenderText(buffer, text);
 }
 
-function withoutWriter(options?: PrintOptions): PrintOptions | undefined {
+export function prepareBufferPrintState(context: Context, options?: PrintOptions): PrintOptions {
   if (!options?.writer) {
-    return options;
+    return prepareRenderPrintState(context, options);
   }
   const detached = { ...options };
   delete detached.writer;
-  return detached;
+  return prepareRenderPrintState(context, detached);
 }
 
 export function renderSourceOutput(
@@ -160,9 +160,13 @@ export function renderSourceOutput(
   options?: PrintOptions
 ): string {
   const renderOptions = isRenderBuffer(bufferOrOptions)
-    ? withoutWriter(options)
+    ? prepareBufferPrintState(context, options)
     : bufferOrOptions;
-  const out = node.toTrimmedString(prepareRenderPrintState(context, renderOptions));
+  const out = node.toTrimmedString(
+    isRenderBuffer(bufferOrOptions)
+      ? renderOptions
+      : prepareRenderPrintState(context, renderOptions)
+  );
   return isRenderBuffer(bufferOrOptions)
     ? writeRenderText(bufferOrOptions, out)
     : out;
@@ -195,7 +199,7 @@ export function writeRenderedOutput(
 ): string {
   return writeRenderText(
     buffer,
-    node.toTrimmedString(prepareRenderPrintState(context, withoutWriter(options)))
+    node.toTrimmedString(prepareBufferPrintState(context, options))
   );
 }
 
@@ -254,7 +258,7 @@ export function writeRootAwareOutput(
   context: Context,
   options?: PrintOptions
 ): string {
-  return writeRenderText(buffer, renderedOutputToString(source, node, context, withoutWriter(options)));
+  return writeRenderText(buffer, renderedOutputToString(source, node, context, prepareBufferPrintState(context, options)));
 }
 
 export function writeRootAwareChosenOutput(

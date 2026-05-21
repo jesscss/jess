@@ -116,6 +116,20 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('writes call render output into buffers without mutating a provided writer', async () => {
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer, { writer })).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(writer.toString()).toBe('');
+    expect(writer.captures).toBe(0);
+  });
+
   it('writes CSS call arguments without resolving child wrappers', async () => {
     const root = rules([
       vardecl({
@@ -124,8 +138,11 @@ describe('Call', () => {
       })
     ]);
     const evald = await root.eval(context);
-    context.root = evald as Rules;
-    context.rulesContext = evald as Rules;
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
     const buffer = createRenderBuffer('flat');
     const arg = ref({ key: 'red-channel' }, { type: 'variable' });
     const rule = call({
