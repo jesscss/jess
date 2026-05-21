@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
@@ -536,7 +537,6 @@ export class MixinRegistry extends Registry<
           && ownSelector
           && !isNode(ownSelector, N.Nil)
         ) {
-          const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
           const evaluatedKeys = orderedKeysToUse ?? getSelectorKeyValues(keySetToUse);
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).value.selector
@@ -556,7 +556,7 @@ export class MixinRegistry extends Registry<
           }
         }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
-        // would not index. Use the ruleset's ownSelector (set in preEval before getImplicitSelector)
+        // would not index. Use the ruleset's ownSelector from registration prep
         // to index by the callable selector that was explicitly authored.
         if (keySetToUse !== undefined) {
           if (
@@ -564,8 +564,8 @@ export class MixinRegistry extends Registry<
             && ownSelector
             && !isNode(ownSelector, N.Nil)
           ) {
-              const ownKeySet = (ownSelector as Selector).visibleKeySet;
-              if (selectorKeySetSize(ownKeySet)) {
+            const ownKeySet = (ownSelector as Selector).visibleKeySet;
+            if (selectorKeySetSize(ownKeySet)) {
               const ownKeys = getOrderedSelectorKeys(ownSelector as Selector);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               if (selectorText.startsWith('&') && ownKeys.length > 1) {
