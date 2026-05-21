@@ -127,11 +127,13 @@ Priority seams:
   frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
 - Shared render-buffer helpers must stay narrow:
   - `writeRenderText(...)` writes already-rendered text.
+  - `writeRenderTextResult(...)` writes maybe-async rendered text.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
   - `writeSelectedOutput(...)` only removes promise plumbing.
-  - root-aware helpers only preserve the `Rules` root serializer exception.
+  - root-aware selected-output helpers only preserve the `Rules` root
+    serializer exception.
 - The selected-output helper names describe the current serializer boundary,
   not a desired long-term abstraction family. Do not add new wrapper layers
   around them; prefer shrinking or deleting these helpers when the surrounding

@@ -2,6 +2,7 @@ import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,

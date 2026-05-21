@@ -1,11 +1,12 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  renderSelectedOutput,
   writeSelectedOutput
 } from './util/render-buffer.js';
 
@@ -61,14 +62,7 @@ export class Block extends Node<Node, BlockOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    if (this.hasFlag(F_STATIC)) {
-      return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
-    }
-    const value = this.value.resolve(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? this.toTrimmedString(prepared)
-      : this.renderBlockSyntax(value as Node, prepared);
+    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

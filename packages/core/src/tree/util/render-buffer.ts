@@ -138,7 +138,7 @@ export function writeRenderText(buffer: RenderBuffer, text: string): string {
   return text;
 }
 
-export function writeMaybeRenderText(buffer: RenderBuffer, text: MaybePromise<string>): MaybePromise<string> {
+export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<string>): MaybePromise<string> {
   return isThenable(text)
     ? text.then(resolved => writeRenderText(buffer, resolved))
     : writeRenderText(buffer, text);
@@ -193,7 +193,7 @@ export function renderedOutputToString(
   return node.toTrimmedString(prepared);
 }
 
-export function writeRootAwareRenderedOutput(
+export function writeRootAwareOutput(
   buffer: RenderBuffer,
   source: RenderBufferNode,
   node: RenderableOutput,
@@ -203,7 +203,7 @@ export function writeRootAwareRenderedOutput(
   return writeRenderText(buffer, renderedOutputToString(source, node, context, options));
 }
 
-export function writeMaybeRootAwareRenderedOutput(
+export function writeRootAwareSelectedOutput(
   buffer: RenderBuffer,
   source: RenderBufferNode,
   node: MaybePromise<RenderableOutput>,
@@ -211,8 +211,8 @@ export function writeMaybeRootAwareRenderedOutput(
   options?: PrintOptions
 ): MaybePromise<string> {
   return isThenable(node)
-    ? (node as Promise<RenderableOutput>).then(resolved => writeRootAwareRenderedOutput(buffer, source, resolved, context, options))
-    : writeRootAwareRenderedOutput(buffer, source, node, context, options);
+    ? (node as Promise<RenderableOutput>).then(resolved => writeRootAwareOutput(buffer, source, resolved, context, options))
+    : writeRootAwareOutput(buffer, source, node, context, options);
 }
 
 export function createSegmentBody(): Segment[] {
@@ -270,7 +270,7 @@ export function renderNodeToBuffer(
   if (hasNativeBufferRender(node)) {
     return node.render(context, buffer, options);
   }
-  return writeMaybeRenderText(buffer, renderNodeToWriter(node, context, options));
+  return writeRenderTextResult(buffer, renderNodeToWriter(node, context, options));
 }
 
 export function renderNodeToWriter(

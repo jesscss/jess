@@ -113,11 +113,13 @@ it is for the current direction and next seams, not a historical pass log.
   frame, and trivia state.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
+  - `writeRenderTextResult(...)` writes maybe-async rendered text.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
   - `writeSelectedOutput(...)` removes promise plumbing only.
-  - root-aware helpers only preserve the `Rules` root serializer exception.
+  - root-aware selected-output helpers only preserve the `Rules` root
+    serializer exception.
 - Treat `renderSelectedOutput(...)` and `writeSelectedOutput(...)` as
   cleanup targets. They exist to remove repeated maybe-async selected-output
   boilerplate while direct render and buffer render are converging. Once the

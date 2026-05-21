@@ -73,8 +73,8 @@ import {
   renderNodeToWriter,
   renderSelectedOutput,
   writeSelectedOutput,
-  writeMaybeRootAwareRenderedOutput,
-  writeRootAwareRenderedOutput
+  writeRootAwareSelectedOutput,
+  writeRootAwareOutput
 } from '../util/render-buffer.js';
 
 const asyncResolvedBridgeNode = {
@@ -251,7 +251,7 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    const text = writeRootAwareRenderedOutput(buffer, root, root, context, { context });
+    const text = writeRootAwareOutput(buffer, root, root, context, { context });
 
     expect(text).toBe('@charset "utf-8";\n');
     expect(buffer.parts).toEqual(['@charset "utf-8";\n']);
@@ -265,13 +265,13 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    const text = writeRootAwareRenderedOutput(buffer, childRules, childRules, context, { context });
+    const text = writeRootAwareOutput(buffer, childRules, childRules, context, { context });
 
     expect(text).toBe('color: red;');
     expect(buffer.parts).toEqual(['color: red;']);
   });
 
-  it('writes maybe-async evaluated output without mutating rejected buffers', async () => {
+  it('writes selected evaluated output without mutating rejected buffers', async () => {
     const context = new Context();
     const syncBuffer = createRenderBuffer('flat');
     const asyncBuffer = createRenderBuffer('flat');
@@ -286,7 +286,7 @@ describe('renderNodeToBuffer', () => {
     expect(rejectedBuffer.parts).toEqual([]);
   });
 
-  it('writes maybe-async root-aware output through the root serializer exception', async () => {
+  it('writes root-aware selected output through the root serializer exception', async () => {
     const context = new Context();
     const root = rules([]);
     const syncBuffer = createRenderBuffer('flat');
@@ -294,8 +294,8 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    expect(writeMaybeRootAwareRenderedOutput(syncBuffer, root, root, context, { context })).toBe('@charset "utf-8";\n');
-    await expect(writeMaybeRootAwareRenderedOutput(
+    expect(writeRootAwareSelectedOutput(syncBuffer, root, root, context, { context })).toBe('@charset "utf-8";\n');
+    await expect(writeRootAwareSelectedOutput(
       asyncBuffer,
       root,
       Promise.resolve(root),

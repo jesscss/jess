@@ -14,8 +14,9 @@ import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
   isRenderBuffer,
+  renderSelectedOutput,
   type RenderBuffer,
-  writeMaybeRenderText,
+  writeRenderTextResult,
   writeSelectedOutput
 } from './util/render-buffer.js';
 
@@ -313,7 +314,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // Plain CSS calls render args/content explicitly so async child failures
       // keep calc-frame cleanup instead of falling back to source text.
       const prepared = prepareRenderPrintState(context, options);
-      return writeMaybeRenderText(
+      return writeRenderTextResult(
         bufferOrOptions,
         this.renderPlainFunctionCall(this, context, prepared)
       );
@@ -326,10 +327,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return rendered;
     }
-    const value = this.deriveResolveSurface().eval(context);
-    return isThenable(value)
-      ? value.then(node => node.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderSelectedOutput(this.deriveResolveSurface().eval(context), context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
