@@ -69,6 +69,20 @@ function renderIterationRules(
   return iterationRules.render(context, buffer, options);
 }
 
+async function runWithRulesContext<T>(
+  context: Context,
+  rulesContext: Rules,
+  run: () => Promise<T>
+): Promise<T> {
+  const savedRulesContext = context.rulesContext;
+  context.rulesContext = rulesContext;
+  try {
+    return await run();
+  } finally {
+    context.rulesContext = savedRulesContext;
+  }
+}
+
 function deriveIterationChild(node: Node): Node {
   node.frozen = true;
   return node;
@@ -586,10 +600,8 @@ export class While extends Node<WhileValue> {
       const outputRules: Node[] = [];
       const originalRules = this.value.rules;
       const stateRules = createWhileStateSurface(originalRules, context);
-      const savedRulesContext = context.rulesContext;
       let iterations = 0;
-      context.rulesContext = stateRules;
-      try {
+      await runWithRulesContext(context, stateRules, async () => {
         while (true) {
           const condition = await this.value.condition.eval(context);
           if (!(condition instanceof Bool && condition.value === true)) {
@@ -610,9 +622,7 @@ export class While extends Node<WhileValue> {
             outputRules.push(result);
           }
         }
-      } finally {
-        context.rulesContext = savedRulesContext;
-      }
+      });
       if (outputRules.length === 0) {
         return createDerivedIterationOutputSurface(originalRules);
       }
@@ -631,11 +641,9 @@ export class While extends Node<WhileValue> {
   ): Promise<string> {
     const originalRules = this.value.rules;
     const stateRules = createWhileStateSurface(originalRules, context);
-    const savedRulesContext = context.rulesContext;
     let iterations = 0;
     let output = '';
-    context.rulesContext = stateRules;
-    try {
+    await runWithRulesContext(context, stateRules, async () => {
       while (true) {
         const condition = await this.value.condition.eval(context);
         if (!(condition instanceof Bool && condition.value === true)) {
@@ -649,9 +657,7 @@ export class While extends Node<WhileValue> {
         output += await renderIterationRules(iterationRules, context, buffer, options);
         await syncWhileState(stateRules, iterationRules, context);
       }
-    } finally {
-      context.rulesContext = savedRulesContext;
-    }
+    });
     return output;
   }
 
