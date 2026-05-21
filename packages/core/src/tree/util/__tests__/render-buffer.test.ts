@@ -13,6 +13,7 @@ import {
   createSegmentBody,
   finalizeRenderBuffer,
   isRenderBuffer,
+  prepareBufferPrintState,
   pushRenderSegment,
   renderNoOutputEffect,
   renderSourceOutput,
@@ -67,6 +68,20 @@ describe('RenderBuffer', () => {
     expect(renderSourceOutput(context, source, buffer, { writer: bufferWriter })).toBe('source-output');
     expect(buffer.parts).toEqual(['source-output']);
     expect(bufferWriter.toString()).toBe('');
+  });
+
+  it('prepares buffer print state from a shallow detached options object', () => {
+    const context = new Context();
+    const frameHeaders: string[] = [];
+    const options = { context, frameHeaders };
+
+    const prepared = prepareBufferPrintState(context, options);
+
+    expect(prepared).not.toBe(options);
+    expect(prepared.context).toBe(context);
+    expect(prepared.frameHeaders).toBe(frameHeaders);
+    expect(prepared.writer).toBeDefined();
+    expect('writer' in options).toBe(false);
   });
 
   it('chooses flat mode until delayed finalization is needed', () => {
