@@ -114,6 +114,11 @@ Priority seams:
    not a public model and should not grow new semantics. Direct
    chosen-output plumbing should stay centralized inside render-buffer
    utilities.
+6. **Control iteration render**: `$for` / `$while` still stream generated
+   iteration rules through one `renderIterationRules(...)` helper in
+   `control.ts`. That single native render site is intentional while loop
+   bodies still need per-iteration live state; do not duplicate it back into
+   each control node.
 
 ## Guardrails
 

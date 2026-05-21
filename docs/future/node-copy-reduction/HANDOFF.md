@@ -128,6 +128,10 @@ it is for the current direction and next seams, not a historical pass log.
   acceptable for current node render overloads, but chosen-output string/write
   branching should stay helper-local unless a focused test proves another real
   boundary.
+- Keep `$for` / `$while` iteration rendering centralized through
+  `renderIterationRules(...)` in `control.ts`. The frontier verifier expects
+  one native control iteration render site; update the verifier only when the
+  loop render model itself changes.
 - Do not add native buffer render to invisible or compile-time side-effect
   nodes unless a focused test proves a real output seam.
 - Tests may use `renderNodeToString(...)`, but production render code should
