@@ -114,11 +114,11 @@ it is for the current direction and next seams, not a historical pass log.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
-  - `renderMaybeRenderedOutput(...)` serializes an already-chosen evaluated
+  - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
-  - `writeMaybeRenderedOutput(...)` removes promise plumbing only.
+  - `writeSelectedOutput(...)` removes promise plumbing only.
   - root-aware helpers only preserve the `Rules` root serializer exception.
-- Treat `renderMaybeRenderedOutput(...)` and `writeMaybeRenderedOutput(...)` as
+- Treat `renderSelectedOutput(...)` and `writeSelectedOutput(...)` as
   cleanup targets. They exist to remove repeated maybe-async selected-output
   boilerplate while direct render and buffer render are converging. Once the
   native render path owns that consistently, collapse them into a clearer

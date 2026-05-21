@@ -6,8 +6,8 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 function getCallReferenceKey(name: unknown): string {
@@ -82,14 +82,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(
+      return writeSelectedOutput(
         bufferOrOptions,
         this.evaluateCondition(context, 'resolve'),
         context,
         options
       );
     }
-    return renderMaybeRenderedOutput(this.evaluateCondition(context, 'resolve'), context, bufferOrOptions);
+    return renderSelectedOutput(this.evaluateCondition(context, 'resolve'), context, bufferOrOptions);
   }
 
   static getBool(node: Node, negated: boolean): Bool {

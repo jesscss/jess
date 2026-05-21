@@ -8,8 +8,8 @@ import type { PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
@@ -61,9 +61,9 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return renderMaybeRenderedOutput(this.resolveValue(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   override valueOf(): string {

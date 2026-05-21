@@ -71,8 +71,8 @@ import {
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput,
+  renderSelectedOutput,
+  writeSelectedOutput,
   writeMaybeRootAwareRenderedOutput,
   writeRootAwareRenderedOutput
 } from '../util/render-buffer.js';
@@ -197,8 +197,8 @@ describe('renderNodeToBuffer', () => {
     const context = new Context();
     const writer = new OutputWriter();
 
-    expect(renderMaybeRenderedOutput(any('direct'), context, { writer })).toBe('direct');
-    await expect(renderMaybeRenderedOutput(Promise.resolve(any('async')), context, { writer }))
+    expect(renderSelectedOutput(any('direct'), context, { writer })).toBe('direct');
+    await expect(renderSelectedOutput(Promise.resolve(any('async')), context, { writer }))
       .resolves.toBe('async');
     expect(writer.toString()).toBe('directasync');
   });
@@ -277,9 +277,9 @@ describe('renderNodeToBuffer', () => {
     const asyncBuffer = createRenderBuffer('flat');
     const rejectedBuffer = createRenderBuffer('flat');
 
-    expect(writeMaybeRenderedOutput(syncBuffer, any('sync'), context)).toBe('sync');
-    await expect(writeMaybeRenderedOutput(asyncBuffer, Promise.resolve(any('async')), context)).resolves.toBe('async');
-    await expect(writeMaybeRenderedOutput(rejectedBuffer, Promise.reject(new Error('nope')), context)).rejects.toThrow('nope');
+    expect(writeSelectedOutput(syncBuffer, any('sync'), context)).toBe('sync');
+    await expect(writeSelectedOutput(asyncBuffer, Promise.resolve(any('async')), context)).resolves.toBe('async');
+    await expect(writeSelectedOutput(rejectedBuffer, Promise.reject(new Error('nope')), context)).rejects.toThrow('nope');
 
     expect(syncBuffer.parts).toEqual(['sync']);
     expect(asyncBuffer.parts).toEqual(['async']);

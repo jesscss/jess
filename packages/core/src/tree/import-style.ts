@@ -18,8 +18,8 @@ import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
 
@@ -852,9 +852,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return renderMaybeRenderedOutput(this.evalNode(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

@@ -6,7 +6,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeMaybeRenderedOutput
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 export type BlockOptions = {
@@ -59,7 +59,7 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
     if (this.hasFlag(F_STATIC)) {
       return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));

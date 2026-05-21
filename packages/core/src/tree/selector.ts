@@ -7,8 +7,8 @@ import { BitSetLibrary, BitSet } from './util/bitset.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
 
@@ -136,9 +136,9 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveForRender(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.resolveForRender(context), context, options);
     }
-    return renderMaybeRenderedOutput(this.resolveForRender(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.resolveForRender(context), context, bufferOrOptions);
   }
 
   /**

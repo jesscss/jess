@@ -6,11 +6,12 @@ import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -174,27 +175,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    if (this.hasFlag(F_STATIC)) {
-      return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
-    }
-    const values = this.evaluateValues(context, 'resolve');
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    if (isThenable(values)) {
-      return values.then((resolvedValues) => {
-        const filtered = resolvedValues.filter(n => n && !(n instanceof Nil));
-        if (filtered.length === 1 && !this._options?.preserveWhitespace) {
-          return filtered[0]!.toTrimmedString(prepared);
-        }
-        return this.renderSequenceSyntax(filtered, prepared);
-      });
-    }
-    const filtered = values.filter(n => n && !(n instanceof Nil));
-    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
-      return filtered[0]!.toTrimmedString(prepared);
-    }
-    return this.renderSequenceSyntax(filtered, prepared);
+    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   override operate(b: Node, op: string, _context: Context): Sequence | List {

@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { defineType, F_STATIC, Node } from './node.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -12,7 +12,8 @@ import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -146,16 +147,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    if (this.hasFlag(F_STATIC)) {
-      return this.toTrimmedString(prepareRenderPrintState(context, bufferOrOptions));
-    }
-    const resolvedItems = this.resolveItems(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(resolvedItems)
-      ? resolvedItems.then(items => this.renderListSyntax(items, prepared))
-      : this.renderListSyntax(resolvedItems as Node[], prepared);
+    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   override compare(other: Node) {

@@ -19,8 +19,8 @@ import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, resto
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -335,9 +335,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const value = this.evalPrepared(context);
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, value, context, options);
+      return writeSelectedOutput(bufferOrOptions, value, context, options);
     }
-    return renderMaybeRenderedOutput(value, context, bufferOrOptions);
+    return renderSelectedOutput(value, context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

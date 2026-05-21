@@ -156,7 +156,7 @@ export function writeRenderedOutput(
   );
 }
 
-export function writeMaybeRenderedOutput(
+export function writeSelectedOutput(
   buffer: RenderBuffer,
   node: MaybePromise<RenderableOutput>,
   context: Context,
@@ -167,7 +167,7 @@ export function writeMaybeRenderedOutput(
     : writeRenderedOutput(buffer, node, context, options);
 }
 
-export function renderMaybeRenderedOutput(
+export function renderSelectedOutput(
   node: MaybePromise<RenderableOutput>,
   context: Context,
   options?: PrintOptions

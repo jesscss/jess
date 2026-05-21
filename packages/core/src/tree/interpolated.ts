@@ -12,8 +12,8 @@ import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -178,9 +178,9 @@ export class Interpolated<
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    return renderMaybeRenderedOutput(this.resolveValue(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   /**

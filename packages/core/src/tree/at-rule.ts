@@ -11,8 +11,8 @@ import { indent, normalizeIndent, serializeRulesContainer } from './util/seriali
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
@@ -151,14 +151,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(
+      return writeSelectedOutput(
         bufferOrOptions,
         this.deriveAtRule(this.value).eval(context),
         context,
         options
       );
     }
-    return renderMaybeRenderedOutput(this.deriveAtRule(this.value).eval(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.deriveAtRule(this.value).eval(context), context, bufferOrOptions);
   }
 
   /**

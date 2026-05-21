@@ -6,8 +6,8 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 /**
@@ -49,9 +49,9 @@ export class JsExpression extends Node<string> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return renderMaybeRenderedOutput(this.evalNode(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
   }
 }
 export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');

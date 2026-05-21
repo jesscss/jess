@@ -16,7 +16,7 @@ import {
   isRenderBuffer,
   type RenderBuffer,
   writeMaybeRenderText,
-  writeMaybeRenderedOutput
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 function stringifyValueOf(value: unknown): string {
@@ -303,7 +303,7 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       if (typeof this.value.name !== 'string') {
-        return writeMaybeRenderedOutput(
+        return writeSelectedOutput(
           bufferOrOptions,
           this.deriveResolveSurface().eval(context),
           context,

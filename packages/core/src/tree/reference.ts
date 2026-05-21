@@ -29,8 +29,8 @@ import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/regis
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import type { Mixin } from './mixin.js';
 import type { Ruleset } from './ruleset.js';
@@ -1954,9 +1954,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    return renderMaybeRenderedOutput(this.evalNode(context), context, bufferOrOptions);
+    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
   }
 
   /**

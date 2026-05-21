@@ -1,12 +1,13 @@
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
-import { isThenable, type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 export class Negative extends Node<Node> {
@@ -33,13 +34,9 @@ export class Negative extends Node<Node> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    const value = this.evalNode(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? this.toTrimmedString(prepared)
-      : (value as Node).toTrimmedString(prepared);
+    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

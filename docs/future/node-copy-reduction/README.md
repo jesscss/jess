@@ -108,8 +108,8 @@ Priority seams:
    loop live slots, and similar render/eval shadow state are suspect surfaces.
    Keep them only where they express live scope or placement state better than
    copied nodes.
-5. **Selected-output helper cleanup**: `renderMaybeRenderedOutput(...)` and
-   `writeMaybeRenderedOutput(...)` are temporary consolidation helpers, not a
+5. **Selected-output helper cleanup**: `renderSelectedOutput(...)` and
+   `writeSelectedOutput(...)` are temporary consolidation helpers, not a
    permanent public model. They are acceptable while direct string render and
    buffer render still share maybe-async selected-output plumbing. As node
    render paths converge on native buffer/writer output, either collapse these
@@ -128,13 +128,13 @@ Priority seams:
 - Shared render-buffer helpers must stay narrow:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
-  - `renderMaybeRenderedOutput(...)` serializes an already-chosen evaluated
+  - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
-  - `writeMaybeRenderedOutput(...)` only removes promise plumbing.
+  - `writeSelectedOutput(...)` only removes promise plumbing.
   - root-aware helpers only preserve the `Rules` root serializer exception.
-- The `Maybe` helper names describe the current sync/async plumbing, not a
-  desired domain abstraction. Do not add new wrappers with that naming pattern;
-  prefer shrinking, renaming, or deleting these helpers when the surrounding
+- The selected-output helper names describe the current serializer boundary,
+  not a desired long-term abstraction family. Do not add new wrapper layers
+  around them; prefer shrinking or deleting these helpers when the surrounding
   render path no longer needs them.
 - Invisible registration or side-effect nodes should stay invisible unless a
   focused output test proves a real render seam.

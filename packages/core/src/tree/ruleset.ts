@@ -29,8 +29,8 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import {
   isRenderBuffer,
   type RenderBuffer,
-  renderMaybeRenderedOutput,
-  writeMaybeRenderedOutput
+  renderSelectedOutput,
+  writeSelectedOutput
 } from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
@@ -583,9 +583,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const value = this.evalPrepared(context);
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, value, context, options);
+      return writeSelectedOutput(bufferOrOptions, value, context, options);
     }
-    return renderMaybeRenderedOutput(value, context, bufferOrOptions);
+    return renderSelectedOutput(value, context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

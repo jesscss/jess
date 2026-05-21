@@ -26,7 +26,7 @@ import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
-  writeMaybeRenderedOutput
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 export enum ExtendFlag {
@@ -303,7 +303,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
+      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
     const value = this.evalNode(context);
     return isThenable(value) ? value.then(() => '') : '';
@@ -405,7 +405,7 @@ function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): n
   if (!rs) {
     return context.extends.length;
   }
-  const loc = (rs as Node).location;
+  const loc = rs.location;
   const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
   if (fromLoc !== undefined) {
     return fromLoc;
