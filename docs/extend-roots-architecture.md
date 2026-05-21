@@ -84,19 +84,30 @@ This gives a single, consistent model: extend root + descendant roots only, with
 
 ### Gaps / fixes
 
-1. **isAncestorRoot JSDoc**: The comment says “copy that target’s declarations into the extending ruleset (Less behavior)”. We do not support that; we do not target ancestors. The helper is used only to *prevent* merging into rulesets in an ancestor root. JSDoc should be updated (see code fix below).
+1. **isAncestorRoot JSDoc**: The comment says “copy that target’s declarations into the extending ruleset (Less behavior)”. We do not support that; we do not target ancestors. The helper is used only to _prevent_ merging into rulesets in an ancestor root. JSDoc should be updated (see code fix below).
 
-2. **Duplicate nestable body registration**: In `rules.ts` preEval, when we have a nestable at-rule body and we clone, we both `registerRoot(rules, parentExtendRoot)` and `pushExtendRoot(rules)` for the **clone**. Later, in `at-rule.ts` evalNode, we `registerRoot(rules, parent)` for the **actual** body. So the document root gets two children for the same @media: the clone and the actual body. The clone never gets child roots (those are attached to the actual body in evalNode). So from document root we traverse both; from the actual body we get correct descendants. Fix applied: in preEval for nestable at-rule body we no longer call `registerRoot` for the clone — only `pushExtendRoot(rules)`. The actual body is registered once in at-rule evalNode, so the registry has a single child of doc per at-rule body.
+2. **Duplicate nestable body registration**: Earlier registration prep could
+   create one root identity for a nestable at-rule body and later register a
+   different body identity from `at-rule.ts` eval. That gave the document root
+   two children for the same @media body. Fix applied: nestable at-rule body
+   registration now keeps the pushed/evaluated body and the registered body
+   aligned, so the registry has a single child of doc per at-rule body.
 
 **Note:** Three extend-roots tests still fail (extends from inside at-rule into nested at-rules; layers with same name share extend roots; nested layers concatenate names). Cause is under investigation (e.g. registration order or which Rules identity is used for extendRoot vs. children).
 
 ### Extend-chaining hypothesis and fix
 
-**Why extend-chaining was failing:** We were pushing the at-rule body (e.g. `@media` body) as the extend root but calling `rules.eval(context)` on that same reference. The body’s `preEval` can return a **clone**; the rest of the eval then runs on the clone, so rulesets and child roots are attached to the clone. We were **registering** the original body after eval, so the registered root had no rulesets and no child roots. So:
+**Why extend-chaining was failing:** We were pushing one at-rule body identity
+(for example, an `@media` body) as the extend root, then evaluating and
+registering a different body identity. Rulesets and child roots ended up
+attached to one object while the registry pointed at another. So:
 
 - Root `.mb:extend(.ma)` could not find `.ma` inside `@media` (the root we searched was the wrong Rules).
 - Extends from inside `@media` could not see nested `@supports` (child root was attached to the clone, not the registered root).
 
-**Fix:** In `at-rule.ts`, for nestable at-rules we now run the body’s **preEval first**, then **push and eval the result** (clone or original), then **register that same result**. So the object we push is the one that is evaluated and gets rulesets/children, and we register that same object. Root→inside extends (e.g. `.mb:extend(.ma)` at root finding `.ma` in `@media`) then work.
+**Fix:** In `at-rule.ts`, nestable at-rules now push, evaluate, and register
+the same body identity. The object that gets rulesets and child roots is the
+same object the registry sees. Root→inside extends (e.g. `.mb:extend(.ma)` at
+root finding `.ma` in `@media`) then work.
 
 **Result:** Root→inside extends work. Same-root extends (e.g. `.ma` and `.md` in the same `@media` body) use the same extend root; no ancestor targeting is involved. The fixture is not skipped.

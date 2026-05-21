@@ -216,8 +216,8 @@ describe('@plugin directive processing', () => {
       tree.accept(visitor);
     }
 
-    // Verify that the plugin's visitor was available for processing nodes
-    // In Less.js, @plugin is processed in preEval, so its visitors run on all subsequent nodes
+    // Verify that the plugin's visitor was available for processing nodes.
+    // Less processes @plugin early enough for its visitors to run on subsequent nodes.
     expect(visitOrder.length).toBeGreaterThan(0);
   });
 
