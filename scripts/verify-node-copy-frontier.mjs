@@ -26,12 +26,20 @@ const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
 ]);
-const allowedOrdinaryCloneFiles = new Set([
-  'packages/core/src/tree/ampersand.ts',
-  'packages/core/src/tree/rules.ts',
-  'packages/core/src/tree/selector.ts',
-  ...infrastructureFiles
-]);
+const allowedOrdinaryClonePatterns = [
+  {
+    file: 'packages/core/src/tree/ampersand.ts',
+    pattern: /\bsuper\.clone\(/u
+  },
+  {
+    file: 'packages/core/src/tree/rules.ts',
+    pattern: /\bsuper\.clone\(/u
+  },
+  {
+    file: 'packages/core/src/tree/selector.ts',
+    pattern: /\bsuper\.clone\(/u
+  }
+];
 const expectedRemaining = new Set();
 const expectedLoopEvalSurfaceCopies = new Set();
 
@@ -58,7 +66,17 @@ function isBitSetCloneLine(relativeFile, line) {
     || /\.keySet\.clone\(\)/u.test(line)
     || /\.visibleKeySet\.clone\(\)/u.test(line)
     || /\.requiredKeySet\.clone\(\)/u.test(line)
+    || /\bchildKeySet\.clone\(\)/u.test(line)
     || /\b_bitset\.clone\(\)/u.test(line);
+}
+
+function isAllowedOrdinaryCloneLine(relativeFile, line) {
+  if (infrastructureFiles.has(relativeFile)) {
+    return true;
+  }
+  return allowedOrdinaryClonePatterns.some(allowed => (
+    allowed.file === relativeFile && allowed.pattern.test(line)
+  ));
 }
 
 const matches = [];
@@ -104,7 +122,7 @@ const missingExpected = [...expectedRemaining].filter(file => !frontierFiles.inc
 const unexpectedOrdinaryCopy = ordinaryCopyMatches
   .filter(match => !infrastructureFiles.has(match.file));
 const unexpectedOrdinaryClone = ordinaryCloneMatches
-  .filter(match => !allowedOrdinaryCloneFiles.has(match.file));
+  .filter(match => !isAllowedOrdinaryCloneLine(match.file, match.text));
 const unexpectedLoopEvalSurfaceCopies = loopEvalSurfaceCopyMatches
   .filter(match => !expectedLoopEvalSurfaceCopies.has(match.file));
 const filesWithLoopEvalSurfaceCopies = new Set(loopEvalSurfaceCopyMatches.map(match => match.file));
