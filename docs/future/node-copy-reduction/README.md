@@ -109,11 +109,11 @@ Priority seams:
    Keep them only where they express live scope or placement state better than
    copied nodes.
 5. **Chosen-output helper cleanup**: `renderChosenOutput(...)` is the current
-   narrow overload helper for nodes that already selected an evaluated output
+   narrow overload helper for nodes that already chose an evaluated output
    node and only need to route it through direct string vs buffer render. It is
    not a public model and should not grow new semantics. Direct
-   `renderSelectedOutput(...)` / `writeSelectedOutput(...)` usage should stay
-   centralized inside render-buffer utilities.
+   chosen-output plumbing should stay centralized inside render-buffer
+   utilities.
 
 ## Guardrails
 
@@ -134,12 +134,11 @@ Priority seams:
   - `renderChosenOutput(...)` routes an already-chosen evaluated node through
     string or buffer render overloads without duplicating node-local promise
     plumbing.
-  - `renderSelectedOutput(...)` serializes an already-chosen evaluated
-    node to the active print state without writing to a render buffer.
-  - `writeSelectedOutput(...)` only removes promise plumbing.
+  - helper-local chosen-output string/write functions only remove promise and
+    buffer branching from node classes.
   - root-aware chosen-output helpers only preserve the `Rules` root
     serializer exception.
-- These helper names describe the current serializer boundary, not a desired
+- These helpers describe the current serializer boundary, not a desired
   long-term abstraction family. Do not add new wrapper layers around them;
   prefer shrinking or deleting helpers when the surrounding render path no
   longer needs them.

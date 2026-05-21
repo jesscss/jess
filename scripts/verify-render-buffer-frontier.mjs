@@ -83,9 +83,9 @@ for (const file of files) {
   }
 }
 console.log('');
-console.log('Direct selected-output helper sites:');
+console.log('Stale selected-output helper sites:');
 if (selectedOutputMatches.length === 0) {
-  console.log('- none outside render-buffer utilities');
+  console.log('- none');
 }
 for (const file of [...new Set(selectedOutputMatches.map(match => match.file))].sort()) {
   console.log(`- ${file}`);
@@ -114,7 +114,7 @@ if (matches.length > 0) {
 if (selectedOutputMatches.length > 0) {
   console.log('');
   console.log(
-    'Node render overloads should route chosen evaluated output through renderChosenOutput; keep direct selected-output helpers centralized.'
+    'Node render overloads should route chosen evaluated output through renderChosenOutput; do not reintroduce selected-output helper surfaces.'
   );
   process.exitCode = 1;
 }

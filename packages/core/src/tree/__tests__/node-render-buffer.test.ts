@@ -72,9 +72,7 @@ import {
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
-  renderSelectedOutput,
   writeNoOutput,
-  writeSelectedOutput,
   writeRootAwareChosenOutput,
   writeRootAwareOutput
 } from '../util/render-buffer.js';
@@ -195,12 +193,12 @@ describe('renderNodeToBuffer', () => {
     expect(writer.toString()).toBe('');
   });
 
-  it('renders maybe-async selected output to strings without buffer writes', async () => {
+  it('renders maybe-async chosen output to strings without buffer writes', async () => {
     const context = new Context();
     const writer = new OutputWriter();
 
-    expect(renderSelectedOutput(any('direct'), context, { writer })).toBe('direct');
-    await expect(renderSelectedOutput(Promise.resolve(any('async')), context, { writer }))
+    expect(renderChosenOutput(context, any('direct'), { writer })).toBe('direct');
+    await expect(renderChosenOutput(context, Promise.resolve(any('async')), { writer }))
       .resolves.toBe('async');
     expect(writer.toString()).toBe('directasync');
   });
@@ -273,15 +271,15 @@ describe('renderNodeToBuffer', () => {
     expect(buffer.parts).toEqual(['color: red;']);
   });
 
-  it('writes selected evaluated output without mutating rejected buffers', async () => {
+  it('writes chosen evaluated output without mutating rejected buffers', async () => {
     const context = new Context();
     const syncBuffer = createRenderBuffer('flat');
     const asyncBuffer = createRenderBuffer('flat');
     const rejectedBuffer = createRenderBuffer('flat');
 
-    expect(writeSelectedOutput(syncBuffer, any('sync'), context)).toBe('sync');
-    await expect(writeSelectedOutput(asyncBuffer, Promise.resolve(any('async')), context)).resolves.toBe('async');
-    await expect(writeSelectedOutput(rejectedBuffer, Promise.reject(new Error('nope')), context)).rejects.toThrow('nope');
+    expect(renderChosenOutput(context, any('sync'), syncBuffer)).toBe('sync');
+    await expect(renderChosenOutput(context, Promise.resolve(any('async')), asyncBuffer)).resolves.toBe('async');
+    await expect(renderChosenOutput(context, Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
 
     expect(syncBuffer.parts).toEqual(['sync']);
     expect(asyncBuffer.parts).toEqual(['async']);

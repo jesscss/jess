@@ -166,7 +166,7 @@ export function writeRenderedOutput(
   );
 }
 
-export function writeSelectedOutput(
+function writeChosenOutput(
   buffer: RenderBuffer,
   node: MaybePromise<RenderableOutput>,
   context: Context,
@@ -177,7 +177,7 @@ export function writeSelectedOutput(
     : writeRenderedOutput(buffer, node, context, options);
 }
 
-export function renderSelectedOutput(
+function renderChosenOutputToString(
   node: MaybePromise<RenderableOutput>,
   context: Context,
   options?: PrintOptions
@@ -197,8 +197,8 @@ export function renderChosenOutput(
   options?: PrintOptions
 ): MaybePromise<string> {
   return isRenderBuffer(bufferOrOptions)
-    ? writeSelectedOutput(bufferOrOptions, node, context, options)
-    : renderSelectedOutput(node, context, bufferOrOptions);
+    ? writeChosenOutput(bufferOrOptions, node, context, options)
+    : renderChosenOutputToString(node, context, bufferOrOptions);
 }
 
 export function renderedOutputToString(
