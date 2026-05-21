@@ -167,10 +167,12 @@ The current import/reference failure path is not pointing at a parser AST gap.
 Current evidence shows:
 
 - imported Less trees parse into the expected top-level AST shape
-- the corruption appears later, during `Rules.preEval()` when an `EvalSession` is active
+- the corruption appears later, during eval-time registration setup when an
+  `EvalSession` is active
 - without a session, the imported AST shape remains correct
 
-So import/reference runtime failures should not be used as parser-shape evidence unless the raw parsed tree is already wrong before `preEval()`.
+So import/reference runtime failures should not be used as parser-shape evidence
+unless the raw parsed tree is already wrong before eval-time registration setup.
 
 ## Recommended Workflow
 
