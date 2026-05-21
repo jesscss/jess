@@ -4,10 +4,8 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 export type BlockOptions = {
@@ -59,10 +57,7 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
-    }
-    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.resolveValue(context), bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

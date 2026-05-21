@@ -5,10 +5,8 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 /**
@@ -63,10 +61,7 @@ export class Url extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(bufferOrOptions, this.resolveValue(context), context, options);
-    }
-    return renderSelectedOutput(this.resolveValue(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.resolveValue(context), bufferOrOptions, options);
   }
 
   private resolveValue(context: Context): MaybePromise<Node> {
