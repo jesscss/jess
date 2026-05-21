@@ -62,6 +62,8 @@ it is for the current direction and next seams, not a historical pass log.
   value through the shared print-state machinery. If local child resolution is
   async, the native direct render path should await that chosen value rather
   than serialize source syntax while the buffer path emits evaluated output.
+  Static or source-only direct `Node` subclasses should inherit base render
+  instead of keeping local source-string/buffer branches.
 - `$while` currently has explicit focused guards for native buffer rendering,
   no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
   per-iteration body copies. `$for` and `$while` reuse static and dynamic direct
@@ -111,6 +113,9 @@ it is for the current direction and next seams, not a historical pass log.
 
 - Keep `prepareRenderPrintState(...)` as the only bridge for active writer,
   frame, and trivia state.
+- Base buffer render must use a detached writer and only append the finished
+  text to the target buffer; render-to-string bridges may pass a writer for
+  surrounding state, but source-only buffer render must not mutate it.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.

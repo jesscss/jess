@@ -83,7 +83,8 @@ selector placement truly needs one.
   through the same print-state machinery. Expression-like native render
   overloads must also await async child resolution instead of falling back to
   authored syntax; direct string render and buffer render should choose the
-  same evaluated value.
+  same evaluated value. Static or source-only nodes should use the base render
+  path instead of reimplementing local string/buffer branching.
 
 ## Remaining Architecture Work
 
@@ -130,6 +131,9 @@ Priority seams:
   `.value` removal pass.
 - `prepareRenderPrintState(...)` is the central bridge for active writer,
   frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
+- Base buffer render must serialize through a detached writer and only append
+  the final text to the target buffer; it must not mutate a writer passed in
+  from a render-to-string bridge.
 - Shared render-buffer helpers must stay narrow:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.
