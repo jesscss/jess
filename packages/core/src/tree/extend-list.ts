@@ -4,10 +4,8 @@ import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
-  isRenderBuffer,
   type RenderBuffer,
-  renderNoOutput,
-  writeNoOutput
+  renderNoOutputEffect
 } from './util/render-buffer.js';
 
 /**
@@ -46,10 +44,7 @@ export class ExtendList extends Node<Extend[]> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeNoOutput(bufferOrOptions, this.evalNode(context));
-    }
-    return renderNoOutput(this.evalNode(context));
+    return renderNoOutputEffect(this.evalNode(context), bufferOrOptions);
   }
 }
 

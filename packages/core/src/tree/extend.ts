@@ -24,10 +24,8 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderNoOutput,
-  writeNoOutput
+  renderNoOutputEffect,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 export enum ExtendFlag {
@@ -303,10 +301,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeNoOutput(bufferOrOptions, this.evalNode(context));
-    }
-    return renderNoOutput(this.evalNode(context));
+    return renderNoOutputEffect(this.evalNode(context), bufferOrOptions);
   }
 }
 
