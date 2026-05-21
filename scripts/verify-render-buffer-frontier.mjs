@@ -17,11 +17,8 @@ const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buf
 const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
-const allowedSelectedOutputFiles = new Set([
-  'packages/core/src/tree/rules.ts'
-]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
-const expectedControlIterationRenderSites = 2;
+const expectedControlIterationRenderSites = 1;
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -61,7 +58,6 @@ for (const scanRoot of scanRoots) {
       if (
         selectedOutputPattern.test(line)
         && !allowedFiles.has(relative)
-        && !allowedSelectedOutputFiles.has(relative)
       ) {
         selectedOutputMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }

@@ -60,6 +60,15 @@ function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: No
   return output;
 }
 
+function renderIterationRules(
+  iterationRules: Rules,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): MaybePromise<string> {
+  return iterationRules.render(context, buffer, options);
+}
+
 function deriveIterationChild(node: Node): Node {
   node.frozen = true;
   return node;
@@ -526,7 +535,7 @@ export class For extends Node<StructuredLoopValue> {
         counter
       );
       counter++;
-      output += await iterationRules.render(context, buffer, options);
+      output += await renderIterationRules(iterationRules, context, buffer, options);
     }
     return output;
   }
@@ -637,7 +646,7 @@ export class While extends Node<WhileValue> {
           throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
         }
         const iterationRules = createWhileIterationSurface(originalRules, stateRules);
-        output += await iterationRules.render(context, buffer, options);
+        output += await renderIterationRules(iterationRules, context, buffer, options);
         await syncWhileState(stateRules, iterationRules, context);
       }
     } finally {
