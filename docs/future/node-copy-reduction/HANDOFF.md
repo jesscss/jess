@@ -118,6 +118,11 @@ it is for the current direction and next seams, not a historical pass log.
     node to the active print state without writing to a render buffer.
   - `writeMaybeRenderedOutput(...)` removes promise plumbing only.
   - root-aware helpers only preserve the `Rules` root serializer exception.
+- Treat `renderMaybeRenderedOutput(...)` and `writeMaybeRenderedOutput(...)` as
+  cleanup targets. They exist to remove repeated maybe-async selected-output
+  boilerplate while direct render and buffer render are converging. Once the
+  native render path owns that consistently, collapse them into a clearer
+  serializer boundary or delete them.
 - Do not add native buffer render to invisible or compile-time side-effect
   nodes unless a focused test proves a real output seam.
 - Tests may use `renderNodeToString(...)`, but production render code should

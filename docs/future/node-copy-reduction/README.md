@@ -108,6 +108,12 @@ Priority seams:
    loop live slots, and similar render/eval shadow state are suspect surfaces.
    Keep them only where they express live scope or placement state better than
    copied nodes.
+5. **Selected-output helper cleanup**: `renderMaybeRenderedOutput(...)` and
+   `writeMaybeRenderedOutput(...)` are temporary consolidation helpers, not a
+   permanent public model. They are acceptable while direct string render and
+   buffer render still share maybe-async selected-output plumbing. As node
+   render paths converge on native buffer/writer output, either collapse these
+   helpers into one clearer serializer boundary or remove them entirely.
 
 ## Guardrails
 
@@ -126,6 +132,10 @@ Priority seams:
     node to the active print state without writing to a render buffer.
   - `writeMaybeRenderedOutput(...)` only removes promise plumbing.
   - root-aware helpers only preserve the `Rules` root serializer exception.
+- The `Maybe` helper names describe the current sync/async plumbing, not a
+  desired domain abstraction. Do not add new wrappers with that naming pattern;
+  prefer shrinking, renaming, or deleting these helpers when the surrounding
+  render path no longer needs them.
 - Invisible registration or side-effect nodes should stay invisible unless a
   focused output test proves a real render seam.
 - If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a
