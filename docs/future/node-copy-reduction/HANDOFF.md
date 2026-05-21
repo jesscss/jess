@@ -49,6 +49,9 @@ current state, immediate queue, and verification commands.
 - `AtRule` prelude evaluation now has a named scope-lift helper and one local
   rules-context swap/restore path for sync throws, async rejection, and normal
   completion.
+- `Reference` runtime-var binding resolution now keeps temporary search-scope
+  membership and definition-scope `rulesContext` restore in reference-local
+  helpers instead of duplicating cleanup across sync and async branches.
 - Render-buffer, materialization, and node-copy frontier scans cover production
   package `src` trees across the monorepo, not only `packages/core`.
 - The node-copy frontier is clean for deep copy/clone, loop eval-surface child
@@ -90,9 +93,9 @@ hotter.
    - Keep `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and
      `ScopeFrame.liveSlotsByName` where they model live lexical scope, caller
      fallback, mixin params, `@arguments`, loop counters, or `$while` mutation.
-   - Next start in reference/rules call-site context swaps if tests show
-     duplicated restore plumbing; avoid adding broad context manager APIs
-     without at least two production call sites moving.
+   - Next start in rules call-site context swaps if tests show duplicated
+     restore plumbing; avoid adding broad context manager APIs without at least
+     two production call sites moving.
    - Required proof: focused import/reference/mixin/loop tests plus baseline
      changed mode.
 3. **Function and mixin argument ownership.**

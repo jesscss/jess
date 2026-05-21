@@ -1447,13 +1447,7 @@ function finalizeRuntimeVarBindingResult(
   context: Context
 ): MaybePromise<Node> {
   const bindingSource = binding.sourceNode;
-  if (bindingSource) {
-    context.searchScope.add(bindingSource);
-  }
   const finalizeRuntimeBinding = (evald: Node) => {
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
-    }
     if (
       referenceNode.options?.preserveRulesLike === true
       && isNode(evald, N.Rules | N.Collection | N.Mixin | N.Ruleset)
@@ -1467,10 +1461,6 @@ function finalizeRuntimeVarBindingResult(
     }
     return cloneReferenceResultNode(referenceNode, evald);
   };
-  const savedRulesContext = context.rulesContext;
-  const restoreRulesContext = () => {
-    context.rulesContext = savedRulesContext;
-  };
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
     || (
@@ -1478,37 +1468,55 @@ function finalizeRuntimeVarBindingResult(
       && isNode(binding.value, N.Rules | N.Collection)
     )
   );
-  if (shouldUseDefinitionRulesContext) {
-    context.rulesContext = bindingSource.rulesParent ?? savedRulesContext;
+
+  const evaluateBinding = () => evaluateReferenceValueNode(binding.value, context, {
+    preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
+    reuseSourceFreeLeaves: true
+  });
+  const evaluateInRulesContext = () => shouldUseDefinitionRulesContext
+    ? withReferenceRulesContext(
+        context,
+        bindingSource.rulesParent ?? context.rulesContext,
+        evaluateBinding
+      )
+    : evaluateBinding();
+  const evaluatedBinding = bindingSource
+    ? withReferenceSearchScope(context, bindingSource, evaluateInRulesContext)
+    : evaluateInRulesContext();
+
+  if (isThenable(evaluatedBinding)) {
+    return Promise.resolve(evaluatedBinding).then(finalizeRuntimeBinding);
   }
-  let evaluatedBinding: MaybePromise<Node>;
+  return finalizeRuntimeBinding(evaluatedBinding);
+}
+
+function withReferenceRulesContext<T>(
+  context: Context,
+  rulesContext: Context['rulesContext'],
+  work: () => MaybePromise<T>
+): MaybePromise<T> {
+  const savedRulesContext = context.rulesContext;
+  context.rulesContext = rulesContext;
   try {
-    evaluatedBinding = evaluateReferenceValueNode(binding.value, context, {
-      preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
-      reuseSourceFreeLeaves: true
-    });
-  } catch (error) {
-    restoreRulesContext();
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
+    const result = work();
+    if (isThenable(result)) {
+      return Promise.resolve(result).then(
+        (resolved) => {
+          context.rulesContext = savedRulesContext;
+          return resolved;
+        },
+        (error) => {
+          context.rulesContext = savedRulesContext;
+          throw error;
+        }
+      );
     }
+    context.rulesContext = savedRulesContext;
+    return result;
+  } catch (error) {
+    context.rulesContext = savedRulesContext;
     throw error;
   }
-  if (isThenable(evaluatedBinding)) {
-    return Promise.resolve(evaluatedBinding)
-      .then((evald) => {
-        restoreRulesContext();
-        return finalizeRuntimeBinding(evald);
-      }, (error) => {
-        restoreRulesContext();
-        if (bindingSource) {
-          context.searchScope.delete(bindingSource);
-        }
-        throw error;
-      });
-  }
-  restoreRulesContext();
-  return finalizeRuntimeBinding(evaluatedBinding);
 }
 
 function withReferenceSearchScope<T>(
