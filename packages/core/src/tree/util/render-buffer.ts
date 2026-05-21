@@ -122,8 +122,18 @@ export function isRenderBuffer(value: unknown): value is RenderBuffer {
   if (typeof value !== 'object' || value === null || !('kind' in value)) {
     return false;
   }
-  const { kind } = value as { kind?: unknown };
-  return kind === 'flat' || kind === 'segmented';
+  const candidate = value;
+  return (
+    candidate.kind === 'flat'
+    && 'parts' in candidate
+    && Array.isArray(candidate.parts)
+  ) || (
+    candidate.kind === 'segmented'
+    && 'segments' in candidate
+    && 'extendRecords' in candidate
+    && Array.isArray(candidate.segments)
+    && Array.isArray(candidate.extendRecords)
+  );
 }
 
 export function writeRenderText(buffer: RenderBuffer, text: string): string {

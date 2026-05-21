@@ -97,6 +97,9 @@ describe('RenderBuffer', () => {
   it('recognizes render buffer objects', () => {
     expect(isRenderBuffer(createRenderBuffer('flat'))).toBe(true);
     expect(isRenderBuffer(createRenderBuffer('segmented'))).toBe(true);
+    expect(isRenderBuffer({ kind: 'flat' })).toBe(false);
+    expect(isRenderBuffer({ kind: 'flat', parts: 'nope' })).toBe(false);
+    expect(isRenderBuffer({ kind: 'segmented', segments: [] })).toBe(false);
     expect(isRenderBuffer({ kind: 'other' })).toBe(false);
     expect(isRenderBuffer(null)).toBe(false);
   });
