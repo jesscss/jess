@@ -157,6 +157,18 @@ describe('renderNodeToBuffer', () => {
     expect(buffer.parts).toEqual(['resolved']);
   });
 
+  it('keeps fallback bridge buffer writes out of a provided writer', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const writer = new OutputWriter();
+
+    await expect(renderNodeToBuffer(asyncResolvedBridgeNode, context, buffer, { writer }))
+      .resolves.toBe('resolved');
+
+    expect(buffer.parts).toEqual(['resolved']);
+    expect(writer.toString()).toBe('');
+  });
+
   it('does not write rejected async non-native bridge output into flat buffers', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');

@@ -328,7 +328,7 @@ export function renderNodeToBuffer(
   if (hasNativeBufferRender(node)) {
     return node.render(context, buffer, options);
   }
-  return writeRenderTextResult(buffer, renderNodeToWriter(node, context, options));
+  return writeRenderTextResult(buffer, renderNodeToWriter(node, context, prepareBufferPrintState(context, options)));
 }
 
 export function renderNodeToWriter(
