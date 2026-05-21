@@ -5,16 +5,13 @@ import path from 'node:path';
 const rootDir = path.resolve(import.meta.dirname, '..');
 const packagesDir = path.join(rootDir, 'packages');
 const orderedConditions = ['types', 'source', 'import', 'require'];
-const forbiddenRootExportPatterns = [
-  {
-    pattern: /export\s+\*\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/u,
-    message: '@jesscss/core root must not wildcard re-export render-buffer internals'
-  },
-  {
-    pattern: /export\s+\{[^}]*(?:renderNodeToBuffer|renderNodeToWriter|renderNodeToString|renderChosenOutput|renderNoOutputEffect|writeRootAwareChosenOutput)[^}]*\}\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/u,
-    message: '@jesscss/core root must not re-export render-buffer bridge helpers'
-  }
-];
+const rootRenderBufferExportPattern = /export\s+(?<exports>\*|\{[^}]*\})\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/gu;
+const allowedRootRenderBufferExports = new Set([
+  'createRenderBuffer',
+  'finalizeFlatRenderBuffer',
+  'FlatRenderBuffer',
+  'RenderBuffer'
+]);
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -43,9 +40,22 @@ const failures = [];
 const coreIndexPath = path.join(rootDir, 'packages/core/src/index.ts');
 if (fs.existsSync(coreIndexPath)) {
   const coreIndexSource = fs.readFileSync(coreIndexPath, 'utf8');
-  for (const forbidden of forbiddenRootExportPatterns) {
-    if (forbidden.pattern.test(coreIndexSource)) {
-      failures.push(`@jesscss/core root export: ${forbidden.message}`);
+  for (const match of coreIndexSource.matchAll(rootRenderBufferExportPattern)) {
+    const exported = match.groups?.exports;
+    if (!exported || exported === '*') {
+      failures.push('@jesscss/core root export: render-buffer must use a narrow named export list');
+      continue;
+    }
+    const names = exported
+      .slice(1, -1)
+      .split(',')
+      .map(part => part.trim().replace(/^type\s+/u, '').split(/\s+as\s+/u)[0]?.trim())
+      .filter(part => part !== undefined && part !== '');
+
+    for (const name of names) {
+      if (!allowedRootRenderBufferExports.has(name)) {
+        failures.push(`@jesscss/core root export: ${name} is not an allowed render-buffer root export`);
+      }
     }
   }
 }
