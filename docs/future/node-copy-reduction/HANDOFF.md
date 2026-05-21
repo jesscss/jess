@@ -54,8 +54,8 @@ it is for the current direction and next seams, not a historical pass log.
   `renderNodeToWriter(...)`, or `renderNodeToString(...)`; those bridge
   helpers are internal/test utility plumbing, not package-root API surfaces.
   Keep the package-root render-buffer export limited to the flat compiler
-  buffer constructor/finalizer surface unless a production caller proves
-  another narrow need.
+  buffer constructor/finalizer surface and their types unless a production
+  caller proves another narrow need.
 - `$if`, `$for`, and `$while` avoid control-wrapper materialization in buffer
   render. `$if` renders only the selected branch output; `$for` and `$while`
   render per iteration. `$while` loop-body variable mutation is carried in a
