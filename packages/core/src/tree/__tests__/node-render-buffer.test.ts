@@ -72,6 +72,7 @@ import {
   renderNodeToString,
   renderNodeToWriter,
   renderSelectedOutput,
+  writeNoOutput,
   writeSelectedOutput,
   writeRootAwareSelectedOutput,
   writeRootAwareOutput
@@ -283,6 +284,20 @@ describe('renderNodeToBuffer', () => {
 
     expect(syncBuffer.parts).toEqual(['sync']);
     expect(asyncBuffer.parts).toEqual(['async']);
+    expect(rejectedBuffer.parts).toEqual([]);
+  });
+
+  it('writes invisible effect output without mutating rejected buffers', async () => {
+    const syncBuffer = createRenderBuffer('flat');
+    const asyncBuffer = createRenderBuffer('flat');
+    const rejectedBuffer = createRenderBuffer('flat');
+
+    expect(writeNoOutput(syncBuffer, undefined)).toBe('');
+    await expect(writeNoOutput(asyncBuffer, Promise.resolve(any('ignored')))).resolves.toBe('');
+    await expect(writeNoOutput(rejectedBuffer, Promise.reject(new Error('nope')))).rejects.toThrow('nope');
+
+    expect(syncBuffer.parts).toEqual([]);
+    expect(asyncBuffer.parts).toEqual([]);
     expect(rejectedBuffer.parts).toEqual([]);
   });
 
