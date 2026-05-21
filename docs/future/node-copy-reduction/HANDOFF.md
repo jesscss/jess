@@ -113,12 +113,14 @@ it is for the current direction and next seams, not a historical pass log.
 
 - Keep `prepareRenderPrintState(...)` as the only bridge for active writer,
   frame, and trivia state.
-- Base buffer render must use a detached writer and only append the finished
-  text to the target buffer; render-to-string bridges may pass a writer for
-  surrounding state, but source-only buffer render must not mutate it.
+- Buffer render helpers must use a detached writer and only append the
+  finished text to the target buffer; render-to-string bridges may pass a
+  writer for surrounding state, but buffer render must not mutate it.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.
+  - `prepareBufferPrintState(...)` preserves render state while detaching
+    caller-owned writers before anything writes into a render buffer.
   - `writeNoOutput(...)` / `renderNoOutput(...)` evaluate invisible
     side-effect output and intentionally emit nothing.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.

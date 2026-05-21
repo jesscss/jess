@@ -131,12 +131,14 @@ Priority seams:
   `.value` removal pass.
 - `prepareRenderPrintState(...)` is the central bridge for active writer,
   frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
-- Base buffer render must serialize through a detached writer and only append
-  the final text to the target buffer; it must not mutate a writer passed in
-  from a render-to-string bridge.
+- Buffer render helpers must serialize through a detached writer and only
+  append the final text to the target buffer; they must not mutate a writer
+  passed in from a render-to-string bridge.
 - Shared render-buffer helpers must stay narrow:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.
+  - `prepareBufferPrintState(...)` preserves render state while detaching
+    caller-owned writers before anything writes into a render buffer.
   - `writeNoOutput(...)` / `renderNoOutput(...)` evaluate invisible
     side-effect output and intentionally emit nothing.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
