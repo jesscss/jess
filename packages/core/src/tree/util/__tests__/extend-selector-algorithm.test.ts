@@ -91,10 +91,11 @@ describe('Extend Selector Tests', () => {
       const target = sellist([el('.a'), el('.b')]);
       const originalClone = target.clone.bind(target);
       let cloneCalls = 0;
-      target.clone = ((...args) => {
+      const cloneForCounting: typeof target.clone = (...args) => {
         cloneCalls++;
         return originalClone(...args);
-      }) as typeof target.clone;
+      };
+      target.clone = cloneForCounting;
 
       try {
         const result = extendSelector(target, el('.a'), el('.c'), false);
@@ -111,10 +112,11 @@ describe('Extend Selector Tests', () => {
       const target = el('.a');
       const originalClone = target.clone.bind(target);
       let cloneCalls = 0;
-      target.clone = ((...args) => {
+      const cloneForCounting: typeof target.clone = (...args) => {
         cloneCalls++;
         return originalClone(...args);
-      }) as typeof target.clone;
+      };
+      target.clone = cloneForCounting;
 
       try {
         const result = extendSelector(
@@ -138,10 +140,11 @@ describe('Extend Selector Tests', () => {
       const templateCombinator = co(' ');
       const originalCopy = templateCombinator.copy.bind(templateCombinator);
       let copyCalls = 0;
-      templateCombinator.copy = ((...args) => {
+      const copyForCounting: typeof templateCombinator.copy = (...args) => {
         copyCalls++;
         return originalCopy(...args);
-      }) as typeof templateCombinator.copy;
+      };
+      templateCombinator.copy = copyForCounting;
 
       try {
         const target = sellist([
@@ -166,17 +169,21 @@ describe('Extend Selector Tests', () => {
     });
 
     it('flattens generated :is() nesting without copying the inner selector through generic copy()', () => {
-      const prefix = is(sellist([el('.aa'), el('.bb')])) as PseudoSelector;
+      const prefix = is(sellist([el('.aa'), el('.bb')]));
+      if (!isNode(prefix, N.PseudoSelector)) {
+        throw new TypeError('Expected pseudo selector');
+      }
       prefix.generated = true;
       const invisibleSpace = co(' ');
       invisibleSpace.removeFlag(F_VISIBLE);
       const inner = el('.cc');
       const originalCopy = inner.copy.bind(inner);
       let innerCopies = 0;
-      inner.copy = ((...args) => {
+      const copyForCounting: typeof inner.copy = (...args) => {
         innerCopies++;
         return originalCopy(...args);
-      }) as typeof inner.copy;
+      };
+      inner.copy = copyForCounting;
 
       try {
         const selector = sel([prefix, invisibleSpace, is(sellist([inner, el('.dd')]))]);
@@ -250,6 +257,19 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     });
 
+    it('extends pseudo arguments without reparenting source selectors', () => {
+      const arg = el('.a');
+      const extendWith = el('.c');
+      const selector = is(arg);
+
+      const result = extendSelector(selector, arg, extendWith, false);
+
+      expect(result.valueOf()).toBe(':is(.a,.c)');
+      expect(selector.value.arg).toBe(arg);
+      expect(arg.parent).toBe(selector);
+      expect(extendWith.parent).toBeUndefined();
+    });
+
     it('should extend compound :is() selector with compound target - example 5', () => {
       // Selector: :is(.a, .b).c, Target: .a.c (full), Extend with: .d
       // Result: :is(.a, .b).c, .d
@@ -302,10 +322,11 @@ describe('Extend Selector Tests', () => {
       const matched = el('.class');
       const originalCopy = matched.copy.bind(matched);
       let copyCalls = 0;
-      matched.copy = ((...args) => {
+      const copyForCounting: typeof matched.copy = (...args) => {
         copyCalls++;
         return originalCopy(...args);
-      }) as typeof matched.copy;
+      };
+      matched.copy = copyForCounting;
 
       try {
         const selector = compound([el('.target'), matched]);
@@ -1078,10 +1099,11 @@ describe('Extend Selector Tests', () => {
       const target = sellist([el('.replace'), el('.c')]);
       let cloneCalls = 0;
       const originalClone = target.clone.bind(target);
-      target.clone = ((...args) => {
+      const cloneForCounting: typeof target.clone = (...args) => {
         cloneCalls++;
         return originalClone(...args);
-      }) as typeof target.clone;
+      };
+      target.clone = cloneForCounting;
 
       const result = getImplicitSelector(target, outerSel, false);
 

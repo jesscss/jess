@@ -74,6 +74,9 @@ current state, immediate queue, and verification commands.
 - `extend-walk.ts` is lint-clean for selector/container ownership assertions.
   Traversal code now uses real selector guards at parent boundaries instead of
   assertion casts when rebuilding compound, complex, pseudo, and list surfaces.
+- Pseudo-argument extend appends now use the same owned placement-copy helper
+  as selector-list append paths, with a parentage test proving the source
+  pseudo arg and extender are not stolen by generated output.
 
 ## Immediate Queue
 
@@ -85,9 +88,10 @@ hotter.
      bookkeeping, not semantics.
    - Next start in selector-list append paths and boundary-crossing
      finalization. The extend declaration registration branch has been
-     centralized, and generated `:is(...)` wrapper construction now has one
-     placement-copy step. The walk path is assertion-clean now; do not split
-     those ownership paths again.
+     centralized, generated `:is(...)` wrapper construction now has one
+     placement-copy step, pseudo-argument appends route through owned placement
+     copies, and the walk path is assertion-clean now. Do not split those
+     ownership paths again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**

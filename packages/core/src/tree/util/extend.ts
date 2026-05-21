@@ -4051,10 +4051,10 @@ function applyExtensionAtPath(
       // Direct match in the argument - create a list or extend existing list
       let newArg: Selector;
       if (isNode(arg, N.SelectorList)) {
-        const newSelectors = [...arg.value, extendWith];
+        const newSelectors = copySelectorsForPlacement([...arg.value, extendWith]);
         newArg = SelectorList.create(newSelectors).inherit(arg);
       } else {
-        newArg = SelectorList.create([arg, extendWith]);
+        newArg = SelectorList.create(copySelectorsForPlacement([arg, extendWith]));
       }
 
       const processedArg = createProcessedSelector(newArg, true);
