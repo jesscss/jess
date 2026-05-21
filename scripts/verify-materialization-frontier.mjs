@@ -11,7 +11,11 @@ const ignoredSegments = new Set([
   '__tests__'
 ]);
 
-const frontierPattern = /\b(?:resolved|evald|evaluated)\.toTrimmedString\(\s*prepared\s*\)/u;
+const frontierPatterns = [
+  /\b(?:resolved|evald|evaluated)\.to(?:Trimmed)?String\(\s*prepared\s*\)/u,
+  /\.eval\([^)]*\)\.to(?:Trimmed)?String\(/u,
+  /\.resolve\([^)]*\)\.to(?:Trimmed)?String\(/u
+];
 const expectedRemaining = new Map();
 
 function walk(dir) {
@@ -41,7 +45,7 @@ for (const scanRoot of scanRoots) {
     const relative = path.relative(rootDir, file);
     const source = fs.readFileSync(file, 'utf8');
     source.split(/\r?\n/u).forEach((line, index) => {
-      if (frontierPattern.test(line)) {
+      if (frontierPatterns.some(pattern => pattern.test(line))) {
         matches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
