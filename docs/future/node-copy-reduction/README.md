@@ -52,6 +52,8 @@ selector placement truly needs one.
 - The render-buffer frontier is not a per-node status list anymore. The
   important current facts are that the production bridge scan is green and
   that `$for` / `$while` stream each loop iteration through node render methods.
+  The render-buffer and materialization frontier scans cover production `src`
+  files across packages, not just `packages/core`.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. `$for` and `$while`
   iteration eval surfaces reuse direct body children from the canonical body;

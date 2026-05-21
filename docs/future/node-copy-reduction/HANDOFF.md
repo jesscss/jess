@@ -37,6 +37,8 @@ it is for the current direction and next seams, not a historical pass log.
   `pnpm run verify:materialization-frontier` are the active truth checks.
   The broad baseline includes core, parser, Less fixture, less-compat,
   frontier, package-export, and node-constructor metadata coverage;
+  render-buffer and materialization frontier scans cover production package
+  `src` trees across the monorepo;
   changed-only mode intentionally runs the full baseline when verifier scripts
   or root dependency metadata changed. Changed-only mode includes local
   unstaged and staged files as well as committed branch diff. The pre-push
