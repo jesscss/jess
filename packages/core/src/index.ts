@@ -20,6 +20,12 @@ export * from './tree/util/print.js';
 export * from './tree/util/trivia.js';
 export * from './tree/util/list-like.js';
 export * from './tree/util/serialize-types.js';
+export {
+  createRenderBuffer,
+  finalizeFlatRenderBuffer,
+  type FlatRenderBuffer,
+  type RenderBuffer
+} from './tree/util/render-buffer.js';
 export { copyWithReusableLeaves } from './tree/util/cloning.js';
 export * from './conversions.js';
 export * from './types/index.js';

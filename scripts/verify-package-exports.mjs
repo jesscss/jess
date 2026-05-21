@@ -7,8 +7,12 @@ const packagesDir = path.join(rootDir, 'packages');
 const orderedConditions = ['types', 'source', 'import', 'require'];
 const forbiddenRootExportPatterns = [
   {
-    pattern: /export\s+(?:\*|\{[^}]*\})\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/u,
-    message: '@jesscss/core root must not re-export render-buffer internals'
+    pattern: /export\s+\*\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/u,
+    message: '@jesscss/core root must not wildcard re-export render-buffer internals'
+  },
+  {
+    pattern: /export\s+\{[^}]*(?:renderNodeToBuffer|renderNodeToWriter|renderNodeToString|renderChosenOutput|renderNoOutputEffect|writeRootAwareChosenOutput)[^}]*\}\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/u,
+    message: '@jesscss/core root must not re-export render-buffer bridge helpers'
   }
 ];
 

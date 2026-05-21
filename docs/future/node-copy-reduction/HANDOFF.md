@@ -51,8 +51,11 @@ it is for the current direction and next seams, not a historical pass log.
   tracked with `registrationPrepared`.
 - The compiler render phase writes through `Rules.render(...)` into a flat
   render buffer. Production code should not call `renderNodeToBuffer(...)`,
-  `renderNodeToWriter(...)`, or `renderNodeToString(...)`; the render-buffer
-  module is internal/test utility plumbing, not a package-root API surface.
+  `renderNodeToWriter(...)`, or `renderNodeToString(...)`; those bridge
+  helpers are internal/test utility plumbing, not package-root API surfaces.
+  Keep the package-root render-buffer export limited to the flat compiler
+  buffer constructor/finalizer surface unless a production caller proves
+  another narrow need.
 - `$if`, `$for`, and `$while` avoid control-wrapper materialization in buffer
   render. `$if` renders only the selected branch output; `$for` and `$while`
   render per iteration. `$while` loop-body variable mutation is carried in a
