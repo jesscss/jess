@@ -115,12 +115,14 @@ it is for the current direction and next seams, not a historical pass log.
   frame, and trivia state.
 - Buffer render helpers must use a detached writer and only append the
   finished text to the target buffer; render-to-string bridges may pass a
-  writer for surrounding state, but buffer render must not mutate it.
+  writer or partially prepared print state for surrounding state, but buffer
+  render must not mutate or add a writer on caller-owned print options.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.
-  - `prepareBufferPrintState(...)` preserves render state while detaching
-    caller-owned writers before anything writes into a render buffer.
+  - `prepareBufferPrintState(...)` preserves render state while working from a
+    shallow detached options object before anything writes into a render
+    buffer.
   - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
     intentionally emits nothing through either string or buffer render.
   - `renderChosenOutput(...)` routes an already-chosen evaluated node through
