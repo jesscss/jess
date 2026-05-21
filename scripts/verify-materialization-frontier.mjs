@@ -3,10 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = path.resolve(import.meta.dirname, '..');
-const scanRoots = [
-  path.join(rootDir, 'packages/core/src/tree'),
-  path.join(rootDir, 'packages/jess/src')
-];
+const packagesDir = path.join(rootDir, 'packages');
 const ignoredSegments = new Set([
   '__tests__'
 ]);
@@ -17,6 +14,16 @@ const frontierPatterns = [
   /\.resolve\([^)]*\)\.to(?:Trimmed)?String\(/u
 ];
 const expectedRemaining = new Map();
+
+function getScanRoots() {
+  if (!fs.existsSync(packagesDir)) {
+    return [];
+  }
+  return fs.readdirSync(packagesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => path.join(packagesDir, dirent.name, 'src'))
+    .filter(sourceDir => fs.existsSync(sourceDir));
+}
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -37,7 +44,7 @@ function walk(dir) {
 }
 
 const matches = [];
-for (const scanRoot of scanRoots) {
+for (const scanRoot of getScanRoots()) {
   if (!fs.existsSync(scanRoot)) {
     continue;
   }
