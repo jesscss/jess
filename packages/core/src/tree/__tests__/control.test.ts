@@ -303,7 +303,7 @@ describe('Control Nodes', () => {
     expect(writer.captures).toBe(0);
   });
 
-  it('keeps legacy direct $for render(context) on source syntax', () => {
+  it('renders $for iterations through direct render(context)', async () => {
     const context = new Context();
     const node = makeLoop(
       makePattern(['value'], 'single'),
@@ -311,16 +311,10 @@ describe('Control Nodes', () => {
       rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
     );
 
-    expect(node.render(context)).toBeString(`
-      $for ($value of a, b) {
-        item: $value;
-      }
-    `);
-    expect(context.printState.writer?.toString()).toBeString(`
-      $for ($value of a, b) {
-        item: $value;
-      }
-    `);
+    const rendered = await Promise.resolve(node.render(context));
+
+    expect(rendered).toContain('item: a');
+    expect(rendered).toContain('item: b');
   });
 
   it('resolves $for output without touching render state', async () => {

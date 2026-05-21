@@ -568,7 +568,7 @@ export class For extends Node<StructuredLoopValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderIterations(context, bufferOrOptions, options);
     }
-    return renderControlSourceSyntax(this, context, options);
+    return this.renderIterations(context, createRenderBuffer('flat'), bufferOrOptions);
   }
 }
 
