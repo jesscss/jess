@@ -83,6 +83,9 @@ current state, immediate queue, and verification commands.
 - Framed ampersand append now owns unchanged complex-selector components for
   the generated placement, with a parentage test proving source selector
   children stay attached to the frame selector.
+- Ruleset header filtering now owns temporary selector copies without generic
+  clone calls or source-free leaf adoption; existing header tests prove source
+  leaf parent identity stays canonical.
 
 ## Immediate Queue
 
@@ -98,8 +101,9 @@ hotter.
      placement-copy step, pseudo-argument appends route through owned placement
      copies, and the walk path is assertion-clean and uses placement copies for
      changed `:is(...)` argument lists. Framed ampersand append also uses owned
-     complex-component placement copies. Do not split those ownership paths
-     again.
+     complex-component placement copies, and ruleset header filtering owns its
+     temporary selector surface without adopting source leaves. Do not split
+     those ownership paths again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**

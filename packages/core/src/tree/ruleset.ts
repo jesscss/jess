@@ -33,7 +33,7 @@ import {
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
-import { canReuseLeaf, copyOwnedWithReusableLeaves, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 
 export type RulesetValue = {
   selector: Selector | Nil;
@@ -105,7 +105,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (!(value instanceof Selector)) {
       return value;
     }
-    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    const owned = copyOwnedWithReusableLeaves(value);
     if (owned instanceof Selector) {
       return owned;
     }

@@ -214,6 +214,7 @@ describe('Rule', () => {
       return originalClone.apply(this, args);
     };
     const selector = sellist([sel([selectorLeaf])]);
+    const sourceLeafParent = selectorLeaf.parent;
     const node = ruleset({
       selector,
       rules: rules([])
@@ -222,7 +223,7 @@ describe('Rule', () => {
     try {
       expect(node.getHeaderString(getPrintOptions(), true)).toBe('.foo {\n');
       expect(selectorLeafClones).toBe(0);
-      expect(selectorLeaf.parent?.valueOf()).toBe('.foo');
+      expect(selectorLeaf.parent).toBe(sourceLeafParent);
     } finally {
       selectorLeaf.clone = originalClone;
     }
@@ -353,6 +354,7 @@ describe('Rule', () => {
     target.addFlag(F_EXTEND_TARGET);
     const added = sel([addedLeaf]);
     added.addFlag(F_EXTENDED);
+    const addedLeafParent = addedLeaf.parent;
     const node = ruleset({
       selector: sellist([target, added]),
       rules: rules([])
@@ -366,7 +368,7 @@ describe('Rule', () => {
     try {
       expect(node.getHeaderString(options)).toBe('.added {\n');
       expect(addedLeafClones).toBe(0);
-      expect(addedLeaf.parent?.valueOf()).toBe('.added');
+      expect(addedLeaf.parent).toBe(addedLeafParent);
     } finally {
       addedLeaf.clone = originalClone;
     }
