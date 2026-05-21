@@ -92,6 +92,14 @@ selector placement truly needs one.
   authored syntax; direct string render and buffer render should choose the
   same evaluated value. Static or source-only nodes should use the base render
   path instead of reimplementing local string/buffer branching.
+- Context shadow state is intentionally small runtime state, not an output
+  tree substitute. Keep `ScopeFrame.liveSlotsByName` for mixin params,
+  `@arguments`, loop counters, and `$while` mutation; keep
+  `ScopeFrame.fallbackFrame` for caller fallback/leaky body lookup; keep
+  `Context.rulesContext` as the active lexical/eval scope pointer. These are
+  the mechanisms that let evaluation avoid rewriting parent pointers or
+  cloning caller/loop body trees. Remaining cleanup should shrink redundant
+  save/restore plumbing or broad context mutation, not remove the frame model.
 
 ## Remaining Architecture Work
 
@@ -113,10 +121,10 @@ These are architectural seams, not a live ordered queue. Use
    copied raw-argument ownership for `this.rawArgs`, `this.args()`,
    preprocessing, lazy params, validation, and `@arguments`-style behavior.
    Plain functions should keep receiving positional args directly.
-4. **Context shadow state**: `Context.rulesContext`, `ScopeFrame.fallbackFrame`,
-   loop live slots, and similar render/eval shadow state are suspect surfaces.
-   Keep them only where they express live scope or placement state better than
-   copied nodes.
+4. **Context shadow state**: the frame model is a kept part of the target
+   architecture. Audit this seam for redundant save/restore, stale aliases, or
+   overly broad context mutation; do not replace `liveSlotsByName`,
+   `fallbackFrame`, or `rulesContext` with copied nodes.
 5. **Chosen-output helper cleanup**: `renderChosenOutput(...)` is the current
    narrow overload helper for nodes that already chose an evaluated output
    node and only need to route it through direct string vs buffer render. It is

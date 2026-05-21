@@ -38,6 +38,11 @@ current state, immediate queue, and verification commands.
 - `$for` and `$while` reuse static and dynamic direct body children from the
   canonical body without reparenting them. Frozen non-static placement nodes
   re-evaluate instead of retaining a per-placement eval stamp.
+- Context shadow state has been classified: `ScopeFrame.liveSlotsByName`,
+  `ScopeFrame.fallbackFrame`, and `Context.rulesContext` are kept runtime
+  state because they model live scope and caller fallback without copied trees.
+  Future work here should shrink redundant plumbing, not remove the frame
+  model.
 - Render-buffer, materialization, and node-copy frontier scans cover production
   package `src` trees across the monorepo, not only `packages/core`.
 - The node-copy frontier is clean for deep copy/clone, loop eval-surface child
@@ -74,9 +79,11 @@ hotter.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**
-   - Goal: classify `Context.rulesContext`, `ScopeFrame.fallbackFrame`, loop
-     live slots, and related shadow state as keep, shrink, or remove.
-   - Keep state that models live scope or placement better than copied nodes.
+   - Goal: shrink redundant save/restore or overly broad context mutation
+     around the kept frame model.
+   - Keep `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and
+     `ScopeFrame.liveSlotsByName` where they model live lexical scope, caller
+     fallback, mixin params, `@arguments`, loop counters, or `$while` mutation.
    - Required proof: focused import/reference/mixin/loop tests plus baseline
      changed mode.
 3. **Function and mixin argument ownership.**
