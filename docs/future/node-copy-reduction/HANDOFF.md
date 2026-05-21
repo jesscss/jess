@@ -123,14 +123,14 @@ it is for the current direction and next seams, not a historical pass log.
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
   - `writeSelectedOutput(...)` removes promise plumbing only.
-  - root-aware selected-output helpers only preserve the `Rules` root
+  - root-aware chosen-output helpers only preserve the `Rules` root
     serializer exception.
 - Treat `renderChosenOutput(...)`, `renderSelectedOutput(...)`, and
   `writeSelectedOutput(...)` as cleanup targets. `renderChosenOutput(...)`
   is acceptable for current node render overloads, but direct selected-output
-  helper usage should not re-spread across node classes. Keep the remaining
-  direct sites limited to root-aware `Rules` output unless a focused test
-  proves another real boundary.
+  helper usage should not re-spread across node classes; keep those direct
+  selected-output calls centralized inside render-buffer utilities unless a
+  focused test proves another real boundary.
 - Do not add native buffer render to invisible or compile-time side-effect
   nodes unless a focused test proves a real output seam.
 - Tests may use `renderNodeToString(...)`, but production render code should

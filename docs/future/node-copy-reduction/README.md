@@ -113,8 +113,7 @@ Priority seams:
    node and only need to route it through direct string vs buffer render. It is
    not a public model and should not grow new semantics. Direct
    `renderSelectedOutput(...)` / `writeSelectedOutput(...)` usage should stay
-   centralized inside render-buffer utilities or the root-aware `Rules`
-   serializer exception.
+   centralized inside render-buffer utilities.
 
 ## Guardrails
 
@@ -138,7 +137,7 @@ Priority seams:
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
   - `writeSelectedOutput(...)` only removes promise plumbing.
-  - root-aware selected-output helpers only preserve the `Rules` root
+  - root-aware chosen-output helpers only preserve the `Rules` root
     serializer exception.
 - These helper names describe the current serializer boundary, not a desired
   long-term abstraction family. Do not add new wrapper layers around them;

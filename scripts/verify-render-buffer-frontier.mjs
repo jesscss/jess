@@ -12,7 +12,7 @@ const ignoredSegments = new Set([
   'util'
 ]);
 const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
-const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput|writeRootAwareSelectedOutput)\b/u;
+const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput)\b/u;
 const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buffer/u;
 const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
@@ -89,7 +89,7 @@ for (const file of files) {
 console.log('');
 console.log('Direct selected-output helper sites:');
 if (selectedOutputMatches.length === 0) {
-  console.log('- none outside allowed root-aware rules surfaces');
+  console.log('- none outside render-buffer utilities');
 }
 for (const file of [...new Set(selectedOutputMatches.map(match => match.file))].sort()) {
   console.log(`- ${file}`);

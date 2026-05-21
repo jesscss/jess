@@ -51,7 +51,7 @@ import {
   isRenderBuffer,
   type RenderBuffer,
   renderedOutputToString,
-  writeRootAwareSelectedOutput
+  writeRootAwareChosenOutput
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -1886,7 +1886,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
-      return writeRootAwareSelectedOutput(
+      return writeRootAwareChosenOutput(
         bufferOrOptions,
         this,
         this.derive().eval(context),

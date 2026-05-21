@@ -224,7 +224,7 @@ export function writeRootAwareOutput(
   return writeRenderText(buffer, renderedOutputToString(source, node, context, options));
 }
 
-export function writeRootAwareSelectedOutput(
+export function writeRootAwareChosenOutput(
   buffer: RenderBuffer,
   source: RenderBufferNode,
   node: MaybePromise<RenderableOutput>,

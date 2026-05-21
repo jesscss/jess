@@ -75,7 +75,7 @@ import {
   renderSelectedOutput,
   writeNoOutput,
   writeSelectedOutput,
-  writeRootAwareSelectedOutput,
+  writeRootAwareChosenOutput,
   writeRootAwareOutput
 } from '../util/render-buffer.js';
 
@@ -315,7 +315,7 @@ describe('renderNodeToBuffer', () => {
     expect(rejectedBuffer.parts).toEqual([]);
   });
 
-  it('writes root-aware selected output through the root serializer exception', async () => {
+  it('writes root-aware chosen output through the root serializer exception', async () => {
     const context = new Context();
     const root = rules([]);
     const syncBuffer = createRenderBuffer('flat');
@@ -323,8 +323,8 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    expect(writeRootAwareSelectedOutput(syncBuffer, root, root, context, { context })).toBe('@charset "utf-8";\n');
-    await expect(writeRootAwareSelectedOutput(
+    expect(writeRootAwareChosenOutput(syncBuffer, root, root, context, { context })).toBe('@charset "utf-8";\n');
+    await expect(writeRootAwareChosenOutput(
       asyncBuffer,
       root,
       Promise.resolve(root),
