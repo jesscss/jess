@@ -326,7 +326,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return rendered;
     }
-    return renderChosenOutput(context, this.deriveResolveSurface().eval(context), bufferOrOptions);
+    return renderChosenOutput(context, this.deriveResolveSurface().eval(context), bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
