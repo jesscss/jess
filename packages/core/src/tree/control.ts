@@ -9,14 +9,14 @@ import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
 import {
   createRenderBuffer,
   isRenderBuffer,
   type RenderBuffer,
-  writeRenderedOutput
+  writeSelectedOutput
 } from './util/render-buffer.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -32,26 +32,6 @@ function makeDirectiveRulesPublic(rules: Rules) {
     ...rules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
   };
-}
-
-function writeEvaluatedControlOutput(
-  node: Node,
-  context: Context,
-  buffer: RenderBuffer,
-  options?: PrintOptions
-): string {
-  return writeRenderedOutput(buffer, node, context, options);
-}
-
-function writeMaybeEvaluatedControlOutput(
-  node: MaybePromise<Node>,
-  context: Context,
-  buffer: RenderBuffer,
-  options?: PrintOptions
-): MaybePromise<string> {
-  return isThenable(node)
-    ? (node as Promise<Node>).then(resolved => writeEvaluatedControlOutput(resolved, context, buffer, options))
-    : writeEvaluatedControlOutput(node, context, buffer, options);
 }
 
 function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
@@ -371,11 +351,11 @@ export class If extends Node<IfValue> {
   ): Promise<string> {
     for (const branch of this.value.branches) {
       if (!branch.condition) {
-        return writeMaybeEvaluatedControlOutput(branch.rules.eval(context), context, buffer, options);
+        return writeSelectedOutput(buffer, branch.rules.eval(context), context, options);
       }
       const condition = await branch.condition.eval(context);
       if (condition instanceof Bool && condition.value === true) {
-        return writeMaybeEvaluatedControlOutput(branch.rules.eval(context), context, buffer, options);
+        return writeSelectedOutput(buffer, branch.rules.eval(context), context, options);
       }
     }
     return '';
