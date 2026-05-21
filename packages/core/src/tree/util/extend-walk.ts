@@ -881,7 +881,7 @@ function walkPseudoTailAware(
       return pseudo;
     }
 
-    const newList = SelectorList.create([...originals, ...appended]).inherit(arg);
+    const newList = SelectorList.create(copySelectorsForPlacement([...originals, ...appended])).inherit(arg);
     const result = PseudoSelector.create({
       name: pseudo.value.name,
       arg: newList

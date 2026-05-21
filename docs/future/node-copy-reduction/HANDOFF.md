@@ -77,6 +77,9 @@ current state, immediate queue, and verification commands.
 - Pseudo-argument extend appends now use the same owned placement-copy helper
   as selector-list append paths, with a parentage test proving the source
   pseudo arg and extender are not stolen by generated output.
+- The walk-and-consume extend path now also copies unchanged `:is(...)`
+  alternatives into generated argument lists instead of reparenting source
+  alternatives.
 
 ## Immediate Queue
 
@@ -90,8 +93,9 @@ hotter.
      finalization. The extend declaration registration branch has been
      centralized, generated `:is(...)` wrapper construction now has one
      placement-copy step, pseudo-argument appends route through owned placement
-     copies, and the walk path is assertion-clean now. Do not split those
-     ownership paths again.
+     copies, and the walk path is assertion-clean and uses placement copies for
+     changed `:is(...)` argument lists. Do not split those ownership paths
+     again.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
 2. **Context shadow state.**
