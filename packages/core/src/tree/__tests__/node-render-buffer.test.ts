@@ -592,4 +592,60 @@ describe('renderNodeToBuffer', () => {
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
+
+  it('renders control nodes directly without public resolve', async () => {
+    const context = new Context();
+    const root = await rules([]).eval(context);
+    context.root = root;
+    context.rulesContext = root;
+
+    const cases = [
+      {
+        surface: 'If',
+        node: ifNode({
+          branches: [
+            { condition: bool(true), rules: rules([decl({ name: 'color', value: any('red') })]) },
+            { rules: rules([decl({ name: 'color', value: any('blue') })]) }
+          ]
+        }),
+        expected: 'color: red;'
+      },
+      {
+        surface: 'For',
+        node: forNode({
+          pattern: { kind: 'single', value: vardecl({ name: 'item', value: nil() }, { paramVar: true }) },
+          iterable: {
+            kind: 'range',
+            start: dimension([1]),
+            end: dimension([1]),
+            includeStart: true,
+            includeEnd: true
+          },
+          rules: rules([decl({ name: 'width', value: ref({ key: 'item' }, { type: 'variable' }) })])
+        })
+      },
+      {
+        surface: 'While',
+        node: whileNode({
+          condition: bool(false),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        }),
+        expected: ''
+      }
+    ];
+
+    for (const item of cases) {
+      item.node.resolve = () => {
+        throw new Error(`${item.surface} direct render should use native control evaluation`);
+      };
+
+      const rendered = await Promise.resolve(item.node.render(context));
+      expect(typeof rendered, item.surface).toBe('string');
+      if ('expected' in item) {
+        expect(rendered, item.surface).toBe(item.expected);
+      }
+      expect(item.node.evaluated, item.surface).toBe(false);
+      expect(item.node.registrationPrepared, item.surface).toBe(false);
+    }
+  });
 });
