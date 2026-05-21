@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { Context } from '../../../context.js';
+import { OutputWriter, getPrintOptions } from '../print.js';
 import {
   addExtendRecord,
   createHoistBlock,
@@ -12,6 +14,7 @@ import {
   finalizeRenderBuffer,
   isRenderBuffer,
   pushRenderSegment,
+  renderSourceOutput,
   writeSegmentText,
   writeRenderText,
   type HoistBlock,
@@ -43,6 +46,26 @@ describe('RenderBuffer', () => {
     expect(buffer.parts).toEqual(['.a', ' { color: red; }']);
     expect(finalizeRenderBuffer(buffer, finalizers)).toBe('.a { color: red; }');
     expect(finalizeFlatRenderBuffer(buffer)).toBe('.a { color: red; }');
+  });
+
+  it('renders source output through isolated buffer print state', () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const writer = new OutputWriter();
+    const source = {
+      toTrimmedString(options?: Parameters<typeof getPrintOptions>[0]) {
+        getPrintOptions(options).writer.add('source-output');
+        return 'source-output';
+      }
+    };
+
+    expect(renderSourceOutput(context, source, { writer })).toBe('source-output');
+    expect(writer.toString()).toBe('source-output');
+
+    const bufferWriter = new OutputWriter();
+    expect(renderSourceOutput(context, source, buffer, { writer: bufferWriter })).toBe('source-output');
+    expect(buffer.parts).toEqual(['source-output']);
+    expect(bufferWriter.toString()).toBe('');
   });
 
   it('chooses flat mode until delayed finalization is needed', () => {
