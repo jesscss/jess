@@ -1166,7 +1166,14 @@ export abstract class Node<
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   render(context: Context, options?: PrintOptions): string;
   render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    const renderOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    let renderOptions: PrintOptions | undefined;
+    if (isRenderBuffer(bufferOrOptions)) {
+      const bufferOptions = { ...options };
+      delete bufferOptions.writer;
+      renderOptions = bufferOptions;
+    } else {
+      renderOptions = bufferOrOptions;
+    }
     const prepared = prepareRenderPrintState(context, renderOptions);
     const out = this.toTrimmedString(prepared);
     return isRenderBuffer(bufferOrOptions)

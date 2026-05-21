@@ -1,12 +1,6 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import {
-  isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
-} from './util/render-buffer.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 export interface Bool extends Node<boolean> {
   eval(context: Context): Bool;
@@ -34,15 +28,6 @@ export class Bool extends Node<boolean> {
     const mark = w.mark();
     w.add(this.value ? 'true' : 'false', this);
     return w.getSince(mark);
-  }
-
-  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
-  override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderText(bufferOrOptions, this.value ? 'true' : 'false');
-    }
-    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override resolve(_context: Context): this {

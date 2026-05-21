@@ -6,12 +6,6 @@ import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from 
 import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import {
-  isRenderBuffer,
-  type RenderBuffer,
-  writeRenderText
-} from './util/render-buffer.js';
 
 export type AnyRole =
   'ident'
@@ -76,15 +70,6 @@ export class Any<
 
   override resolve(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
-  }
-
-  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
-  override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRenderText(bufferOrOptions, this.value);
-    }
-    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
