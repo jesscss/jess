@@ -113,8 +113,8 @@ Priority seams:
    node and only need to route it through direct string vs buffer render. It is
    not a public model and should not grow new semantics. Direct
    `renderSelectedOutput(...)` / `writeSelectedOutput(...)` usage should stay
-   centralized inside render-buffer utilities, `$if` branch streaming, or the
-   root-aware `Rules` serializer exception.
+   centralized inside render-buffer utilities or the root-aware `Rules`
+   serializer exception.
 
 ## Guardrails
 

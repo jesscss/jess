@@ -18,7 +18,6 @@ const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
 const allowedSelectedOutputFiles = new Set([
-  'packages/core/src/tree/control.ts',
   'packages/core/src/tree/rules.ts'
 ]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
@@ -90,7 +89,7 @@ for (const file of files) {
 console.log('');
 console.log('Direct selected-output helper sites:');
 if (selectedOutputMatches.length === 0) {
-  console.log('- none outside allowed control/root-aware rules surfaces');
+  console.log('- none outside allowed root-aware rules surfaces');
 }
 for (const file of [...new Set(selectedOutputMatches.map(match => match.file))].sort()) {
   console.log(`- ${file}`);

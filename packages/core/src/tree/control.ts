@@ -15,8 +15,8 @@ import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-fram
 import {
   createRenderBuffer,
   isRenderBuffer,
-  type RenderBuffer,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 const PUBLIC_RULE_VISIBILITY = {
@@ -351,11 +351,11 @@ export class If extends Node<IfValue> {
   ): Promise<string> {
     for (const branch of this.value.branches) {
       if (!branch.condition) {
-        return writeSelectedOutput(buffer, branch.rules.eval(context), context, options);
+        return renderChosenOutput(context, branch.rules.eval(context), buffer, options);
       }
       const condition = await branch.condition.eval(context);
       if (condition instanceof Bool && condition.value === true) {
-        return writeSelectedOutput(buffer, branch.rules.eval(context), context, options);
+        return renderChosenOutput(context, branch.rules.eval(context), buffer, options);
       }
     }
     return '';
