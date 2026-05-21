@@ -8,8 +8,7 @@ const scanRoots = [
   path.join(rootDir, 'packages/jess/src')
 ];
 const ignoredSegments = new Set([
-  '__tests__',
-  'util'
+  '__tests__'
 ]);
 
 const frontierPattern = /\b(?:resolved|evald|evaluated)\.toTrimmedString\(\s*prepared\s*\)/u;
