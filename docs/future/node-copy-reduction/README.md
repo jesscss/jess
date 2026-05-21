@@ -108,12 +108,13 @@ Priority seams:
    loop live slots, and similar render/eval shadow state are suspect surfaces.
    Keep them only where they express live scope or placement state better than
    copied nodes.
-5. **Selected-output helper cleanup**: `renderSelectedOutput(...)` and
-   `writeSelectedOutput(...)` are temporary consolidation helpers, not a
-   permanent public model. They are acceptable while direct string render and
-   buffer render still share maybe-async selected-output plumbing. As node
-   render paths converge on native buffer/writer output, either collapse these
-   helpers into one clearer serializer boundary or remove them entirely.
+5. **Chosen-output helper cleanup**: `renderChosenOutput(...)` is the current
+   narrow overload helper for nodes that already selected an evaluated output
+   node and only need to route it through direct string vs buffer render. It is
+   not a public model and should not grow new semantics. Direct
+   `renderSelectedOutput(...)` / `writeSelectedOutput(...)` usage should stay
+   centralized inside render-buffer utilities, `$if` branch streaming, or the
+   root-aware `Rules` serializer exception.
 
 ## Guardrails
 
@@ -131,15 +132,18 @@ Priority seams:
   - `writeNoOutput(...)` / `renderNoOutput(...)` evaluate invisible
     side-effect output and intentionally emit nothing.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
+  - `renderChosenOutput(...)` routes an already-chosen evaluated node through
+    string or buffer render overloads without duplicating node-local promise
+    plumbing.
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
   - `writeSelectedOutput(...)` only removes promise plumbing.
   - root-aware selected-output helpers only preserve the `Rules` root
     serializer exception.
-- The selected-output helper names describe the current serializer boundary,
-  not a desired long-term abstraction family. Do not add new wrapper layers
-  around them; prefer shrinking or deleting these helpers when the surrounding
-  render path no longer needs them.
+- These helper names describe the current serializer boundary, not a desired
+  long-term abstraction family. Do not add new wrapper layers around them;
+  prefer shrinking or deleting helpers when the surrounding render path no
+  longer needs them.
 - Invisible registration or side-effect nodes should stay invisible unless a
   focused output test proves a real render seam.
 - If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a

@@ -117,16 +117,20 @@ it is for the current direction and next seams, not a historical pass log.
   - `writeNoOutput(...)` / `renderNoOutput(...)` evaluate invisible
     side-effect output and intentionally emit nothing.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
+  - `renderChosenOutput(...)` routes an already-chosen evaluated node through
+    direct string or buffer render overloads without letting individual node
+    classes duplicate promise/buffer branching.
   - `renderSelectedOutput(...)` serializes an already-chosen evaluated
     node to the active print state without writing to a render buffer.
   - `writeSelectedOutput(...)` removes promise plumbing only.
   - root-aware selected-output helpers only preserve the `Rules` root
     serializer exception.
-- Treat `renderSelectedOutput(...)` and `writeSelectedOutput(...)` as
-  cleanup targets. They exist to remove repeated maybe-async selected-output
-  boilerplate while direct render and buffer render are converging. Once the
-  native render path owns that consistently, collapse them into a clearer
-  serializer boundary or delete them.
+- Treat `renderChosenOutput(...)`, `renderSelectedOutput(...)`, and
+  `writeSelectedOutput(...)` as cleanup targets. `renderChosenOutput(...)`
+  is acceptable for current node render overloads, but direct selected-output
+  helper usage should not re-spread across node classes. Keep the remaining
+  direct sites limited to control branch streaming and root-aware `Rules`
+  output unless a focused test proves another real boundary.
 - Do not add native buffer render to invisible or compile-time side-effect
   nodes unless a focused test proves a real output seam.
 - Tests may use `renderNodeToString(...)`, but production render code should

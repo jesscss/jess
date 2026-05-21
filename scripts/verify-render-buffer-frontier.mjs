@@ -12,9 +12,14 @@ const ignoredSegments = new Set([
   'util'
 ]);
 const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
+const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput|writeRootAwareSelectedOutput)\b/u;
 const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buffer/u;
 const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
+]);
+const allowedSelectedOutputFiles = new Set([
+  'packages/core/src/tree/control.ts',
+  'packages/core/src/tree/rules.ts'
 ]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
 const expectedControlIterationRenderSites = 2;
@@ -38,6 +43,7 @@ function walk(dir) {
 }
 
 const matches = [];
+const selectedOutputMatches = [];
 const controlIterationRenderMatches = [];
 for (const scanRoot of scanRoots) {
   if (!fs.existsSync(scanRoot)) {
@@ -52,6 +58,13 @@ for (const scanRoot of scanRoots) {
     source.split(/\r?\n/u).forEach((line, index) => {
       if (frontierPattern.test(line)) {
         matches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (
+        selectedOutputPattern.test(line)
+        && !allowedFiles.has(relative)
+        && !allowedSelectedOutputFiles.has(relative)
+      ) {
+        selectedOutputMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
       if (controlIterationRenderPattern.test(line)) {
         controlIterationRenderMatches.push({ file: relative, line: index + 1, text: line.trim() });
@@ -75,6 +88,17 @@ for (const file of files) {
   }
 }
 console.log('');
+console.log('Direct selected-output helper sites:');
+if (selectedOutputMatches.length === 0) {
+  console.log('- none outside allowed control/root-aware rules surfaces');
+}
+for (const file of [...new Set(selectedOutputMatches.map(match => match.file))].sort()) {
+  console.log(`- ${file}`);
+  for (const match of selectedOutputMatches.filter(match => match.file === file)) {
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+}
+console.log('');
 console.log('Control native iteration render sites:');
 if (controlIterationRenderMatches.length === 0) {
   console.log('- none');
@@ -88,6 +112,14 @@ if (matches.length > 0) {
   console.log('');
   console.log(
     'Production render paths should call node render methods directly; keep renderNodeTo* helpers in tests/util only.'
+  );
+  process.exitCode = 1;
+}
+
+if (selectedOutputMatches.length > 0) {
+  console.log('');
+  console.log(
+    'Node render overloads should route chosen evaluated output through renderChosenOutput; keep direct selected-output helpers centralized.'
   );
   process.exitCode = 1;
 }
