@@ -3571,6 +3571,20 @@ function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
   return getSimpleCallableSelectorKey(ruleset.value.selector);
 }
 
+async function withMixinCallRulesContext<T>(
+  context: Context,
+  rulesContext: Context['rulesContext'],
+  work: () => MaybePromise<T>
+): Promise<T> {
+  const savedRulesContext = context.rulesContext;
+  context.rulesContext = rulesContext;
+  try {
+    return await work();
+  } finally {
+    context.rulesContext = savedRulesContext;
+  }
+}
+
 /**
  * A collection of resolved mixin candidates that can be called directly.
  *
@@ -3595,11 +3609,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
     let evalCandidates: MixinEntry[];
     const thisContext = context;
     let caller = thisContext.caller;
-    let nodeArgs: Node[] = [];
-    const savedRulesContext = thisContext.rulesContext;
-    const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? savedRulesContext;
-    thisContext.rulesContext = argEvalRulesContext;
-    try {
+    const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
+    const nodeArgs = await withMixinCallRulesContext(thisContext, argEvalRulesContext, async () => {
+      const evaluatedArgs: Node[] = [];
       for (let arg of (args?.value ?? [])) {
         /**
          * I think they should always be nodes?
@@ -3610,7 +3622,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           // Evaluating them can register/override variables in the current scope.
           // They should only be used for parameter binding.
           if (isNode(arg, N.VarDeclaration)) {
-            nodeArgs.push(arg);
+            evaluatedArgs.push(arg);
             continue;
           }
           const evald = await arg.eval(thisContext);
@@ -3618,20 +3630,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
             const restValue = evald.value;
             if (isNode(restValue, N.Sequence) || isNode(restValue, N.List)) {
               for (const restArg of restValue.value) {
-                nodeArgs.push(restArg);
+                evaluatedArgs.push(restArg);
               }
               continue;
             }
           }
           evald.frozen = true;
-          nodeArgs.push(evald);
+          evaluatedArgs.push(evald);
         } else {
-          nodeArgs.push(cast(arg));
+          evaluatedArgs.push(cast(arg));
         }
       }
-    } finally {
-      thisContext.rulesContext = savedRulesContext;
-    }
+      return evaluatedArgs;
+    });
     /**
      * Check named and positional arguments
      * against mixins, to see which ones match.
@@ -4171,13 +4182,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
-        let originalContext = thisContext.rulesContext;
-        thisContext.rulesContext = rules;
-        try {
-          rules = await rules.eval(thisContext);
-        } finally {
-          thisContext.rulesContext = originalContext;
-        }
+        rules = await withMixinCallRulesContext(thisContext, rules, () => rules.eval(thisContext));
         callParent.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
@@ -4525,17 +4530,13 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (pending.group !== DEF_NONE && pending.group !== defaultResult) {
           continue;
         }
-        const previousRulesContext = thisContext.rulesContext;
-        thisContext.rulesContext = pending.rules;
-        try {
-          await evaluateCandidateOutput(
+        await withMixinCallRulesContext(thisContext, pending.rules, () =>
+          evaluateCandidateOutput(
             pending.candidate,
             pending.rules,
             pending.params
-          );
-        } finally {
-          thisContext.rulesContext = previousRulesContext;
-        }
+          )
+        );
       }
     }
 
