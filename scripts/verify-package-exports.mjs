@@ -5,6 +5,12 @@ import path from 'node:path';
 const rootDir = path.resolve(import.meta.dirname, '..');
 const packagesDir = path.join(rootDir, 'packages');
 const orderedConditions = ['types', 'source', 'import', 'require'];
+const forbiddenRootExportPatterns = [
+  {
+    pattern: /export \* from ['"]\.\/tree\/util\/render-buffer\.js['"]/u,
+    message: '@jesscss/core root must not re-export render-buffer internals'
+  }
+];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -30,6 +36,16 @@ function checkExportConditions(packageName, exportPath, value, failures) {
 }
 
 const failures = [];
+const coreIndexPath = path.join(rootDir, 'packages/core/src/index.ts');
+if (fs.existsSync(coreIndexPath)) {
+  const coreIndexSource = fs.readFileSync(coreIndexPath, 'utf8');
+  for (const forbidden of forbiddenRootExportPatterns) {
+    if (forbidden.pattern.test(coreIndexSource)) {
+      failures.push(`@jesscss/core root export: ${forbidden.message}`);
+    }
+  }
+}
+
 for (const dirent of fs.readdirSync(packagesDir, { withFileTypes: true })) {
   if (!dirent.isDirectory()) {
     continue;

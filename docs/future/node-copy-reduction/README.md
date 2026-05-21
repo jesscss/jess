@@ -39,7 +39,8 @@ selector placement truly needs one.
 - The compiler render phase writes the evaluated root through a flat render
   buffer and finalizes that buffer. Production render paths must not call
   `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, or
-  `renderNodeToString(...)`; those helpers are test/utility bridges only.
+  `renderNodeToString(...)`; those helpers are test/utility bridges only and
+  are not re-exported from the `@jesscss/core` package root.
 - `preRenderVisitor` is the direct hook name for visitors that run after
   evaluation and before serialization. `postEvalVisitor` remains a compatibility
   alias for older plugin callers.
