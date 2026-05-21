@@ -10,7 +10,7 @@ import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
 import type { Num } from './number.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
 import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
@@ -26,7 +26,14 @@ import { comparePosition } from './util/compare.js';
 import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
-import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  renderMaybeRenderedOutput,
+  writeMaybeRenderedOutput
+} from './util/render-buffer.js';
+import type { Mixin } from './mixin.js';
+import type { Ruleset } from './ruleset.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -459,7 +466,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (const node of selector.value as Node[]) {
+    for (const node of selector.value) {
       if (
         isNode(node, N.BasicSelector)
         || isNode(node, N.CompoundSelector)
@@ -1224,7 +1231,7 @@ function materializeMixinCollectionTarget(
 }
 
 type JsFunctionTarget = Node<(...args: unknown[]) => unknown>;
-type RulesLikeTarget = Node<{ rules: Rules }>;
+type RulesLikeTarget = Mixin | Ruleset;
 
 function materializeJsFunctionTarget(
   resolvedTarget: JsFunctionTarget,
@@ -1268,8 +1275,11 @@ function materializeReferenceTarget(args: {
   if (isNode(resolvedTarget, N.JsFunction)) {
     return materializeJsFunctionTarget(resolvedTarget, valueKey, context);
   }
-  if (isNode(resolvedTarget, N.Mixin) || isNode(resolvedTarget, N.Ruleset)) {
-    return materializeRulesLikeTarget(resolvedTarget as RulesLikeTarget, valueKey, context);
+  if (isNode(resolvedTarget, N.Mixin)) {
+    return materializeRulesLikeTarget(resolvedTarget, valueKey, context);
+  }
+  if (isNode(resolvedTarget, N.Ruleset)) {
+    return materializeRulesLikeTarget(resolvedTarget, valueKey, context);
   }
 
   return [resolvedTarget, valueKey];
@@ -1389,7 +1399,7 @@ function createDirectCallableReferenceResult(
     if (!isNode(item, N.Mixin) && !isNode(item, N.Ruleset)) {
       return cast(undefined);
     }
-    const callableItem = item as Extract<MixinEntry, Node>;
+    const callableItem = item;
     if (referenceNode.options?.type === 'mixin-ruleset') {
       callableItem.frozen = true;
       if ('sourceNode' in callableItem && isNode(callableItem.sourceNode)) {
@@ -1946,11 +1956,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    const value = this.evalNode(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(node => node.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(this.evalNode(context), context, bufferOrOptions);
   }
 
   /**

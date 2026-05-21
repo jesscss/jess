@@ -15,8 +15,13 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
-import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState, savePrintState, restorePrintState } from './util/print.js';
-import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
+import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  renderMaybeRenderedOutput,
+  writeMaybeRenderedOutput
+} from './util/render-buffer.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
@@ -332,10 +337,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, value, context, options);
     }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(node => node.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(value, context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

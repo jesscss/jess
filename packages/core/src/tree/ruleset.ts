@@ -21,13 +21,17 @@ import {
   savePrintState,
   restorePrintState,
   getCachedComposedSelector,
-  setCachedComposedSelector,
-  prepareRenderPrintState
+  setCachedComposedSelector
 } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
-import { isRenderBuffer, type RenderBuffer, writeMaybeRenderedOutput } from './util/render-buffer.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer,
+  renderMaybeRenderedOutput,
+  writeMaybeRenderedOutput
+} from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
@@ -419,7 +423,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
           // Simple or Compound parent: single-component insertion, always safe.
           newParts.push(Ruleset._toComplexComponent(parent));
         }
-      } else if (!isNode(part, N.Combinator) && (part as Node).hasFlag(F_AMPERSAND)) {
+      } else if (!isNode(part, N.Combinator) && part.hasFlag(F_AMPERSAND)) {
         const rightTight = Ruleset._isTightCombinatorAt(parts, i + 1);
         const allowSmartSpliceInPlace = i === 0 && !rightTight;
         const sub = Ruleset._substituteAmpersand(
@@ -581,10 +585,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, value, context, options);
     }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(node => node.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(value, context, bufferOrOptions);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
@@ -774,7 +775,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (kept.length === 1) {
       return kept[0]!;
     }
-    return SelectorList.create(kept).inherit(parent) as Selector;
+    return SelectorList.create(kept).inherit(parent);
   }
 
   static expandGeneratedIsForReferenceCompose(selector: Selector): Selector | undefined {
@@ -801,7 +802,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       if (expanded.length === 1) {
         return expanded[0]!;
       }
-      return SelectorList.create(expanded).inherit(selector) as Selector;
+      return SelectorList.create(expanded).inherit(selector);
     }
 
     if (!isNode(selector, N.ComplexSelector)) {
@@ -881,7 +882,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (expanded.length === 1) {
       return expanded[0]!;
     }
-    return SelectorList.create(expanded).inherit(selector) as Selector;
+    return SelectorList.create(expanded).inherit(selector);
   }
 
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
