@@ -7,7 +7,7 @@ const packagesDir = path.join(rootDir, 'packages');
 const orderedConditions = ['types', 'source', 'import', 'require'];
 const forbiddenRootExportPatterns = [
   {
-    pattern: /export \* from ['"]\.\/tree\/util\/render-buffer\.js['"]/u,
+    pattern: /export\s+(?:\*|\{[^}]*\})\s+from\s+['"]\.\/tree\/util\/render-buffer\.js['"]/u,
     message: '@jesscss/core root must not re-export render-buffer internals'
   }
 ];
