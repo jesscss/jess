@@ -3,10 +3,8 @@ import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 export type RangeValue = {
@@ -44,10 +42,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
-    }
-    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

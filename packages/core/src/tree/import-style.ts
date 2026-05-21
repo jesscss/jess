@@ -16,10 +16,8 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
 
@@ -242,16 +240,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
-  private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Rules> {
+  private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Collection> {
     if (isNode(withNode, N.Reference)) {
       const evaluated = await withNode.eval(context);
       if (!isNode(evaluated, N.Collection)) {
         throw new Error('with/set node must evaluate to a Collection');
       }
-      return evaluated as Rules;
+      return evaluated;
     }
 
-    return withNode as Rules;
+    return withNode;
   }
 
   private partitionConfiguredNodes(sourceRules: Rules, withRules: Rules): {
@@ -851,10 +849,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
-    }
-    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

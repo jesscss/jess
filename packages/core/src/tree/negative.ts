@@ -4,10 +4,8 @@ import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 export class Negative extends Node<Node> {
@@ -33,10 +31,7 @@ export class Negative extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(bufferOrOptions, this.evalNode(context), context, options);
-    }
-    return renderSelectedOutput(this.evalNode(context), context, bufferOrOptions);
+    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
