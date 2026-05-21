@@ -14,6 +14,7 @@ const ignoredSegments = new Set([
 const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
 const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput)\b/u;
 const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buffer/u;
+const internalHelperExportPattern = /^export function (?:renderNoOutput|writeNoOutput|writeRenderedOutput|writeRootAwareOutput)\b/u;
 const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
@@ -41,6 +42,7 @@ function walk(dir) {
 const matches = [];
 const selectedOutputMatches = [];
 const controlIterationRenderMatches = [];
+const internalHelperExportMatches = [];
 for (const scanRoot of scanRoots) {
   if (!fs.existsSync(scanRoot)) {
     continue;
@@ -63,6 +65,9 @@ for (const scanRoot of scanRoots) {
       }
       if (controlIterationRenderPattern.test(line)) {
         controlIterationRenderMatches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (internalHelperExportPattern.test(line)) {
+        internalHelperExportMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -102,6 +107,15 @@ for (const match of controlIterationRenderMatches) {
   console.log(`- ${match.file}`);
   console.log(`  ${match.line}: ${match.text}`);
 }
+console.log('');
+console.log('Internal render helper exports:');
+if (internalHelperExportMatches.length === 0) {
+  console.log('- none');
+}
+for (const match of internalHelperExportMatches) {
+  console.log(`- ${match.file}`);
+  console.log(`  ${match.line}: ${match.text}`);
+}
 
 if (matches.length > 0) {
   console.log('');
@@ -115,6 +129,14 @@ if (selectedOutputMatches.length > 0) {
   console.log('');
   console.log(
     'Node render overloads should route chosen evaluated output through renderChosenOutput; do not reintroduce selected-output helper surfaces.'
+  );
+  process.exitCode = 1;
+}
+
+if (internalHelperExportMatches.length > 0) {
+  console.log('');
+  console.log(
+    'Low-level render-buffer helpers should stay internal; node code should use the narrow public render helper surface.'
   );
   process.exitCode = 1;
 }
