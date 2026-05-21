@@ -11,8 +11,8 @@ as active guidance.
 For active execution, prefer:
 
 1. `AGENTS.md`
-2. `docs/future/node-copy-reduction/README.md`
-3. `docs/future/node-copy-reduction/HANDOFF.md`
+2. `docs/future/node-copy-reduction/HANDOFF.md`
+3. `docs/future/node-copy-reduction/README.md`
 4. `docs/future/pre-eval-elimination.md`
 
 Do not recreate the retired task registry, task loop, or auto-loop machinery
@@ -132,7 +132,9 @@ tests. Do not move trivia back onto nodes.
 
 ### Track 5 — Pre-Eval Elimination / Buffered Render
 
-Open and active after the current node-copy cleanup frontier.
+Open and active. The live checkpoint queue for this track is
+`docs/future/node-copy-reduction/HANDOFF.md`; this section is only the
+high-level roadmap.
 
 Target shape:
 
@@ -167,10 +169,11 @@ Current implementation state:
 - Reference visibility, selector finalization, and hoist/merge finalization are
   still post-step work.
 
-## Active Todo List
+## Reference Roadmap
 
-Use this list as the roadmap after the current node-copy frontier check is
-clean:
+This list is not the active queue. Use
+`docs/future/node-copy-reduction/HANDOFF.md` for immediate next work and exact
+verification. Keep this list as the broader roadmap only.
 
 1. Keep reducing routine `clone()` / defensive copy boundaries where focused
    tests prove the source tree stays canonical.
@@ -190,9 +193,9 @@ clean:
    and reference visibility.
 7. Migrate `extend-roots.ts` reachability logic toward a pure
    `ExtendRoot x ExtendRoot` predicate usable by the post-step.
-8. Remove base-class `preEval` / generic eval stamping / compatibility
-    serialization bridges only after node-level replacements and parity
-    coverage prove they are unused.
+8. Keep shrinking registration prep and compatibility serialization bridges.
+   Public `preEval()` and the old eval stamp are gone; do not recreate them
+   under different names.
 
 ## Guardrails
 

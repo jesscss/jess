@@ -3,12 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = path.resolve(import.meta.dirname, '..');
-const scanRoots = [
-  'packages/core/src',
-  'packages/jess/src',
-  'packages/less-parser/src',
-  'packages/scss-parser/src'
-];
+const packagesDir = path.join(rootDir, 'packages');
 const ignoredSegments = new Set([
   '__tests__',
   'lib'
@@ -42,6 +37,16 @@ const allowedOrdinaryClonePatterns = [
 ];
 const expectedRemaining = new Set();
 const expectedLoopEvalSurfaceCopies = new Set();
+
+function getScanRoots() {
+  if (!fs.existsSync(packagesDir)) {
+    return [];
+  }
+  return fs.readdirSync(packagesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => path.join(packagesDir, dirent.name, 'src'))
+    .filter(sourceDir => fs.existsSync(sourceDir));
+}
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -83,12 +88,11 @@ const matches = [];
 const ordinaryCopyMatches = [];
 const ordinaryCloneMatches = [];
 const loopEvalSurfaceCopyMatches = [];
-for (const scanRoot of scanRoots) {
-  const absoluteRoot = path.join(rootDir, scanRoot);
-  if (!fs.existsSync(absoluteRoot)) {
+for (const scanRoot of getScanRoots()) {
+  if (!fs.existsSync(scanRoot)) {
     continue;
   }
-  for (const file of walk(absoluteRoot)) {
+  for (const file of walk(scanRoot)) {
     const relative = path.relative(rootDir, file);
     const source = fs.readFileSync(file, 'utf8');
     source.split(/\r?\n/u).forEach((line, index) => {

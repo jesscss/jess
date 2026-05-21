@@ -1,164 +1,134 @@
 # Node Copy Reduction — Handoff
 
-## Start Here
+## Open This First
 
-Read this file and [README.md](./README.md). This folder is intentionally small:
-it is for the current direction and next seams, not a historical pass log.
+This is the live status and next-work page for the eval/render/copy refactor.
+Keep it current enough that an agent can open this file, see where the repo is,
+and pick the next honest checkpoint without rebuilding weeks of context.
 
-## Rules
+Use [README.md](./README.md) for the architecture rules. Use this file for the
+current state, immediate queue, and verification commands.
 
-- Preserve Jess behavior.
-- Work from repo evidence first.
-- Prefer small, verifiable production changes.
-- Do not weaken tests or fixture expectations to make migration work look done.
-- Reduce and, where possible, eliminate copy/clone from normal eval flow.
-- Keep pushing compile toward contextual resolve/render emission, not a full
-  evaluated-tree materialization followed by whole-tree serialization.
-- Improving a legacy copy path is only a stopgap when callers still require an
-  owned surface today.
-- Keep semantic wrapper surfaces when they carry real scope, registry,
-  import/reference, merge, generated selector placement, or output ownership.
-- Keep render bridge state ownership centralized. Fresh render traversals reset
-  context-owned print state; nested bridges reuse active writer/frame/trivia
-  state through `prepareRenderPrintState(...)`.
-- Treat `Context.rulesContext`, `ScopeFrame.fallbackFrame`, deep clone, and
-  materialization as suspect surfaces, not automatic bugs.
-- Use `F_STATIC` resolve fast paths only for canonical, already-static nodes
-  whose resolve contract is unchanged by returning early. Prove each one with a
-  focused test that makes child resolution fail if it is accidentally called.
-- When a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer
-  a parser-accurate focused core repro first when practical.
-- Update these docs only when the active frontier or rule set changes.
+## Status Snapshot
 
-## Current State
-
-- `pnpm run verify:baseline`, `pnpm run verify:node-copy-frontier`,
-  `pnpm run verify:render-buffer-frontier`, and
-  `pnpm run verify:materialization-frontier` are the active truth checks.
-  The broad baseline includes core, parser, Less fixture, less-compat,
-  frontier, package-export, and node-constructor metadata coverage;
-  render-buffer and materialization frontier scans cover production package
-  `src` trees across the monorepo;
-  changed-only mode intentionally runs the full baseline when verifier scripts
-  or root dependency metadata changed. Changed-only mode includes local
-  unstaged and staged files as well as committed branch diff. The pre-push
-  gate shares the same root-gate rules; its generated upstream TODO report is
-  ignored by git and removed after a clean upstream run.
-- Public CSS output goes through eval/render: `render(...)`,
-  `renderString(...)`, `renderToResult(...)`, and `safeRender(...)`.
-  `safeCompile(...)` remains the compatibility/debug API for callers that need
-  a tree surface.
-- The public `preEval()` method and the old `preEvaluated` flag are removed.
+- Public CSS output APIs (`render(...)`, `renderString(...)`,
+  `renderToResult(...)`, and `safeRender(...)`) use the awaited eval/render
+  path. `safeCompile(...)` remains the explicit compatibility/debug API for
+  callers that need a tree surface.
+- The public `preEval()` method and old `preEvaluated` flag are gone.
   Registration identity setup is explicit through `prepareRegistration()` and
-  tracked with `registrationPrepared`.
+  tracked by `registrationPrepared`.
 - The compiler render phase writes through `Rules.render(...)` into a flat
-  render buffer. Production code should not call `renderNodeToBuffer(...)`,
-  `renderNodeToWriter(...)`, or `renderNodeToString(...)`; those bridge
-  helpers are internal/test utility plumbing, not package-root API surfaces.
-  Keep the package-root render-buffer export limited to the flat compiler
-  buffer constructor/finalizer surface and their types unless a production
-  caller proves another narrow need.
-- `$if`, `$for`, and `$while` avoid control-wrapper materialization in buffer
-  render. `$if` renders only the selected branch output; `$for` and `$while`
-  render per iteration. `$while` loop-body variable mutation is carried in a
-  live `ScopeFrame` surface between iterations, not in a full output tree.
+  render buffer. Production code must not call the bridge helpers
+  `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, or
+  `renderNodeToString(...)`; those are internal/test utilities.
+- The package-root render-buffer export is intentionally narrow:
+  `createRenderBuffer`, `finalizeFlatRenderBuffer`, and their types. Do not
+  export bridge helpers from the root package.
 - The base `Node.render(context)` implementation is a direct source serializer,
   not a resolve/eval-then-serialize fallback. Context-dependent nodes must
-  override `render(...)`, choose the evaluated value locally, and serialize that
-  value through the shared print-state machinery. If local child resolution is
-  async, the native direct render path should await that chosen value rather
-  than serialize source syntax while the buffer path emits evaluated output.
-  Static or source-only direct `Node` subclasses should inherit base render
-  instead of keeping local source-string/buffer branches.
-- `$while` currently has explicit focused guards for native buffer rendering,
-  no `Rules.clone()` loop-body surface, and no scalar leaf copy/clone inside
-  per-iteration body copies. `$for` and `$while` reuse static and dynamic direct
-  body children from the canonical body without reparenting them; frozen
-  non-static placement nodes re-evaluate instead of retaining a per-placement
-  eval stamp.
-- The stateful loop parity guard intentionally checks that native render and
-  eval serialization stay aligned. It does not bless or change the exact
-  same-iteration `$while` mutation timing; settle that as a runtime semantics
-  change before changing expectations.
-- The old per-node render-buffer checklist is done enough to be history. Do not
-  re-create it. The useful question now is whether a seam still materializes an
-  output tree when it could stream or use smaller contextual state.
+  choose their evaluated output locally and serialize through shared print
+  state.
+- `$if`, `$for`, and `$while` avoid materializing control-wrapper output before
+  buffer render. `$if` renders only the selected branch; `$for` and `$while`
+  render per iteration.
+- `$while` carries body variable mutation in a live `ScopeFrame`, not in a
+  full output tree. Same-iteration mutation visibility is runtime semantics,
+  not a copy-reduction cleanup.
+- `$for` and `$while` reuse static and dynamic direct body children from the
+  canonical body without reparenting them. Frozen non-static placement nodes
+  re-evaluate instead of retaining a per-placement eval stamp.
+- Render-buffer, materialization, and node-copy frontier scans cover production
+  package `src` trees across the monorepo, not only `packages/core`.
+- The node-copy frontier is clean for deep copy/clone, loop eval-surface child
+  copies, and ordinary production `.copy()` outside infrastructure. BitSet
+  `.clone()` calls are ignored because they are selector-index data copies, not
+  AST ownership copies.
+- Remaining wrapper/helper surfaces are not automatically bugs. Keep a wrapper
+  when it carries real scope, registry, import/reference, merge, generated
+  selector placement, delayed output, or ownership state.
 
-## Next Seams
+## Immediate Queue
 
-1. **Keep copy/clone pressure low.**
-   - A new production `.copy()` or `.clone()` site is a regression unless it
-     carries explicit scope, registry, import/reference, merge, generated
-     selector placement, or output ownership.
-   - Reusable-leaf helpers are acceptable only for containers that still prove
-     they need an owned surface.
-   - The node-copy frontier intentionally ignores BitSet `.clone()` calls;
-     those are selector-index data copies, not AST ownership copies.
-2. **Replace loop eval surfaces without losing semantics.**
-   - `$for` and `$while` no longer copy direct loop-body children into the
-     iteration eval surface. The next win is to shrink any remaining owned loop
-     output surfaces while preserving per-iteration scope, rule visibility, and
-     `$while` mutation.
-   - Keep `verify:render-buffer-frontier` and the focused control tests green
-     while changing this.
-3. **Reduce generated-output ownership carefully.**
-   - Selector expansion, extend output, direct comment children, and root
-     `Rules` serializer behavior are special because they produce placement
-     output. Change them only with parentage, visibility, and output-order tests.
-4. **Preserve function/mixin raw argument contracts.**
-   - Metadata-backed functions may need copied raw args for `this.rawArgs`,
-     `this.args()`, preprocessing, lazy params, validation, and
-     `@arguments`-style behavior.
-   - Plain functions should keep receiving positional args directly.
-5. **Audit context shadow state.**
-   - `Context.rulesContext`, `ScopeFrame.fallbackFrame`, loop live slots, and
-     similar state are acceptable only when they model live scope or placement
-     better than copied nodes.
+Work these in order unless current code evidence proves a different seam is
+hotter.
 
-## Render-Buffer Rules
+1. **Generated selector and output ownership.**
+   - Goal: reduce owned placement surfaces only where tests prove they are
+     bookkeeping, not semantics.
+   - Start in selector extension, ruleset/rules output, and generated selector
+     finalization code. Inspect extend output before editing.
+   - Required proof: focused parentage, visibility, output-order, and extend
+     tests plus the frontier checks below.
+2. **Context shadow state.**
+   - Goal: classify `Context.rulesContext`, `ScopeFrame.fallbackFrame`, loop
+     live slots, and related shadow state as keep, shrink, or remove.
+   - Keep state that models live scope or placement better than copied nodes.
+   - Required proof: focused import/reference/mixin/loop tests plus baseline
+     changed mode.
+3. **Function and mixin argument ownership.**
+   - Goal: keep copied raw args only for metadata-backed contracts that need
+     stable authored args.
+   - Preserve `this.rawArgs`, `this.args()`, preprocessing, lazy params,
+     validation, and `@arguments` behavior where tests prove that contract.
+   - Plain functions should receive positional args directly.
+4. **Chosen-output helper cleanup.**
+   - Goal: shrink helper plumbing without growing an AST-v2 buffer model.
+   - `renderChosenOutput(...)` is transitional overload routing for nodes that
+     already chose an output node. Do not add semantics to it.
+   - Delete or narrow helpers only when a node can directly choose and
+     serialize without duplicating promise/buffer branches.
+5. **Registration prep shrink.**
+   - Goal: keep `prepareRegistration()` for lookup identity only.
+   - Do not recreate `preEval()` under another name. Any new registration work
+     must be local, explicit, and tied to lookup behavior.
 
-- Keep `prepareRenderPrintState(...)` as the only bridge for active writer,
-  frame, and trivia state.
-- Buffer render helpers must use a detached writer and only append the
-  finished text to the target buffer; render-to-string bridges may pass a
-  writer or partially prepared print state for surrounding state, but buffer
-  render must not mutate or add a writer on caller-owned print options.
-- Keep shared helpers small:
-  - `writeRenderText(...)` writes already-rendered text.
-  - `writeRenderTextResult(...)` writes maybe-async rendered text.
-  - `prepareBufferPrintState(...)` preserves render state while working from a
-    shallow detached options object before anything writes into a render
-    buffer.
-  - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
-    intentionally emits nothing through either string or buffer render.
-  - `renderChosenOutput(...)` routes an already-chosen evaluated node through
-    direct string or buffer render overloads without letting individual node
-    classes duplicate promise/buffer branching.
-  - helper-local chosen-output string/write functions only remove promise and
-    buffer branching from node classes.
-  - `writeRootAwareChosenOutput(...)` only preserves the `Rules` root
-    serializer exception while writing an already-chosen output node.
-- Treat `renderChosenOutput(...)` as transitional overload plumbing. It is
-  acceptable for current node render overloads, but chosen-output string/write
-  branching should stay helper-local unless a focused test proves another real
-  boundary.
-- Keep `$for` / `$while` iteration rendering centralized through
-  `renderIterationRules(...)` in `control.ts`. The frontier verifier expects
-  one native control iteration render site; update the verifier only when the
-  loop render model itself changes.
-- Do not add native buffer render to invisible or compile-time side-effect
-  nodes unless a focused test proves a real output seam.
-- Tests may use `renderNodeToString(...)`, but production render code should
-  call node render methods directly.
+## Verification
 
-## Work Loop
+Use the nearest focused test while iterating. Before claiming a handoff-level
+status change, run:
 
-1. Pick one production seam from [README.md](./README.md).
-2. Read the relevant source and focused tests before editing.
-3. Make the smallest behavior-preserving change.
-4. Run the focused proof first.
-5. Run the nearest broader verification.
-6. Commit and push when the checkpoint is clean.
+```sh
+pnpm run verify:node-copy-frontier
+pnpm run verify:render-buffer-frontier
+pnpm run verify:materialization-frontier
+pnpm run verify:package-exports
+pnpm run verify:baseline -- --changed
+```
+
+Use the full baseline when a change touches root gates, package metadata,
+shared verifier scripts, or broad render/eval contracts:
+
+```sh
+pnpm run verify:baseline
+```
+
+## Checkpoint Rule
+
+A checkpoint is one coherent code or docs change with verification. If a seam
+is too large, finish the smallest honest slice that leaves the repo and this
+handoff more truthful than before.
+
+For each checkpoint:
+
+1. Read the relevant source and focused tests before editing.
+2. Make the smallest behavior-preserving change.
+3. Run focused proof first.
+4. Run the nearest broader verification.
+5. Update this handoff if the current state or immediate queue changed.
+6. Commit and push when clean.
+
+## Stop Conditions
+
+Stop and ask before inventing semantics when:
+
+- a fixture conflicts with documented Jess behavior;
+- a wrapper seems removable but carries scope, import/reference, selector
+  placement, or delayed-output state;
+- a red appears only in `packages/jess/test/less/all-less.test.ts` and there is
+  no focused parser/core repro yet;
+- fixing a frontier requires broad new helper families instead of deleting or
+  narrowing existing machinery.
 
 ## Do Not Resurrect
 

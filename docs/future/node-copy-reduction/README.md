@@ -2,7 +2,9 @@
 
 This folder is the active handoff for reducing and, where possible,
 eliminating routine node copying during eval. Keep it small enough to read at
-startup. Older per-file completion logs live in
+startup. Open [HANDOFF.md](./HANDOFF.md) first for current status, the
+immediate queue, and verification. This README is the architecture contract.
+Older per-file completion logs live in
 `docs/_archive/node-copy-reduction/README-2026-05-12.md`.
 
 ## Direction
@@ -97,7 +99,8 @@ The remaining work is not "add a buffer overload to every class." It is to
 remove the places where eval still creates broad output surfaces merely so a
 later serializer can walk them.
 
-Priority seams:
+These are architectural seams, not a live ordered queue. Use
+[HANDOFF.md](./HANDOFF.md) for the current order of work.
 
 1. **Loop eval surfaces**: direct loop-body child copying is no longer the
    active frontier. Keep the existing render, static-child, dynamic-child, and
