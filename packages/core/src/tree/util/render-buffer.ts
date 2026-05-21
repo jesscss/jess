@@ -1,6 +1,6 @@
 import type { Context } from '../../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { prepareRenderPrintState, type PrintOptions } from './print.js';
+import { prepareRenderPrintState, type FinalPrintOptions, type PrintOptions } from './print.js';
 
 export type RenderBufferNode = {
   resolve(context: Context): MaybePromise<RenderableOutput>;
@@ -144,7 +144,7 @@ export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<s
     : writeRenderText(buffer, text);
 }
 
-export function prepareBufferPrintState(context: Context, options?: PrintOptions): PrintOptions {
+export function prepareBufferPrintState(context: Context, options?: PrintOptions): FinalPrintOptions {
   if (!options?.writer) {
     return prepareRenderPrintState(context, options);
   }
@@ -159,16 +159,13 @@ export function renderSourceOutput(
   bufferOrOptions?: RenderBuffer | PrintOptions,
   options?: PrintOptions
 ): string {
-  const renderOptions = isRenderBuffer(bufferOrOptions)
+  const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+  const prepared = buffer
     ? prepareBufferPrintState(context, options)
-    : bufferOrOptions;
-  const out = node.toTrimmedString(
-    isRenderBuffer(bufferOrOptions)
-      ? renderOptions
-      : prepareRenderPrintState(context, renderOptions)
-  );
-  return isRenderBuffer(bufferOrOptions)
-    ? writeRenderText(bufferOrOptions, out)
+    : prepareRenderPrintState(context, bufferOrOptions);
+  const out = node.toTrimmedString(prepared);
+  return buffer
+    ? writeRenderText(buffer, out)
     : out;
 }
 
@@ -245,6 +242,15 @@ export function renderedOutputToString(
   options?: PrintOptions
 ): string {
   const prepared = prepareRenderPrintState(context, options);
+  return renderedOutputToPreparedString(source, node, context, prepared);
+}
+
+function renderedOutputToPreparedString(
+  source: RenderBufferNode,
+  node: RenderableOutput,
+  context: Context,
+  prepared: FinalPrintOptions
+): string {
   if (isRootRulesOutput(source, node, context)) {
     return node.toString(prepared);
   }
@@ -258,7 +264,10 @@ export function writeRootAwareOutput(
   context: Context,
   options?: PrintOptions
 ): string {
-  return writeRenderText(buffer, renderedOutputToString(source, node, context, prepareBufferPrintState(context, options)));
+  return writeRenderText(
+    buffer,
+    renderedOutputToPreparedString(source, node, context, prepareBufferPrintState(context, options))
+  );
 }
 
 export function writeRootAwareChosenOutput(
