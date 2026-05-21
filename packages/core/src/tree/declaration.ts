@@ -17,10 +17,8 @@ import { N } from './node-type.js';
 import type { Call } from './call.js';
 import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import {
-  isRenderBuffer,
-  type RenderBuffer,
-  renderSelectedOutput,
-  writeSelectedOutput
+  renderChosenOutput,
+  type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -333,11 +331,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const value = this.evalPrepared(context);
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeSelectedOutput(bufferOrOptions, value, context, options);
-    }
-    return renderSelectedOutput(value, context, bufferOrOptions);
+    return renderChosenOutput(context, this.evalPrepared(context), bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {
