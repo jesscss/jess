@@ -3,10 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = path.resolve(import.meta.dirname, '..');
-const scanRoots = [
-  path.join(rootDir, 'packages/core/src/tree'),
-  path.join(rootDir, 'packages/jess/src')
-];
+const packagesDir = path.join(rootDir, 'packages');
 const ignoredSegments = new Set([
   '__tests__'
 ]);
@@ -19,6 +16,16 @@ const allowedFiles = new Set([
 ]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
 const expectedControlIterationRenderSites = 1;
+
+function getScanRoots() {
+  if (!fs.existsSync(packagesDir)) {
+    return [];
+  }
+  return fs.readdirSync(packagesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => path.join(packagesDir, dirent.name, 'src'))
+    .filter(sourceDir => fs.existsSync(sourceDir));
+}
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -42,7 +49,7 @@ const matches = [];
 const selectedOutputMatches = [];
 const controlIterationRenderMatches = [];
 const internalHelperExportMatches = [];
-for (const scanRoot of scanRoots) {
+for (const scanRoot of getScanRoots()) {
   if (!fs.existsSync(scanRoot)) {
     continue;
   }
