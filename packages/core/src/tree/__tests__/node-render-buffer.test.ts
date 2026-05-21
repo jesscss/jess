@@ -290,12 +290,14 @@ describe('renderNodeToBuffer', () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     const writer = new OutputWriter();
+    const bufferWriter = new OutputWriter();
 
     expect(renderChosenOutput(context, any('direct'), { writer })).toBe('direct');
-    await expect(renderChosenOutput(context, Promise.resolve(any('buffered')), buffer))
+    await expect(renderChosenOutput(context, Promise.resolve(any('buffered')), buffer, { writer: bufferWriter }))
       .resolves.toBe('buffered');
 
     expect(writer.toString()).toBe('direct');
+    expect(bufferWriter.toString()).toBe('');
     expect(buffer.parts).toEqual(['buffered']);
   });
 
@@ -318,18 +320,23 @@ describe('renderNodeToBuffer', () => {
     const root = rules([]);
     const syncBuffer = createRenderBuffer('flat');
     const asyncBuffer = createRenderBuffer('flat');
+    const syncWriter = new OutputWriter();
+    const asyncWriter = new OutputWriter();
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    expect(writeRootAwareChosenOutput(syncBuffer, root, root, context, { context })).toBe('@charset "utf-8";\n');
+    expect(writeRootAwareChosenOutput(syncBuffer, root, root, context, { context, writer: syncWriter }))
+      .toBe('@charset "utf-8";\n');
     await expect(writeRootAwareChosenOutput(
       asyncBuffer,
       root,
       Promise.resolve(root),
       context,
-      { context }
+      { context, writer: asyncWriter }
     )).resolves.toBe('@charset "utf-8";\n');
 
+    expect(syncWriter.toString()).toBe('');
+    expect(asyncWriter.toString()).toBe('');
     expect(syncBuffer.parts).toEqual(['@charset "utf-8";\n']);
     expect(asyncBuffer.parts).toEqual(['@charset "utf-8";\n']);
   });
