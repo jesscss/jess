@@ -71,6 +71,7 @@ import {
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
+  renderMaybeRenderedOutput,
   writeMaybeRenderedOutput,
   writeMaybeRootAwareRenderedOutput,
   writeRootAwareRenderedOutput
@@ -190,6 +191,16 @@ describe('renderNodeToBuffer', () => {
 
     expect(renderNodeToString(node, context, { writer })).toBe('writer-output');
     expect(writer.toString()).toBe('');
+  });
+
+  it('renders maybe-async selected output to strings without buffer writes', async () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+
+    expect(renderMaybeRenderedOutput(any('direct'), context, { writer })).toBe('direct');
+    await expect(renderMaybeRenderedOutput(Promise.resolve(any('async')), context, { writer }))
+      .resolves.toBe('async');
+    expect(writer.toString()).toBe('directasync');
   });
 
   it('uses instance-owned native buffer render methods before resolving', () => {

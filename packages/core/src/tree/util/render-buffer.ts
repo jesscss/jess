@@ -167,6 +167,19 @@ export function writeMaybeRenderedOutput(
     : writeRenderedOutput(buffer, node, context, options);
 }
 
+export function renderMaybeRenderedOutput(
+  node: MaybePromise<RenderableOutput>,
+  context: Context,
+  options?: PrintOptions
+): MaybePromise<string> {
+  const render = (resolved: RenderableOutput): string => {
+    return resolved.toTrimmedString(prepareRenderPrintState(context, options));
+  };
+  return isThenable(node)
+    ? (node as Promise<RenderableOutput>).then(render)
+    : render(node);
+}
+
 export function renderedOutputToString(
   source: RenderBufferNode,
   node: RenderableOutput,

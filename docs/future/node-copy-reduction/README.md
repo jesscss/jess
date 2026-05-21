@@ -122,6 +122,8 @@ Priority seams:
 - Shared render-buffer helpers must stay narrow:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
+  - `renderMaybeRenderedOutput(...)` serializes an already-chosen evaluated
+    node to the active print state without writing to a render buffer.
   - `writeMaybeRenderedOutput(...)` only removes promise plumbing.
   - root-aware helpers only preserve the `Rules` root serializer exception.
 - Invisible registration or side-effect nodes should stay invisible unless a

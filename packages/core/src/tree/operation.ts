@@ -2,7 +2,7 @@ import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type Node
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Call } from './call.js';
@@ -11,6 +11,7 @@ import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  renderMaybeRenderedOutput,
   writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -88,11 +89,7 @@ export class Operation extends Node<OperationValue> {
         options
       );
     }
-    const value = this.evaluateOperands(context, 'resolve');
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(node => node.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(this.evaluateOperands(context, 'resolve'), context, bufferOrOptions);
   }
 
   private evaluateOperands(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {

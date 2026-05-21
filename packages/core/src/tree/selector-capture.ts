@@ -1,11 +1,12 @@
 import { type Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
 import { Selector } from './selector.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  renderMaybeRenderedOutput,
   writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
@@ -49,11 +50,7 @@ export class SelectorCapture extends Node<Selector> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    const value = this.resolveValue(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(selector => selector.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   private requireSelector(value: unknown): Selector {

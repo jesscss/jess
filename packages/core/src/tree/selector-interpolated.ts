@@ -4,10 +4,11 @@ import { SimpleSelector } from './selector-simple.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, prepareRenderPrintState } from './util/print.js';
+import type { PrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  renderMaybeRenderedOutput,
   writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
@@ -62,11 +63,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.resolveValue(context), context, options);
     }
-    const value = this.resolveValue(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(selector => selector.toTrimmedString(prepared))
-      : value.toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(this.resolveValue(context), context, bufferOrOptions);
   }
 
   override valueOf(): string {

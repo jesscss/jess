@@ -1,10 +1,11 @@
 import type { Context } from '../context.js';
 import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
-import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer,
+  renderMaybeRenderedOutput,
   writeMaybeRenderedOutput
 } from './util/render-buffer.js';
 
@@ -50,11 +51,7 @@ export class Expression extends Node<Node> {
     if (isRenderBuffer(bufferOrOptions)) {
       return writeMaybeRenderedOutput(bufferOrOptions, this.evalNode(context), context, options);
     }
-    const value = this.evalNode(context);
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    return isThenable(value)
-      ? value.then(node => node.toTrimmedString(prepared))
-      : (value as Node).toTrimmedString(prepared);
+    return renderMaybeRenderedOutput(this.evalNode(context), context, bufferOrOptions);
   }
 
   override toTrimmedString(options?: PrintOptions): string {

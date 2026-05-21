@@ -114,6 +114,8 @@ it is for the current direction and next seams, not a historical pass log.
 - Keep shared helpers small:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderedOutput(...)` writes an already-chosen evaluated node.
+  - `renderMaybeRenderedOutput(...)` serializes an already-chosen evaluated
+    node to the active print state without writing to a render buffer.
   - `writeMaybeRenderedOutput(...)` removes promise plumbing only.
   - root-aware helpers only preserve the `Rules` root serializer exception.
 - Do not add native buffer render to invisible or compile-time side-effect
