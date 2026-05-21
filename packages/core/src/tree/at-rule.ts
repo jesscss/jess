@@ -99,6 +99,20 @@ function withRulesContext<T>(
   return result;
 }
 
+function clearRulesetFramesForAtRuleBody(
+  context: Context,
+  shouldClearRulesetFrames: boolean
+): () => void {
+  if (!shouldClearRulesetFrames) {
+    return () => undefined;
+  }
+  const savedRulesetFrames = context.rulesetFrames;
+  context.rulesetFrames = [];
+  return () => {
+    context.rulesetFrames = savedRulesetFrames;
+  };
+}
+
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
 export const ROOT_ONLY_AT_RULES = [
   '@charset',
@@ -574,12 +588,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           }
           const frameCount = context.frames.length;
           const extendRootStackLength = context.extendRoots.extendRootStack.length;
-          let savedRulesetFrames: Context['rulesetFrames'] | undefined;
+          let restoreRulesetFrames = () => undefined;
           const restoreBodyEvalContext = () => {
             context.frames.length = frameCount;
-            if (savedRulesetFrames !== undefined) {
-              context.rulesetFrames = savedRulesetFrames;
-            }
+            restoreRulesetFrames();
             while (context.extendRoots.extendRootStack.length > extendRootStackLength) {
               context.extendRoots.popExtendRoot();
             }
@@ -619,10 +631,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 bodyToEval = resolved;
                 context.extendRoots.pushExtendRoot(bodyToEval);
                 pushedExtendRoot = true;
-                savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
-                if (shouldClearRulesetFrames) {
-                  context.rulesetFrames = [];
-                }
+                restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, shouldClearRulesetFrames);
                 const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
                 let evalOut: MaybePromise<Rules>;
                 try {
@@ -632,9 +641,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   throw error;
                 }
                 const doRegister = (r: Rules) => {
-                  if (savedRulesetFrames !== undefined) {
-                    context.rulesetFrames = savedRulesetFrames;
-                  }
+                  restoreRulesetFrames();
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                   node.value.rules = finalRules;
@@ -678,10 +685,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // For root-only at-rules that are hoisted, clear rulesetFrames
           // so internal rulesets don't inherit parent selectors
-          savedRulesetFrames = shouldClearRulesetFrames ? context.rulesetFrames : undefined;
-          if (shouldClearRulesetFrames) {
-            context.rulesetFrames = [];
-          }
+          restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, shouldClearRulesetFrames);
 
           let out: MaybePromise<Rules>;
           try {
@@ -693,9 +697,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (isThenable(out)) {
             return (out as Promise<Rules>).then((r) => {
               // Restore rulesetFrames
-              if (savedRulesetFrames !== undefined) {
-                context.rulesetFrames = savedRulesetFrames;
-              }
+              restoreRulesetFrames();
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
@@ -723,9 +725,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             });
           }
           // Restore rulesetFrames (sync path)
-          if (savedRulesetFrames !== undefined) {
-            context.rulesetFrames = savedRulesetFrames;
-          }
+          restoreRulesetFrames();
 
           const finalRules =
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;

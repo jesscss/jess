@@ -86,37 +86,39 @@ current state, immediate queue, and verification commands.
 - Ruleset header filtering now owns temporary selector copies without generic
   clone calls or source-free leaf adoption; existing header tests prove source
   leaf parent identity stays canonical.
+- At-rule body eval now uses one local helper to clear and restore
+  `rulesetFrames` for hoisted root-only at-rules, with a focused throw-path
+  test proving parent selector frames are restored.
 
 ## Immediate Queue
 
 Work these in order unless current code evidence proves a different seam is
 hotter.
 
-1. **Generated selector and output ownership.**
-   - Goal: reduce owned placement surfaces only where tests prove they are
-     bookkeeping, not semantics.
-   - Next start in selector-list append paths and boundary-crossing
-     finalization. The extend declaration registration branch has been
-     centralized, generated `:is(...)` wrapper construction now has one
-     placement-copy step, pseudo-argument appends route through owned placement
-     copies, and the walk path is assertion-clean and uses placement copies for
-     changed `:is(...)` argument lists. Framed ampersand append also uses owned
-     complex-component placement copies, and ruleset header filtering owns its
-     temporary selector surface without adopting source leaves. Do not split
-     those ownership paths again.
-   - Required proof: focused parentage, visibility, output-order, and extend
-     tests plus the frontier checks below.
-2. **Context shadow state.**
+1. **Context shadow state.**
    - Goal: shrink redundant save/restore or overly broad context mutation
      around the kept frame model.
    - Keep `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and
      `ScopeFrame.liveSlotsByName` where they model live lexical scope, caller
      fallback, mixin params, `@arguments`, loop counters, or `$while` mutation.
-   - Next start in remaining rules call-site context swaps only where tests
-     show duplicated restore plumbing; avoid adding broad context manager APIs
-     without at least two production call sites moving.
+   - Next start in remaining rules or mixin call-site context swaps only where
+     tests show duplicated restore plumbing. At-rule body eval now has a
+     single local `rulesetFrames` clear/restore helper; do not add broad
+     context-manager APIs without at least two production call sites moving.
    - Required proof: focused import/reference/mixin/loop tests plus baseline
      changed mode.
+2. **Generated selector and output ownership.**
+   - Goal: reduce owned placement surfaces only where tests prove they are
+     bookkeeping, not semantics.
+   - Current covered paths: extend declaration registration, generated
+     `:is(...)` wrapper construction, pseudo-argument append, walk-and-consume
+     changed `:is(...)` argument lists, framed ampersand append, and ruleset
+     header filtering. Do not split those ownership paths again.
+   - Next start only when a focused parentage or output-order test identifies
+     another generated placement surface; otherwise prefer the context shadow
+     state queue above.
+   - Required proof: focused parentage, visibility, output-order, and extend
+     tests plus the frontier checks below.
 3. **Function and mixin argument ownership.**
    - Goal: keep copied raw args only for metadata-backed contracts that need
      stable authored args.

@@ -186,6 +186,28 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
+  it('restores cleared ruleset frames when hoisted body eval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = (evalContext: Context) => {
+      expect(evalContext.rulesetFrames).toEqual([]);
+      throw new Error('body eval failed');
+    };
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      rules: body
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [savedFrame];
+    context.rulesetFrames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+  });
+
   it('restores at-rule frame when body eval rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
