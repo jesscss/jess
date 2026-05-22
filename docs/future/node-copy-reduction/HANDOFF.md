@@ -107,6 +107,10 @@ current state, immediate queue, and verification commands.
 - `DefaultGuard.render(...)` now chooses its local boolean output and writes it
   through direct source-output serialization instead of the generic
   `renderChosenOutput(...)` router.
+- `@charset` output-order handling now lives in `Rules` registration prep
+  instead of `Any.prepareRegistration()`. `Any.prepareRegistration()` is
+  mark-only again, while `Rules` explicitly records `context.currentCharset`
+  and replaces the source child with `Nil` for output order.
 
 ## Immediate Queue
 
@@ -114,18 +118,17 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Registration prep shrink: audit one explicit lookup-only prep site.**
-   - Goal: keep `prepareRegistration()` tied to lookup identity only, not a
-     hidden eval/pre-render phase under a new name.
-   - Start with one node or registry path that calls `prepareRegistration()`.
-     Prove whether the call is needed for lookup identity. If it is only
-     preserving old pre-eval ordering, remove or narrow it with a focused test.
-     If it is still necessary, document the exact lookup contract in a small
-     code comment or focused test name instead of broad status prose.
-   - Do not reintroduce `preEval()`, tree-wide preparation, or broad eager
-     child evaluation.
-   - Required proof: focused registration/lookup tests plus frontier checks
-     and baseline changed mode.
+1. **Registration prep shrink: audit one pending identity retry path.**
+   - Goal: keep retry behavior tied to names that can become lookup identities,
+     not to a hidden tree-wide eval phase.
+   - Start with declaration-name pending prep or ordered identity pending prep.
+     Prove the current retry is needed for a real lookup identity dependency,
+     then narrow naming/comments or remove a retry branch if tests show it only
+     preserves old pre-eval ordering.
+   - Do not change `$if`/`$for`/`$while` visibility semantics or weaken dynamic
+     declaration lookup tests.
+   - Required proof: focused registration/lookup tests plus frontier checks and
+     baseline changed mode.
 
 ## Backlog
 

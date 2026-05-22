@@ -2351,7 +2351,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return false;
     }
     // Charset is root output-order bookkeeping, not name registration.
-    rules.value[index] = node.prepareRegistration(context);
+    if (!context.currentCharset) {
+      context.currentCharset = node;
+    }
+    node.registrationPrepared = true;
+    rules.value[index] = new Nil().inherit(node);
     Reflect.set(rules.value[index]!, 'index', nodeIndex);
     return true;
   }

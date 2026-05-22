@@ -5,7 +5,6 @@
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import { Nil } from './nil.js';
 
 export type AnyRole =
   'ident'
@@ -50,16 +49,8 @@ export class Any<
     this.addFlag(F_STATIC);
   }
 
-  override prepareRegistration(context: Context): this | Nil {
+  override prepareRegistration(_context: Context): this {
     this.registrationPrepared = true;
-    // Index should already be assigned by parent Rules
-    if (this._options?.role === 'charset') {
-      if (!context.currentCharset) {
-        /** @todo - Throw error in the future? */
-        context.currentCharset = this;
-      }
-      return new Nil();
-    }
     return this;
   }
 

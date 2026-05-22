@@ -170,6 +170,23 @@ describe('Rules', () => {
     expect(node.evaluated).toBe(true);
   });
 
+  it('handles charset output-order bookkeeping without child registration prep', async () => {
+    const charset = any('@charset "utf-8";', { role: 'charset' });
+    charset.prepareRegistration = () => {
+      throw new Error('charset output-order handling should be owned by Rules');
+    };
+    const node = rules([
+      charset,
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    await node.eval(context);
+
+    expect(context.currentCharset).toBe(charset);
+    expect(node.value[0]?.type).toBe('Nil');
+    expect(node.render(context)).toBe('@charset "utf-8";\ncolor: red;\n');
+  });
+
   it('reuses context-owned render state without accumulating prior output', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })
@@ -540,10 +557,11 @@ describe('Rules', () => {
         // Only path resolution errors (tagged with _isPathResolutionError)
         // should be retried — content errors mean the tree was already cloned
         // and retrying would wastefully re-clone it.
-        target.eval = (() => {
+        const failEval: typeof target.eval = () => {
           attempts += 1;
           throw new Error('content-eval-failure');
-        }) as typeof target.eval;
+        };
+        target.eval = failEval;
 
         await expect(async () => {
           await node.eval(context);
