@@ -104,6 +104,9 @@ current state, immediate queue, and verification commands.
   surface for `rawArgs`, `this.args()`, preprocessing, lazy params, validation,
   and callback scope anchoring. Optional fallback call output owns evaluated
   fallback args without reparenting source args.
+- `DefaultGuard.render(...)` now chooses its local boolean output and writes it
+  through direct source-output serialization instead of the generic
+  `renderChosenOutput(...)` router.
 
 ## Immediate Queue
 
@@ -111,27 +114,26 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Chosen-output helper cleanup: audit one direct node render surface.**
-   - Goal: shrink `renderChosenOutput(...)` plumbing without adding another
-     wrapper family or changing evaluation semantics.
-   - Start with one node that already chooses an evaluated output locally and
-     only uses `renderChosenOutput(...)` to route string vs buffer output.
-     Prove direct string and buffer render still choose the same output, then
-     delete or narrow that call site if the node can serialize directly through
-     existing print-state helpers.
-   - Do not touch `Rules` root-output behavior or add new public exports.
-   - Required proof: focused render-buffer tests for the touched node plus
-     frontier checks and baseline changed mode.
+1. **Registration prep shrink: audit one explicit lookup-only prep site.**
+   - Goal: keep `prepareRegistration()` tied to lookup identity only, not a
+     hidden eval/pre-render phase under a new name.
+   - Start with one node or registry path that calls `prepareRegistration()`.
+     Prove whether the call is needed for lookup identity. If it is only
+     preserving old pre-eval ordering, remove or narrow it with a focused test.
+     If it is still necessary, document the exact lookup contract in a small
+     code comment or focused test name instead of broad status prose.
+   - Do not reintroduce `preEval()`, tree-wide preparation, or broad eager
+     child evaluation.
+   - Required proof: focused registration/lookup tests plus frontier checks
+     and baseline changed mode.
 
 ## Backlog
 
 These are remaining architecture themes, not immediate queue items. Promote
 one only after turning it into a concrete checkpoint.
 
-1. **Registration prep shrink.**
-   - Goal: keep `prepareRegistration()` for lookup identity only.
-   - Do not recreate `preEval()` under another name. Any new registration work
-     must be local, explicit, and tied to lookup behavior.
+No backlog items are currently promoted beyond the immediate queue. Add a new
+theme here only after the current queue item is completed or split.
 
 ## Verification
 
