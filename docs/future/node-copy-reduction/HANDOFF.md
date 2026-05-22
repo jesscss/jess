@@ -44,6 +44,11 @@ current state, immediate queue, and verification commands.
 - `renderEvalOutput(...)`, `writeRootAwareEvalOutput(...)`, and
   `renderChosenOutput(...)` are gone. Current local eval/resolve render paths
   use native streaming or `renderSourceOutput(...)`.
+- Remaining `renderSourceOutput(...)` sites are classified:
+  - base `Node.render(...)` is source serialization infrastructure;
+  - expression-like nodes use it after local eval/resolve;
+  - `Block`, `List`, `SelectorCapture`, and dynamic call-name render are the
+    current shrinkable bridge surfaces.
 - Plain source-only `Comment` nodes use inherited base render; source-only
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
@@ -109,47 +114,46 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Remaining renderSourceOutput call-site audit.**
-   - Goal: classify the remaining `renderSourceOutput(...)` call sites as
-     expression-like evaluated output, source-only base infrastructure, or
-     removable bridge work; promote one concrete shrinkable site.
-   - Required proof: updated handoff plus the focused test for any promoted
-     code change.
-
-2. **Block/List source-output bridge audit.**
+1. **Block/List source-output bridge audit.**
    - Goal: inspect `Block.render(...)` and `List.render(...)` bridge use and
      prove whether they are expression-like evaluated output, source-only base
      rendering, or removable by native child rendering.
    - Required proof: focused block/list tests plus render-buffer frontier.
 
-3. **Dynamic call-name render bridge audit.**
+2. **Dynamic call-name render bridge audit.**
    - Goal: inspect `Call.render(...)` for non-string call names and decide
      whether referenced JS/mixin/function names can render through native
      resolved-node output instead of `renderSourceOutput(...)`.
    - Required proof: focused call tests plus materialization frontier.
 
-4. **SelectorCapture render bridge audit.**
+3. **SelectorCapture render bridge audit.**
    - Goal: inspect `SelectorCapture.render(...)` and prove whether it is a
      source-only selector capture surface or can delegate through base/native
      render without `renderSourceOutput(...)`.
    - Required proof: focused selector-capture tests plus render-buffer frontier.
 
-5. **Non-string call fallback coverage.**
+4. **Non-string call fallback coverage.**
    - Goal: add coverage for optional/dynamic non-string `Call` names that still
      require source fallback behavior before shrinking that render bridge.
    - Required proof: focused call tests plus materialization frontier.
 
-6. **Expression-like render helper naming audit.**
+5. **Expression-like render helper naming audit.**
    - Goal: inspect remaining source-output helper use on expression-like nodes
      and decide whether helper naming should distinguish source serialization
      from evaluated expression output more clearly.
    - Required proof: updated handoff plus focused tests for any code change.
 
-7. **Render helper import-boundary audit.**
+6. **Render helper import-boundary audit.**
    - Goal: confirm helper placement avoids circular runtime imports as
      source-output bridges are removed or renamed.
    - Required proof: package build plus updated handoff if any placement rule is
      discovered.
+
+7. **Declaration render bridge audit.**
+   - Goal: inspect `Declaration.render(...)` after custom-property raw-value
+     cleanup and decide whether it still needs `renderSourceOutput(...)` or can
+     emit through a declaration-native writer path.
+   - Required proof: focused declaration tests plus materialization frontier.
 
 ## Backlog
 
