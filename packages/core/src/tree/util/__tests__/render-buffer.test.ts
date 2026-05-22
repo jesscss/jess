@@ -15,7 +15,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   pushRenderSegment,
-  renderNoOutputEffect,
+  renderInvisibleEffect,
   renderSourceOutput,
   writeSegmentText,
   writeRenderText,
@@ -174,12 +174,12 @@ describe('RenderBuffer', () => {
     expect(buffer.extendRecords[0]?.targetSelector.valueOf()).toBe('.target');
   });
 
-  it('routes no-output effects through string and buffer surfaces', async () => {
+  it('routes invisible effects through string and buffer surfaces', async () => {
     const directEffect = Promise.resolve('ignored');
     const buffer = createRenderBuffer('flat');
 
-    await expect(renderNoOutputEffect(directEffect)).resolves.toBe('');
-    expect(renderNoOutputEffect(undefined, buffer)).toBe('');
+    await expect(renderInvisibleEffect(directEffect)).resolves.toBe('');
+    expect(renderInvisibleEffect(undefined, buffer)).toBe('');
     expect(buffer.parts).toEqual([]);
   });
 });

@@ -25,7 +25,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import {
-  renderNoOutputEffect,
+  renderInvisibleEffect,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -164,7 +164,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderNoOutputEffect(this.evalNode(context), bufferOrOptions);
+    return renderInvisibleEffect(this.evalNode(context), bufferOrOptions);
   }
 }
 

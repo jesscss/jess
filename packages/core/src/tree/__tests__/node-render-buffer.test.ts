@@ -68,7 +68,7 @@ import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
-  renderNoOutputEffect,
+  renderInvisibleEffect,
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter
@@ -258,9 +258,9 @@ describe('renderNodeToBuffer', () => {
     const asyncBuffer = createRenderBuffer('flat');
     const rejectedBuffer = createRenderBuffer('flat');
 
-    expect(renderNoOutputEffect(undefined, syncBuffer)).toBe('');
-    await expect(renderNoOutputEffect(Promise.resolve(any('ignored')), asyncBuffer)).resolves.toBe('');
-    await expect(renderNoOutputEffect(Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
+    expect(renderInvisibleEffect(undefined, syncBuffer)).toBe('');
+    await expect(renderInvisibleEffect(Promise.resolve(any('ignored')), asyncBuffer)).resolves.toBe('');
+    await expect(renderInvisibleEffect(Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
 
     expect(syncBuffer.parts).toEqual([]);
     expect(asyncBuffer.parts).toEqual([]);

@@ -11,7 +11,7 @@ const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
 const evalOutputPattern = /\brenderEvalOutput\s*\(/u;
 const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput)\b/u;
 const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buffer/u;
-const internalHelperExportPattern = /^export function (?:renderNoOutput|writeNoOutput|writeRenderedOutput|writeRootAwareOutput)\b/u;
+const internalHelperExportPattern = /^export function (?:renderInvisibleEffect|writeRenderedOutput|writeRootAwareOutput)\b/u;
 const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);

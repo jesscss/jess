@@ -179,23 +179,16 @@ export function renderSourceOutput(
     : out;
 }
 
-function renderNoOutput(effect: MaybePromise<unknown>): MaybePromise<string> {
-  return isThenable(effect)
-    ? effect.then(() => '')
-    : '';
-}
-
-function writeNoOutput(buffer: RenderBuffer, effect: MaybePromise<unknown>): MaybePromise<string> {
-  return writeRenderTextResult(buffer, renderNoOutput(effect));
-}
-
-export function renderNoOutputEffect(
+export function renderInvisibleEffect(
   effect: MaybePromise<unknown>,
   bufferOrOptions?: RenderBuffer | PrintOptions
 ): MaybePromise<string> {
+  const rendered = isThenable(effect)
+    ? effect.then(() => '')
+    : '';
   return isRenderBuffer(bufferOrOptions)
-    ? writeNoOutput(bufferOrOptions, effect)
-    : renderNoOutput(effect);
+    ? writeRenderTextResult(bufferOrOptions, rendered)
+    : rendered;
 }
 
 export function renderedOutputToString(

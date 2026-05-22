@@ -6,7 +6,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
 import {
   type RenderBuffer,
-  renderNoOutputEffect
+  renderInvisibleEffect
 } from './util/render-buffer.js';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
@@ -72,7 +72,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderNoOutputEffect(this.evalNode(context), bufferOrOptions);
+    return renderInvisibleEffect(this.evalNode(context), bufferOrOptions);
   }
 
   private _logMessage(message: Node): void {

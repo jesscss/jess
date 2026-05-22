@@ -159,7 +159,7 @@ These are architectural seams, not a live ordered queue. Use
   - `prepareBufferPrintState(...)` preserves render state while working from a
     shallow detached options object before anything writes into a render
     buffer.
-  - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
+  - `renderInvisibleEffect(...)` evaluates invisible side-effect output and
     intentionally emits nothing through either string or buffer render.
 - These helpers describe the current serializer boundary, not a desired
   long-term abstraction family. Do not add new wrapper layers around them;
