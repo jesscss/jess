@@ -697,6 +697,58 @@ describe('Call', () => {
     }
   });
 
+  it('uses one owned argument surface for metadata JS function calls', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    let rawArg: Node | undefined;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'first',
+      fn: defineFunction(
+        'first',
+        async function(this: { rawArgs: List }) {
+          rawArg = this.rawArgs.value[0];
+          return any(rawArg instanceof Sequence ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalValue = new CountingSequence([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'first' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const result = await rule.eval(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(CountingSequence.constructedCopies).toBe(1);
+      expect(rawArg).not.toBe(originalValue);
+      expect(rawArg?.parent?.parent).toBe(rule);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
   it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

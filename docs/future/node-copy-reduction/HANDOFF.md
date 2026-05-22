@@ -54,8 +54,9 @@ current state, immediate queue, and verification commands.
   placement surfaces only where parentage/visibility tests prove they are
   semantic.
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
-  functions still own raw/callback arg-list surfaces for documented runtime
-  APIs.
+  functions keep one owned raw/callback arg-list surface for documented
+  runtime APIs; `Call` no longer creates a second pre-copy before
+  `callWithContext(...)`.
 - `@charset` output-order handling lives in `Rules` registration prep.
   `Any.prepareRegistration()` is mark-only again.
 - Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
@@ -70,45 +71,46 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Function/mixin argument surface audit.**
-   - Goal: separate plain positional args that can remain canonical from
-     metadata-backed raw/callback argument surfaces that must stay owned.
-   - Required proof: focused call/function tests plus node-copy frontier.
-
-2. **Context restore helper audit.**
+1. **Context restore helper audit.**
    - Goal: find the next duplicated `rulesContext` / frame save-restore seam
      after the recent `$while`, `AtRule`, `Reference`, mixin, and `Rules`
      cleanup.
    - Required proof: focused throw/rejection restoration test.
 
-3. **No-output render helper naming audit.**
+2. **No-output render helper naming audit.**
    - Goal: decide whether `renderNoOutputEffect(...)` / `writeNoOutput(...)`
      names still describe the invisible side-effect render boundary clearly or
      should shrink.
    - Required proof: log/extend render-buffer tests and package exports.
 
-4. **Rules render newline contract audit.**
+3. **Rules render newline contract audit.**
    - Goal: document or narrow why non-root direct `Rules.render(context)` trims
      trailing newlines while buffer render preserves full emitted rules text.
    - Required proof: focused `Rules` and control render tests.
 
-5. **Render-source helper callsite audit.**
+4. **Render-source helper callsite audit.**
    - Goal: inspect current `renderSourceOutput(...)` call sites and find the
      next one that can become native render without adding wrapper layers.
    - Required proof: focused node tests for the chosen callsite plus
      materialization frontier.
 
-6. **Loop output grouping wrapper audit.**
+5. **Loop output grouping wrapper audit.**
    - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
      function-registry split and decide whether any wrapper can shrink further
      without losing output ownership.
    - Required proof: focused loop eval/render tests plus node-copy frontier.
 
-7. **Call render native-surface audit.**
+6. **Call render native-surface audit.**
    - Goal: inspect the remaining `Call.render(...)` branches and find one
      wrapper/helper path that can shrink while preserving CSS-call vs JS-call
      semantics.
    - Required proof: focused call render tests plus materialization frontier.
+
+7. **Define-function lint debt audit.**
+   - Goal: clean the existing lint debt in `packages/core/src/define-function.ts`
+     enough that future argument-surface changes can touch it without dragging
+     unrelated unsafe-assertion failures into the checkpoint.
+   - Required proof: focused define-function ESLint plus define-function tests.
 
 ## Backlog
 

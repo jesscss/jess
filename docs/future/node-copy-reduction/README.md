@@ -122,9 +122,11 @@ These are architectural seams, not a live ordered queue. Use
    these with parentage, visibility, and extend-output tests; do not collapse
    them by pattern.
 3. **Function/mixin argument surfaces**: metadata-backed functions still need
-   copied raw-argument ownership for `this.rawArgs`, `this.args()`,
-   preprocessing, lazy params, validation, and `@arguments`-style behavior.
-   Plain functions should keep receiving positional args directly.
+   one copied raw-argument ownership surface for `this.rawArgs`,
+   `this.args()`, preprocessing, lazy params, validation, and
+   `@arguments`-style behavior. Plain functions should keep receiving
+   positional args directly, and `Call` should not pre-copy metadata args
+   before handing them to `callWithContext(...)`.
 4. **Context shadow state**: the frame model is a kept part of the target
    architecture. Audit this seam for redundant save/restore, stale aliases, or
    overly broad context mutation; do not replace `liveSlotsByName`,

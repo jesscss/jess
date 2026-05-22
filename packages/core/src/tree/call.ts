@@ -537,20 +537,6 @@ export class Call extends Node<CallValue, CallOptions> {
       try {
         const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
         let callArgs = args;
-        if (args && shouldPassListArgs) {
-          const copiedArgs = copyWithReusableLeaves(args);
-          if (!isNode(copiedArgs, N.List)) {
-            throw new TypeError('Copied call arguments must remain a List');
-          }
-          for (const copied of copiedArgs.value) {
-            // Anchor copied references to this Call so nested property refs
-            // (e.g. $list-1) can walk back to call-site Rules.
-            // Also anchor copied Mixin callback args to call-site source scope
-            // so callback bodies can resolve surrounding variables.
-            copied.frozen = true;
-          }
-          callArgs = copiedArgs;
-        }
         const result = await (
           callArgs
             ? (
