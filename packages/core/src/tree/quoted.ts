@@ -5,7 +5,7 @@ import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
-  renderSourceOutput,
+  renderResolvedOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -76,7 +76,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evaluateValue(context, 'resolve'),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
     );
   }
 

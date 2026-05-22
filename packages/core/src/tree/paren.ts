@@ -9,7 +9,7 @@ import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
-  renderSourceOutput,
+  renderResolvedOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -130,7 +130,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evaluateValue(context, 'resolve'),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
     );
   }
 
