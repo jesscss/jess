@@ -83,6 +83,16 @@ function createDerivedIterationRulesSurface(
   return output;
 }
 
+function createLoopOutputRulesSurface(childNodes?: Node[]): Rules {
+  const output = new Rules([]);
+  if (childNodes) {
+    for (const childNode of childNodes) {
+      output.push(childNode);
+    }
+  }
+  return output;
+}
+
 async function runWithRulesContext<T>(
   context: Context,
   rulesContext: Rules,
@@ -480,12 +490,12 @@ export class For extends Node<StructuredLoopValue> {
         }
       }
       if (outputRules.length === 0) {
-        return createDerivedIterationRulesSurface(originalRules);
+        return createLoopOutputRulesSurface();
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createDerivedIterationRulesSurface(preparedOriginalRules ?? originalRules, outputRules);
+      return createLoopOutputRulesSurface(outputRules);
     };
     return run();
   }
@@ -645,12 +655,12 @@ export class While extends Node<WhileValue> {
         }
       });
       if (outputRules.length === 0) {
-        return createDerivedIterationRulesSurface(originalRules);
+        return createLoopOutputRulesSurface();
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createDerivedIterationRulesSurface(originalRules, outputRules);
+      return createLoopOutputRulesSurface(outputRules);
     };
     return run();
   }

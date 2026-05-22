@@ -43,7 +43,8 @@ current state, immediate queue, and verification commands.
   longer explicitly evals the branch and serializes the completed output.
 - Loop state is frame-backed: `$while` mutation uses a live `ScopeFrame`, and
   `$for` / `$while` reuse canonical direct body children without reparenting.
-- Loop eval output grouping wrappers do not copy function registries. Runtime
+- Loop eval output grouping wrappers are generated containers. They do not
+  inherit source location/options or copy function registries. Runtime
   iteration/state surfaces still preserve function registries because they
   participate in lookup while rendering/evaluating the body.
 - `$for` loop-body registration prep is lazy and only runs once an iteration
@@ -82,50 +83,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Loop output grouping wrapper audit.**
-   - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
-     function-registry split and decide whether any wrapper can shrink further
-     without losing output ownership.
-   - Required proof: focused loop eval/render tests plus node-copy frontier.
-
-2. **Call render native-surface audit.**
+1. **Call render native-surface audit.**
    - Goal: inspect the remaining `Call.render(...)` branches and find one
      wrapper/helper path that can shrink while preserving CSS-call vs JS-call
      semantics.
    - Required proof: focused call render tests plus materialization frontier.
 
-3. **Define-function lint debt audit.**
+2. **Define-function lint debt audit.**
    - Goal: clean the existing lint debt in `packages/core/src/define-function.ts`
      enough that future argument-surface changes can touch it without dragging
      unrelated unsafe-assertion failures into the checkpoint.
    - Required proof: focused define-function ESLint plus define-function tests.
 
-4. **Reference render native-surface audit.**
+3. **Reference render native-surface audit.**
    - Goal: inspect `Reference.render(...)` and source-output call sites for one
      helper path that can become native render without changing live-slot,
      fallback, or optional-reference semantics.
    - Required proof: focused reference render tests plus materialization
      frontier.
 
-5. **AtRule render native-surface audit.**
+4. **AtRule render native-surface audit.**
    - Goal: inspect `AtRule.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      lifted prelude scope, hoist, or root-order semantics.
    - Required proof: focused at-rule render tests plus materialization
      frontier.
 
-6. **Ruleset render native-surface audit.**
+5. **Ruleset render native-surface audit.**
    - Goal: inspect `Ruleset.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      composed selector, reference, or hoist behavior.
    - Required proof: focused ruleset render tests plus materialization
      frontier.
 
-7. **Source-only render override audit.**
+6. **Source-only render override audit.**
    - Goal: inspect remaining `renderSourceOutput(context, this, ...)`
      overrides and remove one that can inherit base `Node.render(...)` without
      changing source-only or visibility semantics.
    - Required proof: focused node render tests plus materialization frontier.
+
+7. **`$if` no-branch output wrapper audit.**
+   - Goal: inspect the no-branch `If.evalNode(...)` empty `Rules` wrapper and
+     decide whether it can use a generated output wrapper instead of inheriting
+     source control-node state.
+   - Required proof: focused control eval/render tests plus node-copy frontier.
 
 ## Backlog
 

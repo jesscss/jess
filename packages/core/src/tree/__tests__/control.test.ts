@@ -409,6 +409,12 @@ describe('Control Nodes', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved).toBeInstanceOf(Rules);
+    if (!(resolved instanceof Rules)) {
+      throw new Error('Expected false $while output to be Rules');
+    }
+    expect(resolved.location).toHaveLength(0);
+    expect(resolved.treeContextIfSet).toBeUndefined();
+    expect(resolved.scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
@@ -937,11 +943,11 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: a');
   });
 
-  it('derives zero-iteration $for output from the canonical loop body wrapper', async () => {
+  it('uses a generated zero-iteration $for output wrapper', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
-    ]);
+    ], { local: true });
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
 
     const evald = await root.eval(context);
@@ -953,6 +959,8 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.value).toEqual([]);
+    expect(loopOutput.location).toHaveLength(0);
+    expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput.scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
   });
@@ -1087,11 +1095,11 @@ describe('Control Nodes', () => {
     }
   });
 
-  it('derives multi-iteration $for output from the canonical loop body wrapper', async () => {
+  it('uses a generated multi-iteration $for output wrapper', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
-    ]);
+    ], { local: true });
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
 
     const evald = await root.eval(context);
@@ -1103,6 +1111,8 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.location).toHaveLength(0);
+    expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput.scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());
     expect(css).toContain('item: a');
