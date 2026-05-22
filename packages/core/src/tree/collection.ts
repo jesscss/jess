@@ -1,12 +1,9 @@
-import { defineType } from './node.js';
+import { defineType, Node } from './node.js';
 import { Rules } from './rules.js';
 import type { PrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import {
-  renderSourceOutput,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -39,7 +36,11 @@ export class Collection extends Rules {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderSourceOutput(context, this, bufferOrOptions, options);
+    // Collection is source-only even though it inherits from Rules, whose render
+    // path evaluates child rules. Opt back into the base Node source renderer.
+    return isRenderBuffer(bufferOrOptions)
+      ? Node.prototype.render.call(this, context, bufferOrOptions, options)
+      : Node.prototype.render.call(this, context, bufferOrOptions);
   }
 }
 

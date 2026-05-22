@@ -103,6 +103,9 @@ selector placement truly needs one.
   they inherit from a context-dependent base and need to opt back into source
   rendering. Base render owns the normal invisible/full-render source gate;
   invisible side-effect nodes must override when evaluation still needs to run.
+- `Collection` and `RawRules` are intentional source-only exceptions because
+  they inherit from context-dependent `Rules`; they delegate to base
+  `Node.render(...)` rather than the generic source-output helper directly.
 - `Reference.render(...)` follows that rule by evaluating the reference locally
   and then rendering the referenced node through its native render path. Do not
   turn references back into "eval node, then source-serialize the resolved

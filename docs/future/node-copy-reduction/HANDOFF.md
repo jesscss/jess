@@ -43,6 +43,10 @@ current state, immediate queue, and verification commands.
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
   invisible/full-render gate as source serialization.
+- `Collection` and `RawRules` are the remaining intentional source-only
+  overrides because they inherit from context-dependent `Rules`; both now
+  delegate explicitly to base `Node.render(...)` instead of calling
+  `renderSourceOutput(...)` directly.
 - Invisible side-effect nodes share `renderInvisibleEffect(...)`; the old
   no-output helper split is gone.
 - `$if`, `$for`, and `$while` avoid materializing control-wrapper output before
@@ -98,49 +102,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Source-only render override audit.**
-   - Goal: inspect remaining `renderSourceOutput(context, this, ...)`
-     overrides and remove one that can inherit base `Node.render(...)` without
-     changing source-only or visibility semantics.
-   - Required proof: focused node render tests plus materialization frontier.
-
-2. **`$if` no-branch output wrapper audit.**
+1. **`$if` no-branch output wrapper audit.**
    - Goal: inspect the no-branch `If.evalNode(...)` empty `Rules` wrapper and
      decide whether it can use a generated output wrapper instead of inheriting
      source control-node state.
    - Required proof: focused control eval/render tests plus node-copy frontier.
 
-3. **CSS-call nested calc render contract audit.**
+2. **CSS-call nested calc render contract audit.**
    - Goal: decide whether the nested `calc(...)` preservation rule should be
      shared by direct and buffer render, or remain direct-render-only while the
      Less compile path keeps its current normalized output.
    - Required proof: focused call tests plus the Less operations fixture.
 
-4. **Function metadata argument surface audit.**
+3. **Function metadata argument surface audit.**
    - Goal: inspect metadata-backed JS function `rawArgs` / callback argument
      ownership after the define-function lint cleanup, and shrink any copied
      argument surface that is not required by documented runtime APIs.
    - Required proof: focused call/define-function tests plus materialization
      frontier.
 
-5. **Reference async native-render contract audit.**
+4. **Reference async native-render contract audit.**
    - Goal: add coverage for async referenced values flowing through
      `Reference.render(...)` without falling back to source serialization or
      public `resolve(...)`.
    - Required proof: focused reference tests plus render-buffer frontier.
 
-6. **AtRule helper extraction audit.**
+5. **AtRule helper extraction audit.**
    - Goal: inspect the new local at-rule render-output branch and decide
      whether ruleset render can share the same tiny container-output helper
      without growing another wrapper abstraction.
    - Required proof: focused at-rule/ruleset render tests plus materialization
      frontier.
 
-7. **Ruleset nil-selector render coverage.**
+6. **Ruleset nil-selector render coverage.**
    - Goal: add a focused guard for `Ruleset.render(...)` when evaluation returns
      a `Rules` body instead of a ruleset, proving the body renders natively and
      the source-output bridge stays gone.
    - Required proof: focused ruleset tests plus materialization frontier.
+
+7. **Remaining renderSourceOutput call-site audit.**
+   - Goal: classify the remaining `renderSourceOutput(...)` call sites as
+     expression-like evaluated output, source-only base infrastructure, or
+     removable bridge work; promote one concrete shrinkable site.
+   - Required proof: updated handoff plus the focused test for any promoted
+     code change.
 
 ## Backlog
 
