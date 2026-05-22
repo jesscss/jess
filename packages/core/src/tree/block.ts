@@ -1,10 +1,12 @@
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
-  renderSourceOutput,
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -59,7 +61,7 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveValue(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => this.renderResolvedBlock(context, node, bufferOrOptions, options)
     );
   }
 
@@ -67,12 +69,28 @@ export class Block extends Node<Node, BlockOptions> {
     return this.resolveValue(context);
   }
 
-  private resolveValue(context: Context): MaybePromise<Node> {
+  private renderResolvedBlock(
+    context: Context,
+    node: Block,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = node.renderBlockSyntax(node.value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private resolveValue(context: Context): MaybePromise<Block> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
     const value = this.value.resolve(context);
-    const finalize = (resolvedValue: Node): Node => {
+    const finalize = (resolvedValue: Node): Block => {
       if (resolvedValue === this.value) {
         return this;
       }

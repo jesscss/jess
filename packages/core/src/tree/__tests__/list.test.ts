@@ -7,6 +7,8 @@ import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -18,6 +20,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -125,9 +136,7 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const listNode = list([
       spaced([num(1), any('2'), any('3')]),
@@ -157,9 +166,7 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const listNode = list([
@@ -190,9 +197,7 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const listNode = list([
       spaced([num(1), any('2'), any('3')]),
@@ -230,9 +235,7 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const listNode = list([
       any('one'),

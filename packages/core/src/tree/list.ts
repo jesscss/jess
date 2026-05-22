@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { defineType, F_STATIC, Node } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -10,7 +10,9 @@ import {
 } from './util/trivia.js';
 import { isThenable, pipe, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
 import {
-  renderSourceOutput,
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -146,7 +148,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveValue(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => this.renderResolvedList(context, node, bufferOrOptions, options)
     );
   }
 
@@ -182,7 +184,23 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.resolveValue(context);
   }
 
-  private resolveValue(context: Context): MaybePromise<Node> {
+  private renderResolvedList(
+    context: Context,
+    node: List<Node>,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = node.renderListSyntax(node.value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private resolveValue(context: Context): MaybePromise<List<Node>> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }

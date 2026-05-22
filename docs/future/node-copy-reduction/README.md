@@ -120,6 +120,9 @@ selector placement truly needs one.
   at-rule/ruleset container output. Keep it limited to print-state and buffer
   plumbing around `serializeRulesContainer(...)`; do not grow it into a
   general render wrapper.
+- `Block.render(...)` and `List.render(...)` resolve local child values, then
+  serialize through their native block/list syntax printers. They do not use
+  the generic source-output bridge as a completed-output serializer.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
