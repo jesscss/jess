@@ -103,6 +103,9 @@ selector placement truly needs one.
   the mechanisms that let evaluation avoid rewriting parent pointers or
   cloning caller/loop body trees. Remaining cleanup should shrink redundant
   save/restore plumbing or broad context mutation, not remove the frame model.
+  Ordinary temporary `rulesContext` switches should use the shared context
+  helper; manual restore callbacks are for custom flows that span more than one
+  local evaluated operation.
 
 ## Remaining Architecture Work
 

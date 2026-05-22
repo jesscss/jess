@@ -55,6 +55,7 @@ import {
   type RenderBuffer,
   writeRenderText
 } from './util/render-buffer.js';
+import { withRulesContext } from './util/context.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 const { isArray } = Array;
@@ -3594,19 +3595,6 @@ function setMixinCallRulesContext(
   };
 }
 
-async function withMixinCallRulesContext<T>(
-  context: Context,
-  rulesContext: Context['rulesContext'],
-  work: () => MaybePromise<T>
-): Promise<T> {
-  const restoreRulesContext = setMixinCallRulesContext(context, rulesContext);
-  try {
-    return await work();
-  } finally {
-    restoreRulesContext();
-  }
-}
-
 /**
  * A collection of resolved mixin candidates that can be called directly.
  *
@@ -3632,7 +3620,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const thisContext = context;
     let caller = thisContext.caller;
     const argEvalRulesContext = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
-    const nodeArgs = await withMixinCallRulesContext(thisContext, argEvalRulesContext, async () => {
+    const nodeArgs = await withRulesContext(thisContext, argEvalRulesContext, async () => {
       const evaluatedArgs: Node[] = [];
       for (let arg of (args?.value ?? [])) {
         /**
@@ -4204,7 +4192,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
-        rules = await withMixinCallRulesContext(thisContext, rules, () => rules.eval(thisContext));
+        rules = await withRulesContext(thisContext, rules, () => rules.eval(thisContext));
         callParent.adopt(rules);
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
@@ -4551,7 +4539,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (pending.group !== DEF_NONE && pending.group !== defaultResult) {
           continue;
         }
-        await withMixinCallRulesContext(thisContext, pending.rules, () =>
+        await withRulesContext(thisContext, pending.rules, () =>
           evaluateCandidateOutput(
             pending.candidate,
             pending.rules,

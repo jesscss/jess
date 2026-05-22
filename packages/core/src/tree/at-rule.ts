@@ -16,6 +16,7 @@ import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { withRulesContext } from './util/context.js';
 
 /**
  * When collapseNesting/hoist wrapped at-rule rules in a single Ruleset(&),
@@ -67,36 +68,6 @@ function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']):
     break;
   }
   return cursor;
-}
-
-function withRulesContext<T>(
-  context: Context,
-  rulesContext: Context['rulesContext'],
-  run: () => MaybePromise<T>
-): MaybePromise<T> {
-  const savedRulesContext = context.rulesContext;
-  context.rulesContext = rulesContext;
-  let result: MaybePromise<T>;
-  try {
-    result = run();
-  } catch (error) {
-    context.rulesContext = savedRulesContext;
-    throw error;
-  }
-  if (isThenable(result)) {
-    return Promise.resolve(result).then(
-      (value) => {
-        context.rulesContext = savedRulesContext;
-        return value;
-      },
-      (error: unknown) => {
-        context.rulesContext = savedRulesContext;
-        throw error;
-      }
-    );
-  }
-  context.rulesContext = savedRulesContext;
-  return result;
 }
 
 function clearRulesetFramesForAtRuleBody(

@@ -46,6 +46,8 @@ current state, immediate queue, and verification commands.
 - Recent scope/context cleanup is consolidated across `$while`, `AtRule`,
   `Reference`, mixin calls, and `Rules` registration/eval. Do not re-expand
   duplicated save/restore scaffolding without a focused failing test.
+- Ordinary temporary `rulesContext` switches share `tree/util/context.ts`;
+  manual restore callbacks remain only where a larger custom flow needs them.
 - Node-copy, render-buffer, and materialization frontier scans cover production
   package `src` trees across the monorepo. The node-copy frontier is clean for
   deep copy/clone and ordinary production `.copy()` outside infrastructure.
@@ -71,46 +73,47 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Context restore helper audit.**
-   - Goal: find the next duplicated `rulesContext` / frame save-restore seam
-     after the recent `$while`, `AtRule`, `Reference`, mixin, and `Rules`
-     cleanup.
-   - Required proof: focused throw/rejection restoration test.
-
-2. **No-output render helper naming audit.**
+1. **No-output render helper naming audit.**
    - Goal: decide whether `renderNoOutputEffect(...)` / `writeNoOutput(...)`
      names still describe the invisible side-effect render boundary clearly or
      should shrink.
    - Required proof: log/extend render-buffer tests and package exports.
 
-3. **Rules render newline contract audit.**
+2. **Rules render newline contract audit.**
    - Goal: document or narrow why non-root direct `Rules.render(context)` trims
      trailing newlines while buffer render preserves full emitted rules text.
    - Required proof: focused `Rules` and control render tests.
 
-4. **Render-source helper callsite audit.**
+3. **Render-source helper callsite audit.**
    - Goal: inspect current `renderSourceOutput(...)` call sites and find the
      next one that can become native render without adding wrapper layers.
    - Required proof: focused node tests for the chosen callsite plus
      materialization frontier.
 
-5. **Loop output grouping wrapper audit.**
+4. **Loop output grouping wrapper audit.**
    - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
      function-registry split and decide whether any wrapper can shrink further
      without losing output ownership.
    - Required proof: focused loop eval/render tests plus node-copy frontier.
 
-6. **Call render native-surface audit.**
+5. **Call render native-surface audit.**
    - Goal: inspect the remaining `Call.render(...)` branches and find one
      wrapper/helper path that can shrink while preserving CSS-call vs JS-call
      semantics.
    - Required proof: focused call render tests plus materialization frontier.
 
-7. **Define-function lint debt audit.**
+6. **Define-function lint debt audit.**
    - Goal: clean the existing lint debt in `packages/core/src/define-function.ts`
      enough that future argument-surface changes can touch it without dragging
      unrelated unsafe-assertion failures into the checkpoint.
    - Required proof: focused define-function ESLint plus define-function tests.
+
+7. **Reference render native-surface audit.**
+   - Goal: inspect `Reference.render(...)` and source-output call sites for one
+     helper path that can become native render without changing live-slot,
+     fallback, or optional-reference semantics.
+   - Required proof: focused reference render tests plus materialization
+     frontier.
 
 ## Backlog
 

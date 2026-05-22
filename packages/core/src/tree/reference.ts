@@ -32,6 +32,7 @@ import {
 } from './util/render-buffer.js';
 import type { Mixin } from './mixin.js';
 import type { Ruleset } from './ruleset.js';
+import { withRulesContext } from './util/context.js';
 /**
  * The type is determined by syntax
  * and location.
@@ -1474,7 +1475,7 @@ function finalizeRuntimeVarBindingResult(
     reuseSourceFreeLeaves: true
   });
   const evaluateInRulesContext = () => shouldUseDefinitionRulesContext
-    ? withReferenceRulesContext(
+    ? withRulesContext(
         context,
         bindingSource.rulesParent ?? context.rulesContext,
         evaluateBinding
@@ -1488,35 +1489,6 @@ function finalizeRuntimeVarBindingResult(
     return Promise.resolve(evaluatedBinding).then(finalizeRuntimeBinding);
   }
   return finalizeRuntimeBinding(evaluatedBinding);
-}
-
-function withReferenceRulesContext<T>(
-  context: Context,
-  rulesContext: Context['rulesContext'],
-  work: () => MaybePromise<T>
-): MaybePromise<T> {
-  const savedRulesContext = context.rulesContext;
-  context.rulesContext = rulesContext;
-  try {
-    const result = work();
-    if (isThenable(result)) {
-      return Promise.resolve(result).then(
-        (resolved) => {
-          context.rulesContext = savedRulesContext;
-          return resolved;
-        },
-        (error) => {
-          context.rulesContext = savedRulesContext;
-          throw error;
-        }
-      );
-    }
-    context.rulesContext = savedRulesContext;
-    return result;
-  } catch (error) {
-    context.rulesContext = savedRulesContext;
-    throw error;
-  }
 }
 
 function withReferenceSearchScope<T>(
