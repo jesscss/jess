@@ -71,8 +71,7 @@ import {
   renderNoOutputEffect,
   renderNodeToBuffer,
   renderNodeToString,
-  renderNodeToWriter,
-  writeRootAwareEvalOutput
+  renderNodeToWriter
 } from '../util/render-buffer.js';
 
 const asyncResolvedAdapterNode = {
@@ -254,33 +253,6 @@ describe('renderNodeToBuffer', () => {
     expect(renderNodeToString(root, context, { context })).toBe('@charset "utf-8";\n@import "theme.css";\n');
   });
 
-  it('keeps the root serializer exception inside the root-aware buffer helper', () => {
-    const context = new Context();
-    const root = rules([]);
-    const buffer = createRenderBuffer('flat');
-    context.root = root;
-    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
-
-    const text = writeRootAwareEvalOutput(buffer, root, root, context, { context });
-
-    expect(text).toBe('@charset "utf-8";\n');
-    expect(buffer.parts).toEqual(['@charset "utf-8";\n']);
-  });
-
-  it('keeps non-root rules output trimmed in the root-aware buffer helper', () => {
-    const context = new Context();
-    const root = rules([]);
-    const childRules = rules([decl({ name: 'color', value: any('red') })]);
-    const buffer = createRenderBuffer('flat');
-    context.root = root;
-    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
-
-    const text = writeRootAwareEvalOutput(buffer, childRules, childRules, context, { context });
-
-    expect(text).toBe('color: red;');
-    expect(buffer.parts).toEqual(['color: red;']);
-  });
-
   it('writes invisible effect output without mutating rejected buffers', async () => {
     const syncBuffer = createRenderBuffer('flat');
     const asyncBuffer = createRenderBuffer('flat');
@@ -293,32 +265,6 @@ describe('renderNodeToBuffer', () => {
     expect(syncBuffer.parts).toEqual([]);
     expect(asyncBuffer.parts).toEqual([]);
     expect(rejectedBuffer.parts).toEqual([]);
-  });
-
-  it('writes root-aware eval output through the root serializer exception', async () => {
-    const context = new Context();
-    const root = rules([]);
-    const syncBuffer = createRenderBuffer('flat');
-    const asyncBuffer = createRenderBuffer('flat');
-    const syncWriter = new OutputWriter();
-    const asyncWriter = new OutputWriter();
-    context.root = root;
-    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
-
-    expect(writeRootAwareEvalOutput(syncBuffer, root, root, context, { context, writer: syncWriter }))
-      .toBe('@charset "utf-8";\n');
-    await expect(writeRootAwareEvalOutput(
-      asyncBuffer,
-      root,
-      Promise.resolve(root),
-      context,
-      { context, writer: asyncWriter }
-    )).resolves.toBe('@charset "utf-8";\n');
-
-    expect(syncWriter.toString()).toBe('');
-    expect(asyncWriter.toString()).toBe('');
-    expect(syncBuffer.parts).toEqual(['@charset "utf-8";\n']);
-    expect(asyncBuffer.parts).toEqual(['@charset "utf-8";\n']);
   });
 
   it('uses native root render without consulting public resolve', () => {

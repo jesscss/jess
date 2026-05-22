@@ -140,6 +140,9 @@ current state, immediate queue, and verification commands.
 - `renderEvalOutput(...)` and its helper-local string/buffer branches are gone;
   production render paths now either stream natively or perform local
   eval/resolve followed by `renderSourceOutput(...)`.
+- `writeRootAwareEvalOutput(...)` is gone. `Rules.render(...)` now keeps the
+  root serializer exception local to rules output, so the render-buffer utility
+  layer no longer exposes a named eval-output writer.
 
 ## Immediate Queue
 
@@ -147,17 +150,16 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Root-aware output helper cleanup: audit `writeRootAwareEvalOutput(...)`.**
-   - Goal: prove whether the root serializer exception still needs a named
-     eval-output helper now that generic eval-output routing is gone.
-   - Start in `Rules.render(...)` and `render-buffer.ts`. Either keep
-     `writeRootAwareEvalOutput(...)` with an explicit root-only reason, or
-     collapse it into the narrower root render path without changing base
-     `Node.render(context)` semantics.
-   - Do not add new render wrappers or change base `Node.render(context)`
-     semantics.
-   - Required proof: focused render-buffer/node tests plus frontier checks and
-     baseline changed mode.
+1. **Control iteration render cleanup: audit `renderIterationRules(...)`.**
+   - Goal: prove whether `$for` / `$while` still need one native iteration
+     render helper or whether it can collapse into the direct control render
+     path without creating per-iteration output trees.
+   - Start in `packages/core/src/tree/control.ts`; keep loop state, retry
+     semantics, public rule visibility, and existing clone/copy guards.
+   - Do not duplicate iteration render branching across individual control
+     nodes.
+   - Required proof: focused control tests plus render-buffer, materialization,
+     and baseline changed-mode verification.
 
 ## Backlog
 

@@ -56,6 +56,9 @@ selector placement truly needs one.
   that `$for` / `$while` stream each loop iteration through node render methods.
   The render-buffer and materialization frontier scans cover production `src`
   files across packages, not just `packages/core`.
+- `Rules.render(...)` owns the root serializer exception locally. The generic
+  eval-output and root-aware eval-output helpers have been removed from the
+  render-buffer utility layer.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. `$for` and `$while`
   iteration eval surfaces reuse direct body children from the canonical body;
@@ -125,12 +128,7 @@ These are architectural seams, not a live ordered queue. Use
    architecture. Audit this seam for redundant save/restore, stale aliases, or
    overly broad context mutation; do not replace `liveSlotsByName`,
    `fallbackFrame`, or `rulesContext` with copied nodes.
-5. **Root-aware output helper cleanup**: `writeRootAwareEvalOutput(...)` is
-   the remaining named eval-output helper. It exists only for the `Rules` root
-   serializer exception, where root output may include charset/import ordering
-   that plain trimmed node serialization would omit. Keep it narrow or collapse
-   it into the root render path; do not rebuild a generic eval-output router.
-6. **Control iteration render**: `$for` / `$while` still stream generated
+5. **Control iteration render**: `$for` / `$while` still stream generated
    iteration rules through one `renderIterationRules(...)` helper in
    `control.ts`. That single native render site is intentional while loop
    bodies still need per-iteration live state; do not duplicate it back into
@@ -158,8 +156,6 @@ These are architectural seams, not a live ordered queue. Use
     buffer.
   - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
     intentionally emits nothing through either string or buffer render.
-  - `writeRootAwareEvalOutput(...)` only preserves the `Rules` root
-    serializer exception while writing an already-evaluated output node.
 - These helpers describe the current serializer boundary, not a desired
   long-term abstraction family. Do not add new wrapper layers around them;
   prefer shrinking or deleting helpers when the surrounding render path no

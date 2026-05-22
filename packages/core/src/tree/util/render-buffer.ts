@@ -220,31 +220,6 @@ function renderedOutputToPreparedString(
   return node.toTrimmedString(prepared);
 }
 
-function writeRootAwareOutput(
-  buffer: RenderBuffer,
-  source: RenderBufferNode,
-  node: RenderableOutput,
-  context: Context,
-  options?: PrintOptions
-): string {
-  return writeRenderText(
-    buffer,
-    renderedOutputToPreparedString(source, node, context, prepareBufferPrintState(context, options))
-  );
-}
-
-export function writeRootAwareEvalOutput(
-  buffer: RenderBuffer,
-  source: RenderBufferNode,
-  node: MaybePromise<RenderableOutput>,
-  context: Context,
-  options?: PrintOptions
-): MaybePromise<string> {
-  return isThenable(node)
-    ? (node as Promise<RenderableOutput>).then(resolved => writeRootAwareOutput(buffer, source, resolved, context, options))
-    : writeRootAwareOutput(buffer, source, node, context, options);
-}
-
 export function createSegmentBody(): Segment[] {
   return [];
 }

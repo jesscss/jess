@@ -18,8 +18,10 @@ import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
   OutputWriter,
+  type FinalPrintOptions,
   type PrintOptions,
   getPrintOptions,
+  prepareRenderPrintState,
   savePrintState,
   restorePrintState,
   saveSetState,
@@ -49,9 +51,9 @@ import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-fram
 import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
+  prepareBufferPrintState,
   type RenderBuffer,
-  renderedOutputToString,
-  writeRootAwareEvalOutput
+  writeRenderText
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -85,11 +87,49 @@ function renderRulesToString(
   options: PrintOptions | undefined,
   sourceWasRoot: boolean
 ): string {
-  const rendered = renderedOutputToString(source, node, context, options);
+  const rendered = renderRulesToPreparedString(
+    source,
+    node,
+    context,
+    prepareRenderPrintState(context, options)
+  );
   if (sourceWasRoot || !rendered.endsWith('\n')) {
     return rendered;
   }
   return rendered.slice(0, -1);
+}
+
+function writeRulesRenderOutput(
+  buffer: RenderBuffer,
+  source: Rules,
+  node: Node,
+  context: Context,
+  options: PrintOptions | undefined
+): string {
+  return writeRenderText(
+    buffer,
+    renderRulesToPreparedString(
+      source,
+      node,
+      context,
+      prepareBufferPrintState(context, options)
+    )
+  );
+}
+
+function renderRulesToPreparedString(
+  source: Rules,
+  node: Node,
+  context: Context,
+  prepared: FinalPrintOptions
+): string {
+  if (
+    node.type === 'Rules'
+    && (node === context.root || source === context.root)
+  ) {
+    return node.toString(prepared);
+  }
+  return node.toTrimmedString(prepared);
 }
 
 function childRulesOf(node: Node): Rules | undefined {
@@ -1885,17 +1925,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRootAwareEvalOutput(
-        bufferOrOptions,
-        this,
-        this.derive().eval(context),
-        context,
-        options
-      );
-    }
     const sourceWasRoot = this === context.root;
     const value = this.derive().eval(context);
+    if (isRenderBuffer(bufferOrOptions)) {
+      return isThenable(value)
+        ? value.then(node => writeRulesRenderOutput(bufferOrOptions, this, node, context, options))
+        : writeRulesRenderOutput(bufferOrOptions, this, value, context, options);
+    }
     return isThenable(value)
       ? value.then(node => renderRulesToString(this, node, context, bufferOrOptions, sourceWasRoot))
       : renderRulesToString(this, value, context, bufferOrOptions, sourceWasRoot);
