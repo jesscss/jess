@@ -517,7 +517,7 @@ export class Call extends Node<CallValue, CallOptions> {
           {
             ...this.value,
             name: fallbackName,
-            args: await evalArgNodes(args)
+            args: await evalArgNodes(args, { preserveSourceParents: true })
           },
           {
             ...this.options,
@@ -535,8 +535,8 @@ export class Call extends Node<CallValue, CallOptions> {
       let didPopCallStack = false;
       try {
         const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
-        /** Freeze args */
-        if (args && (args.value.length > 0 || shouldPassListArgs)) {
+        let callArgs = args;
+        if (args && shouldPassListArgs) {
           const copiedArgs = copyWithReusableLeaves(args);
           if (!isNode(copiedArgs, N.List)) {
             throw new TypeError('Copied call arguments must remain a List');
@@ -548,14 +548,14 @@ export class Call extends Node<CallValue, CallOptions> {
             // so callback bodies can resolve surrounding variables.
             copied.frozen = true;
           }
-          args = copiedArgs;
+          callArgs = copiedArgs;
         }
         const result = await (
-          args
+          callArgs
             ? (
                 shouldPassListArgs
-                  ? callWithContext(context, callable, args)
-                  : callWithContext(context, callable, ...args.value)
+                  ? callWithContext(context, callable, callArgs)
+                  : callWithContext(context, callable, ...callArgs.value)
               )
             : callWithContext(context, callable)
         );
@@ -603,7 +603,7 @@ export class Call extends Node<CallValue, CallOptions> {
           {
             ...this.value,
             name: fallbackName,
-            args: await evalArgNodes(args)
+            args: await evalArgNodes(args, { preserveSourceParents: true })
           },
           {
             ...this.options,

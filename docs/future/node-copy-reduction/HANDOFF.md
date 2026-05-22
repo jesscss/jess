@@ -99,6 +99,11 @@ current state, immediate queue, and verification commands.
   test proving parent selector frames are restored.
 - `Rules` registration/eval now shares one local extend-root stack restore
   helper for registration errors, eval errors, and nested eval completion.
+- Plain positional JS function calls now pass canonical argument containers
+  directly. Metadata-backed functions still receive an owned argument-list
+  surface for `rawArgs`, `this.args()`, preprocessing, lazy params, validation,
+  and callback scope anchoring. Optional fallback call output owns evaluated
+  fallback args without reparenting source args.
 
 ## Immediate Queue
 
@@ -106,30 +111,24 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Function and mixin argument ownership: audit plain function arg copying.**
-   - Goal: keep copied raw args only for metadata-backed contracts that need
-     stable authored args.
-   - Start with plain JS/CSS function calls, not mixin params or
-     metadata-backed `this.rawArgs` contracts. Identify one place where
-     positional args are copied only for transport, add a focused ownership
-     test, then remove or narrow that copy.
-   - Preserve `this.rawArgs`, `this.args()`, preprocessing, lazy params,
-     validation, and `@arguments` behavior where tests prove that contract.
-   - Required proof: focused function/call tests plus frontier checks and
-     baseline changed mode.
+1. **Chosen-output helper cleanup: audit one direct node render surface.**
+   - Goal: shrink `renderChosenOutput(...)` plumbing without adding another
+     wrapper family or changing evaluation semantics.
+   - Start with one node that already chooses an evaluated output locally and
+     only uses `renderChosenOutput(...)` to route string vs buffer output.
+     Prove direct string and buffer render still choose the same output, then
+     delete or narrow that call site if the node can serialize directly through
+     existing print-state helpers.
+   - Do not touch `Rules` root-output behavior or add new public exports.
+   - Required proof: focused render-buffer tests for the touched node plus
+     frontier checks and baseline changed mode.
 
 ## Backlog
 
 These are remaining architecture themes, not immediate queue items. Promote
 one only after turning it into a concrete checkpoint.
 
-1. **Chosen-output helper cleanup.**
-   - Goal: shrink helper plumbing without growing an AST-v2 buffer model.
-   - `renderChosenOutput(...)` is transitional overload routing for nodes that
-     already chose an output node. Do not add semantics to it.
-   - Delete or narrow helpers only when a node can directly choose and
-     serialize without duplicating promise/buffer branches.
-2. **Registration prep shrink.**
+1. **Registration prep shrink.**
    - Goal: keep `prepareRegistration()` for lookup identity only.
    - Do not recreate `preEval()` under another name. Any new registration work
      must be local, explicit, and tied to lookup behavior.

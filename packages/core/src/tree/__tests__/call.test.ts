@@ -631,6 +631,33 @@ describe('Call', () => {
     }
   });
 
+  it('passes plain positional JS function containers without copying them', async () => {
+    let received: Sequence | undefined;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'echo',
+      fn: (value: Sequence) => {
+        received = value;
+        return any(value.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+      }
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'echo' }, { type: 'function' }),
+      args: originalArgs
+    });
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(received).toBe(originalValue);
+    expect(originalValue.parent).toBe(originalArgs);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
   it('does not clone childless source-free scalar leaves for callback arg lists', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({
