@@ -210,7 +210,7 @@ function writeRenderedOutput(
   );
 }
 
-function writeChosenOutput(
+function writeEvalOutput(
   buffer: RenderBuffer,
   node: MaybePromise<RenderableOutput>,
   context: Context,
@@ -221,7 +221,7 @@ function writeChosenOutput(
     : writeRenderedOutput(buffer, node, context, options);
 }
 
-function renderChosenOutputToString(
+function renderEvalOutputToString(
   node: MaybePromise<RenderableOutput>,
   context: Context,
   options?: PrintOptions
@@ -234,15 +234,15 @@ function renderChosenOutputToString(
     : render(node);
 }
 
-export function renderChosenOutput(
+export function renderEvalOutput(
   context: Context,
   node: MaybePromise<RenderableOutput>,
   bufferOrOptions?: RenderBuffer | PrintOptions,
   options?: PrintOptions
 ): MaybePromise<string> {
   return isRenderBuffer(bufferOrOptions)
-    ? writeChosenOutput(bufferOrOptions, node, context, options)
-    : renderChosenOutputToString(node, context, bufferOrOptions);
+    ? writeEvalOutput(bufferOrOptions, node, context, options)
+    : renderEvalOutputToString(node, context, bufferOrOptions);
 }
 
 export function renderedOutputToString(
@@ -280,7 +280,7 @@ function writeRootAwareOutput(
   );
 }
 
-export function writeRootAwareChosenOutput(
+export function writeRootAwareEvalOutput(
   buffer: RenderBuffer,
   source: RenderBufferNode,
   node: MaybePromise<RenderableOutput>,

@@ -106,7 +106,7 @@ current state, immediate queue, and verification commands.
   fallback args without reparenting source args.
 - `DefaultGuard.render(...)` now chooses its local boolean output and writes it
   through direct source-output serialization instead of the generic
-  `renderChosenOutput(...)` router.
+  `renderEvalOutput(...)` router.
 - `@charset` output-order handling now lives in `Rules` registration prep
   instead of `Any.prepareRegistration()`. `Any.prepareRegistration()` is
   mark-only again, while `Rules` explicitly records `context.currentCharset`
@@ -125,6 +125,13 @@ current state, immediate queue, and verification commands.
 - Extend utility comments now describe the current walk-and-consume and
   location-based paths without stale "legacy path" language. The parent
   replacement helper uses selector container/node types instead of `any`.
+- Remaining eval-output adapter sites now use the `renderEvalOutput(...)`
+  name; the old `renderChosenOutput(...)` name is gone from production code,
+  tests, frontier messages, and this handoff.
+- Simple expression/value wrappers now skip `renderEvalOutput(...)` entirely
+  after local eval/resolve: `Negative`, `Expression`, `JsExpression`,
+  `Condition`, `Url`, `Quoted`, `Paren`, and `Operation` pass the resulting
+  node directly to `renderSourceOutput(...)`.
 
 ## Immediate Queue
 
@@ -132,14 +139,14 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Chosen-output helper cleanup: audit one renderChosenOutput surface.**
-   - Goal: keep `renderChosenOutput(...)` as a narrow adapter for nodes that
+1. **Eval-output helper cleanup: audit container render adapters.**
+   - Goal: keep `renderEvalOutput(...)` as a narrow adapter for nodes that
      have already selected their evaluated output, not a place to hide eval or
      output-tree materialization.
-   - Start with one small surface that still imports `renderChosenOutput(...)`
-     (`List`, `Ruleset`, or `SelectorCapture`). If the node can render directly
-     without duplicating promise/buffer plumbing, move it there; otherwise
-     document the semantic reason the helper remains.
+   - Start with `List` and `Sequence`. If either can render its resolved
+     container directly without duplicating promise/buffer plumbing, move it
+     there. If not, document the exact ownership or separator behavior that
+     still requires the adapter.
    - Do not add new render wrappers or change base `Node.render(context)`
      semantics.
    - Required proof: focused render-buffer/node tests plus frontier checks and

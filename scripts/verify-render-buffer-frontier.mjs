@@ -8,6 +8,7 @@ const ignoredSegments = new Set([
   '__tests__'
 ]);
 const frontierPattern = /\brenderNodeTo(?:Buffer|Writer|String)\b/u;
+const evalOutputPattern = /\brenderEvalOutput\s*\(/u;
 const selectedOutputPattern = /\b(?:renderSelectedOutput|writeSelectedOutput)\b/u;
 const controlIterationRenderPattern = /iterationRules\.render\(\s*context,\s*buffer/u;
 const internalHelperExportPattern = /^export function (?:renderNoOutput|writeNoOutput|writeRenderedOutput|writeRootAwareOutput)\b/u;
@@ -46,6 +47,7 @@ function walk(dir) {
 }
 
 const matches = [];
+const evalOutputMatches = [];
 const selectedOutputMatches = [];
 const controlIterationRenderMatches = [];
 const internalHelperExportMatches = [];
@@ -62,6 +64,12 @@ for (const scanRoot of getScanRoots()) {
     source.split(/\r?\n/u).forEach((line, index) => {
       if (frontierPattern.test(line)) {
         matches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (
+        evalOutputPattern.test(line)
+        && !allowedFiles.has(relative)
+      ) {
+        evalOutputMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
       if (
         selectedOutputPattern.test(line)
@@ -81,7 +89,7 @@ for (const scanRoot of getScanRoots()) {
 
 console.log('Render buffer frontier scan');
 console.log('');
-console.log('Production render bridge helper sites:');
+console.log('Production renderNodeTo helper sites:');
 if (matches.length === 0) {
   console.log('- none');
 }
@@ -90,6 +98,17 @@ const files = [...new Set(matches.map(match => match.file))].sort();
 for (const file of files) {
   console.log(`- ${file}`);
   for (const match of matches.filter(match => match.file === file)) {
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+}
+console.log('');
+console.log('Eval-output helper sites:');
+if (evalOutputMatches.length === 0) {
+  console.log('- none');
+}
+for (const file of [...new Set(evalOutputMatches.map(match => match.file))].sort()) {
+  console.log(`- ${file}`);
+  for (const match of evalOutputMatches.filter(match => match.file === file)) {
     console.log(`  ${match.line}: ${match.text}`);
   }
 }
@@ -134,7 +153,7 @@ if (matches.length > 0) {
 if (selectedOutputMatches.length > 0) {
   console.log('');
   console.log(
-    'Node render overloads should route chosen evaluated output through renderChosenOutput; do not reintroduce selected-output helper surfaces.'
+    'Node render overloads should route evaluated output through renderEvalOutput; do not reintroduce selected-output helper surfaces.'
   );
   process.exitCode = 1;
 }

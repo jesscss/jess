@@ -8,7 +8,7 @@ import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
-  renderChosenOutput,
+  renderEvalOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -172,7 +172,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.resolveValue(context), bufferOrOptions, options);
+    return renderEvalOutput(context, this.resolveValue(context), bufferOrOptions, options);
   }
 
   override operate(b: Node, op: string, _context: Context): Sequence | List {

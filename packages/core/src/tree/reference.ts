@@ -27,7 +27,7 @@ import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
 import {
-  renderChosenOutput,
+  renderEvalOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { Mixin } from './mixin.js';
@@ -1959,7 +1959,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
+    return renderEvalOutput(context, this.evalNode(context), bufferOrOptions, options);
   }
 
   /**

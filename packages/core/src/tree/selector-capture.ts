@@ -4,7 +4,7 @@ import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
-  renderChosenOutput,
+  renderEvalOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -45,7 +45,7 @@ export class SelectorCapture extends Node<Selector> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.resolveValue(context), bufferOrOptions, options);
+    return renderEvalOutput(context, this.resolveValue(context), bufferOrOptions, options);
   }
 
   private requireSelector(value: unknown): Selector {

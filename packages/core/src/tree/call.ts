@@ -15,7 +15,7 @@ import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  renderChosenOutput,
+  renderEvalOutput,
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
@@ -304,7 +304,7 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       if (typeof this.value.name !== 'string') {
-        return renderChosenOutput(
+        return renderEvalOutput(
           context,
           this.deriveResolveSurface().eval(context),
           bufferOrOptions,
@@ -327,7 +327,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return rendered;
     }
-    return renderChosenOutput(context, this.deriveResolveSurface().eval(context), bufferOrOptions, options);
+    return renderEvalOutput(context, this.deriveResolveSurface().eval(context), bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

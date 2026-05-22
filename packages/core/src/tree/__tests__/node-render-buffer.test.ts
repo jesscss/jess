@@ -68,12 +68,12 @@ import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
-  renderChosenOutput,
+  renderEvalOutput,
   renderNoOutputEffect,
   renderNodeToBuffer,
   renderNodeToString,
   renderNodeToWriter,
-  writeRootAwareChosenOutput
+  writeRootAwareEvalOutput
 } from '../util/render-buffer.js';
 
 const asyncResolvedAdapterNode = {
@@ -214,12 +214,12 @@ describe('renderNodeToBuffer', () => {
     expect(writer.toString()).toBe('');
   });
 
-  it('renders maybe-async chosen output to strings without buffer writes', async () => {
+  it('renders maybe-async eval output to strings without buffer writes', async () => {
     const context = new Context();
     const writer = new OutputWriter();
 
-    expect(renderChosenOutput(context, any('direct'), { writer })).toBe('direct');
-    await expect(renderChosenOutput(context, Promise.resolve(any('async')), { writer }))
+    expect(renderEvalOutput(context, any('direct'), { writer })).toBe('direct');
+    await expect(renderEvalOutput(context, Promise.resolve(any('async')), { writer }))
       .resolves.toBe('async');
     expect(writer.toString()).toBe('directasync');
   });
@@ -272,7 +272,7 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    const text = writeRootAwareChosenOutput(buffer, root, root, context, { context });
+    const text = writeRootAwareEvalOutput(buffer, root, root, context, { context });
 
     expect(text).toBe('@charset "utf-8";\n');
     expect(buffer.parts).toEqual(['@charset "utf-8";\n']);
@@ -286,35 +286,35 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    const text = writeRootAwareChosenOutput(buffer, childRules, childRules, context, { context });
+    const text = writeRootAwareEvalOutput(buffer, childRules, childRules, context, { context });
 
     expect(text).toBe('color: red;');
     expect(buffer.parts).toEqual(['color: red;']);
   });
 
-  it('writes chosen evaluated output without mutating rejected buffers', async () => {
+  it('writes evaluated output without mutating rejected buffers', async () => {
     const context = new Context();
     const syncBuffer = createRenderBuffer('flat');
     const asyncBuffer = createRenderBuffer('flat');
     const rejectedBuffer = createRenderBuffer('flat');
 
-    expect(renderChosenOutput(context, any('sync'), syncBuffer)).toBe('sync');
-    await expect(renderChosenOutput(context, Promise.resolve(any('async')), asyncBuffer)).resolves.toBe('async');
-    await expect(renderChosenOutput(context, Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
+    expect(renderEvalOutput(context, any('sync'), syncBuffer)).toBe('sync');
+    await expect(renderEvalOutput(context, Promise.resolve(any('async')), asyncBuffer)).resolves.toBe('async');
+    await expect(renderEvalOutput(context, Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
 
     expect(syncBuffer.parts).toEqual(['sync']);
     expect(asyncBuffer.parts).toEqual(['async']);
     expect(rejectedBuffer.parts).toEqual([]);
   });
 
-  it('routes chosen output through string and buffer render surfaces', async () => {
+  it('routes eval output through string and buffer render surfaces', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     const writer = new OutputWriter();
     const bufferWriter = new OutputWriter();
 
-    expect(renderChosenOutput(context, any('direct'), { writer })).toBe('direct');
-    await expect(renderChosenOutput(context, Promise.resolve(any('buffered')), buffer, { writer: bufferWriter }))
+    expect(renderEvalOutput(context, any('direct'), { writer })).toBe('direct');
+    await expect(renderEvalOutput(context, Promise.resolve(any('buffered')), buffer, { writer: bufferWriter }))
       .resolves.toBe('buffered');
 
     expect(writer.toString()).toBe('direct');
@@ -328,7 +328,7 @@ describe('renderNodeToBuffer', () => {
     const frameHeaders: string[] = [];
     const options = { context, frameHeaders };
 
-    expect(renderChosenOutput(context, any('buffered'), buffer, options)).toBe('buffered');
+    expect(renderEvalOutput(context, any('buffered'), buffer, options)).toBe('buffered');
 
     expect(buffer.parts).toEqual(['buffered']);
     expect(options.frameHeaders).toBe(frameHeaders);
@@ -349,7 +349,7 @@ describe('renderNodeToBuffer', () => {
     expect(rejectedBuffer.parts).toEqual([]);
   });
 
-  it('writes root-aware chosen output through the root serializer exception', async () => {
+  it('writes root-aware eval output through the root serializer exception', async () => {
     const context = new Context();
     const root = rules([]);
     const syncBuffer = createRenderBuffer('flat');
@@ -359,9 +359,9 @@ describe('renderNodeToBuffer', () => {
     context.root = root;
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
 
-    expect(writeRootAwareChosenOutput(syncBuffer, root, root, context, { context, writer: syncWriter }))
+    expect(writeRootAwareEvalOutput(syncBuffer, root, root, context, { context, writer: syncWriter }))
       .toBe('@charset "utf-8";\n');
-    await expect(writeRootAwareChosenOutput(
+    await expect(writeRootAwareEvalOutput(
       asyncBuffer,
       root,
       Promise.resolve(root),

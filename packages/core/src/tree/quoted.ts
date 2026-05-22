@@ -3,9 +3,9 @@ import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
-  renderChosenOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -74,7 +74,10 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evaluateValue(context, 'resolve'), bufferOrOptions, options);
+    return pipe(
+      () => this.evaluateValue(context, 'resolve'),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

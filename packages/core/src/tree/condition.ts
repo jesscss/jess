@@ -4,7 +4,7 @@ import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
-  renderChosenOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -79,7 +79,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evaluateCondition(context, 'resolve'), bufferOrOptions, options);
+    return pipe(
+      () => this.evaluateCondition(context, 'resolve'),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   static getBool(node: Node, negated: boolean): Bool {

@@ -16,7 +16,7 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 import {
-  renderChosenOutput,
+  renderEvalOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
@@ -849,7 +849,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
+    return renderEvalOutput(context, this.evalNode(context), bufferOrOptions, options);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

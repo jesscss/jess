@@ -1158,7 +1158,7 @@ export abstract class Node<
    *
    * The base implementation is only the inherited static/source serializer. It
    * must not resolve/evaluate the node first. Nodes whose output depends on
-   * context override this method and serialize the chosen evaluated value
+   * context override this method and serialize their evaluated output
    * through the same print-state machinery.
    */
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;

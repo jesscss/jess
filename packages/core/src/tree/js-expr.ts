@@ -2,9 +2,9 @@ import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import {
-  renderChosenOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -46,7 +46,10 @@ export class JsExpression extends Node<string> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evalNode(context), bufferOrOptions, options);
+    return pipe(
+      () => this.evalNode(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 }
 export const jsexpr = defineType(JsExpression, 'JsExpression', 'jsexpr');

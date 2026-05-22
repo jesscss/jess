@@ -27,7 +27,7 @@ import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import {
-  renderChosenOutput,
+  renderEvalOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
@@ -579,7 +579,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evalPrepared(context), bufferOrOptions, options);
+    return renderEvalOutput(context, this.evalPrepared(context), bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

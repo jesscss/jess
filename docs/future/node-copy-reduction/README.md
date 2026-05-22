@@ -125,12 +125,14 @@ These are architectural seams, not a live ordered queue. Use
    architecture. Audit this seam for redundant save/restore, stale aliases, or
    overly broad context mutation; do not replace `liveSlotsByName`,
    `fallbackFrame`, or `rulesContext` with copied nodes.
-5. **Chosen-output helper cleanup**: `renderChosenOutput(...)` is the current
+5. **Eval-output helper cleanup**: `renderEvalOutput(...)` is the current
    narrow overload helper for nodes that already chose an evaluated output
    node and only need to route it through direct string vs buffer render. It is
-   not a public model and should not grow new semantics. Direct
-   chosen-output plumbing should stay centralized inside render-buffer
-   utilities.
+   not a public model and should not grow new semantics. Direct eval-output
+   plumbing should stay centralized inside render-buffer utilities where it is
+   still needed. Simple wrappers should prefer local eval/resolve followed by
+   `renderSourceOutput(...)`; keep shrinking helper use instead of treating it
+   as a permanent node-render pattern.
 6. **Control iteration render**: `$for` / `$while` still stream generated
    iteration rules through one `renderIterationRules(...)` helper in
    `control.ts`. That single native render site is intentional while loop
@@ -159,13 +161,13 @@ These are architectural seams, not a live ordered queue. Use
     buffer.
   - `renderNoOutputEffect(...)` evaluates invisible side-effect output and
     intentionally emits nothing through either string or buffer render.
-  - `renderChosenOutput(...)` routes an already-chosen evaluated node through
+  - `renderEvalOutput(...)` routes an already-evaluated node through
     string or buffer render overloads without duplicating node-local promise
     plumbing.
-  - helper-local chosen-output string/write functions only remove promise and
+  - helper-local eval-output string/write functions only remove promise and
     buffer branching from node classes.
-  - `writeRootAwareChosenOutput(...)` only preserves the `Rules` root
-    serializer exception while writing an already-chosen output node.
+  - `writeRootAwareEvalOutput(...)` only preserves the `Rules` root
+    serializer exception while writing an already-evaluated output node.
 - These helpers describe the current serializer boundary, not a desired
   long-term abstraction family. Do not add new wrapper layers around them;
   prefer shrinking or deleting helpers when the surrounding render path no

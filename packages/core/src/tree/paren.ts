@@ -5,11 +5,11 @@ import { Operation } from './operation.js';
 import { Node, defineType, F_NON_STATIC, type NodeLocation, type TreeContext } from './node.js';
 import { Dimension } from './dimension.js';
 import { List } from './list.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
-  renderChosenOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -128,7 +128,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderChosenOutput(context, this.evaluateValue(context, 'resolve'), bufferOrOptions, options);
+    return pipe(
+      () => this.evaluateValue(context, 'resolve'),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
