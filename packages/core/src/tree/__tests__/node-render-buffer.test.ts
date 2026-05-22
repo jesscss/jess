@@ -76,13 +76,13 @@ import {
   writeRootAwareChosenOutput
 } from '../util/render-buffer.js';
 
-const asyncResolvedBridgeNode = {
+const asyncResolvedAdapterNode = {
   resolve() {
     return Promise.resolve(any('resolved'));
   }
 };
 
-const rejectingBridgeNode = {
+const rejectingAdapterNode = {
   resolve() {
     return Promise.reject(new Error('nope'));
   }
@@ -148,45 +148,45 @@ describe('renderNodeToBuffer', () => {
     expect(node.render(context)).toBe('blue');
   });
 
-  it('keeps async resolution on the explicit non-native bridge path', async () => {
+  it('keeps async resolution on the explicit non-native adapter path', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
 
-    await expect(renderNodeToBuffer(asyncResolvedBridgeNode, context, buffer)).resolves.toBe('resolved');
+    await expect(renderNodeToBuffer(asyncResolvedAdapterNode, context, buffer)).resolves.toBe('resolved');
     expect(buffer.parts).toEqual(['resolved']);
   });
 
-  it('keeps fallback bridge buffer writes out of a provided writer', async () => {
+  it('keeps fallback adapter buffer writes out of a provided writer', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     const writer = new OutputWriter();
 
-    await expect(renderNodeToBuffer(asyncResolvedBridgeNode, context, buffer, { writer }))
+    await expect(renderNodeToBuffer(asyncResolvedAdapterNode, context, buffer, { writer }))
       .resolves.toBe('resolved');
 
     expect(buffer.parts).toEqual(['resolved']);
     expect(writer.toString()).toBe('');
   });
 
-  it('does not write rejected async non-native bridge output into flat buffers', async () => {
+  it('does not write rejected async non-native adapter output into flat buffers', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
 
-    await expect(renderNodeToBuffer(rejectingBridgeNode, context, buffer)).rejects.toThrow('nope');
+    await expect(renderNodeToBuffer(rejectingAdapterNode, context, buffer)).rejects.toThrow('nope');
     expect(buffer.parts).toEqual([]);
   });
 
-  it('renders async non-native bridge output to strings without eval pre-materialization', async () => {
+  it('renders async non-native adapter output to strings without eval pre-materialization', async () => {
     const context = new Context();
 
-    await expect(renderNodeToString(asyncResolvedBridgeNode, context)).resolves.toBe('resolved');
+    await expect(renderNodeToString(asyncResolvedAdapterNode, context)).resolves.toBe('resolved');
   });
 
-  it('renders non-native bridge strings without mutating a provided writer', async () => {
+  it('renders non-native adapter strings without mutating a provided writer', async () => {
     const context = new Context();
     const writer = new OutputWriter();
 
-    await expect(renderNodeToString(asyncResolvedBridgeNode, context, { writer }))
+    await expect(renderNodeToString(asyncResolvedAdapterNode, context, { writer }))
       .resolves.toBe('resolved');
 
     expect(writer.toString()).toBe('');

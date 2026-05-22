@@ -2534,7 +2534,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       );
     };
 
-    const orderedResult = this._resolvePendingOrderedIdentityPrep(context, prepState.orderedIdentity.nodes, handleResolvedNode);
+    const orderedResult = this._preparePendingOrderedIdentitiesOnce(context, prepState.orderedIdentity.nodes, handleResolvedNode);
     const finish = () => this._finishPendingPrep(rules, context, saved, prepState.orderedIdentity.resolvedNodes);
     if (isThenable(orderedResult)) {
       return (orderedResult as Promise<void>).then(finish);
@@ -2567,15 +2567,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return result;
   }
 
-  private _resolvePendingOrderedIdentityPrep(
+  private _preparePendingOrderedIdentitiesOnce(
     context: Context,
-    orderedIdentities: PendingIdentity[],
+    orderedIdentities: Node[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
     if (orderedIdentities.length === 0) {
       return;
     }
-    return this._resolveOrderedIdentityPrepOnce(context, orderedIdentities, handleResolvedNode);
+    return this._prepareOrderedIdentitiesInSourceOrder(context, orderedIdentities, handleResolvedNode);
   }
 
   private _finishPendingPrep(
@@ -2644,27 +2644,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       prepState.declarationNames.nodes.push(node);
       return;
     }
-    prepState.orderedIdentity.nodes.push({
-      kind: this._pendingIdentityKind(node),
-      node
-    });
+    prepState.orderedIdentity.nodes.push(node);
   }
 
   private _hasPendingPrep(prepState: RegistrationPrepState): boolean {
     return prepState.declarationNames.nodes.length > 0 || prepState.orderedIdentity.nodes.length > 0;
-  }
-
-  private _pendingIdentityKind(node: Node): PendingIdentityKind {
-    if (isNode(node, N.Mixin)) {
-      return 'callable';
-    }
-    if (isNode(node, N.Ruleset)) {
-      return 'selector';
-    }
-    if (isStyleImportRegistrationNode(node)) {
-      return 'import';
-    }
-    return 'other';
   }
 
   private _retryPendingDeclarationNamePrep(
@@ -2722,9 +2706,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return resolveDeclarations();
   }
 
-  private _resolveOrderedIdentityPrepOnce(
+  private _prepareOrderedIdentitiesInSourceOrder(
     context: Context,
-    orderedIdentities: PendingIdentity[],
+    orderedIdentities: Node[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
     // Keep these in source order. Callable names, selector identity, and import
@@ -2732,7 +2716,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // proving it can move independently.
     const resolveOrderedOnce = (): MaybePromise<void> => {
       for (let i = 0; i < orderedIdentities.length; i++) {
-        const { node } = orderedIdentities[i]!;
+        const node = orderedIdentities[i]!;
         try {
           const result = node.prepareRegistration(context);
 
@@ -3287,7 +3271,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._setupContextForRules(context, this);
-    const rulesAfterPrep = this._ensureRegistrationPrep(context);
+    const rulesAfterPrep = this._prepareRegistrationForEval(context);
     if (isThenable(rulesAfterPrep)) {
       return (rulesAfterPrep as Promise<Rules>).then(rules =>
         this._evalPreparedRules(rules, context)
@@ -3306,15 +3290,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return this._evalAfterRegistrationPrep(rules, context);
   }
 
-  private _ensureRegistrationPrep(context: Context): MaybePromise<Rules> {
+  private _prepareRegistrationForEval(context: Context): MaybePromise<Rules> {
     if (this.registrationPrepared) {
       if (!this._registrationPrepared) {
         return this._prepareRegistrationOnce(context);
       }
       return this;
     }
-    // Eval owns this bridge now, but the helper still performs the old
-    // recursive prep internally until registration moves fully into eval.
+    // Eval owns registration prep. This step establishes lookup identities
+    // before the source-order eval walk without evaluating rule bodies.
     const result = this._prepareRegistrationOnce(context);
     return isThenable(result) ? (result as Promise<Rules>) : result;
   }
@@ -3426,15 +3410,8 @@ type PendingDeclarationNamePrepState = {
 };
 
 type PendingOrderedIdentityPrepState = {
-  nodes: PendingIdentity[];
+  nodes: Node[];
   resolvedNodes: Node[];
-};
-
-type PendingIdentityKind = 'callable' | 'selector' | 'import' | 'other';
-
-type PendingIdentity = {
-  kind: PendingIdentityKind;
-  node: Node;
 };
 
 // const TypeToNodeType = new Map([

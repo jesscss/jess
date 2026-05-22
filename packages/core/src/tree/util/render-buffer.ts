@@ -355,9 +355,9 @@ export function renderNodeToWriter(
   context: Context,
   options?: PrintOptions
 ): MaybePromise<string> {
-  // Track 5 bridge only: this adapts current node serializers to evaluated
-  // string output. Nodes with delayed-output semantics must write explicit
-  // segments instead of growing a second AST.
+  // Test/internal adapter: serialize a node through its explicit resolve
+  // contract when a native render override is not available. Production render
+  // paths should prefer node-local render methods and flat buffers.
   const writeResolved = (resolved: RenderableOutput): string => {
     return renderedOutputToString(node, resolved, context, options);
   };

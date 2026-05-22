@@ -15,7 +15,7 @@ Older per-file completion logs live in
 - Use shallow wrapper owners only when they carry real local scope, registry,
   import/reference, merge, generated selector placement, or output ownership.
 - Keep render state ownership explicit. Fresh render traversals reset
-  context-owned print state; nested render bridges reuse active
+  context-owned print state; nested render adapters reuse active
   writer/frame/trivia state through `prepareRenderPrintState(...)`.
 - Treat deep clone, broad materialization, and wrapper growth as debt unless a
   focused test proves a semantic ownership boundary.
@@ -145,12 +145,12 @@ These are architectural seams, not a live ordered queue. Use
   direct-field cleanup is only for record-shaped nodes where named fields would
   reduce real indirection or ownership confusion; do not turn it into a broad
   `.value` removal pass.
-- `prepareRenderPrintState(...)` is the central bridge for active writer,
+- `prepareRenderPrintState(...)` is the central adapter for active writer,
   frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
 - Buffer render helpers must serialize through a detached writer and only
   append the final text to the target buffer; they must not mutate or add a
   writer on caller-owned print options passed in from a render-to-string
-  bridge.
+  adapter.
 - Shared render-buffer helpers must stay narrow:
   - `writeRenderText(...)` writes already-rendered text.
   - `writeRenderTextResult(...)` writes maybe-async rendered text.

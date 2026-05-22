@@ -115,6 +115,16 @@ current state, immediate queue, and verification commands.
   narrow lookup-identity retry. It exists for dynamic declaration names that
   can be unblocked by another declaration registering a variable identity; it
   is not a hidden tree-wide pre-eval retry.
+- Pending non-declaration identity prep is a source-ordered one-shot pass over
+  the unresolved nodes themselves. The old unused kind classifier is gone;
+  mixin, selector, and style-import identity surfaces are covered by existing
+  source-order registration tests.
+- `Rules` eval now names registration setup as eval-owned identity prep, not
+  as an old pre-eval bridge. Render-buffer fallback tests and comments call
+  the resolve-based path an internal adapter, not a production bridge surface.
+- Extend utility comments now describe the current walk-and-consume and
+  location-based paths without stale "legacy path" language. The parent
+  replacement helper uses selector container/node types instead of `any`.
 
 ## Immediate Queue
 
@@ -122,16 +132,17 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Registration prep shrink: audit ordered identity one-shot prep.**
-   - Goal: keep retry behavior tied to names that can become lookup identities,
-     not to a hidden tree-wide eval phase.
-   - Declaration-name pending prep has been audited. Next, inspect ordered
-     identity prep for mixin names, selector identity, and style-import paths.
-     Prove the one-shot behavior is still needed for source-order registration
-     or split/remove a branch if it only preserves old pre-eval ordering.
-   - Do not change `$if`/`$for`/`$while` visibility semantics or weaken dynamic
-     declaration lookup tests.
-   - Required proof: focused registration/lookup tests plus frontier checks and
+1. **Chosen-output helper cleanup: audit one renderChosenOutput surface.**
+   - Goal: keep `renderChosenOutput(...)` as a narrow adapter for nodes that
+     have already selected their evaluated output, not a place to hide eval or
+     output-tree materialization.
+   - Start with one small surface that still imports `renderChosenOutput(...)`
+     (`List`, `Ruleset`, or `SelectorCapture`). If the node can render directly
+     without duplicating promise/buffer plumbing, move it there; otherwise
+     document the semantic reason the helper remains.
+   - Do not add new render wrappers or change base `Node.render(context)`
+     semantics.
+   - Required proof: focused render-buffer/node tests plus frontier checks and
      baseline changed mode.
 
 ## Backlog

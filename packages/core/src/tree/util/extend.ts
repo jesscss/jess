@@ -189,8 +189,8 @@ function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType)
  * Walk-and-consume eligibility check for extendSelector dispatch.
  * Returns true only when the walk path is known to produce correct results.
  *
- * Currently very conservative: only handles the simplest cases where
- * walk-and-consume is verified to produce identical output to the legacy path.
+ * Currently conservative: use only cases where walk-and-consume is verified to
+ * match the location-based extend implementation.
  */
 function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolean {
   // Walk-and-consume doesn't handle extendOrderMap (dead code, but guard anyway)
@@ -210,7 +210,8 @@ function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolea
 }
 
 /**
- * Bridge: attempt walk-and-consume, return null to fall through to legacy path.
+ * Attempt walk-and-consume, returning null when the location-based path should
+ * handle matching and errors.
  * Returns the extended selector, or null if walk couldn't handle it.
  */
 function walkAndExtendForExtendSelector(
@@ -221,8 +222,8 @@ function walkAndExtendForExtendSelector(
 ): Selector | null {
   const result = walkAndExtend(target, find, extendWith, partial);
   // walkAndExtend returns the original target when no match is found.
-  // The legacy path throws ExtendError('NOT_FOUND') in that case.
-  // Return null to let the legacy path handle it (including the throw).
+  // The location-based path throws ExtendError('NOT_FOUND') in that case.
+  // Return null to let that path handle it, including the throw.
   if (result === target) {
     return null;
   }
@@ -1386,7 +1387,7 @@ export function extendSelector(
     }
   }
 
-  // Walk-and-consume fast path for simple cases (Phase 1).
+  // Walk-and-consume fast path for simple cases.
   // Only for SimpleSelector find with no ampersands and no extra flags.
   // Also skip when extendWith contains element/ID selectors that need conflict validation.
   if (!skipAmpersandCheck && !hasMoreAfterIs
@@ -1396,7 +1397,7 @@ export function extendSelector(
     if (walkResult !== null) {
       return walkResult;
     }
-    // Walk path returned null → fall through to legacy path
+    // Walk path returned null; fall through to the location-based path.
   }
 
   // Use the unified ExtendLocation API for all selector matching.
@@ -3501,13 +3502,15 @@ function findParentOfNode(
   return null;
 }
 
+type SelectorContainerParent = CompoundSelector | ComplexSelector | SelectorList | PseudoSelector;
+
 /**
  * Replaces a node within its parent container
  * @param parent - The parent container
  * @param oldNode - The node to replace
  * @param newNode - The replacement node
  */
-function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
+function replaceNodeInParent(parent: SelectorContainerParent, oldNode: Node, newNode: Node): void {
   if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
     for (let i = 0; i < parent.value.length; i++) {
       if (parent.value[i] === oldNode) {

@@ -278,12 +278,12 @@ function classifyInstructionMatch(
     }
     if (parentSelector && !partial && selector.valueOf() === target.valueOf()) {
       // Exact nested matches like `.dd` under `.aa` must not fall back to the
-      // parentless legacy matcher, which would incorrectly treat the local
-      // fragment as the full selector.
+      // parentless matcher, which would incorrectly treat the local fragment
+      // as the full selector.
       return false;
     }
   }
-  // Fallback: legacy path (no parent context)
+  // Fallback for selectors that do not need parent-context matching.
   const after = applyExtendsToSelector(selector, [instruction]);
   return after.valueOf() !== selector.valueOf() ? 'local' : false;
 }
