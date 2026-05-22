@@ -98,7 +98,10 @@ selector placement truly needs one.
   overloads must also await async child resolution instead of falling back to
   authored syntax; direct string render and buffer render should choose the
   same evaluated value. Static or source-only nodes should use the base render
-  path instead of reimplementing local string/buffer branching.
+  path instead of reimplementing local string/buffer branching, except when
+  they inherit from a context-dependent base and need to opt back into source
+  rendering. Base render owns the normal invisible/full-render source gate;
+  invisible side-effect nodes must override when evaluation still needs to run.
 - Context shadow state is intentionally small runtime state, not an output
   tree substitute. Keep `ScopeFrame.liveSlotsByName` for mixin params,
   `@arguments`, loop counters, and `$while` mutation; keep

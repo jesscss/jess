@@ -1164,6 +1164,9 @@ export abstract class Node<
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   render(context: Context, options?: PrintOptions): string;
   render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
     return renderSourceOutput(context, this, bufferOrOptions, options);
   }
 

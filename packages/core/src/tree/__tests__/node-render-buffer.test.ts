@@ -490,8 +490,16 @@ describe('renderNodeToBuffer', () => {
       { surface: 'JsArray', node: jsarray([any('one'), any('two')]) },
       { surface: 'JsObject', node: jsobj({ one: any('one') }) },
       { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }) },
-      { surface: 'Mixin', node: mixin({ name: any('.paint'), rules: rules([decl({ name: 'color', value: any('red') })]) }) },
-      { surface: 'Func', node: fn({ name: any('paint'), body: rules([decl({ name: 'return', value: any('red') })]) }) },
+      {
+        surface: 'Mixin',
+        node: mixin({ name: any('.paint'), rules: rules([decl({ name: 'color', value: any('red') })]) }),
+        expectedParts: []
+      },
+      {
+        surface: 'Func',
+        node: fn({ name: any('paint'), body: rules([decl({ name: 'return', value: any('red') })]) }),
+        expectedParts: []
+      },
       {
         surface: 'If',
         node: ifNode({

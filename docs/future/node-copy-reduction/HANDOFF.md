@@ -24,6 +24,10 @@ current state, immediate queue, and verification commands.
 - `renderEvalOutput(...)`, `writeRootAwareEvalOutput(...)`, and
   `renderChosenOutput(...)` are gone. Current local eval/resolve render paths
   use native streaming or `renderSourceOutput(...)`.
+- Plain source-only `Comment` nodes use inherited base render; source-only
+  subclasses should not keep local render overrides unless they inherit from a
+  context-dependent base like `Rules`. Base render owns the same
+  invisible/full-render gate as source serialization.
 - Invisible side-effect nodes share `renderInvisibleEffect(...)`; the old
   no-output helper split is gone.
 - `$if`, `$for`, and `$while` avoid materializing control-wrapper output before
@@ -78,50 +82,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Render-source helper callsite audit.**
-   - Goal: inspect current `renderSourceOutput(...)` call sites and find the
-     next one that can become native render without adding wrapper layers.
-   - Required proof: focused node tests for the chosen callsite plus
-   materialization frontier.
-
-2. **Loop output grouping wrapper audit.**
+1. **Loop output grouping wrapper audit.**
    - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
      function-registry split and decide whether any wrapper can shrink further
      without losing output ownership.
    - Required proof: focused loop eval/render tests plus node-copy frontier.
 
-3. **Call render native-surface audit.**
+2. **Call render native-surface audit.**
    - Goal: inspect the remaining `Call.render(...)` branches and find one
      wrapper/helper path that can shrink while preserving CSS-call vs JS-call
      semantics.
    - Required proof: focused call render tests plus materialization frontier.
 
-4. **Define-function lint debt audit.**
+3. **Define-function lint debt audit.**
    - Goal: clean the existing lint debt in `packages/core/src/define-function.ts`
      enough that future argument-surface changes can touch it without dragging
      unrelated unsafe-assertion failures into the checkpoint.
    - Required proof: focused define-function ESLint plus define-function tests.
 
-5. **Reference render native-surface audit.**
+4. **Reference render native-surface audit.**
    - Goal: inspect `Reference.render(...)` and source-output call sites for one
      helper path that can become native render without changing live-slot,
      fallback, or optional-reference semantics.
    - Required proof: focused reference render tests plus materialization
-   frontier.
+     frontier.
 
-6. **AtRule render native-surface audit.**
+5. **AtRule render native-surface audit.**
    - Goal: inspect `AtRule.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      lifted prelude scope, hoist, or root-order semantics.
    - Required proof: focused at-rule render tests plus materialization
      frontier.
 
-7. **Ruleset render native-surface audit.**
+6. **Ruleset render native-surface audit.**
    - Goal: inspect `Ruleset.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      composed selector, reference, or hoist behavior.
    - Required proof: focused ruleset render tests plus materialization
      frontier.
+
+7. **Source-only render override audit.**
+   - Goal: inspect remaining `renderSourceOutput(context, this, ...)`
+     overrides and remove one that can inherit base `Node.render(...)` without
+     changing source-only or visibility semantics.
+   - Required proof: focused node render tests plus materialization frontier.
 
 ## Backlog
 
