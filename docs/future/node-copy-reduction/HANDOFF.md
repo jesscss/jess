@@ -81,6 +81,11 @@ current state, immediate queue, and verification commands.
 - Render helper placement remains in `tree/util/render-buffer.ts` because the
   helper depends only on context, print state, and buffer shapes. Do not move it
   into a node module that would require importing evaluated node classes.
+- Current production `renderSourceOutput(...)` call sites are: base
+  `Node.render(...)`, `JsExpression`, selector/interpolated selector/string
+  surfaces, `StyleImport`, and the declaration non-property fallback for
+  `VarDeclaration`/`CustomDeclaration`-style outputs. All are either source
+  serialization or still listed in the queue below.
 - Plain source-only `Comment` nodes use inherited base render; source-only
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
@@ -170,25 +175,26 @@ backlog below.
      helper imports that should collapse to inherited source render.
    - Required proof: node-render-buffer coverage plus frontier scans.
 
-5. **Remaining `renderSourceOutput(...)` call-site count audit.**
-   - Goal: rerun the remaining helper call-site scan after each bridge pass and
-     make sure every remaining call is either base source serialization or an
-     explicitly queued surface.
-   - Required proof: call-site scan plus updated handoff.
-
-6. **Final expression-like helper removal audit.**
+5. **Final expression-like helper removal audit.**
    - Goal: after selector/interpolated/JS/import-style passes, decide whether
      any expression-like caller still justifies `renderResolvedOutput(...)` or
      whether it can shrink again.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
 
-7. **Package type-debt follow-up audit.**
+6. **Package type-debt follow-up audit.**
    - Goal: separate existing async-render type debt from the eval/render helper
      cleanup so failed `tsc --noEmit` output does not get mistaken for a new
      import-boundary regression.
    - Required proof: focused type-error sample plus handoff update; broad
      cleanup is a separate checkpoint.
+
+7. **Call local render helper naming audit.**
+   - Goal: inspect `Call`'s private `renderResolvedOutput(...)` name now that
+     the shared helper has the same name, and decide whether the call-local
+     helper should be renamed or split.
+   - Required proof: focused call tests plus helper call-site scan for any code
+     change.
 
 ## Backlog
 
