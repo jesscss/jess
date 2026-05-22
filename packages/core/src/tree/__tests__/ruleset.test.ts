@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -140,6 +140,36 @@ describe('Rule', () => {
         color: red;
       }
     `);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders nil-selector rulesets through the native body render path', async () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const originalRender = body.render;
+    let bodyRenderCalls = 0;
+    body.render = function countBodyRender(
+      this: typeof body,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      bodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+    const node = ruleset({
+      selector: new Nil(),
+      rules: body
+    });
+    node.resolve = () => {
+      throw new Error('Ruleset nil-selector render should evaluate natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+    const buffer = createRenderBuffer('flat');
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
+    expect(buffer.parts).toEqual(['color: red;\n']);
+    expect(bodyRenderCalls).toBe(2);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
