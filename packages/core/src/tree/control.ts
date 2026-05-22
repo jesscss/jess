@@ -83,7 +83,7 @@ function createDerivedIterationRulesSurface(
   return output;
 }
 
-function createLoopOutputRulesSurface(childNodes?: Node[]): Rules {
+function createGeneratedOutputRulesSurface(childNodes?: Node[]): Rules {
   const output = new Rules([]);
   if (childNodes) {
     for (const childNode of childNodes) {
@@ -391,7 +391,7 @@ export class If extends Node<IfValue> {
           return branch.rules.eval(context);
         }
       }
-      return new Rules([]).inherit(this);
+      return createGeneratedOutputRulesSurface();
     };
     return run();
   }
@@ -490,12 +490,12 @@ export class For extends Node<StructuredLoopValue> {
         }
       }
       if (outputRules.length === 0) {
-        return createLoopOutputRulesSurface();
+        return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createLoopOutputRulesSurface(outputRules);
+      return createGeneratedOutputRulesSurface(outputRules);
     };
     return run();
   }
@@ -655,12 +655,12 @@ export class While extends Node<WhileValue> {
         }
       });
       if (outputRules.length === 0) {
-        return createLoopOutputRulesSurface();
+        return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createLoopOutputRulesSurface(outputRules);
+      return createGeneratedOutputRulesSurface(outputRules);
     };
     return run();
   }

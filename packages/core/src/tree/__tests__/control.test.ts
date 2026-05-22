@@ -231,6 +231,33 @@ describe('Control Nodes', () => {
     await expect(renderNodeToString(root, context)).resolves.toBe('color: green;\n');
   });
 
+  it('resolves unmatched $if output as a generated empty rules surface', async () => {
+    const context = new Context();
+    const node = new If({
+      branches: [
+        {
+          condition: bool(false),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        }
+      ]
+    });
+
+    const resolved = await node.evalNode(context);
+
+    expect(resolved).toBeInstanceOf(Rules);
+    if (!(resolved instanceof Rules)) {
+      throw new Error('Expected unmatched $if output to be Rules');
+    }
+    expect(resolved.location).toHaveLength(0);
+    expect(resolved.treeContextIfSet).toBeUndefined();
+    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved.parent).toBeUndefined();
+    expect(resolved.toTrimmedString()).toBe('');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
   it('evaluates nested control blocks inside ruleset render', async () => {
     const context = new Context();
     let whileCalls = 0;

@@ -60,6 +60,8 @@ current state, immediate queue, and verification commands.
 - `$if` selected-branch render now calls branch `Rules.render(context)` for the
   trimmed branch block and writes that text into the caller buffer; it no
   longer explicitly evals the branch and serializes the completed output.
+- Unmatched `$if` eval output now uses the same generated empty `Rules`
+  surface as empty loop output; it does not inherit source control-node state.
 - Loop state is frame-backed: `$while` mutation uses a live `ScopeFrame`, and
   `$for` / `$while` reuse canonical direct body children without reparenting.
 - Loop eval output grouping wrappers are generated containers. They do not
@@ -102,50 +104,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **`$if` no-branch output wrapper audit.**
-   - Goal: inspect the no-branch `If.evalNode(...)` empty `Rules` wrapper and
-     decide whether it can use a generated output wrapper instead of inheriting
-     source control-node state.
-   - Required proof: focused control eval/render tests plus node-copy frontier.
-
-2. **CSS-call nested calc render contract audit.**
+1. **CSS-call nested calc render contract audit.**
    - Goal: decide whether the nested `calc(...)` preservation rule should be
      shared by direct and buffer render, or remain direct-render-only while the
      Less compile path keeps its current normalized output.
    - Required proof: focused call tests plus the Less operations fixture.
 
-3. **Function metadata argument surface audit.**
+2. **Function metadata argument surface audit.**
    - Goal: inspect metadata-backed JS function `rawArgs` / callback argument
      ownership after the define-function lint cleanup, and shrink any copied
      argument surface that is not required by documented runtime APIs.
    - Required proof: focused call/define-function tests plus materialization
      frontier.
 
-4. **Reference async native-render contract audit.**
+3. **Reference async native-render contract audit.**
    - Goal: add coverage for async referenced values flowing through
      `Reference.render(...)` without falling back to source serialization or
      public `resolve(...)`.
    - Required proof: focused reference tests plus render-buffer frontier.
 
-5. **AtRule helper extraction audit.**
+4. **AtRule helper extraction audit.**
    - Goal: inspect the new local at-rule render-output branch and decide
      whether ruleset render can share the same tiny container-output helper
      without growing another wrapper abstraction.
    - Required proof: focused at-rule/ruleset render tests plus materialization
      frontier.
 
-6. **Ruleset nil-selector render coverage.**
+5. **Ruleset nil-selector render coverage.**
    - Goal: add a focused guard for `Ruleset.render(...)` when evaluation returns
      a `Rules` body instead of a ruleset, proving the body renders natively and
      the source-output bridge stays gone.
    - Required proof: focused ruleset tests plus materialization frontier.
 
-7. **Remaining renderSourceOutput call-site audit.**
+6. **Remaining renderSourceOutput call-site audit.**
    - Goal: classify the remaining `renderSourceOutput(...)` call sites as
      expression-like evaluated output, source-only base infrastructure, or
      removable bridge work; promote one concrete shrinkable site.
    - Required proof: updated handoff plus the focused test for any promoted
      code change.
+
+7. **Block/List source-output bridge audit.**
+   - Goal: inspect `Block.render(...)` and `List.render(...)` bridge use and
+     prove whether they are expression-like evaluated output, source-only base
+     rendering, or removable by native child rendering.
+   - Required proof: focused block/list tests plus render-buffer frontier.
 
 ## Backlog
 

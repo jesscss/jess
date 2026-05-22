@@ -86,11 +86,11 @@ selector placement truly needs one.
   aligned with buffer output. `$while` carries loop-body variable mutation in a
   small live `ScopeFrame`, not in a full output tree. `$for` and `$while` reuse
   both static and dynamic direct body children without reparenting the
-  canonical body. Loop eval output grouping wrappers are generated containers:
-  they do not inherit source location/options or copy function registries. Only
-  runtime iteration/state surfaces preserve function registries for body
-  lookup. `$for` body registration prep is lazy and does not run for empty
-  iterables.
+  canonical body. Empty control output and loop output grouping wrappers are
+  generated containers: they do not inherit source location/options or copy
+  function registries. Only runtime iteration/state surfaces preserve function
+  registries for body lookup. `$for` body registration prep is lazy and does
+  not run for empty iterables.
 - The base `Node.render(context)` implementation is the inherited
   static/source serializer. It does not call `resolve()` or serialize an
   evaluated wrapper. Nodes whose output depends on context must override
