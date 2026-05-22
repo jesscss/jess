@@ -15,7 +15,6 @@ import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  renderSourceOutput,
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
@@ -260,6 +259,17 @@ export class Call extends Node<CallValue, CallOptions> {
     return finishCall();
   }
 
+  private renderResolvedOutput(
+    node: Node,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
+      : node.render(context, bufferOrOptions);
+  }
+
   constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
@@ -303,10 +313,17 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
+      if (this.evaluated) {
+        const prepared = prepareBufferPrintState(context, options);
+        return writeRenderTextResult(
+          bufferOrOptions,
+          this.renderPlainFunctionCall(this, context, prepared)
+        );
+      }
       if (typeof this.value.name !== 'string') {
         return pipe(
           () => this.deriveResolveSurface().eval(context),
-          node => renderSourceOutput(context, node, bufferOrOptions, options)
+          node => this.renderResolvedOutput(node, context, bufferOrOptions, options)
         );
       }
       // Plain CSS calls render args/content explicitly so async child failures
@@ -318,12 +335,15 @@ export class Call extends Node<CallValue, CallOptions> {
       );
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    if (this.evaluated) {
+      return this.renderPlainFunctionCall(this, context, prepared);
+    }
     if (typeof this.value.name === 'string') {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
     return pipe(
       () => this.deriveResolveSurface().eval(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => this.renderResolvedOutput(node, context, bufferOrOptions, options)
     );
   }
 

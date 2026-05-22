@@ -312,6 +312,23 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('renders optional non-string fallback calls through native output', async () => {
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args
+    }, { silentFail: true });
+    rule.resolve = () => {
+      throw new Error('Call dynamic fallback render should evaluate locally');
+    };
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red 10px)');
+    expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
+    expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
+    expect(args.parent).toBe(rule);
+  });
+
   it('writes finalized CSS call output into segmented buffers', () => {
     const buffer = createRenderBuffer('segmented');
     const rule = call({
