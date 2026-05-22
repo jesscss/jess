@@ -87,9 +87,9 @@ current state, immediate queue, and verification commands.
   placement surfaces only where parentage/visibility tests prove they are
   semantic.
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
-  functions keep one owned raw/callback arg-list surface for documented
-  runtime APIs; `Call` no longer creates a second pre-copy before
-  `callWithContext(...)`.
+  functions keep one owned raw/callback arg-list surface because `this.rawArgs`
+  is a documented mutable runtime API; `Call` no longer creates a second
+  pre-copy before `callWithContext(...)`.
 - `@charset` output-order handling lives in `Rules` registration prep.
   `Any.prepareRegistration()` is mark-only again.
 - Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
@@ -104,50 +104,49 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Function metadata argument surface audit.**
-   - Goal: inspect metadata-backed JS function `rawArgs` / callback argument
-     ownership after the define-function lint cleanup, and shrink any copied
-     argument surface that is not required by documented runtime APIs.
-   - Required proof: focused call/define-function tests plus materialization
-     frontier.
-
-2. **Reference async native-render contract audit.**
+1. **Reference async native-render contract audit.**
    - Goal: add coverage for async referenced values flowing through
      `Reference.render(...)` without falling back to source serialization or
      public `resolve(...)`.
    - Required proof: focused reference tests plus render-buffer frontier.
 
-3. **AtRule helper extraction audit.**
+2. **AtRule helper extraction audit.**
    - Goal: inspect the new local at-rule render-output branch and decide
      whether ruleset render can share the same tiny container-output helper
      without growing another wrapper abstraction.
    - Required proof: focused at-rule/ruleset render tests plus materialization
      frontier.
 
-4. **Ruleset nil-selector render coverage.**
+3. **Ruleset nil-selector render coverage.**
    - Goal: add a focused guard for `Ruleset.render(...)` when evaluation returns
      a `Rules` body instead of a ruleset, proving the body renders natively and
      the source-output bridge stays gone.
    - Required proof: focused ruleset tests plus materialization frontier.
 
-5. **Remaining renderSourceOutput call-site audit.**
+4. **Remaining renderSourceOutput call-site audit.**
    - Goal: classify the remaining `renderSourceOutput(...)` call sites as
      expression-like evaluated output, source-only base infrastructure, or
      removable bridge work; promote one concrete shrinkable site.
    - Required proof: updated handoff plus the focused test for any promoted
      code change.
 
-6. **Block/List source-output bridge audit.**
+5. **Block/List source-output bridge audit.**
    - Goal: inspect `Block.render(...)` and `List.render(...)` bridge use and
      prove whether they are expression-like evaluated output, source-only base
      rendering, or removable by native child rendering.
    - Required proof: focused block/list tests plus render-buffer frontier.
 
-7. **Dynamic call-name render bridge audit.**
+6. **Dynamic call-name render bridge audit.**
    - Goal: inspect `Call.render(...)` for non-string call names and decide
      whether referenced JS/mixin/function names can render through native
      resolved-node output instead of `renderSourceOutput(...)`.
    - Required proof: focused call tests plus materialization frontier.
+
+7. **SelectorCapture render bridge audit.**
+   - Goal: inspect `SelectorCapture.render(...)` and prove whether it is a
+     source-only selector capture surface or can delegate through base/native
+     render without `renderSourceOutput(...)`.
+   - Required proof: focused selector-capture tests plus render-buffer frontier.
 
 ## Backlog
 

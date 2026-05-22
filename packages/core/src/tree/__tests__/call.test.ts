@@ -772,6 +772,41 @@ describe('Call', () => {
     }
   });
 
+  it('keeps metadata rawArgs mutations isolated from source call arguments', async () => {
+    let rawArgsDuringCall: List | undefined;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'mutate-raw',
+      fn: defineFunction(
+        'mutate-raw',
+        async function(this: { rawArgs: List }) {
+          rawArgsDuringCall = this.rawArgs;
+          this.rawArgs.value.push(any('mutated'));
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'mutate-raw' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('2');
+    expect(rawArgsDuringCall).toBeDefined();
+    expect(rawArgsDuringCall).not.toBe(originalArgs);
+    expect(originalArgs.value).toEqual([originalValue]);
+    expect(originalValue.parent).toBe(originalArgs);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
   it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({
