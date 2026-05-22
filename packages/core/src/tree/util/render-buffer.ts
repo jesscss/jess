@@ -6,8 +6,9 @@ export type RenderBufferNode = {
   resolve(context: Context): MaybePromise<RenderableOutput>;
 };
 
-type NativeRenderBufferNode = RenderBufferNode & {
+type NativeRenderOutput = {
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  render(context: Context, options?: PrintOptions): MaybePromise<string>;
 };
 
 export type RenderableOutput = {
@@ -179,6 +180,21 @@ export function renderSourceOutput(
     : out;
 }
 
+export function renderResolvedOutput(
+  context: Context,
+  source: RenderableOutput,
+  resolved: RenderableOutput,
+  bufferOrOptions?: RenderBuffer | PrintOptions,
+  options?: PrintOptions
+): MaybePromise<string> {
+  if (resolved === source || !hasNativeBufferRender(resolved)) {
+    return renderSourceOutput(context, resolved, bufferOrOptions, options);
+  }
+  return isRenderBuffer(bufferOrOptions)
+    ? resolved.render(context, bufferOrOptions, options)
+    : resolved.render(context, bufferOrOptions);
+}
+
 export function renderInvisibleEffect(
   effect: MaybePromise<unknown>,
   bufferOrOptions?: RenderBuffer | PrintOptions
@@ -301,7 +317,7 @@ export function renderNodeToString(
     : finalize();
 }
 
-function hasNativeBufferRender(node: RenderBufferNode): node is NativeRenderBufferNode {
+function hasNativeBufferRender(node: object): node is NativeRenderOutput {
   const ownDescriptor = Object.getOwnPropertyDescriptor(node, 'render');
   if (typeof ownDescriptor?.value === 'function' && ownDescriptor.value.length >= 2) {
     return true;

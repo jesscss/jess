@@ -60,9 +60,13 @@ current state, immediate queue, and verification commands.
   use native streaming or `renderSourceOutput(...)`.
 - Remaining `renderSourceOutput(...)` sites are classified:
   - base `Node.render(...)` is source serialization infrastructure;
-  - expression-like nodes use it after local eval/resolve;
-  - named wrapper bridge surfaces have been removed; the rest are the broader
-    expression-like/helper boundary cleanup.
+  - expression-like nodes still on it are the remaining concrete cleanup
+    queue;
+  - `renderResolvedOutput(...)` is the narrow adapter for a caller that has
+    already chosen an evaluated output node and needs native render delegation
+    when that output is not the source node;
+  - named wrapper bridge surfaces have been removed; do not add another helper
+    family around these two source/resolved-output roles.
 - Plain source-only `Comment` nodes use inherited base render; source-only
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
@@ -128,48 +132,49 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Expression-like render helper naming audit.**
-   - Goal: inspect remaining source-output helper use on expression-like nodes
-     and decide whether helper naming should distinguish source serialization
-     from evaluated expression output more clearly.
-   - Required proof: updated handoff plus focused tests for any code change.
-
-2. **Render helper import-boundary audit.**
+1. **Render helper import-boundary audit.**
    - Goal: confirm helper placement avoids circular runtime imports as
      source-output bridges are removed or renamed.
    - Required proof: package build plus updated handoff if any placement rule is
      discovered.
 
-3. **Declaration render bridge audit.**
+2. **Declaration render bridge audit.**
    - Goal: inspect `Declaration.render(...)` after custom-property raw-value
      cleanup and decide whether it still needs `renderSourceOutput(...)` or can
      emit through a declaration-native writer path.
    - Required proof: focused declaration tests plus materialization frontier.
 
-4. **Base source render helper boundary audit.**
+3. **Base source render helper boundary audit.**
    - Goal: confirm `renderSourceOutput(...)` still belongs in the base
      source-serialization path after shrinkable evaluated surfaces are removed.
    - Required proof: focused node-render-buffer coverage plus updated handoff.
 
-5. **Operation/Expression render bridge audit.**
+4. **Operation/Expression render bridge audit.**
    - Goal: inspect `Operation.render(...)` and `Expression.render(...)` as the
      next expression-like bridge pair and decide whether a shared local syntax
      path is warranted.
    - Required proof: focused operation/expression tests plus materialization
      frontier.
 
-6. **Paren/Quoted/Url render bridge audit.**
+5. **Paren/Quoted/Url render bridge audit.**
    - Goal: inspect `Paren.render(...)`, `Quoted.render(...)`, and
      `Url.render(...)` as small expression-like wrappers and decide whether
      their local syntax printers can replace generic source-output helper use.
    - Required proof: focused paren/quoted/url tests plus render-buffer frontier.
 
-7. **Negative/Condition/DefaultGuard render bridge audit.**
+6. **Negative/Condition/DefaultGuard render bridge audit.**
    - Goal: inspect the remaining small wrapper render paths and decide whether
      each can use native local syntax or should stay on a renamed expression
      output helper.
    - Required proof: focused negative/condition/default-guard tests plus
      materialization frontier.
+
+7. **Selector/interpolated render bridge audit.**
+   - Goal: inspect selector-valued and interpolated string render paths that
+     still use `renderSourceOutput(...)` after local eval/resolve, without
+     confusing selector payload output with generic expression output.
+   - Required proof: focused selector/interpolated tests plus render-buffer
+     frontier.
 
 ## Backlog
 
