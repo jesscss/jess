@@ -426,7 +426,7 @@ describe('Call', () => {
     }
   });
 
-  it('reduces safe direct arithmetic while preserving nested calc calls when rendering calc()', async () => {
+  it('reduces safe direct arithmetic and nested calc calls like buffer render', async () => {
     const direct = call({
       name: 'calc',
       args: list([
@@ -448,7 +448,10 @@ describe('Call', () => {
     });
 
     expect(direct.render(context)).toBe('calc(20px)');
-    await expect(Promise.resolve(nested.render(context))).resolves.toBe('calc(10vh + calc(5vh))');
+    await expect(Promise.resolve(nested.render(context))).resolves.toBe('calc(15vh)');
+    const buffer = createRenderBuffer('flat');
+    await expect(nested.render(context, buffer)).resolves.toBe('calc(15vh)');
+    expect(buffer.parts).toEqual(['calc(15vh)']);
   });
 
   it('keeps canonical function syntax separate from evaluated CSS-call normalization', () => {

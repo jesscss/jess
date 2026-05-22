@@ -31,27 +31,6 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
 }
 
-function containsPlainCall(node: Node | undefined, name: string): boolean {
-  if (!node) {
-    return false;
-  }
-  if (isNode(node, N.Call) && node.value.name === name) {
-    return true;
-  }
-  const value = node.value;
-  if (Array.isArray(value)) {
-    return value.some(child => isNode(child) && containsPlainCall(child, name));
-  }
-  if (value && typeof value === 'object') {
-    return Object.values(value).some(child => (
-      isNode(child)
-        ? containsPlainCall(child, name)
-        : Array.isArray(child) && child.some(entry => isNode(entry) && containsPlainCall(entry, name))
-    ));
-  }
-  return false;
-}
-
 export type CallValue = {
   /**
    * Can be an identifier or something like a mixin or variable lookup
@@ -340,9 +319,6 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
     if (typeof this.value.name === 'string') {
-      if (this.value.name === 'calc' && containsPlainCall(this.value.args, 'calc')) {
-        return this.toTrimmedString(prepared);
-      }
       return this.renderPlainFunctionCall(this, context, prepared);
     }
     return pipe(

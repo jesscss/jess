@@ -31,8 +31,8 @@ current state, immediate queue, and verification commands.
   It serializes evaluated rulesets through container output and delegates
   nil-selector body output to native `Rules.render(...)`.
 - Plain CSS `Call.render(...)` awaits async direct `calc(...)` arguments
-  without the old broad source fallback. Nested `calc(...)` direct render still
-  preserves authored nested calc syntax.
+  without the old broad source fallback. Nested `calc(...)` direct and buffer
+  render now share the same evaluated normalization path used by Less output.
 - `packages/core/src/define-function.ts` focused lint debt is clean. Future
   function argument-surface work should not reintroduce unsafe metadata casts
   or unused validation paths.
@@ -104,50 +104,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **CSS-call nested calc render contract audit.**
-   - Goal: decide whether the nested `calc(...)` preservation rule should be
-     shared by direct and buffer render, or remain direct-render-only while the
-     Less compile path keeps its current normalized output.
-   - Required proof: focused call tests plus the Less operations fixture.
-
-2. **Function metadata argument surface audit.**
+1. **Function metadata argument surface audit.**
    - Goal: inspect metadata-backed JS function `rawArgs` / callback argument
      ownership after the define-function lint cleanup, and shrink any copied
      argument surface that is not required by documented runtime APIs.
    - Required proof: focused call/define-function tests plus materialization
      frontier.
 
-3. **Reference async native-render contract audit.**
+2. **Reference async native-render contract audit.**
    - Goal: add coverage for async referenced values flowing through
      `Reference.render(...)` without falling back to source serialization or
      public `resolve(...)`.
    - Required proof: focused reference tests plus render-buffer frontier.
 
-4. **AtRule helper extraction audit.**
+3. **AtRule helper extraction audit.**
    - Goal: inspect the new local at-rule render-output branch and decide
      whether ruleset render can share the same tiny container-output helper
      without growing another wrapper abstraction.
    - Required proof: focused at-rule/ruleset render tests plus materialization
      frontier.
 
-5. **Ruleset nil-selector render coverage.**
+4. **Ruleset nil-selector render coverage.**
    - Goal: add a focused guard for `Ruleset.render(...)` when evaluation returns
      a `Rules` body instead of a ruleset, proving the body renders natively and
      the source-output bridge stays gone.
    - Required proof: focused ruleset tests plus materialization frontier.
 
-6. **Remaining renderSourceOutput call-site audit.**
+5. **Remaining renderSourceOutput call-site audit.**
    - Goal: classify the remaining `renderSourceOutput(...)` call sites as
      expression-like evaluated output, source-only base infrastructure, or
      removable bridge work; promote one concrete shrinkable site.
    - Required proof: updated handoff plus the focused test for any promoted
      code change.
 
-7. **Block/List source-output bridge audit.**
+6. **Block/List source-output bridge audit.**
    - Goal: inspect `Block.render(...)` and `List.render(...)` bridge use and
      prove whether they are expression-like evaluated output, source-only base
      rendering, or removable by native child rendering.
    - Required proof: focused block/list tests plus render-buffer frontier.
+
+7. **Dynamic call-name render bridge audit.**
+   - Goal: inspect `Call.render(...)` for non-string call names and decide
+     whether referenced JS/mixin/function names can render through native
+     resolved-node output instead of `renderSourceOutput(...)`.
+   - Required proof: focused call tests plus materialization frontier.
 
 ## Backlog
 

@@ -116,10 +116,10 @@ selector placement truly needs one.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated
   rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
   delegates to that body's native render path.
-- Plain CSS calls render their arguments/content natively. Direct `calc(...)`
-  render awaits async non-nested arguments instead of falling back to source
-  text, while nested `calc(...)` direct render remains source-preserving until
-  the compile-path normalization contract is reviewed separately.
+- Plain CSS calls render their arguments/content natively. Direct and buffer
+  `calc(...)` render share the same evaluated argument normalization, including
+  nested `calc(...)`; authored source syntax is still available through
+  `toString()` / `toTrimmedString()`.
 - `packages/core/src/define-function.ts` is no longer blocked by unrelated
   focused lint debt. Function argument-surface work should keep metadata access
   typed and avoid rebuilding unused validation paths.
