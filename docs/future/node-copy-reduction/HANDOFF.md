@@ -30,6 +30,9 @@ current state, immediate queue, and verification commands.
 - `Ruleset.render(...)` no longer uses the generic source-output render bridge.
   It serializes evaluated rulesets through container output and delegates
   nil-selector body output to native `Rules.render(...)`.
+- Evaluated at-rule/ruleset container output shares
+  `renderRulesContainerOutput(...)`; this is a narrow serializer adapter, not a
+  second render abstraction family.
 - Plain CSS `Call.render(...)` awaits async direct `calc(...)` arguments
   without the old broad source fallback. Nested `calc(...)` direct and buffer
   render now share the same evaluated normalization path used by Less output.
@@ -104,48 +107,47 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **AtRule helper extraction audit.**
-   - Goal: inspect the new local at-rule render-output branch and decide
-     whether ruleset render can share the same tiny container-output helper
-     without growing another wrapper abstraction.
-   - Required proof: focused at-rule/ruleset render tests plus materialization
-     frontier.
-
-2. **Ruleset nil-selector render coverage.**
+1. **Ruleset nil-selector render coverage.**
    - Goal: add a focused guard for `Ruleset.render(...)` when evaluation returns
      a `Rules` body instead of a ruleset, proving the body renders natively and
      the source-output bridge stays gone.
    - Required proof: focused ruleset tests plus materialization frontier.
 
-3. **Remaining renderSourceOutput call-site audit.**
+2. **Remaining renderSourceOutput call-site audit.**
    - Goal: classify the remaining `renderSourceOutput(...)` call sites as
      expression-like evaluated output, source-only base infrastructure, or
      removable bridge work; promote one concrete shrinkable site.
    - Required proof: updated handoff plus the focused test for any promoted
      code change.
 
-4. **Block/List source-output bridge audit.**
+3. **Block/List source-output bridge audit.**
    - Goal: inspect `Block.render(...)` and `List.render(...)` bridge use and
      prove whether they are expression-like evaluated output, source-only base
      rendering, or removable by native child rendering.
    - Required proof: focused block/list tests plus render-buffer frontier.
 
-5. **Dynamic call-name render bridge audit.**
+4. **Dynamic call-name render bridge audit.**
    - Goal: inspect `Call.render(...)` for non-string call names and decide
      whether referenced JS/mixin/function names can render through native
      resolved-node output instead of `renderSourceOutput(...)`.
    - Required proof: focused call tests plus materialization frontier.
 
-6. **SelectorCapture render bridge audit.**
+5. **SelectorCapture render bridge audit.**
    - Goal: inspect `SelectorCapture.render(...)` and prove whether it is a
      source-only selector capture surface or can delegate through base/native
      render without `renderSourceOutput(...)`.
    - Required proof: focused selector-capture tests plus render-buffer frontier.
 
-7. **Non-string call fallback coverage.**
+6. **Non-string call fallback coverage.**
    - Goal: add coverage for optional/dynamic non-string `Call` names that still
      require source fallback behavior before shrinking that render bridge.
    - Required proof: focused call tests plus materialization frontier.
+
+7. **Expression-like render helper naming audit.**
+   - Goal: inspect remaining source-output helper use on expression-like nodes
+     and decide whether helper naming should distinguish source serialization
+     from evaluated expression output more clearly.
+   - Required proof: updated handoff plus focused tests for any code change.
 
 ## Backlog
 

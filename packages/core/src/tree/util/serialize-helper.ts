@@ -2,12 +2,15 @@ import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
+import type { Context } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
+  type PrintOptions,
   OutputWriter,
   getPrintOptions,
+  prepareRenderPrintState,
   savePrintState,
   restorePrintState,
   saveArrayState,
@@ -23,6 +26,12 @@ import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
+  type RenderBuffer
+} from './render-buffer.js';
 
 type TriviaSide = 'before' | 'after';
 
@@ -979,6 +988,30 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
  */
 export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): string {
   return serializeRulesContainerInternal(node, options, true);
+}
+
+export function renderRulesContainerOutput(
+  node: AtRule | Ruleset,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): string;
+export function renderRulesContainerOutput(
+  node: AtRule | Ruleset,
+  context: Context,
+  options?: PrintOptions
+): string;
+export function renderRulesContainerOutput(
+  node: AtRule | Ruleset,
+  context: Context,
+  bufferOrOptions?: RenderBuffer | PrintOptions,
+  options?: PrintOptions
+): string {
+  if (isRenderBuffer(bufferOrOptions)) {
+    const out = serializeRulesContainer(node, prepareBufferPrintState(context, options));
+    return writeRenderText(bufferOrOptions, out);
+  }
+  return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
 }
 
 /**

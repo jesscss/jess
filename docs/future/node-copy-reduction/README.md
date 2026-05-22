@@ -116,6 +116,10 @@ selector placement truly needs one.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated
   rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
   delegates to that body's native render path.
+- `renderRulesContainerOutput(...)` is the shared adapter for evaluated
+  at-rule/ruleset container output. Keep it limited to print-state and buffer
+  plumbing around `serializeRulesContainer(...)`; do not grow it into a
+  general render wrapper.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
