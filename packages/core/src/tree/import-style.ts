@@ -4,7 +4,7 @@ import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
@@ -16,7 +16,7 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
@@ -849,7 +849,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.evalNode(context), bufferOrOptions, options);
+    return pipe(
+      () => this.evalNode(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {

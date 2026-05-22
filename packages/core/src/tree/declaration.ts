@@ -17,7 +17,7 @@ import { N } from './node-type.js';
 import type { Call } from './call.js';
 import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -331,7 +331,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.evalPrepared(context), bufferOrOptions, options);
+    return pipe(
+      () => this.evalPrepared(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   override resolve(context: Context): MaybePromise<Node> {

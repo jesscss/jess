@@ -105,8 +105,7 @@ current state, immediate queue, and verification commands.
   and callback scope anchoring. Optional fallback call output owns evaluated
   fallback args without reparenting source args.
 - `DefaultGuard.render(...)` now chooses its local boolean output and writes it
-  through direct source-output serialization instead of the generic
-  `renderEvalOutput(...)` router.
+  through direct source-output serialization.
 - `@charset` output-order handling now lives in `Rules` registration prep
   instead of `Any.prepareRegistration()`. `Any.prepareRegistration()` is
   mark-only again, while `Rules` explicitly records `context.currentCharset`
@@ -125,9 +124,8 @@ current state, immediate queue, and verification commands.
 - Extend utility comments now describe the current walk-and-consume and
   location-based paths without stale "legacy path" language. The parent
   replacement helper uses selector container/node types instead of `any`.
-- Remaining eval-output adapter sites now use the `renderEvalOutput(...)`
-  name; the old `renderChosenOutput(...)` name is gone from production code,
-  tests, frontier messages, and this handoff.
+- The old `renderChosenOutput(...)` name is gone from production code, tests,
+  frontier messages, and this handoff.
 - Simple expression/value wrappers now skip `renderEvalOutput(...)` entirely
   after local eval/resolve: `Negative`, `Expression`, `JsExpression`,
   `Condition`, `Url`, `Quoted`, `Paren`, and `Operation` pass the resulting
@@ -136,6 +134,12 @@ current state, immediate queue, and verification commands.
   source-output path: `List`, `Sequence`, `Block`, `Interpolated`, `Selector`,
   `SelectorCapture`, and `InterpolatedSelector` no longer use
   `renderEvalOutput(...)`.
+- Structural/root-aware render sites now follow the same direct path:
+  `AtRule`, `Call`, `Control`, `Declaration`, `ImportStyle`, `Reference`, and
+  `Ruleset` no longer use `renderEvalOutput(...)`.
+- `renderEvalOutput(...)` and its helper-local string/buffer branches are gone;
+  production render paths now either stream natively or perform local
+  eval/resolve followed by `renderSourceOutput(...)`.
 
 ## Immediate Queue
 
@@ -143,15 +147,13 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Eval-output helper cleanup: audit structural/root-aware adapters.**
-   - Goal: keep `renderEvalOutput(...)` as a narrow adapter for nodes that
-     have already selected their evaluated output, not a place to hide eval or
-     output-tree materialization.
-   - Remaining production sites are `AtRule`, `Call`, `Control`,
-     `Declaration`, `ImportStyle`, `Reference`, and `Ruleset`. Start with one
-     or two that have focused render-buffer tests and either remove the helper
-     call or document the exact root-aware, side-effect, fallback, or
-     registration behavior that still requires it.
+1. **Root-aware output helper cleanup: audit `writeRootAwareEvalOutput(...)`.**
+   - Goal: prove whether the root serializer exception still needs a named
+     eval-output helper now that generic eval-output routing is gone.
+   - Start in `Rules.render(...)` and `render-buffer.ts`. Either keep
+     `writeRootAwareEvalOutput(...)` with an explicit root-only reason, or
+     collapse it into the narrower root render path without changing base
+     `Node.render(context)` semantics.
    - Do not add new render wrappers or change base `Node.render(context)`
      semantics.
    - Required proof: focused render-buffer/node tests plus frontier checks and

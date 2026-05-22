@@ -198,53 +198,6 @@ export function renderNoOutputEffect(
     : renderNoOutput(effect);
 }
 
-function writeRenderedOutput(
-  buffer: RenderBuffer,
-  node: RenderableOutput,
-  context: Context,
-  options?: PrintOptions
-): string {
-  return writeRenderText(
-    buffer,
-    node.toTrimmedString(prepareBufferPrintState(context, options))
-  );
-}
-
-function writeEvalOutput(
-  buffer: RenderBuffer,
-  node: MaybePromise<RenderableOutput>,
-  context: Context,
-  options?: PrintOptions
-): MaybePromise<string> {
-  return isThenable(node)
-    ? (node as Promise<RenderableOutput>).then(resolved => writeRenderedOutput(buffer, resolved, context, options))
-    : writeRenderedOutput(buffer, node, context, options);
-}
-
-function renderEvalOutputToString(
-  node: MaybePromise<RenderableOutput>,
-  context: Context,
-  options?: PrintOptions
-): MaybePromise<string> {
-  const render = (resolved: RenderableOutput): string => {
-    return resolved.toTrimmedString(prepareRenderPrintState(context, options));
-  };
-  return isThenable(node)
-    ? (node as Promise<RenderableOutput>).then(render)
-    : render(node);
-}
-
-export function renderEvalOutput(
-  context: Context,
-  node: MaybePromise<RenderableOutput>,
-  bufferOrOptions?: RenderBuffer | PrintOptions,
-  options?: PrintOptions
-): MaybePromise<string> {
-  return isRenderBuffer(bufferOrOptions)
-    ? writeEvalOutput(bufferOrOptions, node, context, options)
-    : renderEvalOutputToString(node, context, bufferOrOptions);
-}
-
 export function renderedOutputToString(
   source: RenderBufferNode,
   node: RenderableOutput,

@@ -15,7 +15,7 @@ import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-fram
 import {
   createRenderBuffer,
   isRenderBuffer,
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -374,11 +374,11 @@ export class If extends Node<IfValue> {
   ): Promise<string> {
     for (const branch of this.value.branches) {
       if (!branch.condition) {
-        return renderEvalOutput(context, branch.rules.eval(context), buffer, options);
+        return renderSourceOutput(context, await branch.rules.eval(context), buffer, options);
       }
       const condition = await branch.condition.eval(context);
       if (condition instanceof Bool && condition.value === true) {
-        return renderEvalOutput(context, branch.rules.eval(context), buffer, options);
+        return renderSourceOutput(context, await branch.rules.eval(context), buffer, options);
       }
     }
     return '';

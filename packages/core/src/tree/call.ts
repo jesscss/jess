@@ -6,7 +6,7 @@ import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
 import { Any } from './any.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -15,7 +15,7 @@ import { Reference } from './reference.js';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer,
   writeRenderTextResult
 } from './util/render-buffer.js';
@@ -304,11 +304,9 @@ export class Call extends Node<CallValue, CallOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (isRenderBuffer(bufferOrOptions)) {
       if (typeof this.value.name !== 'string') {
-        return renderEvalOutput(
-          context,
-          this.deriveResolveSurface().eval(context),
-          bufferOrOptions,
-          options
+        return pipe(
+          () => this.deriveResolveSurface().eval(context),
+          node => renderSourceOutput(context, node, bufferOrOptions, options)
         );
       }
       // Plain CSS calls render args/content explicitly so async child failures
@@ -327,7 +325,10 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       return rendered;
     }
-    return renderEvalOutput(context, this.deriveResolveSurface().eval(context), bufferOrOptions, options);
+    return pipe(
+      () => this.deriveResolveSurface().eval(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   override resolve(context: Context): MaybePromise<Node> {

@@ -153,7 +153,7 @@ if (matches.length > 0) {
 if (selectedOutputMatches.length > 0) {
   console.log('');
   console.log(
-    'Node render overloads should route evaluated output through renderEvalOutput; do not reintroduce selected-output helper surfaces.'
+    'Node render overloads should route local eval/resolve output through renderSourceOutput; do not reintroduce selected-output helper surfaces.'
   );
   process.exitCode = 1;
 }

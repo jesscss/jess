@@ -68,7 +68,6 @@ import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
-  renderEvalOutput,
   renderNoOutputEffect,
   renderNodeToBuffer,
   renderNodeToString,
@@ -214,16 +213,6 @@ describe('renderNodeToBuffer', () => {
     expect(writer.toString()).toBe('');
   });
 
-  it('renders maybe-async eval output to strings without buffer writes', async () => {
-    const context = new Context();
-    const writer = new OutputWriter();
-
-    expect(renderEvalOutput(context, any('direct'), { writer })).toBe('direct');
-    await expect(renderEvalOutput(context, Promise.resolve(any('async')), { writer }))
-      .resolves.toBe('async');
-    expect(writer.toString()).toBe('directasync');
-  });
-
   it('uses instance-owned native buffer render methods before resolving', () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
@@ -290,49 +279,6 @@ describe('renderNodeToBuffer', () => {
 
     expect(text).toBe('color: red;');
     expect(buffer.parts).toEqual(['color: red;']);
-  });
-
-  it('writes evaluated output without mutating rejected buffers', async () => {
-    const context = new Context();
-    const syncBuffer = createRenderBuffer('flat');
-    const asyncBuffer = createRenderBuffer('flat');
-    const rejectedBuffer = createRenderBuffer('flat');
-
-    expect(renderEvalOutput(context, any('sync'), syncBuffer)).toBe('sync');
-    await expect(renderEvalOutput(context, Promise.resolve(any('async')), asyncBuffer)).resolves.toBe('async');
-    await expect(renderEvalOutput(context, Promise.reject(new Error('nope')), rejectedBuffer)).rejects.toThrow('nope');
-
-    expect(syncBuffer.parts).toEqual(['sync']);
-    expect(asyncBuffer.parts).toEqual(['async']);
-    expect(rejectedBuffer.parts).toEqual([]);
-  });
-
-  it('routes eval output through string and buffer render surfaces', async () => {
-    const context = new Context();
-    const buffer = createRenderBuffer('flat');
-    const writer = new OutputWriter();
-    const bufferWriter = new OutputWriter();
-
-    expect(renderEvalOutput(context, any('direct'), { writer })).toBe('direct');
-    await expect(renderEvalOutput(context, Promise.resolve(any('buffered')), buffer, { writer: bufferWriter }))
-      .resolves.toBe('buffered');
-
-    expect(writer.toString()).toBe('direct');
-    expect(bufferWriter.toString()).toBe('');
-    expect(buffer.parts).toEqual(['buffered']);
-  });
-
-  it('keeps buffer render from adding a writer to caller-owned frame state', () => {
-    const context = new Context();
-    const buffer = createRenderBuffer('flat');
-    const frameHeaders: string[] = [];
-    const options = { context, frameHeaders };
-
-    expect(renderEvalOutput(context, any('buffered'), buffer, options)).toBe('buffered');
-
-    expect(buffer.parts).toEqual(['buffered']);
-    expect(options.frameHeaders).toBe(frameHeaders);
-    expect('writer' in options).toBe(false);
   });
 
   it('writes invisible effect output without mutating rejected buffers', async () => {

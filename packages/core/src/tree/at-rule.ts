@@ -9,7 +9,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
@@ -207,7 +207,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.deriveAtRule(this.value).eval(context), bufferOrOptions, options);
+    return pipe(
+      () => this.deriveAtRule(this.value).eval(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   /**
