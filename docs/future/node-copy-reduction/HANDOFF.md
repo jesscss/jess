@@ -111,6 +111,10 @@ current state, immediate queue, and verification commands.
   instead of `Any.prepareRegistration()`. `Any.prepareRegistration()` is
   mark-only again, while `Rules` explicitly records `context.currentCharset`
   and replaces the source child with `Nil` for output order.
+- Pending declaration-name registration prep is documented and named as a
+  narrow lookup-identity retry. It exists for dynamic declaration names that
+  can be unblocked by another declaration registering a variable identity; it
+  is not a hidden tree-wide pre-eval retry.
 
 ## Immediate Queue
 
@@ -118,13 +122,13 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Registration prep shrink: audit one pending identity retry path.**
+1. **Registration prep shrink: audit ordered identity one-shot prep.**
    - Goal: keep retry behavior tied to names that can become lookup identities,
      not to a hidden tree-wide eval phase.
-   - Start with declaration-name pending prep or ordered identity pending prep.
-     Prove the current retry is needed for a real lookup identity dependency,
-     then narrow naming/comments or remove a retry branch if tests show it only
-     preserves old pre-eval ordering.
+   - Declaration-name pending prep has been audited. Next, inspect ordered
+     identity prep for mixin names, selector identity, and style-import paths.
+     Prove the one-shot behavior is still needed for source-order registration
+     or split/remove a branch if it only preserves old pre-eval ordering.
    - Do not change `$if`/`$for`/`$while` visibility semantics or weaken dynamic
      declaration lookup tests.
    - Required proof: focused registration/lookup tests plus frontier checks and

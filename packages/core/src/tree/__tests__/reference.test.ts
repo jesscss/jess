@@ -7,6 +7,16 @@ import { buildScopeFrame } from '../scope-frame.js';
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
 
+function setRulesContext(root: Node): RulesClass {
+  expect(root).toBeInstanceOf(RulesClass);
+  if (!(root instanceof RulesClass)) {
+    throw new Error('Expected Rules root');
+  }
+  context.root = root;
+  context.rulesContext = root;
+  return root;
+}
+
 class AsyncRulesContextAny extends Any<string> {
   constructor(value: string) {
     super(value);
@@ -80,9 +90,7 @@ describe('reference', () => {
           value: any('red')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
 
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const rendered = refNode.render(context);
@@ -99,9 +107,7 @@ describe('reference', () => {
           value: any('red')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
       const buffer = createRenderBuffer('segmented');
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const originalResolve = refNode.resolve;
@@ -128,9 +134,7 @@ describe('reference', () => {
           value: any('red')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       refNode.resolve = () => {
         throw new Error('Reference direct render should use evalNode');
@@ -174,9 +178,7 @@ describe('reference', () => {
           value: any('red')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
 
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const resolved = await refNode.resolve(context);
@@ -202,9 +204,7 @@ describe('reference', () => {
           value
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
 
       expect(value.toTrimmedString()).toBe('one, $item');
 
@@ -235,9 +235,7 @@ describe('reference', () => {
       const node = rules([
         sourceBinding
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
 
       try {
         const refNode = ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true });
@@ -267,9 +265,7 @@ describe('reference', () => {
           value: any('foo')
         })
       ]);
-      const evald = await root.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await root.eval(context));
 
       const fallback = list([
         any('one'),
@@ -389,9 +385,7 @@ describe('reference', () => {
         rules: rules([decl({ name: 'color', value: any('green') })])
       });
       const root = rules([mixinDef]);
-      const evald = await root.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await root.eval(context));
 
       const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
 
@@ -451,9 +445,7 @@ describe('reference', () => {
           value: list([any('red')])
         })
       ]);
-      const evaldRoot = await node.eval(context);
-      context.root = evaldRoot as RulesClass;
-      context.rulesContext = evaldRoot as RulesClass;
+      const evaldRoot = setRulesContext(await node.eval(context));
 
       const originalClone = Any.prototype.clone;
       let scalarClones = 0;
@@ -485,9 +477,7 @@ describe('reference', () => {
           value: sourceValue
         })
       ]);
-      const evaldRoot = await node.eval(context);
-      context.root = evaldRoot as RulesClass;
-      context.rulesContext = evaldRoot as RulesClass;
+      const evaldRoot = setRulesContext(await node.eval(context));
 
       const originalClone = List.prototype.clone;
       let listClones = 0;
@@ -583,9 +573,7 @@ describe('reference', () => {
           value: any('foo')
         }, { assign: '+:' })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      const evald = setRulesContext(await node.eval(context));
 
       const originalCopy = Any.prototype.copy;
       let valueCopyCount = 0;
@@ -994,7 +982,7 @@ describe('reference', () => {
       `);
     });
 
-    it('retries blocked dynamic declaration names after later dynamic names resolve', async () => {
+    it('retries declaration-name prep when a later declaration unlocks a lookup identity', async () => {
       const retryCounts = new Map<string, number>();
       const recordRegistrationPrep = (node: Node, label: string): void => {
         const original = node.prepareRegistration.bind(node);

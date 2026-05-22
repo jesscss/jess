@@ -2559,7 +2559,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         stillUnresolved
       );
     };
-    const result = this._resolvePendingDeclarationNamesFixedPoint(
+    const result = this._retryPendingDeclarationNamePrep(
       context,
       pendingDeclarationNames.nodes,
       handleResolvedNode
@@ -2667,12 +2667,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return 'other';
   }
 
-  private _resolvePendingDeclarationNamesFixedPoint(
+  private _retryPendingDeclarationNamePrep(
     context: Context,
     pendingDeclarations: Node[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
-    // Retry because one declaration's name might depend on another's being registered.
+    // Declaration names are lookup identities. One pending declaration can
+    // unblock another by registering a variable name used in interpolation.
     let attempts = 0;
     const unresolvedDeclarations: Node[] = [...pendingDeclarations];
 
