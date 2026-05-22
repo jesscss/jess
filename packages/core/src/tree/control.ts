@@ -15,7 +15,8 @@ import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-fram
 import {
   createRenderBuffer,
   isRenderBuffer,
-  renderSourceOutput,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -32,6 +33,22 @@ function makeDirectiveRulesPublic(rules: Rules) {
     ...rules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
   };
+}
+
+function renderControlToString(render: (buffer: RenderBuffer) => MaybePromise<string>): MaybePromise<string> {
+  return render(createRenderBuffer('flat'));
+}
+
+async function renderControlRules(
+  rules: Rules,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): Promise<string> {
+  return writeRenderText(
+    buffer,
+    await Promise.resolve(rules.render(context, prepareBufferPrintState(context, options)))
+  );
 }
 
 function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
@@ -365,11 +382,11 @@ export class If extends Node<IfValue> {
   ): Promise<string> {
     for (const branch of this.value.branches) {
       if (!branch.condition) {
-        return renderSourceOutput(context, await branch.rules.eval(context), buffer, options);
+        return renderControlRules(branch.rules, context, buffer, options);
       }
       const condition = await branch.condition.eval(context);
       if (condition instanceof Bool && condition.value === true) {
-        return renderSourceOutput(context, await branch.rules.eval(context), buffer, options);
+        return renderControlRules(branch.rules, context, buffer, options);
       }
     }
     return '';
@@ -381,7 +398,7 @@ export class If extends Node<IfValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderSelectedBranch(context, bufferOrOptions, options);
     }
-    return this.renderSelectedBranch(context, createRenderBuffer('flat'), bufferOrOptions);
+    return renderControlToString(buffer => this.renderSelectedBranch(context, buffer, bufferOrOptions));
   }
 
   override resolve(_context: Context): this {
@@ -551,7 +568,7 @@ export class For extends Node<StructuredLoopValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderIterations(context, bufferOrOptions, options);
     }
-    return this.renderIterations(context, createRenderBuffer('flat'), bufferOrOptions);
+    return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
   }
 }
 
@@ -658,7 +675,7 @@ export class While extends Node<WhileValue> {
     if (isRenderBuffer(bufferOrOptions)) {
       return this.renderIterations(context, bufferOrOptions, options);
     }
-    return this.renderIterations(context, createRenderBuffer('flat'), bufferOrOptions);
+    return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
   }
 
   override resolve(context: Context): MaybePromise<Node> {

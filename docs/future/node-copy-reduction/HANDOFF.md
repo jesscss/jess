@@ -27,6 +27,11 @@ current state, immediate queue, and verification commands.
 - `$if`, `$for`, and `$while` avoid materializing control-wrapper output before
   buffer render. `$for` and `$while` stream per iteration through direct
   `Rules.render(...)` calls.
+- Control direct-string render uses one local flat-buffer adapter so direct
+  output keeps the same per-iteration newline behavior as buffer output.
+- `$if` selected-branch render now calls branch `Rules.render(context)` for the
+  trimmed branch block and writes that text into the caller buffer; it no
+  longer explicitly evals the branch and serializes the completed output.
 - Loop state is frame-backed: `$while` mutation uses a live `ScopeFrame`, and
   `$for` / `$while` reuse canonical direct body children without reparenting.
 - Context shadow state is intentional runtime state:
@@ -59,46 +64,45 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Control string render temp-buffer audit.**
-   - Goal: decide whether `If.render(context)`, `For.render(context)`, and
-     `While.render(context)` should keep using `createRenderBuffer('flat')` as
-     their direct-string adapter or share a clearer local control serializer.
-   - Required proof: focused control render tests and render-buffer frontier.
-
-2. **If branch render materialization audit.**
-   - Goal: inspect `If.renderSelectedBranch(...)` and prove whether selected
-     branches can stream branch rules directly without `branch.rules.eval(...)`
-     producing a completed branch output first.
-   - Required proof: `$if` buffer/direct tests plus materialization frontier.
-
-3. **Loop eval output-surface audit.**
+1. **Loop eval output-surface audit.**
    - Goal: inspect `createDerivedIterationOutputSurface(...)` call sites in
      `$for` / `$while` eval and split the next removable output wrapper, if any,
      from surfaces that still carry semantic ownership.
    - Required proof: focused loop eval/render tests plus node-copy frontier.
 
-4. **Loop registration prep narrowness audit.**
+2. **Loop registration prep narrowness audit.**
    - Goal: verify `originalRules.prepareRegistration(context)` in `$for` and
      loop-body registration in `$while` are still the smallest identity setup
      needed for streaming render.
    - Required proof: source-order lookup tests and focused control tests.
 
-5. **Function/mixin argument surface audit.**
+3. **Function/mixin argument surface audit.**
    - Goal: separate plain positional args that can remain canonical from
      metadata-backed raw/callback argument surfaces that must stay owned.
    - Required proof: focused call/function tests plus node-copy frontier.
 
-6. **Context restore helper audit.**
+4. **Context restore helper audit.**
    - Goal: find the next duplicated `rulesContext` / frame save-restore seam
      after the recent `$while`, `AtRule`, `Reference`, mixin, and `Rules`
      cleanup.
    - Required proof: focused throw/rejection restoration test.
 
-7. **No-output render helper naming audit.**
+5. **No-output render helper naming audit.**
    - Goal: decide whether `renderNoOutputEffect(...)` / `writeNoOutput(...)`
      names still describe the invisible side-effect render boundary clearly or
      should shrink.
    - Required proof: log/extend render-buffer tests and package exports.
+
+6. **Rules render newline contract audit.**
+   - Goal: document or narrow why non-root direct `Rules.render(context)` trims
+     trailing newlines while buffer render preserves full emitted rules text.
+   - Required proof: focused `Rules` and control render tests.
+
+7. **Render-source helper callsite audit.**
+   - Goal: inspect current `renderSourceOutput(...)` call sites and find the
+     next one that can become native render without adding wrapper layers.
+   - Required proof: focused node tests for the chosen callsite plus
+     materialization frontier.
 
 ## Backlog
 

@@ -175,6 +175,16 @@ describe('Control Nodes', () => {
   it('writes evaluated $if output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
+    const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
+    const originalSelectedRender = selectedRules.render;
+    let selectedRulesRenderCalls = 0;
+    selectedRules.render = function countSelectedRulesRender(
+      this: typeof selectedRules,
+      ...args: Parameters<typeof originalSelectedRender>
+    ): ReturnType<typeof originalSelectedRender> {
+      selectedRulesRenderCalls++;
+      return originalSelectedRender.apply(this, args);
+    };
     const node = new If({
       branches: [
         {
@@ -183,7 +193,7 @@ describe('Control Nodes', () => {
         },
         {
           condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          rules: selectedRules
         },
         {
           rules: rules([decl({ name: 'color', value: any('green') })])
@@ -199,6 +209,7 @@ describe('Control Nodes', () => {
 
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
     expect(buffer.parts).toEqual(['color: blue;']);
+    expect(selectedRulesRenderCalls).toBe(1);
   });
 
   it('evaluates $if output through root render', async () => {

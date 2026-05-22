@@ -78,9 +78,11 @@ selector placement truly needs one.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
   `$while` render per iteration through direct `Rules.render(...)` calls.
-  `$while` carries loop-body variable mutation in a small live `ScopeFrame`,
-  not in a full output tree. `$for` and `$while` reuse both static and dynamic
-  direct body children without reparenting the canonical body.
+  Direct-string control render uses one local flat-buffer adapter so it stays
+  aligned with buffer output. `$while` carries loop-body variable mutation in a
+  small live `ScopeFrame`, not in a full output tree. `$for` and `$while` reuse
+  both static and dynamic direct body children without reparenting the
+  canonical body.
 - The base `Node.render(context)` implementation is the inherited
   static/source serializer. It does not call `resolve()` or serialize an
   evaluated wrapper. Nodes whose output depends on context must override
@@ -124,9 +126,9 @@ These are architectural seams, not a live ordered queue. Use
    overly broad context mutation; do not replace `liveSlotsByName`,
    `fallbackFrame`, or `rulesContext` with copied nodes.
 5. **Control render surfaces**: `$for` / `$while` stream generated iteration
-   rules through direct `Rules.render(...)` calls. Remaining work is about
-   shrinking temporary string-render buffers and eval-only output wrappers, not
-   adding another control render helper.
+   rules through direct `Rules.render(...)` calls. `$if` selected branches use
+   branch `Rules.render(context)` for trimmed block output. Remaining work is
+   about eval-only output wrappers, not adding another control render helper.
 
 ## Guardrails
 
