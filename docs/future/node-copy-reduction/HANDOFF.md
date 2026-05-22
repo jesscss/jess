@@ -37,6 +37,9 @@ current state, immediate queue, and verification commands.
 - Loop eval output grouping wrappers do not copy function registries. Runtime
   iteration/state surfaces still preserve function registries because they
   participate in lookup while rendering/evaluating the body.
+- `$for` loop-body registration prep is lazy and only runs once an iteration
+  exists. Empty `$for` output and false `$while` output do not prepare unused
+  body declarations.
 - Context shadow state is intentional runtime state:
   `ScopeFrame.liveSlotsByName`, `ScopeFrame.fallbackFrame`, and
   `Context.rulesContext` remain the kept model.
@@ -67,45 +70,45 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Loop registration prep narrowness audit.**
-   - Goal: verify `originalRules.prepareRegistration(context)` in `$for` and
-     loop-body registration in `$while` are still the smallest identity setup
-     needed for streaming render.
-   - Required proof: source-order lookup tests and focused control tests.
-
-2. **Function/mixin argument surface audit.**
+1. **Function/mixin argument surface audit.**
    - Goal: separate plain positional args that can remain canonical from
      metadata-backed raw/callback argument surfaces that must stay owned.
    - Required proof: focused call/function tests plus node-copy frontier.
 
-3. **Context restore helper audit.**
+2. **Context restore helper audit.**
    - Goal: find the next duplicated `rulesContext` / frame save-restore seam
      after the recent `$while`, `AtRule`, `Reference`, mixin, and `Rules`
      cleanup.
    - Required proof: focused throw/rejection restoration test.
 
-4. **No-output render helper naming audit.**
+3. **No-output render helper naming audit.**
    - Goal: decide whether `renderNoOutputEffect(...)` / `writeNoOutput(...)`
      names still describe the invisible side-effect render boundary clearly or
      should shrink.
    - Required proof: log/extend render-buffer tests and package exports.
 
-5. **Rules render newline contract audit.**
+4. **Rules render newline contract audit.**
    - Goal: document or narrow why non-root direct `Rules.render(context)` trims
      trailing newlines while buffer render preserves full emitted rules text.
    - Required proof: focused `Rules` and control render tests.
 
-6. **Render-source helper callsite audit.**
+5. **Render-source helper callsite audit.**
    - Goal: inspect current `renderSourceOutput(...)` call sites and find the
      next one that can become native render without adding wrapper layers.
    - Required proof: focused node tests for the chosen callsite plus
      materialization frontier.
 
-7. **Loop output grouping wrapper audit.**
+6. **Loop output grouping wrapper audit.**
    - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
      function-registry split and decide whether any wrapper can shrink further
      without losing output ownership.
    - Required proof: focused loop eval/render tests plus node-copy frontier.
+
+7. **Call render native-surface audit.**
+   - Goal: inspect the remaining `Call.render(...)` branches and find one
+     wrapper/helper path that can shrink while preserving CSS-call vs JS-call
+     semantics.
+   - Required proof: focused call render tests plus materialization frontier.
 
 ## Backlog
 

@@ -415,6 +415,25 @@ describe('Control Nodes', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('does not prepare $while body registration when the condition is false', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalPrepareRegistration = colorDecl.prepareRegistration.bind(colorDecl);
+    colorDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const node = new While({
+      condition: bool(false),
+      rules: rules([colorDecl])
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+
+    expect(sourcePrepCalls).toBe(0);
+  });
+
   it('evaluates repeated $while body output through root render', async () => {
     const context = new Context();
     let calls = 0;
@@ -958,6 +977,24 @@ describe('Control Nodes', () => {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput.functionRegistry).toBeUndefined();
+  });
+
+  it('does not prepare $for body registration when the iterable is empty', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
+    const originalPrepareRegistration = itemDecl.prepareRegistration.bind(itemDecl);
+    itemDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([itemDecl]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+
+    await expect(renderNodeToString(root, context)).resolves.toBe('');
+
+    expect(sourcePrepCalls).toBe(0);
+    expect(itemDecl.parent).toBe(loopRules);
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {

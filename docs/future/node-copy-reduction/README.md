@@ -84,7 +84,8 @@ selector placement truly needs one.
   both static and dynamic direct body children without reparenting the
   canonical body. Loop eval output grouping wrappers do not copy function
   registries; only runtime iteration/state surfaces preserve them for body
-  lookup.
+  lookup. `$for` body registration prep is lazy and does not run for empty
+  iterables.
 - The base `Node.render(context)` implementation is the inherited
   static/source serializer. It does not call `resolve()` or serialize an
   evaluated wrapper. Nodes whose output depends on context must override
