@@ -42,6 +42,9 @@ current state, immediate queue, and verification commands.
   resolved sequence surfaces. Resolved sequences serialize through sequence
   syntax; resolved non-sequence values delegate to that value's native render
   path.
+- `Expression.render(...)` and `Operation.render(...)` now use
+  `renderResolvedOutput(...)` after local eval/resolve so non-self evaluated
+  outputs can use native render while stable self-output remains source syntax.
 - Plain CSS `Call.render(...)` awaits async direct `calc(...)` arguments
   without the old broad source fallback. Nested `calc(...)` direct and buffer
   render now share the same evaluated normalization path used by Less output.
@@ -149,31 +152,31 @@ backlog below.
      source-serialization path after shrinkable evaluated surfaces are removed.
    - Required proof: focused node-render-buffer coverage plus updated handoff.
 
-4. **Operation/Expression render bridge audit.**
-   - Goal: inspect `Operation.render(...)` and `Expression.render(...)` as the
-     next expression-like bridge pair and decide whether a shared local syntax
-     path is warranted.
-   - Required proof: focused operation/expression tests plus materialization
-     frontier.
-
-5. **Paren/Quoted/Url render bridge audit.**
+4. **Paren/Quoted/Url render bridge audit.**
    - Goal: inspect `Paren.render(...)`, `Quoted.render(...)`, and
      `Url.render(...)` as small expression-like wrappers and decide whether
      their local syntax printers can replace generic source-output helper use.
    - Required proof: focused paren/quoted/url tests plus render-buffer frontier.
 
-6. **Negative/Condition/DefaultGuard render bridge audit.**
+5. **Negative/Condition/DefaultGuard render bridge audit.**
    - Goal: inspect the remaining small wrapper render paths and decide whether
      each can use native local syntax or should stay on a renamed expression
      output helper.
    - Required proof: focused negative/condition/default-guard tests plus
      materialization frontier.
 
-7. **Selector/interpolated render bridge audit.**
+6. **Selector/interpolated render bridge audit.**
    - Goal: inspect selector-valued and interpolated string render paths that
      still use `renderSourceOutput(...)` after local eval/resolve, without
      confusing selector payload output with generic expression output.
    - Required proof: focused selector/interpolated tests plus render-buffer
+     frontier.
+
+7. **JsExpression/import-style render bridge audit.**
+   - Goal: inspect JS expression and import-style render surfaces that still
+     use the source-output helper, and separate true evaluated syntax from
+     source-only import/reference boundaries.
+   - Required proof: focused js-expr/import-style tests plus materialization
      frontier.
 
 ## Backlog
