@@ -58,7 +58,11 @@ selector placement truly needs one.
   files across packages, not just `packages/core`.
 - `Rules.render(...)` owns the root serializer exception locally. The generic
   eval-output and root-aware eval-output helpers have been removed from the
-  render-buffer utility layer.
+  render-buffer utility layer. Root direct render keeps the CSS-document final
+  newline; non-root direct render trims one trailing rule separator because it
+  returns a body fragment. Buffer render preserves the full emitted fragment
+  text so loop/control aggregation can concatenate iterations without guessing
+  at separators.
 - The node-copy frontier scan is green for deep copy/clone and ordinary
   production `.copy()` calls outside infrastructure. `$for` and `$while`
   iteration eval surfaces reuse direct body children from the canonical body;

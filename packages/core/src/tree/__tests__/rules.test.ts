@@ -225,6 +225,18 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps non-root direct render as a body fragment while buffers keep emitted separators', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    context.root = rules([]);
+
+    expect(await Promise.resolve(node.render(context, buffer))).toBe('color: red;\n');
+    expect(buffer.parts).toEqual(['color: red;\n']);
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+  });
+
   it('renders rules body output directly without public resolve', async () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })

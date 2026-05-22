@@ -94,6 +94,9 @@ function renderRulesToString(
     context,
     prepareRenderPrintState(context, options)
   );
+  // Root Rules serialize as a CSS document and own the final newline. Nested
+  // direct string render returns a body fragment, so trim only that single
+  // trailing rule separator; buffer render preserves the full fragment text.
   if (sourceWasRoot || !rendered.endsWith('\n')) {
     return rendered;
   }

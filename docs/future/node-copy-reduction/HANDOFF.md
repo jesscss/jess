@@ -31,6 +31,9 @@ current state, immediate queue, and verification commands.
   `Rules.render(...)` calls.
 - Control direct-string render uses one local flat-buffer adapter so direct
   output keeps the same per-iteration newline behavior as buffer output.
+- `Rules.render(context)` keeps the root CSS-document newline but trims one
+  trailing rule separator for non-root direct string fragments; buffer render
+  preserves the full emitted fragment text for aggregation.
 - `$if` selected-branch render now calls branch `Rules.render(context)` for the
   trimmed branch block and writes that text into the caller buffer; it no
   longer explicitly evals the branch and serializes the completed output.
@@ -75,47 +78,49 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Rules render newline contract audit.**
-   - Goal: document or narrow why non-root direct `Rules.render(context)` trims
-     trailing newlines while buffer render preserves full emitted rules text.
-   - Required proof: focused `Rules` and control render tests.
-
-2. **Render-source helper callsite audit.**
+1. **Render-source helper callsite audit.**
    - Goal: inspect current `renderSourceOutput(...)` call sites and find the
      next one that can become native render without adding wrapper layers.
    - Required proof: focused node tests for the chosen callsite plus
-     materialization frontier.
+   materialization frontier.
 
-3. **Loop output grouping wrapper audit.**
+2. **Loop output grouping wrapper audit.**
    - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
      function-registry split and decide whether any wrapper can shrink further
      without losing output ownership.
    - Required proof: focused loop eval/render tests plus node-copy frontier.
 
-4. **Call render native-surface audit.**
+3. **Call render native-surface audit.**
    - Goal: inspect the remaining `Call.render(...)` branches and find one
      wrapper/helper path that can shrink while preserving CSS-call vs JS-call
      semantics.
    - Required proof: focused call render tests plus materialization frontier.
 
-5. **Define-function lint debt audit.**
+4. **Define-function lint debt audit.**
    - Goal: clean the existing lint debt in `packages/core/src/define-function.ts`
      enough that future argument-surface changes can touch it without dragging
      unrelated unsafe-assertion failures into the checkpoint.
    - Required proof: focused define-function ESLint plus define-function tests.
 
-6. **Reference render native-surface audit.**
+5. **Reference render native-surface audit.**
    - Goal: inspect `Reference.render(...)` and source-output call sites for one
      helper path that can become native render without changing live-slot,
      fallback, or optional-reference semantics.
    - Required proof: focused reference render tests plus materialization
-     frontier.
+   frontier.
 
-7. **AtRule render native-surface audit.**
+6. **AtRule render native-surface audit.**
    - Goal: inspect `AtRule.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      lifted prelude scope, hoist, or root-order semantics.
    - Required proof: focused at-rule render tests plus materialization
+     frontier.
+
+7. **Ruleset render native-surface audit.**
+   - Goal: inspect `Ruleset.render(...)` and header/body source-output call
+     sites for one helper path that can become native render without changing
+     composed selector, reference, or hoist behavior.
+   - Required proof: focused ruleset render tests plus materialization
      frontier.
 
 ## Backlog
