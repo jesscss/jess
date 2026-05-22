@@ -2771,11 +2771,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     }
   }
 
-  private _restoreRegistrationAfterError(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
-    this._restoreRegistrationContext(context, saved);
+  private _popExtendRootStackTo(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
     while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
       context.extendRoots.popExtendRoot();
     }
+  }
+
+  private _restoreRegistrationAfterError(context: Context, saved: ReturnType<Rules['_snapshotContext']>): void {
+    this._restoreRegistrationContext(context, saved);
+    this._popExtendRootStackTo(context, saved);
   }
 
   /** Setup context for evaluating these rules */
@@ -3348,13 +3352,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (saved.root !== undefined && !isOutermost) {
       context.root = saved.root;
     }
-    if (!isOutermost && saved.extendRootStackLength !== undefined) {
-      const currentLength = context.extendRoots.extendRootStack.length;
-      if (currentLength > saved.extendRootStackLength) {
-        while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-          context.extendRoots.popExtendRoot();
-        }
-      }
+    if (!isOutermost) {
+      this._popExtendRootStackTo(context, saved);
     }
     if (rules === context.root) {
       context.extendRoots.popExtendRoot();
@@ -3372,12 +3371,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (saved.root !== undefined) {
       context.root = saved.root;
     }
-    const currentLength = context.extendRoots.extendRootStack.length;
-    if (saved.extendRootStackLength !== undefined && currentLength > saved.extendRootStackLength) {
-      while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
-        context.extendRoots.popExtendRoot();
-      }
-    }
+    this._popExtendRootStackTo(context, saved);
     if (context.rulesEvalStack[context.rulesEvalStack.length - 1] === sourceRulesOf(this)) {
       context.rulesEvalStack.pop();
     }

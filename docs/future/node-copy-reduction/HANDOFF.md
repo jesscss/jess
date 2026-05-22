@@ -41,8 +41,9 @@ current state, immediate queue, and verification commands.
 - Context shadow state has been classified: `ScopeFrame.liveSlotsByName`,
   `ScopeFrame.fallbackFrame`, and `Context.rulesContext` are kept runtime
   state because they model live scope and caller fallback without copied trees.
-  Future work here should shrink redundant plumbing, not remove the frame
-  model.
+  The current known cleanup seams here are covered; do not put this back in the
+  immediate queue without a new focused failing test or duplicated production
+  restore path.
 - `$while` now uses one local rules-context swap/restore helper for eval and
   native render, keeping its live loop state behavior while removing duplicate
   context mutation scaffolding.
@@ -92,51 +93,47 @@ current state, immediate queue, and verification commands.
 - At-rule body eval now uses one local helper to clear and restore
   `rulesetFrames` for hoisted root-only at-rules, with a focused throw-path
   test proving parent selector frames are restored.
+- `Rules` registration/eval now shares one local extend-root stack restore
+  helper for registration errors, eval errors, and nested eval completion.
 
 ## Immediate Queue
 
-Work these in order unless current code evidence proves a different seam is
-hotter.
+This is a pop queue. If an item is completed, remove it. If it is too broad to
+complete in one checkpoint, replace it with the smallest honest next
+checkpoint and move the broader theme to the backlog below.
 
-1. **Context shadow state.**
-   - Goal: shrink redundant save/restore or overly broad context mutation
-     around the kept frame model.
-   - Keep `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and
-     `ScopeFrame.liveSlotsByName` where they model live lexical scope, caller
-     fallback, mixin params, `@arguments`, loop counters, or `$while` mutation.
-   - Next start in remaining `Rules` registration/eval context snapshots only
-     where tests show duplicated restore plumbing. At-rule body eval now has a
-     single local `rulesetFrames` clear/restore helper, and mixin call
-     guard/output rules-context swaps now share a local restore primitive. Do
-     not add broad context-manager APIs without at least two production call
-     sites moving.
-   - Required proof: focused import/reference/mixin/loop tests plus baseline
-     changed mode.
-2. **Generated selector and output ownership.**
+1. **Generated selector and output ownership: audit the next parentage-backed
+   surface.**
    - Goal: reduce owned placement surfaces only where tests prove they are
      bookkeeping, not semantics.
    - Current covered paths: extend declaration registration, generated
      `:is(...)` wrapper construction, pseudo-argument append, walk-and-consume
      changed `:is(...)` argument lists, framed ampersand append, and ruleset
      header filtering. Do not split those ownership paths again.
-   - Next start only when a focused parentage or output-order test identifies
-     another generated placement surface; otherwise prefer the context shadow
-     state queue above.
+   - Next start: scan generated selector/output helper sites and pick exactly
+     one surface with parentage or output-order evidence. If no credible
+     surface remains, remove this item and record the audit result here.
    - Required proof: focused parentage, visibility, output-order, and extend
      tests plus the frontier checks below.
-3. **Function and mixin argument ownership.**
+
+## Backlog
+
+These are remaining architecture themes, not immediate queue items. Promote
+one only after turning it into a concrete checkpoint.
+
+1. **Function and mixin argument ownership.**
    - Goal: keep copied raw args only for metadata-backed contracts that need
      stable authored args.
    - Preserve `this.rawArgs`, `this.args()`, preprocessing, lazy params,
      validation, and `@arguments` behavior where tests prove that contract.
    - Plain functions should receive positional args directly.
-4. **Chosen-output helper cleanup.**
+2. **Chosen-output helper cleanup.**
    - Goal: shrink helper plumbing without growing an AST-v2 buffer model.
    - `renderChosenOutput(...)` is transitional overload routing for nodes that
      already chose an output node. Do not add semantics to it.
    - Delete or narrow helpers only when a node can directly choose and
      serialize without duplicating promise/buffer branches.
-5. **Registration prep shrink.**
+3. **Registration prep shrink.**
    - Goal: keep `prepareRegistration()` for lookup identity only.
    - Do not recreate `preEval()` under another name. Any new registration work
      must be local, explicit, and tied to lookup behavior.
