@@ -36,6 +36,16 @@ class AsyncAny extends Any<string> {
   }
 }
 
+class AsyncRenderedAny extends Any<string> {
+  constructor(value: string, private readonly renderedValue: string) {
+    super(value);
+  }
+
+  override eval() {
+    return Promise.resolve(any(this.renderedValue));
+  }
+}
+
 class RejectingAny extends Any<string> {
   override eval() {
     return Promise.reject(new Error(this.value));
@@ -241,6 +251,16 @@ describe('Call', () => {
     expect(context.calcFrames).toBe(0);
   });
 
+  it('awaits async calc arguments during direct render', async () => {
+    const rule = call({
+      name: 'calc',
+      args: list([new AsyncRenderedAny('source', '20px')])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('calc(20px)');
+    expect(context.calcFrames).toBe(0);
+  });
+
   it('writes resolved non-string call render output into flat buffers', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({
@@ -406,7 +426,7 @@ describe('Call', () => {
     }
   });
 
-  it('reduces safe direct arithmetic while preserving nested calc calls when rendering calc()', () => {
+  it('reduces safe direct arithmetic while preserving nested calc calls when rendering calc()', async () => {
     const direct = call({
       name: 'calc',
       args: list([
@@ -428,7 +448,7 @@ describe('Call', () => {
     });
 
     expect(direct.render(context)).toBe('calc(20px)');
-    expect(nested.render(context)).toBe('calc(10vh + calc(5vh))');
+    await expect(Promise.resolve(nested.render(context))).resolves.toBe('calc(10vh + calc(5vh))');
   });
 
   it('keeps canonical function syntax separate from evaluated CSS-call normalization', () => {
