@@ -110,6 +110,9 @@ selector placement truly needs one.
 - `AtRule.render(...)` still needs a derived evaluated at-rule surface, but it
   writes that surface through the at-rule/ruleset serializer directly instead
   of using the generic source-output render bridge.
+- `Ruleset.render(...)` follows the same container-output rule for evaluated
+  rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
+  delegates to that body's native render path.
 - Plain CSS calls render their arguments/content natively. Direct `calc(...)`
   render awaits async non-nested arguments instead of falling back to source
   text, while nested `calc(...)` direct render remains source-preserving until
