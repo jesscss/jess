@@ -37,6 +37,18 @@ class NativeRenderAny extends Any<string> {
   }
 }
 
+class AsyncNativeRenderAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override async eval() {
+    await Promise.resolve();
+    return new NativeRenderAny(this.value);
+  }
+}
+
 describe('reference', () => {
   beforeEach(() => {
     context = new Context();
@@ -166,6 +178,27 @@ describe('reference', () => {
 
       expect(refNode.render(context)).toBe('rendered-value');
       expect(refNode.render(context, buffer)).toBe('rendered-value');
+      expect(buffer.parts).toEqual(['rendered-value']);
+      expect(sourceValue.toTrimmedString()).toBe('value');
+    });
+
+    it('renders async referenced values through the resolved node native render path', async () => {
+      const sourceValue = new AsyncNativeRenderAny('value');
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: sourceValue
+        })
+      ]);
+      const evald = setRulesContext(await node.eval(context));
+      const buffer = createRenderBuffer('flat');
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+      refNode.resolve = () => {
+        throw new Error('Reference async render should use evalNode');
+      };
+
+      await expect(Promise.resolve(refNode.render(context))).resolves.toBe('rendered-value');
+      await expect(refNode.render(context, buffer)).resolves.toBe('rendered-value');
       expect(buffer.parts).toEqual(['rendered-value']);
       expect(sourceValue.toTrimmedString()).toBe('value');
     });

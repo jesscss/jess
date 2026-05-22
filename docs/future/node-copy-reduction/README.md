@@ -107,9 +107,9 @@ selector placement truly needs one.
   they inherit from context-dependent `Rules`; they delegate to base
   `Node.render(...)` rather than the generic source-output helper directly.
 - `Reference.render(...)` follows that rule by evaluating the reference locally
-  and then rendering the referenced node through its native render path. Do not
-  turn references back into "eval node, then source-serialize the resolved
-  value" bridges.
+  and then rendering the referenced node through its native render path,
+  including async referenced values. Do not turn references back into "eval
+  node, then source-serialize the resolved value" bridges.
 - `AtRule.render(...)` still needs a derived evaluated at-rule surface, but it
   writes that surface through the at-rule/ruleset serializer directly instead
   of using the generic source-output render bridge.
