@@ -130,9 +130,9 @@ These are architectural seams, not a live ordered queue. Use
    node and only need to route it through direct string vs buffer render. It is
    not a public model and should not grow new semantics. Direct eval-output
    plumbing should stay centralized inside render-buffer utilities where it is
-   still needed. Simple wrappers should prefer local eval/resolve followed by
-   `renderSourceOutput(...)`; keep shrinking helper use instead of treating it
-   as a permanent node-render pattern.
+   still needed. Simple value, container, and selector wrappers should prefer
+   local eval/resolve followed by `renderSourceOutput(...)`; keep shrinking
+   helper use instead of treating it as a permanent node-render pattern.
 6. **Control iteration render**: `$for` / `$while` still stream generated
    iteration rules through one `renderIterationRules(...)` helper in
    `control.ts`. That single native render site is intentional while loop

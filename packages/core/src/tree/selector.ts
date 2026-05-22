@@ -1,11 +1,11 @@
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
@@ -133,7 +133,10 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.resolveForRender(context), bufferOrOptions, options);
+    return pipe(
+      () => this.resolveForRender(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   /**

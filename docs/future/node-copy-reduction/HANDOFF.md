@@ -132,6 +132,10 @@ current state, immediate queue, and verification commands.
   after local eval/resolve: `Negative`, `Expression`, `JsExpression`,
   `Condition`, `Url`, `Quoted`, `Paren`, and `Operation` pass the resulting
   node directly to `renderSourceOutput(...)`.
+- Container and selector wrappers now follow the same local eval/resolve plus
+  source-output path: `List`, `Sequence`, `Block`, `Interpolated`, `Selector`,
+  `SelectorCapture`, and `InterpolatedSelector` no longer use
+  `renderEvalOutput(...)`.
 
 ## Immediate Queue
 
@@ -139,14 +143,15 @@ This is a pop queue. If an item is completed, remove it. If it is too broad to
 complete in one checkpoint, replace it with the smallest honest next
 checkpoint and move the broader theme to the backlog below.
 
-1. **Eval-output helper cleanup: audit container render adapters.**
+1. **Eval-output helper cleanup: audit structural/root-aware adapters.**
    - Goal: keep `renderEvalOutput(...)` as a narrow adapter for nodes that
      have already selected their evaluated output, not a place to hide eval or
      output-tree materialization.
-   - Start with `List` and `Sequence`. If either can render its resolved
-     container directly without duplicating promise/buffer plumbing, move it
-     there. If not, document the exact ownership or separator behavior that
-     still requires the adapter.
+   - Remaining production sites are `AtRule`, `Call`, `Control`,
+     `Declaration`, `ImportStyle`, `Reference`, and `Ruleset`. Start with one
+     or two that have focused render-buffer tests and either remove the helper
+     call or document the exact root-aware, side-effect, fallback, or
+     registration behavior that still requires it.
    - Do not add new render wrappers or change base `Node.render(context)`
      semantics.
    - Required proof: focused render-buffer/node tests plus frontier checks and

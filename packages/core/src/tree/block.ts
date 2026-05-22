@@ -2,9 +2,9 @@ import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -57,7 +57,10 @@ export class Block extends Node<Node, BlockOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.resolveValue(context), bufferOrOptions, options);
+    return pipe(
+      () => this.resolveValue(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   override resolve(context: Context): MaybePromise<Node> {

@@ -8,9 +8,9 @@ import {
   emitCommentTriviaBetweenNodes,
   emitTriviaTokens
 } from './util/trivia.js';
-import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
+import { isThenable, pipe, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -144,7 +144,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.resolveValue(context), bufferOrOptions, options);
+    return pipe(
+      () => this.resolveValue(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   override compare(other: Node) {

@@ -8,9 +8,9 @@ import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, serialForEach, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
-  renderEvalOutput,
+  renderSourceOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -175,7 +175,10 @@ export class Interpolated<
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return renderEvalOutput(context, this.resolveValue(context), bufferOrOptions, options);
+    return pipe(
+      () => this.resolveValue(context),
+      node => renderSourceOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   /**
