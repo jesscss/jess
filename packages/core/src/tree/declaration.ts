@@ -15,9 +15,19 @@ import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
-import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import {
-  renderSourceOutput,
+  OutputWriter,
+  type PrintOptions,
+  getPrintOptions,
+  prepareRenderPrintState,
+  savePrintState,
+  restorePrintState
+} from './util/print.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  renderResolvedOutput,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
@@ -333,8 +343,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evalPrepared(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => this.renderEvaluatedDeclaration(context, node, bufferOrOptions, options)
     );
+  }
+
+  private renderEvaluatedDeclaration(
+    context: Context,
+    node: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string | MaybePromise<string> {
+    if (!(node instanceof Declaration)) {
+      return renderResolvedOutput(context, this, node, bufferOrOptions, options);
+    }
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = node.declTrimmedString(prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
