@@ -4,7 +4,7 @@ import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import {
-  renderSourceOutput,
+  renderResolvedOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -33,7 +33,7 @@ export class Negative extends Node<Node> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evalNode(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
     );
   }
 
