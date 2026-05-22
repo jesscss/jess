@@ -105,9 +105,10 @@ describe('ExtendLocation API Tests', () => {
     it('should apply extension in pseudo-selector argument', () => {
       // Selector: :where(.a), Target: .a, Extend with: .b
       // Expected: :where(.a, .b)
+      const sourceArg = el('.a');
       const selector = pseudo({
         name: ':where',
-        arg: el('.a')
+        arg: sourceArg
       });
       const target = el('.a');
       const extendWith = el('.b');
@@ -117,14 +118,18 @@ describe('ExtendLocation API Tests', () => {
 
       const extended = applyExtensionAtLocation(selector, result.locations[0]!, extendWith);
       expect(extended.valueOf()).toBe(':where(.a,.b)');
+      expect(sourceArg.parent).toBe(selector);
+      expect(extendWith.parent).toBeUndefined();
     });
 
     it('should apply extension in selector list within pseudo-selector', () => {
       // Selector: :where(.a, .b), Target: .a, Extend with: .c
       // Expected: :where(.a, .b, .c)
+      const sourceList = sellist([el('.a'), el('.b')]);
+      const sourceItems = [...sourceList.value];
       const selector = pseudo({
         name: ':where',
-        arg: sellist([el('.a'), el('.b')])
+        arg: sourceList
       });
       const target = el('.a');
       const extendWith = el('.c');
@@ -136,6 +141,9 @@ describe('ExtendLocation API Tests', () => {
       // Just check that it contains the expected selectors, ignore formatting
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
+      expect(selector.value.arg).toBe(sourceList);
+      expect(sourceItems.map(item => item.parent)).toEqual(sourceItems.map(() => sourceList));
+      expect(extendWith.parent).toBeUndefined();
     });
 
     it('should apply extension in compound selector', () => {
