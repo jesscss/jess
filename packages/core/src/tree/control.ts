@@ -51,7 +51,13 @@ async function renderControlRules(
   );
 }
 
-function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
+function createDerivedIterationRulesSurface(
+  sourceRules: Rules,
+  childNodes?: Node[],
+  options: {
+    preserveFunctionRegistry?: boolean;
+  } = {}
+): Rules {
   const sourceOptions = sourceRules.options;
   const sourceLocation = sourceRules.location.length === 0
     ? undefined
@@ -65,7 +71,7 @@ function createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: No
     sourceLocation,
     sourceRules.treeContext
   ).inherit(sourceRules);
-  if (sourceRules.functionRegistry) {
+  if (options.preserveFunctionRegistry === true && sourceRules.functionRegistry) {
     output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
   }
   output.scopeFrame = undefined;
@@ -97,9 +103,10 @@ function deriveIterationChild(node: Node): Node {
 }
 
 function createIterationEvalSurface(sourceRules: Rules): Rules {
-  const iterationRules = createDerivedIterationOutputSurface(
+  const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
-    sourceRules.value.map(deriveIterationChild)
+    sourceRules.value.map(deriveIterationChild),
+    { preserveFunctionRegistry: true }
   );
   iterationRules.options.rulesVisibility = {
     ...iterationRules.options.rulesVisibility,
@@ -109,7 +116,11 @@ function createIterationEvalSurface(sourceRules: Rules): Rules {
 }
 
 function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
-  const stateRules = createDerivedIterationOutputSurface(sourceRules);
+  const stateRules = createDerivedIterationRulesSurface(
+    sourceRules,
+    undefined,
+    { preserveFunctionRegistry: true }
+  );
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
@@ -468,12 +479,12 @@ export class For extends Node<StructuredLoopValue> {
         }
       }
       if (outputRules.length === 0) {
-        return createDerivedIterationOutputSurface(preparedOriginalRules);
+        return createDerivedIterationRulesSurface(preparedOriginalRules);
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createDerivedIterationOutputSurface(preparedOriginalRules, outputRules);
+      return createDerivedIterationRulesSurface(preparedOriginalRules, outputRules);
     };
     return run();
   }
@@ -632,12 +643,12 @@ export class While extends Node<WhileValue> {
         }
       });
       if (outputRules.length === 0) {
-        return createDerivedIterationOutputSurface(originalRules);
+        return createDerivedIterationRulesSurface(originalRules);
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return createDerivedIterationOutputSurface(originalRules, outputRules);
+      return createDerivedIterationRulesSurface(originalRules, outputRules);
     };
     return run();
   }

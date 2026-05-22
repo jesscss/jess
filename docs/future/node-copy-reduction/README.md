@@ -82,7 +82,9 @@ selector placement truly needs one.
   aligned with buffer output. `$while` carries loop-body variable mutation in a
   small live `ScopeFrame`, not in a full output tree. `$for` and `$while` reuse
   both static and dynamic direct body children without reparenting the
-  canonical body.
+  canonical body. Loop eval output grouping wrappers do not copy function
+  registries; only runtime iteration/state surfaces preserve them for body
+  lookup.
 - The base `Node.render(context)` implementation is the inherited
   static/source serializer. It does not call `resolve()` or serialize an
   evaluated wrapper. Nodes whose output depends on context must override
@@ -110,9 +112,10 @@ later serializer can walk them.
 These are architectural seams, not a live ordered queue. Use
 [HANDOFF.md](./HANDOFF.md) for the current order of work.
 
-1. **Loop eval surfaces**: direct loop-body child copying is no longer the
-   active frontier. Keep the existing render, static-child, dynamic-child, and
-   scalar-leaf guards green while reducing any remaining loop output surfaces.
+1. **Loop eval surfaces**: direct loop-body child copying and function-registry
+   copying on output grouping wrappers are no longer the active frontier. Keep
+   the existing render, static-child, dynamic-child, scalar-leaf, and registry
+   guards green while reducing any remaining loop output surfaces.
 2. **Generated selector/output ownership**: selector expansion, extend output,
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse

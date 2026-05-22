@@ -938,6 +938,28 @@ describe('Control Nodes', () => {
     expect(await renderNodeToString(root, new Context())).toBe('');
   });
 
+  it('does not carry function registries on zero-iteration $for output wrappers', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    loopRules.register('function', new JsFunction({
+      name: 'make-blue',
+      fn: () => any('blue')
+    }));
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+
+    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput.functionRegistry).toBeUndefined();
+  });
+
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
     const context = new Context();
     const originalClone = Rules.prototype.clone;
@@ -1048,6 +1070,49 @@ describe('Control Nodes', () => {
     const css = await renderNodeToString(root, new Context());
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
+  });
+
+  it('does not carry function registries on multi-iteration $for output wrappers', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    loopRules.register('function', new JsFunction({
+      name: 'make-blue',
+      fn: () => any('blue')
+    }));
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+
+    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.functionRegistry).toBeUndefined();
+  });
+
+  it('preserves function registries on runtime $for iteration surfaces', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({
+        name: 'color',
+        value: call({
+          name: ref({ key: 'make-blue' }, { type: 'function' }),
+          args: list([])
+        })
+      })
+    ]);
+    loopRules.register('function', new JsFunction({
+      name: 'make-blue',
+      fn: () => any('blue')
+    }));
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+
+    await expect(renderNodeToString(root, context)).resolves.toContain('color: blue');
   });
 
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {

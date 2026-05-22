@@ -34,6 +34,9 @@ current state, immediate queue, and verification commands.
   longer explicitly evals the branch and serializes the completed output.
 - Loop state is frame-backed: `$while` mutation uses a live `ScopeFrame`, and
   `$for` / `$while` reuse canonical direct body children without reparenting.
+- Loop eval output grouping wrappers do not copy function registries. Runtime
+  iteration/state surfaces still preserve function registries because they
+  participate in lookup while rendering/evaluating the body.
 - Context shadow state is intentional runtime state:
   `ScopeFrame.liveSlotsByName`, `ScopeFrame.fallbackFrame`, and
   `Context.rulesContext` remain the kept model.
@@ -64,45 +67,45 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Loop eval output-surface audit.**
-   - Goal: inspect `createDerivedIterationOutputSurface(...)` call sites in
-     `$for` / `$while` eval and split the next removable output wrapper, if any,
-     from surfaces that still carry semantic ownership.
-   - Required proof: focused loop eval/render tests plus node-copy frontier.
-
-2. **Loop registration prep narrowness audit.**
+1. **Loop registration prep narrowness audit.**
    - Goal: verify `originalRules.prepareRegistration(context)` in `$for` and
      loop-body registration in `$while` are still the smallest identity setup
      needed for streaming render.
    - Required proof: source-order lookup tests and focused control tests.
 
-3. **Function/mixin argument surface audit.**
+2. **Function/mixin argument surface audit.**
    - Goal: separate plain positional args that can remain canonical from
      metadata-backed raw/callback argument surfaces that must stay owned.
    - Required proof: focused call/function tests plus node-copy frontier.
 
-4. **Context restore helper audit.**
+3. **Context restore helper audit.**
    - Goal: find the next duplicated `rulesContext` / frame save-restore seam
      after the recent `$while`, `AtRule`, `Reference`, mixin, and `Rules`
      cleanup.
    - Required proof: focused throw/rejection restoration test.
 
-5. **No-output render helper naming audit.**
+4. **No-output render helper naming audit.**
    - Goal: decide whether `renderNoOutputEffect(...)` / `writeNoOutput(...)`
      names still describe the invisible side-effect render boundary clearly or
      should shrink.
    - Required proof: log/extend render-buffer tests and package exports.
 
-6. **Rules render newline contract audit.**
+5. **Rules render newline contract audit.**
    - Goal: document or narrow why non-root direct `Rules.render(context)` trims
      trailing newlines while buffer render preserves full emitted rules text.
    - Required proof: focused `Rules` and control render tests.
 
-7. **Render-source helper callsite audit.**
+6. **Render-source helper callsite audit.**
    - Goal: inspect current `renderSourceOutput(...)` call sites and find the
      next one that can become native render without adding wrapper layers.
    - Required proof: focused node tests for the chosen callsite plus
      materialization frontier.
+
+7. **Loop output grouping wrapper audit.**
+   - Goal: inspect zero/multi eval-output `Rules` grouping wrappers after the
+     function-registry split and decide whether any wrapper can shrink further
+     without losing output ownership.
+   - Required proof: focused loop eval/render tests plus node-copy frontier.
 
 ## Backlog
 
