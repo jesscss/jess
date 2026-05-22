@@ -77,15 +77,10 @@ selector placement truly needs one.
   after a clean upstream run.
 - `$if`, `$for`, and `$while` do not render by materializing a control-node
   wrapper first. `$if` renders only the selected branch output; `$for` and
-  `$while` render per iteration. `$while` carries loop-body variable mutation
-  in a small live `ScopeFrame`, not in a full output tree. `$while` has focused
-  guards for native buffer rendering, no `Rules.clone()` loop-body surface, and
-  no direct loop-body child copy/clone inside per-iteration eval surfaces.
-  `$for` and `$while` reuse both static and dynamic direct body children without
-  reparenting the canonical body. A focused guard keeps stateful `$while`/`$for`
-  native render aligned with eval serialization; changing same-iteration
-  `$while` mutation visibility is a semantics decision, not a copy-reduction
-  cleanup.
+  `$while` render per iteration through direct `Rules.render(...)` calls.
+  `$while` carries loop-body variable mutation in a small live `ScopeFrame`,
+  not in a full output tree. `$for` and `$while` reuse both static and dynamic
+  direct body children without reparenting the canonical body.
 - The base `Node.render(context)` implementation is the inherited
   static/source serializer. It does not call `resolve()` or serialize an
   evaluated wrapper. Nodes whose output depends on context must override
@@ -128,11 +123,10 @@ These are architectural seams, not a live ordered queue. Use
    architecture. Audit this seam for redundant save/restore, stale aliases, or
    overly broad context mutation; do not replace `liveSlotsByName`,
    `fallbackFrame`, or `rulesContext` with copied nodes.
-5. **Control iteration render**: `$for` / `$while` still stream generated
-   iteration rules through one `renderIterationRules(...)` helper in
-   `control.ts`. That single native render site is intentional while loop
-   bodies still need per-iteration live state; do not duplicate it back into
-   each control node.
+5. **Control render surfaces**: `$for` / `$while` stream generated iteration
+   rules through direct `Rules.render(...)` calls. Remaining work is about
+   shrinking temporary string-render buffers and eval-only output wrappers, not
+   adding another control render helper.
 
 ## Guardrails
 

@@ -16,7 +16,7 @@ const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
-const expectedControlIterationRenderSites = 1;
+const expectedControlIterationRenderSites = 2;
 
 function getScanRoots() {
   if (!fs.existsSync(packagesDir)) {
@@ -178,7 +178,7 @@ if (
 ) {
   console.log('');
   console.log(
-    'Control loop render should stream each iteration through node render methods; update this verifier when that native path changes.'
+    'Control loop render should stream each iteration through direct Rules.render calls; update this verifier when that native path changes.'
   );
   if (unexpectedControlIterationRenderSites.length > 0) {
     console.log('Unexpected control iteration render sites:');

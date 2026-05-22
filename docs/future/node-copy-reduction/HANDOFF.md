@@ -11,155 +11,94 @@ current state, immediate queue, and verification commands.
 
 ## Status Snapshot
 
-- Public CSS output APIs (`render(...)`, `renderString(...)`,
-  `renderToResult(...)`, and `safeRender(...)`) use the awaited eval/render
-  path. `safeCompile(...)` remains the explicit compatibility/debug API for
-  callers that need a tree surface.
-- The public `preEval()` method and old `preEvaluated` flag are gone.
-  Registration identity setup is explicit through `prepareRegistration()` and
-  tracked by `registrationPrepared`.
+- Public CSS output APIs use awaited eval/render; `safeCompile(...)` remains
+  the explicit tree-surface compatibility/debug API.
+- Public `preEval()` and the old `preEvaluated` flag are gone. Registration
+  setup is explicit through `prepareRegistration()` and `registrationPrepared`.
 - The compiler render phase writes through `Rules.render(...)` into a flat
-  render buffer. Production code must not call the bridge helpers
-  `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, or
-  `renderNodeToString(...)`; those are internal/test utilities.
-- The package-root render-buffer export is intentionally narrow:
-  `createRenderBuffer`, `finalizeFlatRenderBuffer`, and their types. Do not
-  export bridge helpers from the root package.
-- The base `Node.render(context)` implementation is a direct source serializer,
-  not a resolve/eval-then-serialize fallback. Context-dependent nodes must
-  choose their evaluated output locally and serialize through shared print
-  state.
+  buffer. `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, and
+  `renderNodeToString(...)` are internal/test bridges only.
+- Base `Node.render(context)` is direct source serialization. Nodes with
+  context-dependent output choose local evaluated output and serialize through
+  shared print state.
+- `renderEvalOutput(...)`, `writeRootAwareEvalOutput(...)`, and
+  `renderChosenOutput(...)` are gone. Current local eval/resolve render paths
+  use native streaming or `renderSourceOutput(...)`.
 - `$if`, `$for`, and `$while` avoid materializing control-wrapper output before
-  buffer render. `$if` renders only the selected branch; `$for` and `$while`
-  render per iteration.
-- `$while` carries body variable mutation in a live `ScopeFrame`, not in a
-  full output tree. Same-iteration mutation visibility is runtime semantics,
-  not a copy-reduction cleanup.
-- `$for` and `$while` reuse static and dynamic direct body children from the
-  canonical body without reparenting them. Frozen non-static placement nodes
-  re-evaluate instead of retaining a per-placement eval stamp.
-- Context shadow state has been classified: `ScopeFrame.liveSlotsByName`,
-  `ScopeFrame.fallbackFrame`, and `Context.rulesContext` are kept runtime
-  state because they model live scope and caller fallback without copied trees.
-  The current known cleanup seams here are covered; do not put this back in the
-  immediate queue without a new focused failing test or duplicated production
-  restore path.
-- `$while` now uses one local rules-context swap/restore helper for eval and
-  native render, keeping its live loop state behavior while removing duplicate
-  context mutation scaffolding.
-- `AtRule` prelude evaluation now has a named scope-lift helper and one local
-  rules-context swap/restore path for sync throws, async rejection, and normal
-  completion.
-- `Reference` runtime-var binding resolution now keeps temporary search-scope
-  membership and definition-scope `rulesContext` restore in reference-local
-  helpers instead of duplicating cleanup across sync and async branches.
-- Mixin call evaluation now uses one rules-local call-context helper for
-  caller-scope argument eval, callable-rules output eval, and deferred
-  `default()` candidate output eval.
-- Mixin call guard/output evaluation now shares one local rules-context
-  swap/restore primitive with the call-context helper, with a throw-path test
-  proving caller `rulesContext` restoration.
-- Render-buffer, materialization, and node-copy frontier scans cover production
-  package `src` trees across the monorepo, not only `packages/core`.
-- The node-copy frontier is clean for deep copy/clone, loop eval-surface child
-  copies, and ordinary production `.copy()` outside infrastructure. BitSet
-  `.clone()` calls are ignored because they are selector-index data copies, not
-  AST ownership copies.
-- Remaining wrapper/helper surfaces are not automatically bugs. Keep a wrapper
-  when it carries real scope, registry, import/reference, merge, generated
-  selector placement, delayed output, or ownership state.
-- Extend registration now shares one generated-selector registration path for
-  sync and async selector eval. Parent-list composition, implicit ampersand
-  materialization, reference-scope tagging, and document-order capture should
-  stay centralized there.
-- Generated `:is(...)` wrappers now consume the already-owned selector copies
-  produced by validation/decorating instead of copying those selectors a
-  second time while building the wrapper argument list.
-- `extend-walk.ts` is lint-clean for selector/container ownership assertions.
-  Traversal code now uses real selector guards at parent boundaries instead of
-  assertion casts when rebuilding compound, complex, pseudo, and list surfaces.
-- Pseudo-argument extend appends now use the same owned placement-copy helper
-  as selector-list append paths, with a parentage test proving the source
-  pseudo arg and extender are not stolen by generated output.
-- The walk-and-consume extend path now also copies unchanged `:is(...)`
-  alternatives into generated argument lists instead of reparenting source
-  alternatives.
-- Framed ampersand append now owns unchanged complex-selector components for
-  the generated placement, with a parentage test proving source selector
-  children stay attached to the frame selector.
-- Ruleset header filtering now owns temporary selector copies without generic
-  clone calls or source-free leaf adoption; existing header tests prove source
-  leaf parent identity stays canonical.
-- The generated selector/output ownership audit covered the remaining
-  extend-location pseudo argument/list path; focused tests now prove it extends
-  output without reparenting the source pseudo argument, selector-list items, or
-  extender.
-- At-rule body eval now uses one local helper to clear and restore
-  `rulesetFrames` for hoisted root-only at-rules, with a focused throw-path
-  test proving parent selector frames are restored.
-- `Rules` registration/eval now shares one local extend-root stack restore
-  helper for registration errors, eval errors, and nested eval completion.
-- Plain positional JS function calls now pass canonical argument containers
-  directly. Metadata-backed functions still receive an owned argument-list
-  surface for `rawArgs`, `this.args()`, preprocessing, lazy params, validation,
-  and callback scope anchoring. Optional fallback call output owns evaluated
-  fallback args without reparenting source args.
-- `DefaultGuard.render(...)` now chooses its local boolean output and writes it
-  through direct source-output serialization.
-- `@charset` output-order handling now lives in `Rules` registration prep
-  instead of `Any.prepareRegistration()`. `Any.prepareRegistration()` is
-  mark-only again, while `Rules` explicitly records `context.currentCharset`
-  and replaces the source child with `Nil` for output order.
-- Pending declaration-name registration prep is documented and named as a
-  narrow lookup-identity retry. It exists for dynamic declaration names that
-  can be unblocked by another declaration registering a variable identity; it
-  is not a hidden tree-wide pre-eval retry.
-- Pending non-declaration identity prep is a source-ordered one-shot pass over
-  the unresolved nodes themselves. The old unused kind classifier is gone;
-  mixin, selector, and style-import identity surfaces are covered by existing
-  source-order registration tests.
-- `Rules` eval now names registration setup as eval-owned identity prep, not
-  as an old pre-eval bridge. Render-buffer fallback tests and comments call
-  the resolve-based path an internal adapter, not a production bridge surface.
-- Extend utility comments now describe the current walk-and-consume and
-  location-based paths without stale "legacy path" language. The parent
-  replacement helper uses selector container/node types instead of `any`.
-- The old `renderChosenOutput(...)` name is gone from production code, tests,
-  frontier messages, and this handoff.
-- Simple expression/value wrappers now skip `renderEvalOutput(...)` entirely
-  after local eval/resolve: `Negative`, `Expression`, `JsExpression`,
-  `Condition`, `Url`, `Quoted`, `Paren`, and `Operation` pass the resulting
-  node directly to `renderSourceOutput(...)`.
-- Container and selector wrappers now follow the same local eval/resolve plus
-  source-output path: `List`, `Sequence`, `Block`, `Interpolated`, `Selector`,
-  `SelectorCapture`, and `InterpolatedSelector` no longer use
-  `renderEvalOutput(...)`.
-- Structural/root-aware render sites now follow the same direct path:
-  `AtRule`, `Call`, `Control`, `Declaration`, `ImportStyle`, `Reference`, and
-  `Ruleset` no longer use `renderEvalOutput(...)`.
-- `renderEvalOutput(...)` and its helper-local string/buffer branches are gone;
-  production render paths now either stream natively or perform local
-  eval/resolve followed by `renderSourceOutput(...)`.
-- `writeRootAwareEvalOutput(...)` is gone. `Rules.render(...)` now keeps the
-  root serializer exception local to rules output, so the render-buffer utility
-  layer no longer exposes a named eval-output writer.
+  buffer render. `$for` and `$while` stream per iteration through direct
+  `Rules.render(...)` calls.
+- Loop state is frame-backed: `$while` mutation uses a live `ScopeFrame`, and
+  `$for` / `$while` reuse canonical direct body children without reparenting.
+- Context shadow state is intentional runtime state:
+  `ScopeFrame.liveSlotsByName`, `ScopeFrame.fallbackFrame`, and
+  `Context.rulesContext` remain the kept model.
+- Recent scope/context cleanup is consolidated across `$while`, `AtRule`,
+  `Reference`, mixin calls, and `Rules` registration/eval. Do not re-expand
+  duplicated save/restore scaffolding without a focused failing test.
+- Node-copy, render-buffer, and materialization frontier scans cover production
+  package `src` trees across the monorepo. The node-copy frontier is clean for
+  deep copy/clone and ordinary production `.copy()` outside infrastructure.
+- Generated selector/output ownership has focused guards for extend,
+  `:is(...)`, pseudo args, framed ampersands, and ruleset headers. Keep owned
+  placement surfaces only where parentage/visibility tests prove they are
+  semantic.
+- Function-call cleanup keeps plain positional JS args canonical. Metadata
+  functions still own raw/callback arg-list surfaces for documented runtime
+  APIs.
+- `@charset` output-order handling lives in `Rules` registration prep.
+  `Any.prepareRegistration()` is mark-only again.
+- Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
+  tree-wide pre-eval pass. Pending non-declaration identity prep is a
+  source-ordered one-shot pass.
 
 ## Immediate Queue
 
-This is a pop queue. If an item is completed, remove it. If it is too broad to
-complete in one checkpoint, replace it with the smallest honest next
-checkpoint and move the broader theme to the backlog below.
+This is a pop queue. Keep at least seven concrete items here. If the top item
+is completed, remove it and promote or split enough backlog work to keep the
+queue full. If an item is too broad to complete in one checkpoint, replace it
+with the smallest honest next checkpoint and move the broader theme to the
+backlog below.
 
-1. **Control iteration render cleanup: audit `renderIterationRules(...)`.**
-   - Goal: prove whether `$for` / `$while` still need one native iteration
-     render helper or whether it can collapse into the direct control render
-     path without creating per-iteration output trees.
-   - Start in `packages/core/src/tree/control.ts`; keep loop state, retry
-     semantics, public rule visibility, and existing clone/copy guards.
-   - Do not duplicate iteration render branching across individual control
-     nodes.
-   - Required proof: focused control tests plus render-buffer, materialization,
-     and baseline changed-mode verification.
+1. **Control string render temp-buffer audit.**
+   - Goal: decide whether `If.render(context)`, `For.render(context)`, and
+     `While.render(context)` should keep using `createRenderBuffer('flat')` as
+     their direct-string adapter or share a clearer local control serializer.
+   - Required proof: focused control render tests and render-buffer frontier.
+
+2. **If branch render materialization audit.**
+   - Goal: inspect `If.renderSelectedBranch(...)` and prove whether selected
+     branches can stream branch rules directly without `branch.rules.eval(...)`
+     producing a completed branch output first.
+   - Required proof: `$if` buffer/direct tests plus materialization frontier.
+
+3. **Loop eval output-surface audit.**
+   - Goal: inspect `createDerivedIterationOutputSurface(...)` call sites in
+     `$for` / `$while` eval and split the next removable output wrapper, if any,
+     from surfaces that still carry semantic ownership.
+   - Required proof: focused loop eval/render tests plus node-copy frontier.
+
+4. **Loop registration prep narrowness audit.**
+   - Goal: verify `originalRules.prepareRegistration(context)` in `$for` and
+     loop-body registration in `$while` are still the smallest identity setup
+     needed for streaming render.
+   - Required proof: source-order lookup tests and focused control tests.
+
+5. **Function/mixin argument surface audit.**
+   - Goal: separate plain positional args that can remain canonical from
+     metadata-backed raw/callback argument surfaces that must stay owned.
+   - Required proof: focused call/function tests plus node-copy frontier.
+
+6. **Context restore helper audit.**
+   - Goal: find the next duplicated `rulesContext` / frame save-restore seam
+     after the recent `$while`, `AtRule`, `Reference`, mixin, and `Rules`
+     cleanup.
+   - Required proof: focused throw/rejection restoration test.
+
+7. **No-output render helper naming audit.**
+   - Goal: decide whether `renderNoOutputEffect(...)` / `writeNoOutput(...)`
+     names still describe the invisible side-effect render boundary clearly or
+     should shrink.
+   - Required proof: log/extend render-buffer tests and package exports.
 
 ## Backlog
 
