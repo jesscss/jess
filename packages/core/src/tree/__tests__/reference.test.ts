@@ -30,6 +30,13 @@ class AsyncRulesContextAny extends Any<string> {
   }
 }
 
+class NativeRenderAny extends Any<string> {
+  override render(renderContext: Context) {
+    expect(renderContext).toBe(context);
+    return `rendered-${this.value}`;
+  }
+}
+
 describe('reference', () => {
   beforeEach(() => {
     context = new Context();
@@ -143,6 +150,24 @@ describe('reference', () => {
       expect(refNode.render(context)).toBe('red');
       expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
+    });
+
+    it('renders references through the resolved node native render path', async () => {
+      const sourceValue = new NativeRenderAny('value');
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: sourceValue
+        })
+      ]);
+      const evald = setRulesContext(await node.eval(context));
+      const buffer = createRenderBuffer('flat');
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+
+      expect(refNode.render(context)).toBe('rendered-value');
+      expect(refNode.render(context, buffer)).toBe('rendered-value');
+      expect(buffer.parts).toEqual(['rendered-value']);
+      expect(sourceValue.toTrimmedString()).toBe('value');
     });
 
     it('keeps definition rules context until async live-slot value eval settles', async () => {

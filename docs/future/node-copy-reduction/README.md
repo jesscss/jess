@@ -103,6 +103,10 @@ selector placement truly needs one.
   they inherit from a context-dependent base and need to opt back into source
   rendering. Base render owns the normal invisible/full-render source gate;
   invisible side-effect nodes must override when evaluation still needs to run.
+- `Reference.render(...)` follows that rule by evaluating the reference locally
+  and then rendering the referenced node through its native render path. Do not
+  turn references back into "eval node, then source-serialize the resolved
+  value" bridges.
 - Plain CSS calls render their arguments/content natively. Direct `calc(...)`
   render awaits async non-nested arguments instead of falling back to source
   text, while nested `calc(...)` direct render remains source-preserving until

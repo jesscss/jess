@@ -27,7 +27,8 @@ import type { BindingEntry, ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
 import {
-  renderSourceOutput,
+  isRenderBuffer,
+  writeRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { Mixin } from './mixin.js';
@@ -1931,9 +1932,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const renderResolved = (node: Node) => isRenderBuffer(bufferOrOptions)
+      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
+      : node.render(context, bufferOrOptions);
     return pipe(
       () => this.evalNode(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      renderResolved
     );
   }
 
