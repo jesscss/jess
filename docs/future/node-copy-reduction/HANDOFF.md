@@ -71,13 +71,16 @@ current state, immediate queue, and verification commands.
   use native streaming or `renderSourceOutput(...)`.
 - Remaining `renderSourceOutput(...)` sites are classified:
   - base `Node.render(...)` is source serialization infrastructure;
-  - expression-like nodes still on it are the remaining concrete cleanup
-    queue;
+  - selector/interpolated/JS/import-style nodes still on it are the remaining
+    concrete cleanup queue;
   - `renderResolvedOutput(...)` is the narrow adapter for a caller that has
     already chosen an evaluated output node and needs native render delegation
     when that output is not the source node;
   - named wrapper bridge surfaces have been removed; do not add another helper
     family around these two source/resolved-output roles.
+- Render helper placement remains in `tree/util/render-buffer.ts` because the
+  helper depends only on context, print state, and buffer shapes. Do not move it
+  into a node module that would require importing evaluated node classes.
 - Plain source-only `Comment` nodes use inherited base render; source-only
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
@@ -143,48 +146,49 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Render helper import-boundary audit.**
-   - Goal: confirm helper placement avoids circular runtime imports as
-     source-output bridges are removed or renamed.
-   - Required proof: package build plus updated handoff if any placement rule is
-     discovered.
-
-2. **Base source render helper boundary audit.**
+1. **Base source render helper boundary audit.**
    - Goal: confirm `renderSourceOutput(...)` still belongs in the base
      source-serialization path after shrinkable evaluated surfaces are removed.
    - Required proof: focused node-render-buffer coverage plus updated handoff.
 
-3. **Selector/interpolated render bridge audit.**
+2. **Selector/interpolated render bridge audit.**
    - Goal: inspect selector-valued and interpolated string render paths that
      still use `renderSourceOutput(...)` after local eval/resolve, without
      confusing selector payload output with generic expression output.
    - Required proof: focused selector/interpolated tests plus render-buffer
      frontier.
 
-4. **JsExpression/import-style render bridge audit.**
+3. **JsExpression/import-style render bridge audit.**
    - Goal: inspect JS expression and import-style render surfaces that still
      use the source-output helper, and separate true evaluated syntax from
      source-only import/reference boundaries.
    - Required proof: focused js-expr/import-style tests plus materialization
      frontier.
 
-5. **Base source subclasses audit.**
+4. **Base source subclasses audit.**
    - Goal: scan remaining source-only subclasses for local render overrides or
      helper imports that should collapse to inherited source render.
    - Required proof: node-render-buffer coverage plus frontier scans.
 
-6. **Remaining `renderSourceOutput(...)` call-site count audit.**
+5. **Remaining `renderSourceOutput(...)` call-site count audit.**
    - Goal: rerun the remaining helper call-site scan after each bridge pass and
      make sure every remaining call is either base source serialization or an
      explicitly queued surface.
    - Required proof: call-site scan plus updated handoff.
 
-7. **Final expression-like helper removal audit.**
+6. **Final expression-like helper removal audit.**
    - Goal: after selector/interpolated/JS/import-style passes, decide whether
      any expression-like caller still justifies `renderResolvedOutput(...)` or
      whether it can shrink again.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
+
+7. **Package type-debt follow-up audit.**
+   - Goal: separate existing async-render type debt from the eval/render helper
+     cleanup so failed `tsc --noEmit` output does not get mistaken for a new
+     import-boundary regression.
+   - Required proof: focused type-error sample plus handoff update; broad
+     cleanup is a separate checkpoint.
 
 ## Backlog
 

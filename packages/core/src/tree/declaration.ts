@@ -26,7 +26,7 @@ import {
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  renderResolvedOutput,
+  renderSourceOutput,
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
@@ -353,8 +353,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string | MaybePromise<string> {
-    if (!(node instanceof Declaration)) {
-      return renderResolvedOutput(context, this, node, bufferOrOptions, options);
+    if (node.type !== 'Declaration' || !(node instanceof Declaration)) {
+      return renderSourceOutput(context, node, bufferOrOptions, options);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
