@@ -55,6 +55,9 @@ current state, immediate queue, and verification commands.
 - Mixin call evaluation now uses one rules-local call-context helper for
   caller-scope argument eval, callable-rules output eval, and deferred
   `default()` candidate output eval.
+- Mixin call guard/output evaluation now shares one local rules-context
+  swap/restore primitive with the call-context helper, with a throw-path test
+  proving caller `rulesContext` restoration.
 - Render-buffer, materialization, and node-copy frontier scans cover production
   package `src` trees across the monorepo, not only `packages/core`.
 - The node-copy frontier is clean for deep copy/clone, loop eval-surface child
@@ -101,10 +104,12 @@ hotter.
    - Keep `Context.rulesContext`, `ScopeFrame.fallbackFrame`, and
      `ScopeFrame.liveSlotsByName` where they model live lexical scope, caller
      fallback, mixin params, `@arguments`, loop counters, or `$while` mutation.
-   - Next start in remaining rules or mixin call-site context swaps only where
-     tests show duplicated restore plumbing. At-rule body eval now has a
-     single local `rulesetFrames` clear/restore helper; do not add broad
-     context-manager APIs without at least two production call sites moving.
+   - Next start in remaining `Rules` registration/eval context snapshots only
+     where tests show duplicated restore plumbing. At-rule body eval now has a
+     single local `rulesetFrames` clear/restore helper, and mixin call
+     guard/output rules-context swaps now share a local restore primitive. Do
+     not add broad context-manager APIs without at least two production call
+     sites moving.
    - Required proof: focused import/reference/mixin/loop tests plus baseline
      changed mode.
 2. **Generated selector and output ownership.**

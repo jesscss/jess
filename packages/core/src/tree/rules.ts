@@ -3571,17 +3571,27 @@ function getSimpleCallableRulesetKey(ruleset: Ruleset): string | undefined {
   return getSimpleCallableSelectorKey(ruleset.value.selector);
 }
 
+function setMixinCallRulesContext(
+  context: Context,
+  rulesContext: Context['rulesContext']
+): () => void {
+  const savedRulesContext = context.rulesContext;
+  context.rulesContext = rulesContext;
+  return () => {
+    context.rulesContext = savedRulesContext;
+  };
+}
+
 async function withMixinCallRulesContext<T>(
   context: Context,
   rulesContext: Context['rulesContext'],
   work: () => MaybePromise<T>
 ): Promise<T> {
-  const savedRulesContext = context.rulesContext;
-  context.rulesContext = rulesContext;
+  const restoreRulesContext = setMixinCallRulesContext(context, rulesContext);
   try {
     return await work();
   } finally {
-    context.rulesContext = savedRulesContext;
+    restoreRulesContext();
   }
 }
 
@@ -4393,9 +4403,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
       }
       let passes = true;
-      let rulesContext = thisContext.rulesContext;
       // Call-time resolution is handled by the current context.rulesContext
-      thisContext.rulesContext = outerRules ?? rules;
+      const restoreRulesContext = setMixinCallRulesContext(thisContext, outerRules ?? rules);
       try {
         if (guard) {
           const guardNeedsOuterRules = !guard.hasFlag(F_STATIC);
@@ -4495,7 +4504,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         await evaluateCandidateOutput(candidate as CallableEntry, rules, params);
       } finally {
-        thisContext.rulesContext = rulesContext;
+        restoreRulesContext();
       }
     }
 

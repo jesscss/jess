@@ -2572,6 +2572,36 @@ describe('Mixin', () => {
       }
     });
 
+    it('restores caller rulesContext when static guard evaluation throws', async () => {
+      context = new Context({ leakyRules: false });
+      const savedRulesContext = rules([]);
+      const guard = bool(true);
+      guard.eval = (evalContext: Context) => {
+        expect(evalContext.rulesContext).not.toBe(savedRulesContext);
+        throw new Error('guard eval failed');
+      };
+      const root = rules([
+        mixin({
+          name: any('.guarded'),
+          guard,
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = savedRulesContext;
+
+      await expect(renderNodeToString(root, context)).rejects.toThrow('guard eval failed');
+      expect(context.rulesContext).toBe(savedRulesContext);
+    });
+
     it('keeps dynamic guards on a copied eval surface', async () => {
       context = new Context({ leakyRules: false });
       const guard = condition([
