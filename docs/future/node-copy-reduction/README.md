@@ -107,6 +107,9 @@ selector placement truly needs one.
   and then rendering the referenced node through its native render path. Do not
   turn references back into "eval node, then source-serialize the resolved
   value" bridges.
+- `AtRule.render(...)` still needs a derived evaluated at-rule surface, but it
+  writes that surface through the at-rule/ruleset serializer directly instead
+  of using the generic source-output render bridge.
 - Plain CSS calls render their arguments/content natively. Direct `calc(...)`
   render awaits async non-nested arguments instead of falling back to source
   text, while nested `calc(...)` direct render remains source-preserving until
