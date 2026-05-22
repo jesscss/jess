@@ -2,6 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, attr, compound, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 describe('SelectorCapture', () => {
   let context: Context;
@@ -21,9 +32,7 @@ describe('SelectorCapture', () => {
         value: el('.foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
     const rendered = captureNode.render(context);
@@ -40,9 +49,7 @@ describe('SelectorCapture', () => {
         value: el('.foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
@@ -70,9 +77,7 @@ describe('SelectorCapture', () => {
         value: el('.foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
     const resolved = await captureNode.resolve(context);
@@ -103,9 +108,7 @@ describe('SelectorCapture', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const captureNode = selcap(compound([
       el('a'),

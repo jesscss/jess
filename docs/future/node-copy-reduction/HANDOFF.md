@@ -45,6 +45,9 @@ current state, immediate queue, and verification commands.
   evaluated result through that result's native render path. Already-evaluated
   fallback calls are treated as finalized call syntax so optional CSS-function
   fallback output does not re-evaluate the fallback name.
+- `SelectorCapture.render(...)` resolves the selector payload locally and
+  renders that selector through its native render path instead of the generic
+  source-output bridge.
 - `packages/core/src/define-function.ts` focused lint debt is clean. Future
   function argument-surface work should not reintroduce unsafe metadata casts
   or unused validation paths.
@@ -54,8 +57,8 @@ current state, immediate queue, and verification commands.
 - Remaining `renderSourceOutput(...)` sites are classified:
   - base `Node.render(...)` is source serialization infrastructure;
   - expression-like nodes use it after local eval/resolve;
-  - `SelectorCapture` is the current named shrinkable bridge surface outside
-    broader expression-like helper cleanup.
+  - named wrapper bridge surfaces have been removed; the rest are the broader
+    expression-like/helper boundary cleanup.
 - Plain source-only `Comment` nodes use inherited base render; source-only
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
@@ -121,47 +124,47 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **SelectorCapture render bridge audit.**
-   - Goal: inspect `SelectorCapture.render(...)` and prove whether it is a
-     source-only selector capture surface or can delegate through base/native
-     render without `renderSourceOutput(...)`.
-   - Required proof: focused selector-capture tests plus render-buffer frontier.
-
-2. **Expression-like render helper naming audit.**
+1. **Expression-like render helper naming audit.**
    - Goal: inspect remaining source-output helper use on expression-like nodes
      and decide whether helper naming should distinguish source serialization
      from evaluated expression output more clearly.
    - Required proof: updated handoff plus focused tests for any code change.
 
-3. **Render helper import-boundary audit.**
+2. **Render helper import-boundary audit.**
    - Goal: confirm helper placement avoids circular runtime imports as
      source-output bridges are removed or renamed.
    - Required proof: package build plus updated handoff if any placement rule is
      discovered.
 
-4. **Declaration render bridge audit.**
+3. **Declaration render bridge audit.**
    - Goal: inspect `Declaration.render(...)` after custom-property raw-value
      cleanup and decide whether it still needs `renderSourceOutput(...)` or can
      emit through a declaration-native writer path.
    - Required proof: focused declaration tests plus materialization frontier.
 
-5. **Base source render helper boundary audit.**
+4. **Base source render helper boundary audit.**
    - Goal: confirm `renderSourceOutput(...)` still belongs in the base
      source-serialization path after shrinkable evaluated surfaces are removed.
    - Required proof: focused node-render-buffer coverage plus updated handoff.
 
-6. **Sequence render bridge audit.**
+5. **Sequence render bridge audit.**
    - Goal: inspect `Sequence.render(...)` as an expression-like source-output
      helper user and decide whether it can serialize resolved sequence syntax
      natively like `List.render(...)`.
    - Required proof: focused sequence tests plus render-buffer frontier.
 
-7. **Operation/Expression render bridge audit.**
+6. **Operation/Expression render bridge audit.**
    - Goal: inspect `Operation.render(...)` and `Expression.render(...)` as the
      next expression-like bridge pair and decide whether a shared local syntax
      path is warranted.
    - Required proof: focused operation/expression tests plus materialization
      frontier.
+
+7. **Paren/Quoted/Url render bridge audit.**
+   - Goal: inspect `Paren.render(...)`, `Quoted.render(...)`, and
+     `Url.render(...)` as small expression-like wrappers and decide whether
+     their local syntax printers can replace generic source-output helper use.
+   - Required proof: focused paren/quoted/url tests plus render-buffer frontier.
 
 ## Backlog
 

@@ -15,6 +15,17 @@ import {
   type Rules as RulesClass,
   vardecl
 } from '../index.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 describe('Selector render contract', () => {
   let context: Context;
@@ -30,9 +41,7 @@ describe('Selector render contract', () => {
         value: el('.foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
 
@@ -48,9 +57,7 @@ describe('Selector render contract', () => {
         value: el('.foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
     selector.resolve = () => {
@@ -69,9 +76,7 @@ describe('Selector render contract', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = pseudo({
       name: ':is',
@@ -90,9 +95,7 @@ describe('Selector render contract', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = pseudo({
       name: ':is',
@@ -114,9 +117,7 @@ describe('Selector render contract', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = sel([
       compound([
