@@ -5,6 +5,8 @@ import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -31,6 +33,15 @@ class DirectText extends Node<string> {
     w.add(this.value);
     return this.value;
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
 }
 
 /**
@@ -67,9 +78,7 @@ describe('Sequence', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const sequenceNode = seq([
       num(10),
@@ -100,9 +109,7 @@ describe('Sequence', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const sequenceNode = seq([
@@ -134,9 +141,7 @@ describe('Sequence', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const sequenceNode = seq([
       num(10),
@@ -158,9 +163,7 @@ describe('Sequence', () => {
         value: any('foo')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const child = list([
       any('one'),

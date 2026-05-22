@@ -6,10 +6,13 @@ import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
-  renderSourceOutput,
-  type RenderBuffer
+  isRenderBuffer,
+  prepareBufferPrintState,
+  type RenderBuffer,
+  writeRenderText,
+  writeRenderTextResult
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -174,8 +177,29 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveValue(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => this.renderResolvedNode(context, node, bufferOrOptions, options)
     );
+  }
+
+  private renderResolvedNode(
+    context: Context,
+    node: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    if (!(node instanceof Sequence)) {
+      return buffer
+        ? writeRenderTextResult(buffer, node.render(context, options))
+        : node.render(context, bufferOrOptions);
+    }
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = node.renderSequenceSyntax(node.value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   override operate(b: Node, op: string, _context: Context): Sequence | List {

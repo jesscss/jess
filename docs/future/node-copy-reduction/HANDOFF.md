@@ -38,6 +38,10 @@ current state, immediate queue, and verification commands.
 - `Block.render(...)` and `List.render(...)` no longer use the generic
   source-output bridge. They resolve local child values, then serialize through
   their own block/list syntax printers with active render print state.
+- `Sequence.render(...)` no longer uses the generic source-output bridge for
+  resolved sequence surfaces. Resolved sequences serialize through sequence
+  syntax; resolved non-sequence values delegate to that value's native render
+  path.
 - Plain CSS `Call.render(...)` awaits async direct `calc(...)` arguments
   without the old broad source fallback. Nested `calc(...)` direct and buffer
   render now share the same evaluated normalization path used by Less output.
@@ -147,24 +151,25 @@ backlog below.
      source-serialization path after shrinkable evaluated surfaces are removed.
    - Required proof: focused node-render-buffer coverage plus updated handoff.
 
-5. **Sequence render bridge audit.**
-   - Goal: inspect `Sequence.render(...)` as an expression-like source-output
-     helper user and decide whether it can serialize resolved sequence syntax
-     natively like `List.render(...)`.
-   - Required proof: focused sequence tests plus render-buffer frontier.
-
-6. **Operation/Expression render bridge audit.**
+5. **Operation/Expression render bridge audit.**
    - Goal: inspect `Operation.render(...)` and `Expression.render(...)` as the
      next expression-like bridge pair and decide whether a shared local syntax
      path is warranted.
    - Required proof: focused operation/expression tests plus materialization
      frontier.
 
-7. **Paren/Quoted/Url render bridge audit.**
+6. **Paren/Quoted/Url render bridge audit.**
    - Goal: inspect `Paren.render(...)`, `Quoted.render(...)`, and
      `Url.render(...)` as small expression-like wrappers and decide whether
      their local syntax printers can replace generic source-output helper use.
    - Required proof: focused paren/quoted/url tests plus render-buffer frontier.
+
+7. **Negative/Condition/DefaultGuard render bridge audit.**
+   - Goal: inspect the remaining small wrapper render paths and decide whether
+     each can use native local syntax or should stay on a renamed expression
+     output helper.
+   - Required proof: focused negative/condition/default-guard tests plus
+     materialization frontier.
 
 ## Backlog
 

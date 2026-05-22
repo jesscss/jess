@@ -125,6 +125,9 @@ selector placement truly needs one.
 - `Block.render(...)` and `List.render(...)` resolve local child values, then
   serialize through their native block/list syntax printers. They do not use
   the generic source-output bridge as a completed-output serializer.
+- `Sequence.render(...)` follows the same local-syntax rule for resolved
+  sequences, while delegating non-sequence resolved outputs to that node's
+  native render path.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
