@@ -107,6 +107,9 @@ selector placement truly needs one.
   render awaits async non-nested arguments instead of falling back to source
   text, while nested `calc(...)` direct render remains source-preserving until
   the compile-path normalization contract is reviewed separately.
+- `packages/core/src/define-function.ts` is no longer blocked by unrelated
+  focused lint debt. Function argument-surface work should keep metadata access
+  typed and avoid rebuilding unused validation paths.
 - Context shadow state is intentionally small runtime state, not an output
   tree substitute. Keep `ScopeFrame.liveSlotsByName` for mixin params,
   `@arguments`, loop counters, and `$while` mutation; keep

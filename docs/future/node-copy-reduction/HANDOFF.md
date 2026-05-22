@@ -24,6 +24,9 @@ current state, immediate queue, and verification commands.
 - Plain CSS `Call.render(...)` awaits async direct `calc(...)` arguments
   without the old broad source fallback. Nested `calc(...)` direct render still
   preserves authored nested calc syntax.
+- `packages/core/src/define-function.ts` focused lint debt is clean. Future
+  function argument-surface work should not reintroduce unsafe metadata casts
+  or unused validation paths.
 - `renderEvalOutput(...)`, `writeRootAwareEvalOutput(...)`, and
   `renderChosenOutput(...)` are gone. Current local eval/resolve render paths
   use native streaming or `renderSourceOutput(...)`.
@@ -86,50 +89,51 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Define-function lint debt audit.**
-   - Goal: clean the existing lint debt in `packages/core/src/define-function.ts`
-     enough that future argument-surface changes can touch it without dragging
-     unrelated unsafe-assertion failures into the checkpoint.
-   - Required proof: focused define-function ESLint plus define-function tests.
-
-2. **Reference render native-surface audit.**
+1. **Reference render native-surface audit.**
    - Goal: inspect `Reference.render(...)` and source-output call sites for one
      helper path that can become native render without changing live-slot,
      fallback, or optional-reference semantics.
    - Required proof: focused reference render tests plus materialization
      frontier.
 
-3. **AtRule render native-surface audit.**
+2. **AtRule render native-surface audit.**
    - Goal: inspect `AtRule.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      lifted prelude scope, hoist, or root-order semantics.
    - Required proof: focused at-rule render tests plus materialization
      frontier.
 
-4. **Ruleset render native-surface audit.**
+3. **Ruleset render native-surface audit.**
    - Goal: inspect `Ruleset.render(...)` and header/body source-output call
      sites for one helper path that can become native render without changing
      composed selector, reference, or hoist behavior.
    - Required proof: focused ruleset render tests plus materialization
      frontier.
 
-5. **Source-only render override audit.**
+4. **Source-only render override audit.**
    - Goal: inspect remaining `renderSourceOutput(context, this, ...)`
      overrides and remove one that can inherit base `Node.render(...)` without
      changing source-only or visibility semantics.
    - Required proof: focused node render tests plus materialization frontier.
 
-6. **`$if` no-branch output wrapper audit.**
+5. **`$if` no-branch output wrapper audit.**
    - Goal: inspect the no-branch `If.evalNode(...)` empty `Rules` wrapper and
      decide whether it can use a generated output wrapper instead of inheriting
      source control-node state.
    - Required proof: focused control eval/render tests plus node-copy frontier.
 
-7. **CSS-call nested calc render contract audit.**
+6. **CSS-call nested calc render contract audit.**
    - Goal: decide whether the nested `calc(...)` preservation rule should be
      shared by direct and buffer render, or remain direct-render-only while the
      Less compile path keeps its current normalized output.
    - Required proof: focused call tests plus the Less operations fixture.
+
+7. **Function metadata argument surface audit.**
+   - Goal: inspect metadata-backed JS function `rawArgs` / callback argument
+     ownership after the define-function lint cleanup, and shrink any copied
+     argument surface that is not required by documented runtime APIs.
+   - Required proof: focused call/define-function tests plus materialization
+     frontier.
 
 ## Backlog
 
