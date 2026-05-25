@@ -39,9 +39,11 @@ current state, immediate queue, and verification commands.
   nil-selector body output to native `Rules.render(...)`.
 - Nil-selector ruleset render has focused coverage proving the evaluated body
   is rendered through native `Rules.render(...)` for direct and buffer output.
-- Evaluated at-rule/ruleset container output shares
-  `renderRulesContainerOutput(...)`; this is a narrow serializer adapter, not a
-  second render abstraction family.
+- Evaluated at-rule/ruleset render no longer goes through
+  `renderRulesContainerOutput(...)`; that helper is gone. The two container
+  nodes call `serializeRulesContainer(...)` directly with active render print
+  state, so the remaining work is the actual derived container surface, not a
+  wrapper abstraction.
 - `Block.render(...)` and `List.render(...)` no longer use the generic
   source-output bridge. They resolve local child values, then serialize through
   their own block/list syntax printers with active render print state.
@@ -203,8 +205,8 @@ to stay.
 | Surface | Current shape | Next proof |
 | --- | --- | --- |
 | `Rules.render(...)` source roots | Unevaluated `Rules` still derive before eval so source trees are not mutated. Already evaluated roots now render directly. | Prove whether public compile always reaches render with an evaluated root; if yes, keep unevaluated render as compatibility only. |
-| `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then serializes through container syntax. | Split required body/prelude mutation from direct container streaming. |
-| `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets serialize through container syntax, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
+| `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then calls `serializeRulesContainer(...)` with active render print state. | Split required body/prelude mutation from direct container streaming. |
+| `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals a declaration surface; non-declaration outputs still use the declaration-local source fallback. | Decide whether the fallback can delegate native render without source-output helper plumbing. |
 | Function/mixin argument metadata | Metadata-backed calls keep one owned raw/callback argument surface for mutable user-code APIs. | Keep this surface only for documented mutation APIs; plain calls should remain direct. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused cases. | Remove only with parentage/visibility/output tests. |
@@ -229,7 +231,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
-remaining source/resolved/container output helper calls.
+remaining source/resolved output helper calls. The old container output helper
+count is now zero.
 
 ## Immediate Queue
 
@@ -239,53 +242,54 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **At-rule/ruleset evaluated container surface reduction.**
-   - Goal: shrink or prove the derived at-rule/ruleset output surfaces used by
-     `renderRulesContainerOutput(...)` so container render is as close to direct
-     streaming as semantics allow.
-   - Required proof: focused at-rule/ruleset/nesting tests plus frontier scans.
-
-2. **Declaration fallback surface reduction.**
+1. **Declaration fallback surface reduction.**
    - Goal: decide whether declaration eval outputs that become non-declarations
      can render through native output without a source-output fallback surface,
      or document the exact semantic reason they cannot.
    - Required proof: focused declaration tests plus source-output call-site
      scan.
 
-3. **Generated selector/output ownership reduction.**
+2. **Generated selector/output ownership reduction.**
    - Goal: audit generated selector placement, extend output, `:is(...)`,
      pseudo args, framed ampersands, and ruleset headers for avoidable owned
      output surfaces.
    - Required proof: parentage/visibility/output tests for each removed or kept
      surface.
 
-4. **Function/mixin argument surface reduction.**
+3. **Function/mixin argument surface reduction.**
    - Goal: keep metadata-backed raw/callback arg ownership only where user-code
      mutation semantics require it, and ensure plain calls do not pre-copy or
      clone argument trees.
    - Required proof: focused `Call` / define-function / mixin tests and
      node-copy frontier scan.
 
-5. **Helper bridge deletion pass.**
+4. **Helper bridge deletion pass.**
    - Goal: remove or narrow `renderSourceOutput(...)`,
      `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
      wrapper helpers once their remaining callers have been reduced or proven.
    - Required proof: helper call-site scans plus focused direct/buffer render
      parity tests.
 
-6. **Unevaluated `Rules.render(...)` compatibility audit.**
+5. **Unevaluated `Rules.render(...)` compatibility audit.**
    - Goal: decide whether unevaluated root/body render still needs to derive
      before eval, or whether all production callers can render only evaluated
      rules.
    - Required proof: public output API call graph plus focused root/body render
      tests.
 
-7. **Declaration eval `with*` surface reduction.**
+6. **Declaration eval `with*` surface reduction.**
    - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
      `withImportant(...)` surfaces where the evaluated value can be streamed or
      represented as narrow runtime state instead of another declaration node.
    - Required proof: focused declaration merge/interpolation/custom-property
      tests plus node-creation audit before/after output.
+
+7. **At-rule/ruleset derived surface proof.**
+   - Goal: now that the container helper is gone, prove which remaining
+     at-rule/ruleset derived surfaces are mutation isolation versus serializer
+     carriers, then reduce only the latter.
+   - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
+     before/after, and parentage checks for any removed surface.
 
 ## Backlog
 

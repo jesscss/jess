@@ -18,6 +18,7 @@ import {
   type PrintOptions,
   type FinalPrintOptions,
   getPrintOptions,
+  prepareRenderPrintState,
   savePrintState,
   restorePrintState,
   getCachedComposedSelector,
@@ -25,8 +26,8 @@ import {
 } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
-import { renderRulesContainerOutput, serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
-import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
+import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
+import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { getImplicitSelector as getImplicitSelectorUtil } from './util/selector-utils.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
@@ -577,7 +578,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const renderEvaluatedRuleset = (node: Ruleset) => {
-      return renderRulesContainerOutput(node, context, bufferOrOptions, options);
+      if (isRenderBuffer(bufferOrOptions)) {
+        return writeRenderText(
+          bufferOrOptions,
+          serializeRulesContainer(node, prepareBufferPrintState(context, options))
+        );
+      }
+      return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
     };
     const renderEvaluated = (node: Node) => {
       if (node instanceof Nil) {

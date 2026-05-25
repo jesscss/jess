@@ -3,12 +3,12 @@ import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
-import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { indent, normalizeIndent, renderRulesContainerOutput, serializeRulesContainer } from './util/serialize-helper.js';
-import type { RenderBuffer } from './util/render-buffer.js';
+import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
+import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import { createTriviaMap, emitCommentTriviaAfterNode } from './util/trivia.js';
@@ -175,9 +175,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const renderEvaluatedAtRule = (node: AtRule): string => {
+      if (isRenderBuffer(bufferOrOptions)) {
+        return writeRenderText(
+          bufferOrOptions,
+          serializeRulesContainer(node, prepareBufferPrintState(context, options))
+        );
+      }
+      return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
+    };
     return pipe(
       () => this.deriveAtRule(this.value).eval(context),
-      node => node instanceof Nil ? '' : renderRulesContainerOutput(node, context, bufferOrOptions, options)
+      node => node instanceof Nil ? '' : renderEvaluatedAtRule(node)
     );
   }
 
