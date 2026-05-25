@@ -57,6 +57,9 @@ current state, immediate queue, and verification commands.
   evaluated result through that result's native render path. Already-evaluated
   fallback calls are treated as finalized call syntax so optional CSS-function
   fallback output does not re-evaluate the fallback name.
+- `JsExpression.render(...)` and `StyleImport.render(...)` now use
+  `renderResolvedOutput(...)` after local evaluation instead of treating the
+  evaluated result as source output.
 - `Declaration.render(...)` evaluates/prepares declaration state locally and
   writes evaluated declaration syntax directly. Non-declaration eval results
   still delegate through resolved-output render.
@@ -74,7 +77,7 @@ current state, immediate queue, and verification commands.
   use native streaming or `renderSourceOutput(...)`.
 - Remaining `renderSourceOutput(...)` sites are classified:
   - base `Node.render(...)` is source serialization infrastructure;
-  - JS/import-style nodes still on it are the remaining concrete cleanup queue;
+  - declaration non-property fallback output is explicit source syntax;
   - `renderResolvedOutput(...)` is the narrow adapter for a caller that has
     already chosen an evaluated output node and needs native render delegation
     when that output is not the source node;
@@ -84,7 +87,7 @@ current state, immediate queue, and verification commands.
   helper depends only on context, print state, and buffer shapes. Do not move it
   into a node module that would require importing evaluated node classes.
 - Current production `renderSourceOutput(...)` call sites are: base
-  `Node.render(...)`, `JsExpression`, `StyleImport`, and the declaration non-property fallback for
+  `Node.render(...)` and the declaration non-property fallback for
   `VarDeclaration`/`CustomDeclaration`-style outputs. All are either source
   serialization or still listed in the queue below.
 - Base source render helper boundary audit is complete: keep
@@ -155,51 +158,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **JsExpression/import-style render bridge audit.**
-   - Goal: inspect JS expression and import-style render surfaces that still
-     use the source-output helper, and separate true evaluated syntax from
-     source-only import/reference boundaries.
-   - Required proof: focused js-expr/import-style tests plus materialization
-     frontier.
-
-2. **Base source subclasses audit.**
+1. **Base source subclasses audit.**
    - Goal: scan remaining source-only subclasses for local render overrides or
      helper imports that should collapse to inherited source render.
    - Required proof: node-render-buffer coverage plus frontier scans.
 
-3. **Final expression-like helper removal audit.**
+2. **Final expression-like helper removal audit.**
    - Goal: after selector/interpolated/JS/import-style passes, decide whether
      any expression-like caller still justifies `renderResolvedOutput(...)` or
      whether it can shrink again.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
 
-4. **Package type-debt follow-up audit.**
+3. **Package type-debt follow-up audit.**
    - Goal: separate existing async-render type debt from the eval/render helper
      cleanup so failed `tsc --noEmit` output does not get mistaken for a new
      import-boundary regression.
    - Required proof: focused type-error sample plus handoff update; broad
      cleanup is a separate checkpoint.
 
-5. **Call local render helper naming audit.**
+4. **Call local render helper naming audit.**
    - Goal: inspect `Call`'s private `renderResolvedOutput(...)` name now that
      the shared helper has the same name, and decide whether the call-local
      helper should be renamed or split.
    - Required proof: focused call tests plus helper call-site scan for any code
      change.
 
-6. **Declaration fallback render helper audit.**
+5. **Declaration fallback render helper audit.**
    - Goal: inspect the remaining declaration non-property fallback that still
      uses source-output render for `VarDeclaration`/`CustomDeclaration`-style
      outputs and decide whether it should become a named local helper.
    - Required proof: focused declaration/var-declaration tests plus helper
      call-site scan for any code change.
 
-7. **Remaining source-output helper scan.**
+6. **Remaining source-output helper scan.**
    - Goal: rerun the production call-site scan and ensure each remaining
      `renderSourceOutput(...)` caller has a queue item or is base source
      serialization.
    - Required proof: call-site scan plus updated handoff.
+
+7. **Resolved-output helper import audit.**
+   - Goal: confirm remaining `renderResolvedOutput(...)` users are true
+     evaluated-output selectors and not source-only fallback wrappers.
+   - Required proof: helper call-site scan plus focused tests for any code
+     change.
 
 ## Backlog
 
