@@ -178,9 +178,10 @@ export function renderSourceOutput(
   options?: PrintOptions
 ): string {
   const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+  const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
   const prepared = buffer
     ? prepareBufferPrintState(context, options)
-    : prepareRenderPrintState(context, bufferOrOptions);
+    : prepareRenderPrintState(context, printOptions);
   const out = node.toTrimmedString(prepared);
   return buffer
     ? writeRenderText(buffer, out)

@@ -159,6 +159,12 @@ current state, immediate queue, and verification commands.
 - Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
   tree-wide pre-eval pass. Pending non-declaration identity prep is a
   source-ordered one-shot pass.
+- Package type-debt audit is current: `pnpm --filter @jesscss/core exec tsc
+  --noEmit --pretty false` still fails on broad node structural typing debt
+  after async render/resolve work. The helper-local `render-buffer.ts` narrowing
+  error is fixed; remaining red is a separate typed-node frontier, with large
+  buckets in define-function tests, selector/sequence structural assignability,
+  parser `TreeContext` imports, and `Negative` value exports.
 
 ## Immediate Queue
 
@@ -168,50 +174,49 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Package type-debt follow-up audit.**
-   - Goal: separate existing async-render type debt from the eval/render helper
-     cleanup so failed `tsc --noEmit` output does not get mistaken for a new
-     import-boundary regression.
-   - Required proof: focused type-error sample plus handoff update; broad
-     cleanup is a separate checkpoint.
-
-2. **Call local render helper naming audit.**
+1. **Call local render helper naming audit.**
    - Goal: inspect `Call`'s private `renderResolvedOutput(...)` name now that
      the shared helper has the same name, and decide whether the call-local
      helper should be renamed or split.
    - Required proof: focused call tests plus helper call-site scan for any code
      change.
 
-3. **Declaration fallback render helper audit.**
+2. **Declaration fallback render helper audit.**
    - Goal: inspect the remaining declaration non-property fallback that still
      uses source-output render for `VarDeclaration`/`CustomDeclaration`-style
      outputs and decide whether it should become a named local helper.
    - Required proof: focused declaration/var-declaration tests plus helper
      call-site scan for any code change.
 
-4. **Remaining source-output helper scan.**
+3. **Remaining source-output helper scan.**
    - Goal: rerun the production call-site scan and ensure each remaining
      `renderSourceOutput(...)` caller has a queue item or is base source
      serialization.
    - Required proof: call-site scan plus updated handoff.
 
-5. **Resolved-output helper import audit.**
+4. **Resolved-output helper import audit.**
    - Goal: confirm remaining `renderResolvedOutput(...)` users are true
      evaluated-output selectors and not source-only fallback wrappers.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
 
-6. **Context-dependent source override regression audit.**
+5. **Context-dependent source override regression audit.**
    - Goal: keep `Collection` and `RawRules` as the only source-only subclasses
      that opt out of inherited context-dependent render, and add/adjust tests
      only if that frontier moves.
    - Required proof: source-only subclass scan plus focused source-render tests.
 
-7. **Expression-like native delegation regression audit.**
+6. **Expression-like native delegation regression audit.**
    - Goal: keep expression-like render callers on the shared resolved-output
      adapter only where tests prove non-self evaluated nodes need native render.
    - Required proof: helper call-site scan plus focused expression/wrapper
      render tests.
+
+7. **Typed node structural frontier split.**
+   - Goal: turn the current package `tsc --noEmit` failure into small typed-node
+     checkpoints instead of treating it as render-helper cleanup.
+   - Required proof: focused type-error sample and one narrowed package/type
+     surface per checkpoint.
 
 ## Backlog
 
