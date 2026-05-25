@@ -11,6 +11,10 @@ current state, immediate queue, and verification commands.
 
 ## Status Snapshot
 
+- Top priority is complete single-pass eval/render with the smallest honest
+  node-creation shape. Regression audits are supporting work; do not let them
+  displace checkpoints that prove, shrink, or delete remaining materialized
+  output surfaces, wrapper owners, copy/clone paths, or helper bridges.
 - Public CSS output APIs use awaited eval/render; `safeCompile(...)` remains
   the explicit tree-surface compatibility/debug API.
 - Public `preEval()` and the old `preEvaluated` flag are gone. Registration
@@ -195,56 +199,68 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Declaration non-declaration fallback regression audit.**
-   - Goal: keep declaration eval outputs that become non-declarations on their
-     own finalized/source syntax path without turning it into a generic bridge.
+1. **Single-pass materialization proof audit.**
+   - Goal: prove where production render still creates an evaluated/output
+     node surface before serialization, then classify each surface as required,
+     removable, or too broad.
+   - Required proof: `verify:materialization-frontier`, targeted `new` /
+     `derive` / `with*` scans in render/eval paths, and a short handoff table
+     of remaining surfaces.
+
+2. **Node creation hotspot audit.**
+   - Goal: find the highest-frequency node creation paths during Less compile
+     output and separate semantic owners from avoidable wrappers.
+   - Required proof: a focused instrumentation or static scan, plus before/after
+     counts or a concrete ranked list with the next deletion target.
+
+3. **At-rule/ruleset evaluated container surface reduction.**
+   - Goal: shrink or prove the derived at-rule/ruleset output surfaces used by
+     `renderRulesContainerOutput(...)` so container render is as close to direct
+     streaming as semantics allow.
+   - Required proof: focused at-rule/ruleset/nesting tests plus frontier scans.
+
+4. **Declaration fallback surface reduction.**
+   - Goal: decide whether declaration eval outputs that become non-declarations
+     can render through native output without a source-output fallback surface,
+     or document the exact semantic reason they cannot.
    - Required proof: focused declaration tests plus source-output call-site
      scan.
 
-2. **Source-output helper regression scan.**
-   - Goal: keep production `renderSourceOutput(...)` references limited to base
-     source render, declaration fallback, and the shared helper's same-node
-     fallback.
-   - Required proof: source-output call-site scan plus frontier checks.
+5. **Generated selector/output ownership reduction.**
+   - Goal: audit generated selector placement, extend output, `:is(...)`,
+     pseudo args, framed ampersands, and ruleset headers for avoidable owned
+     output surfaces.
+   - Required proof: parentage/visibility/output tests for each removed or kept
+     surface.
 
-3. **Resolved-output helper regression scan.**
-   - Goal: keep production `renderResolvedOutput(...)` references limited to
-     local eval/resolve render surfaces and prevent source-only wrappers from
-     reusing it.
-   - Required proof: resolved-output call-site scan plus focused render tests.
+6. **Function/mixin argument surface reduction.**
+   - Goal: keep metadata-backed raw/callback arg ownership only where user-code
+     mutation semantics require it, and ensure plain calls do not pre-copy or
+     clone argument trees.
+   - Required proof: focused `Call` / define-function / mixin tests and
+     node-copy frontier scan.
 
-4. **Context-dependent source override regression scan.**
-   - Goal: keep `Node.prototype.render.call(...)` limited to source-only nodes
-     that inherit from context-dependent bases.
-   - Required proof: source override scan plus focused source-render tests.
-
-5. **Expression-like delegation regression scan.**
-   - Goal: keep expression/wrapper direct string render, buffer render, and
-     async render choosing the same locally evaluated output.
-   - Required proof: focused expression/wrapper tests plus helper call-site
-     scan.
-
-6. **Typed node structural test frontier.**
-   - Goal: split the remaining `tsc --noEmit` failures by node-family shape:
-     define-function generics first, then selector/sequence structural
-     assignability.
-   - Required proof: focused type-error sample and one narrowed package/type
-     surface per checkpoint.
-
-7. **Less parser type frontier regression scan.**
-   - Goal: keep the recent Less parser type/lint narrowing from changing AST
-     shape or slash/selector behavior while the broader typed-node frontier
-     remains open.
-   - Required proof: focused Less parser selector/value/expression/AST tests
-     plus the `TreeContext`/`Negative` type-error sample.
+7. **Helper bridge deletion pass.**
+   - Goal: remove or narrow `renderSourceOutput(...)`,
+     `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
+     wrapper helpers once their remaining callers have been reduced or proven.
+   - Required proof: helper call-site scans plus focused direct/buffer render
+     parity tests.
 
 ## Backlog
 
-These are remaining architecture themes, not immediate queue items. Promote
-one only after turning it into a concrete checkpoint.
+These are remaining architecture themes and supporting guard work, not the
+current top-priority queue. Promote one only after turning it into a concrete
+checkpoint.
 
-No backlog items are currently promoted beyond the immediate queue. Add a new
-theme here only after the current queue item is completed or split.
+- **Regression guard scans.** Keep the recent declaration, source-output,
+  resolved-output, context-dependent source override, expression-like
+  delegation, and Less parser type-frontier scans available as proof when a
+  single-pass checkpoint touches those surfaces.
+- **Typed node structural frontier.** Continue splitting the remaining
+  `tsc --noEmit` failures by node-family shape, but do not let type cleanup
+  displace runtime node-creation reduction unless it directly unlocks a
+  materialization/copy deletion.
 
 ## Verification
 

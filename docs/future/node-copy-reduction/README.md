@@ -10,6 +10,10 @@ Older per-file completion logs live in
 ## Direction
 
 - Keep one canonical source tree as the default model.
+- Treat complete single-pass eval/render and minimum node creation as the top
+  priority. A green output test is not enough if the path still builds a broad
+  output tree, clones routine subtrees, or creates wrapper surfaces that are not
+  required by scope, lookup, placement, or user-code mutation semantics.
 - Prefer lazy per-placement runtime state over routine copied or cloned trees.
 - Do not treat `copy()` / `clone()` as the future evaluation model.
 - Use shallow wrapper owners only when they carry real local scope, registry,
@@ -31,7 +35,9 @@ The target compile path is not "eval creates a complete output tree, then
 serialize that tree". Evaluation should move semantic state forward and
 rendering should emit through contextual resolution, with small owned output
 surfaces only where a rule, scope, import/reference, merge, or generated
-selector placement truly needs one.
+selector placement truly needs one. Remaining work should prove that each kept
+surface is necessary and should remove or narrow anything that exists only so a
+later serializer can walk it.
 
 ## Current State
 
