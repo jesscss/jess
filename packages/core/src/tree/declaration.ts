@@ -26,7 +26,6 @@ import {
 import {
   isRenderBuffer,
   prepareBufferPrintState,
-  renderSourceOutput,
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
@@ -353,8 +352,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string | MaybePromise<string> {
-    if (node.type !== 'Declaration' || !(node instanceof Declaration)) {
-      return this.renderNonDeclarationOutput(context, node, bufferOrOptions, options);
+    if (!(node instanceof Declaration)) {
+      return isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
@@ -364,15 +365,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return buffer
       ? writeRenderText(buffer, out)
       : out;
-  }
-
-  private renderNonDeclarationOutput(
-    context: Context,
-    node: Node,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): string {
-    return renderSourceOutput(context, node, bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

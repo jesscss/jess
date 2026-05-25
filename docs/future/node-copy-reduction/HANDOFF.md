@@ -78,9 +78,9 @@ current state, immediate queue, and verification commands.
   `renderResolvedOutput(...)` after local evaluation instead of treating the
   evaluated result as source output.
 - `Declaration.render(...)` evaluates/prepares declaration state locally and
-  writes evaluated declaration syntax directly. Non-declaration eval results
-  go through the declaration-local `renderNonDeclarationOutput(...)` fallback,
-  which serializes the returned node's own finalized/source syntax.
+  writes evaluated declaration syntax directly. True non-declaration eval
+  results now render through that node's native render path; the
+  declaration-local source-output fallback helper is gone.
 - `Selector.render(...)`, `Interpolated.render(...)`, and
   `InterpolatedSelector.render(...)` now use `renderResolvedOutput(...)` after
   their selector/string-specific local resolution.
@@ -95,7 +95,6 @@ current state, immediate queue, and verification commands.
   use native streaming or `renderSourceOutput(...)`.
 - Remaining `renderSourceOutput(...)` sites are classified:
   - base `Node.render(...)` is source serialization infrastructure;
-  - declaration non-property fallback output is explicit source syntax;
   - `renderResolvedOutput(...)` is the narrow adapter for a caller that has
     already chosen an evaluated output node and needs native render delegation
     when that output is not the source node;
@@ -105,8 +104,7 @@ current state, immediate queue, and verification commands.
   helper depends only on context, print state, and buffer shapes. Do not move it
   into a node module that would require importing evaluated node classes.
 - Current production `renderSourceOutput(...)` call sites are: base
-  `Node.render(...)` and declaration-local `renderNonDeclarationOutput(...)`;
-  the only other production reference is the internal same-node fallback inside
+  `Node.render(...)` and the internal same-node fallback inside
   `renderResolvedOutput(...)`.
 - Final expression-like helper audit is complete: keep
   `renderResolvedOutput(...)` as the single local-eval output adapter. It exists
@@ -207,7 +205,7 @@ to stay.
 | `Rules.render(...)` source roots | Unevaluated `Rules` still derive before eval so source trees are not mutated. Already evaluated roots now render directly. | Prove whether public compile always reaches render with an evaluated root; if yes, keep unevaluated render as compatibility only. |
 | `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then calls `serializeRulesContainer(...)` with active render print state. | Split required body/prelude mutation from direct container streaming. |
 | `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
-| `Declaration.render(...)` | Prepares/evals a declaration surface; non-declaration outputs still use the declaration-local source fallback. | Decide whether the fallback can delegate native render without source-output helper plumbing. |
+| `Declaration.render(...)` | Prepares/evals a declaration surface; true non-declaration outputs delegate to native render. | Reduce `withValue(...)` / `withImportant(...)` eval surfaces where semantic state permits. |
 | Function/mixin argument metadata | Metadata-backed calls keep one owned raw/callback argument surface for mutable user-code APIs. | Keep this surface only for documented mutation APIs; plain calls should remain direct. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused cases. | Remove only with parentage/visibility/output tests. |
 
@@ -232,7 +230,8 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
 remaining source/resolved output helper calls. The old container output helper
-count is now zero.
+count is now zero; production `source-output` audit count is down to the base
+source render site only.
 
 ## Immediate Queue
 
@@ -242,54 +241,54 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Declaration fallback surface reduction.**
-   - Goal: decide whether declaration eval outputs that become non-declarations
-     can render through native output without a source-output fallback surface,
-     or document the exact semantic reason they cannot.
-   - Required proof: focused declaration tests plus source-output call-site
-     scan.
-
-2. **Generated selector/output ownership reduction.**
+1. **Generated selector/output ownership reduction.**
    - Goal: audit generated selector placement, extend output, `:is(...)`,
      pseudo args, framed ampersands, and ruleset headers for avoidable owned
      output surfaces.
    - Required proof: parentage/visibility/output tests for each removed or kept
      surface.
 
-3. **Function/mixin argument surface reduction.**
+2. **Function/mixin argument surface reduction.**
    - Goal: keep metadata-backed raw/callback arg ownership only where user-code
      mutation semantics require it, and ensure plain calls do not pre-copy or
      clone argument trees.
    - Required proof: focused `Call` / define-function / mixin tests and
      node-copy frontier scan.
 
-4. **Helper bridge deletion pass.**
+3. **Helper bridge deletion pass.**
    - Goal: remove or narrow `renderSourceOutput(...)`,
      `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
      wrapper helpers once their remaining callers have been reduced or proven.
    - Required proof: helper call-site scans plus focused direct/buffer render
      parity tests.
 
-5. **Unevaluated `Rules.render(...)` compatibility audit.**
+4. **Unevaluated `Rules.render(...)` compatibility audit.**
    - Goal: decide whether unevaluated root/body render still needs to derive
      before eval, or whether all production callers can render only evaluated
      rules.
    - Required proof: public output API call graph plus focused root/body render
      tests.
 
-6. **Declaration eval `with*` surface reduction.**
+5. **Declaration eval `with*` surface reduction.**
    - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
      `withImportant(...)` surfaces where the evaluated value can be streamed or
      represented as narrow runtime state instead of another declaration node.
    - Required proof: focused declaration merge/interpolation/custom-property
      tests plus node-creation audit before/after output.
 
-7. **At-rule/ruleset derived surface proof.**
+6. **At-rule/ruleset derived surface proof.**
    - Goal: now that the container helper is gone, prove which remaining
      at-rule/ruleset derived surfaces are mutation isolation versus serializer
      carriers, then reduce only the latter.
    - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
      before/after, and parentage checks for any removed surface.
+
+7. **Resolved-output helper caller audit.**
+   - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
+     them into same-surface source syntax, native delegation, or removable
+     wrapper cases.
+   - Required proof: helper call-site scan and focused direct/buffer parity
+     tests for any changed node family.
 
 ## Backlog
 

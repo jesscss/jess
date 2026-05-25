@@ -6,6 +6,7 @@ import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { Nil } from '../nil.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -119,6 +120,31 @@ describe('Declaration', () => {
     expect(node.render(context)).toBe('color: red');
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders nil declaration eval results through native node render', () => {
+    const originalRender = Nil.prototype.render;
+    let renderCalls = 0;
+    Nil.prototype.render = function renderForCounting(
+      this: Nil,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      renderCalls++;
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      const value = ref({ key: 'missing' }, { type: 'variable', fallbackValue: new Nil() });
+      const node = decl({ name: any('color'), value });
+      const buffer = createRenderBuffer('segmented');
+
+      expect(node.render(context)).toBe('');
+      expect(node.render(context, buffer)).toBe('');
+      expect(buffer.segments).toEqual([]);
+      expect(renderCalls).toBe(2);
+    } finally {
+      Nil.prototype.render = originalRender;
+    }
   });
 
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
