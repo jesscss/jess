@@ -39,6 +39,9 @@ type AltContext = (ctx?: RuleContext) => Alt;
 const OPERATORS = new Set<string>(['+', '-', '*', '/', '%']);
 
 function toOperator(image: string): Operator {
+  if (image === './') {
+    return '/';
+  }
   if (OPERATORS.has(image)) {
     return image;
   }

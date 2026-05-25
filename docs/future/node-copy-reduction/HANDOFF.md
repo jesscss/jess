@@ -61,6 +61,10 @@ current state, immediate queue, and verification commands.
   `renderEvaluatedCallOutput(...)` so it does not read as the shared
   `renderResolvedOutput(...)` adapter. Keep it local unless call output starts
   sharing behavior with other node families.
+- Call dynamic output regression audit is current:
+  `renderEvaluatedCallOutput(...)` remains local to `Call`, focused call tests
+  cover direct/buffer dynamic non-string output, and optional fallback calls use
+  native call output instead of a generic source bridge.
 - `JsExpression.render(...)` and `StyleImport.render(...)` now use
   `renderResolvedOutput(...)` after local evaluation instead of treating the
   evaluated result as source output.
@@ -178,10 +182,10 @@ current state, immediate queue, and verification commands.
 - Package type-debt audit is current: `pnpm --filter @jesscss/core exec tsc
   --noEmit --pretty false` still fails on broad node structural typing debt
   after async render/resolve work. The helper-local `render-buffer.ts` narrowing
-  error, less-parser `TreeContext` type imports, and the less-parser
-  `Negative` value import are fixed; remaining red is a separate typed-node
-  frontier, with large buckets in define-function tests and selector/sequence
-  structural assignability.
+  error, less-parser `TreeContext` type imports, less-parser `Negative` value
+  import, and one less-parser parser-boundary lint/type slice are fixed;
+  remaining red is a separate typed-node frontier, with large buckets in
+  define-function tests and selector/sequence structural assignability.
 
 ## Immediate Queue
 
@@ -191,46 +195,48 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call dynamic output regression audit.**
-   - Goal: keep dynamic non-string call-name output on the evaluated call path
-     without reintroducing generic source-output fallback.
-   - Required proof: focused call tests plus helper call-site scan.
-
-2. **Declaration non-declaration fallback regression audit.**
+1. **Declaration non-declaration fallback regression audit.**
    - Goal: keep declaration eval outputs that become non-declarations on their
      own finalized/source syntax path without turning it into a generic bridge.
    - Required proof: focused declaration tests plus source-output call-site
      scan.
 
-3. **Source-output helper regression scan.**
+2. **Source-output helper regression scan.**
    - Goal: keep production `renderSourceOutput(...)` references limited to base
      source render, declaration fallback, and the shared helper's same-node
      fallback.
    - Required proof: source-output call-site scan plus frontier checks.
 
-4. **Resolved-output helper regression scan.**
+3. **Resolved-output helper regression scan.**
    - Goal: keep production `renderResolvedOutput(...)` references limited to
      local eval/resolve render surfaces and prevent source-only wrappers from
      reusing it.
    - Required proof: resolved-output call-site scan plus focused render tests.
 
-5. **Context-dependent source override regression scan.**
+4. **Context-dependent source override regression scan.**
    - Goal: keep `Node.prototype.render.call(...)` limited to source-only nodes
      that inherit from context-dependent bases.
    - Required proof: source override scan plus focused source-render tests.
 
-6. **Expression-like delegation regression scan.**
+5. **Expression-like delegation regression scan.**
    - Goal: keep expression/wrapper direct string render, buffer render, and
      async render choosing the same locally evaluated output.
    - Required proof: focused expression/wrapper tests plus helper call-site
      scan.
 
-7. **Typed node structural test frontier.**
+6. **Typed node structural test frontier.**
    - Goal: split the remaining `tsc --noEmit` failures by node-family shape:
      define-function generics first, then selector/sequence structural
      assignability.
    - Required proof: focused type-error sample and one narrowed package/type
      surface per checkpoint.
+
+7. **Less parser type frontier regression scan.**
+   - Goal: keep the recent Less parser type/lint narrowing from changing AST
+     shape or slash/selector behavior while the broader typed-node frontier
+     remains open.
+   - Required proof: focused Less parser selector/value/expression/AST tests
+     plus the `TreeContext`/`Negative` type-error sample.
 
 ## Backlog
 

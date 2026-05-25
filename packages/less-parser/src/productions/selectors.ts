@@ -30,13 +30,13 @@ import {
   SelectorCapture,
   ComplexSelector,
   CompoundSelector,
+  Selector,
   SelectorList,
   Url,
   Nil,
   Collection,
   type ComplexSelectorValue,
   type ComplexSelectorComponent,
-  type Selector,
   type SimpleSelector,
   isNode,
   N,
@@ -60,10 +60,10 @@ function toCombinator(image: string): Combinators {
 }
 
 function isComplexSelectorComponentNode(node: Node | undefined): node is ComplexSelectorComponent {
-  return node instanceof BasicSelector
-    || node instanceof CompoundSelector
-    || node instanceof Combinator
-    || node instanceof Ampersand;
+  return node instanceof Call
+    || (node instanceof Selector
+      && !(node instanceof SelectorList)
+      && !(node instanceof ComplexSelector));
 }
 
 export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
@@ -362,7 +362,7 @@ export function relativeSelector(this: P, T: TokenMap) {
             targetNode._location = $.getLocationFromNodes(targetNode.value);
           } else {
             if (!isComplexSelectorComponentNode(targetNode)) {
-              throw new Error('Expected selector component after relative combinator.');
+              throw new Error(`Expected selector component after relative combinator; got ${targetNode?.type ?? 'none'}.`);
             }
             let nodes = [combinator, targetNode];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
