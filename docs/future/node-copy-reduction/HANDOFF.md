@@ -100,6 +100,10 @@ current state, immediate queue, and verification commands.
   only to delegate different resolved nodes to their native render path and to
   fall back to source syntax when evaluation stays on the same finalized
   surface.
+- Resolved-output helper import audit is current: remaining production callers
+  are expression/wrapper/selector/import-style nodes that perform local
+  eval/resolve before choosing output. `Call` has its own local
+  `renderEvaluatedCallOutput(...)` helper and no longer shares this name.
 - Base source render helper boundary audit is complete: keep
   `renderSourceOutput(...)` only for source-owned syntax and explicit
   source-output fallbacks, not generic evaluated output serialization.
@@ -179,46 +183,46 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Resolved-output helper import audit.**
-   - Goal: confirm remaining `renderResolvedOutput(...)` users are true
-     evaluated-output selectors and not source-only fallback wrappers.
-   - Required proof: helper call-site scan plus focused tests for any code
-     change.
-
-2. **Context-dependent source override regression audit.**
+1. **Context-dependent source override regression audit.**
    - Goal: keep `Collection` and `RawRules` as the only source-only subclasses
      that opt out of inherited context-dependent render, and add/adjust tests
      only if that frontier moves.
    - Required proof: source-only subclass scan plus focused source-render tests.
 
-3. **Expression-like native delegation regression audit.**
+2. **Expression-like native delegation regression audit.**
    - Goal: keep expression-like render callers on the shared resolved-output
      adapter only where tests prove non-self evaluated nodes need native render.
    - Required proof: helper call-site scan plus focused expression/wrapper
      render tests.
 
-4. **Typed node structural frontier split.**
+3. **Typed node structural frontier split.**
    - Goal: turn the current package `tsc --noEmit` failure into small typed-node
      checkpoints instead of treating it as render-helper cleanup.
    - Required proof: focused type-error sample and one narrowed package/type
      surface per checkpoint.
 
-5. **Call dynamic output regression audit.**
+4. **Call dynamic output regression audit.**
    - Goal: keep dynamic non-string call-name output on the evaluated call path
      without reintroducing generic source-output fallback.
    - Required proof: focused call tests plus helper call-site scan.
 
-6. **Declaration non-declaration fallback regression audit.**
+5. **Declaration non-declaration fallback regression audit.**
    - Goal: keep declaration eval outputs that become non-declarations on their
      own finalized/source syntax path without turning it into a generic bridge.
    - Required proof: focused declaration tests plus source-output call-site
      scan.
 
-7. **Source-output helper regression scan.**
+6. **Source-output helper regression scan.**
    - Goal: keep production `renderSourceOutput(...)` references limited to base
      source render, declaration fallback, and the shared helper's same-node
      fallback.
    - Required proof: source-output call-site scan plus frontier checks.
+
+7. **Resolved-output helper regression scan.**
+   - Goal: keep production `renderResolvedOutput(...)` references limited to
+     local eval/resolve render surfaces and prevent source-only wrappers from
+     reusing it.
+   - Required proof: resolved-output call-site scan plus focused render tests.
 
 ## Backlog
 
