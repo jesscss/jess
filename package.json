@@ -68,6 +68,7 @@
     "verify:node-copy-frontier": "node scripts/verify-node-copy-frontier.mjs",
     "verify:render-buffer-frontier": "node scripts/verify-render-buffer-frontier.mjs",
     "verify:materialization-frontier": "node scripts/verify-materialization-frontier.mjs",
+    "audit:node-creation": "node scripts/audit-node-creation-hotspots.mjs",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "release:alpha:check": "pnpm run verify:baseline && node scripts/release/validate-alpha-publish-set.mjs && node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
     "release:alpha:version": "node scripts/release/increment-alpha.mjs",

@@ -209,6 +209,28 @@ to stay.
 | Function/mixin argument metadata | Metadata-backed calls keep one owned raw/callback argument surface for mutable user-code APIs. | Keep this surface only for documented mutation APIs; plain calls should remain direct. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused cases. | Remove only with parentage/visibility/output tests. |
 
+## Node-Creation Hotspots
+
+Run `pnpm run audit:node-creation` before and after a node-creation reduction
+checkpoint. The script is intentionally an audit, not a gate: it ranks likely
+surfaces so the next pass attacks the largest honest runtime paths first.
+
+Current top files by static surface count:
+
+1. `packages/core/src/tree/rules.ts`
+2. `packages/core/src/tree/declaration.ts`
+3. `packages/core/src/tree/call.ts`
+4. `packages/core/src/tree/import-style.ts`
+5. `packages/core/src/tree/dimension.ts`
+6. `packages/core/src/tree/at-rule.ts`
+7. `packages/core/src/tree/reference.ts`
+8. `packages/core/src/tree/ampersand.ts`
+9. `packages/core/src/tree/ruleset.ts`
+
+Current top surface kinds: `new` node construction, `with*` output surfaces,
+`derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
+remaining source/resolved/container output helper calls.
+
 ## Immediate Queue
 
 This is a pop queue. Keep at least seven concrete items here. If the top item
@@ -217,52 +239,53 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Node creation hotspot audit.**
-   - Goal: find the highest-frequency node creation paths during Less compile
-     output and separate semantic owners from avoidable wrappers.
-   - Required proof: a focused instrumentation or static scan, plus before/after
-     counts or a concrete ranked list with the next deletion target.
-
-2. **At-rule/ruleset evaluated container surface reduction.**
+1. **At-rule/ruleset evaluated container surface reduction.**
    - Goal: shrink or prove the derived at-rule/ruleset output surfaces used by
      `renderRulesContainerOutput(...)` so container render is as close to direct
      streaming as semantics allow.
    - Required proof: focused at-rule/ruleset/nesting tests plus frontier scans.
 
-3. **Declaration fallback surface reduction.**
+2. **Declaration fallback surface reduction.**
    - Goal: decide whether declaration eval outputs that become non-declarations
      can render through native output without a source-output fallback surface,
      or document the exact semantic reason they cannot.
    - Required proof: focused declaration tests plus source-output call-site
      scan.
 
-4. **Generated selector/output ownership reduction.**
+3. **Generated selector/output ownership reduction.**
    - Goal: audit generated selector placement, extend output, `:is(...)`,
      pseudo args, framed ampersands, and ruleset headers for avoidable owned
      output surfaces.
    - Required proof: parentage/visibility/output tests for each removed or kept
      surface.
 
-5. **Function/mixin argument surface reduction.**
+4. **Function/mixin argument surface reduction.**
    - Goal: keep metadata-backed raw/callback arg ownership only where user-code
      mutation semantics require it, and ensure plain calls do not pre-copy or
      clone argument trees.
    - Required proof: focused `Call` / define-function / mixin tests and
      node-copy frontier scan.
 
-6. **Helper bridge deletion pass.**
+5. **Helper bridge deletion pass.**
    - Goal: remove or narrow `renderSourceOutput(...)`,
      `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
      wrapper helpers once their remaining callers have been reduced or proven.
    - Required proof: helper call-site scans plus focused direct/buffer render
      parity tests.
 
-7. **Unevaluated `Rules.render(...)` compatibility audit.**
+6. **Unevaluated `Rules.render(...)` compatibility audit.**
    - Goal: decide whether unevaluated root/body render still needs to derive
      before eval, or whether all production callers can render only evaluated
      rules.
    - Required proof: public output API call graph plus focused root/body render
      tests.
+
+7. **Declaration eval `with*` surface reduction.**
+   - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
+     `withImportant(...)` surfaces where the evaluated value can be streamed or
+     represented as narrow runtime state instead of another declaration node.
+   - Required proof: focused declaration merge/interpolation/custom-property
+     tests plus node-creation audit before/after output.
 
 ## Backlog
 
