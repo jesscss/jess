@@ -170,6 +170,29 @@ describe('Rules', () => {
     expect(node.evaluated).toBe(true);
   });
 
+  it('renders already evaluated rules without deriving another root surface', async () => {
+    const source = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+    const evaluated = await source.eval(context);
+    context.root = evaluated;
+    context.rulesContext = evaluated;
+
+    const originalDerive = evaluated.derive;
+    let deriveCalls = 0;
+    evaluated.derive = function countDeriveCalls(
+      this: typeof evaluated,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    expect(evaluated.render(context)).toBe('color: red;\n');
+    expect(deriveCalls).toBe(0);
+  });
+
   it('handles charset output-order bookkeeping without child registration prep', async () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
     charset.prepareRegistration = () => {

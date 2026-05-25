@@ -22,6 +22,9 @@ current state, immediate queue, and verification commands.
 - The compiler render phase writes through `Rules.render(...)` into a flat
   buffer. `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, and
   `renderNodeToString(...)` are internal/test bridges only.
+- `Rules.render(...)` no longer derives a second root surface when called on an
+  already evaluated `Rules` node. That keeps the public compile path from
+  paying for a duplicate evaluated root before buffer serialization.
 - Base `Node.render(context)` is direct source serialization. Nodes with
   context-dependent output choose local evaluated output and serialize through
   shared print state.
@@ -191,6 +194,21 @@ current state, immediate queue, and verification commands.
   remaining red is a separate typed-node frontier, with large buckets in
   define-function tests and selector/sequence structural assignability.
 
+## Remaining Node-Creation Surfaces
+
+This list is the current proof target for single-pass completion. Treat it as
+the source of truth for what still needs shrinking or a written semantic reason
+to stay.
+
+| Surface | Current shape | Next proof |
+| --- | --- | --- |
+| `Rules.render(...)` source roots | Unevaluated `Rules` still derive before eval so source trees are not mutated. Already evaluated roots now render directly. | Prove whether public compile always reaches render with an evaluated root; if yes, keep unevaluated render as compatibility only. |
+| `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then serializes through container syntax. | Split required body/prelude mutation from direct container streaming. |
+| `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets serialize through container syntax, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
+| `Declaration.render(...)` | Prepares/evals a declaration surface; non-declaration outputs still use the declaration-local source fallback. | Decide whether the fallback can delegate native render without source-output helper plumbing. |
+| Function/mixin argument metadata | Metadata-backed calls keep one owned raw/callback argument surface for mutable user-code APIs. | Keep this surface only for documented mutation APIs; plain calls should remain direct. |
+| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused cases. | Remove only with parentage/visibility/output tests. |
+
 ## Immediate Queue
 
 This is a pop queue. Keep at least seven concrete items here. If the top item
@@ -199,53 +217,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Single-pass materialization proof audit.**
-   - Goal: prove where production render still creates an evaluated/output
-     node surface before serialization, then classify each surface as required,
-     removable, or too broad.
-   - Required proof: `verify:materialization-frontier`, targeted `new` /
-     `derive` / `with*` scans in render/eval paths, and a short handoff table
-     of remaining surfaces.
-
-2. **Node creation hotspot audit.**
+1. **Node creation hotspot audit.**
    - Goal: find the highest-frequency node creation paths during Less compile
      output and separate semantic owners from avoidable wrappers.
    - Required proof: a focused instrumentation or static scan, plus before/after
      counts or a concrete ranked list with the next deletion target.
 
-3. **At-rule/ruleset evaluated container surface reduction.**
+2. **At-rule/ruleset evaluated container surface reduction.**
    - Goal: shrink or prove the derived at-rule/ruleset output surfaces used by
      `renderRulesContainerOutput(...)` so container render is as close to direct
      streaming as semantics allow.
    - Required proof: focused at-rule/ruleset/nesting tests plus frontier scans.
 
-4. **Declaration fallback surface reduction.**
+3. **Declaration fallback surface reduction.**
    - Goal: decide whether declaration eval outputs that become non-declarations
      can render through native output without a source-output fallback surface,
      or document the exact semantic reason they cannot.
    - Required proof: focused declaration tests plus source-output call-site
      scan.
 
-5. **Generated selector/output ownership reduction.**
+4. **Generated selector/output ownership reduction.**
    - Goal: audit generated selector placement, extend output, `:is(...)`,
      pseudo args, framed ampersands, and ruleset headers for avoidable owned
      output surfaces.
    - Required proof: parentage/visibility/output tests for each removed or kept
      surface.
 
-6. **Function/mixin argument surface reduction.**
+5. **Function/mixin argument surface reduction.**
    - Goal: keep metadata-backed raw/callback arg ownership only where user-code
      mutation semantics require it, and ensure plain calls do not pre-copy or
      clone argument trees.
    - Required proof: focused `Call` / define-function / mixin tests and
      node-copy frontier scan.
 
-7. **Helper bridge deletion pass.**
+6. **Helper bridge deletion pass.**
    - Goal: remove or narrow `renderSourceOutput(...)`,
      `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
      wrapper helpers once their remaining callers have been reduced or proven.
    - Required proof: helper call-site scans plus focused direct/buffer render
      parity tests.
+
+7. **Unevaluated `Rules.render(...)` compatibility audit.**
+   - Goal: decide whether unevaluated root/body render still needs to derive
+     before eval, or whether all production callers can render only evaluated
+     rules.
+   - Required proof: public output API call graph plus focused root/body render
+     tests.
 
 ## Backlog
 
