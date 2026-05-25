@@ -31,7 +31,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   override allowRuleRoot = true;
   override allowRoot = true;
   constructor(
-    value: DeclarationValue,
+    value: DeclarationValue<AnyRole>,
     options?: VarDeclarationOptions,
     location?: NodeLocation,
     treeContext?: TreeContext

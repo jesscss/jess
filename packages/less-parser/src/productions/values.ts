@@ -5,6 +5,7 @@ import type { IToken } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
 import {
   type LocationInfo,
+  type TreeContext,
   type Operator,
   Node,
   Any,
@@ -21,7 +22,7 @@ import {
   Url,
   Dimension,
   Num,
-  Negative,
+  negative,
   Rest,
   VarDeclaration,
   Expression,
@@ -35,6 +36,28 @@ import { createInterpolatedReference, getInterpolatedOrString } from '../utils.j
 type P = any;
 type Alt = Array<{ ALT: () => any; GATE?: () => boolean }>;
 type AltContext = (ctx?: RuleContext) => Alt;
+const OPERATORS = new Set<string>(['+', '-', '*', '/', '%']);
+
+function toOperator(image: string): Operator {
+  if (OPERATORS.has(image)) {
+    return image;
+  }
+  throw new Error(`Unexpected operator "${image}".`);
+}
+
+function toQuote(image: string): '"' | '\'' {
+  if (image === '"' || image === '\'') {
+    return image;
+  }
+  throw new Error(`Unexpected quote "${image}".`);
+}
+
+function nonEmptyVarDeclarations(vars: VarDeclaration[]): [VarDeclaration, ...VarDeclaration[]] {
+  if (vars.length === 0) {
+    throw new Error('Expected at least one variable declaration.');
+  }
+  return [vars[0]!, ...vars.slice(1)];
+}
 
 // ── Save references to CSS production factories ────────────────────────
 const cssNthValue = cssProductions.nthValue;
@@ -69,7 +92,7 @@ function isDivisionLikeNode(node: Node | undefined): boolean {
     || isNode(node, N.Reference)
     || isNode(node, N.Call)
     || isNode(node, N.Operation)
-    || node instanceof Negative
+    || node.type === 'Negative'
     || isNode(node, N.Expression)
   ) {
     return true;
@@ -159,7 +182,7 @@ function createEachPattern(
   if (!isNode(mixin, N.Mixin) || !mixin.value.params) {
     return {
       kind: 'tuple',
-      values: defaultVars as [VarDeclaration, ...VarDeclaration[]]
+      values: nonEmptyVarDeclarations(defaultVars)
     };
   }
 
@@ -170,7 +193,7 @@ function createEachPattern(
       }
       if (isNode(param, N.Any) && param.options.role === 'property') {
         return new VarDeclaration({
-          name: param as Any<'property'>,
+          name: new Any(param.value, { role: 'property' }, param.location, param.treeContext),
           value: new Any('', { role: 'any' })
         }, { paramVar: true }, param.location, context);
       }
@@ -181,7 +204,7 @@ function createEachPattern(
   if (params.length === 0) {
     return {
       kind: 'tuple',
-      values: defaultVars as [VarDeclaration, ...VarDeclaration[]]
+      values: nonEmptyVarDeclarations(defaultVars)
     };
   }
 
@@ -194,7 +217,7 @@ function createEachPattern(
 
   return {
     kind: 'tuple',
-    values: params as [VarDeclaration, ...VarDeclaration[]]
+    values: nonEmptyVarDeclarations(params)
   };
 }
 
@@ -241,7 +264,7 @@ export function expressionSum(this: P, T: TokenMap) {
       }
 
       const operation = new Operation(
-        [left, op as Operator, right!],
+        [left, toOperator(op), right!],
         undefined,
         $.getLocationFromNodes([left, right!]),
         $.context
@@ -295,7 +318,7 @@ export function expressionProduct(this: P, T: TokenMap) {
       }
 
       const operation = new Operation(
-        [left, op!.image as Operator, right],
+        [left, toOperator(op!.image), right],
         undefined,
         location,
         $.context
@@ -520,7 +543,7 @@ export function expressionValue(this: P, T: TokenMap) {
     ]);
     let location = $.endRule();
     if (minus) {
-      return new Negative(node, undefined, location, $.context);
+      return negative(node, undefined, location, $.context);
     }
     return node;
   };
@@ -1207,8 +1230,11 @@ export function string(this: P, T: TokenMap) {
           if (escaped && value) {
             value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
           }
+          if ($.RECORDING_PHASE) {
+            return;
+          }
 
-          const quoteChar = quoteImg as '"' | '\'';
+          const quoteChar = toQuote(quoteImg);
           if (value && (value.includes('@{') || value.includes('${'))) {
             return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteChar, escaped }, location, $.context);
           }
@@ -1235,8 +1261,11 @@ export function string(this: P, T: TokenMap) {
           if (escaped && value) {
             value = value.replace(/\\(?:\r\n?|\n|\f)/g, '\n');
           }
+          if ($.RECORDING_PHASE) {
+            return;
+          }
 
-          const quoteChar = quoteImg as '"' | '\'';
+          const quoteChar = toQuote(quoteImg);
           if (value && (value.includes('@{') || value.includes('${'))) {
             return new Quoted(processStringInterpolation(value, location, $.context), { quote: quoteChar, escaped }, location, $.context);
           }
@@ -1369,7 +1398,7 @@ export function mathProduct(this: P, T: TokenMap) {
       const right: Node = $.SUBRULE2($.mathValue, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
-        const opStr = op.image as Operator;
+        const opStr = toOperator(op.image);
         left = new Operation([left, opStr, right], { inCalc: true }, undefined, $.context);
       }
     }
@@ -1395,7 +1424,7 @@ export function mathSum(this: P, T: TokenMap) {
       const right: Node = $.SUBRULE2($.mathProduct, { ARGS: [ctx] });
 
       if (!RECORDING_PHASE) {
-        const opStr = op.image as Operator;
+        const opStr = toOperator(op.image);
         left = new Operation([left, opStr, right], { inCalc: true }, undefined, $.context);
       }
     });
