@@ -354,7 +354,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options?: PrintOptions
   ): string | MaybePromise<string> {
     if (node.type !== 'Declaration' || !(node instanceof Declaration)) {
-      return renderSourceOutput(context, node, bufferOrOptions, options);
+      return this.renderNonDeclarationOutput(context, node, bufferOrOptions, options);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
@@ -364,6 +364,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return buffer
       ? writeRenderText(buffer, out)
       : out;
+  }
+
+  private renderNonDeclarationOutput(
+    context: Context,
+    node: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    return renderSourceOutput(context, node, bufferOrOptions, options);
   }
 
   override resolve(context: Context): MaybePromise<Node> {

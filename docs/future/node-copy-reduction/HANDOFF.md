@@ -66,7 +66,8 @@ current state, immediate queue, and verification commands.
   evaluated result as source output.
 - `Declaration.render(...)` evaluates/prepares declaration state locally and
   writes evaluated declaration syntax directly. Non-declaration eval results
-  still delegate through resolved-output render.
+  go through the declaration-local `renderNonDeclarationOutput(...)` fallback,
+  which serializes the returned node's own finalized/source syntax.
 - `Selector.render(...)`, `Interpolated.render(...)`, and
   `InterpolatedSelector.render(...)` now use `renderResolvedOutput(...)` after
   their selector/string-specific local resolution.
@@ -178,47 +179,46 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Declaration fallback render helper audit.**
-   - Goal: inspect the remaining declaration non-property fallback that still
-     uses source-output render for `VarDeclaration`/`CustomDeclaration`-style
-     outputs and decide whether it should become a named local helper.
-   - Required proof: focused declaration/var-declaration tests plus helper
-     call-site scan for any code change.
-
-2. **Remaining source-output helper scan.**
+1. **Remaining source-output helper scan.**
    - Goal: rerun the production call-site scan and ensure each remaining
      `renderSourceOutput(...)` caller has a queue item or is base source
      serialization.
    - Required proof: call-site scan plus updated handoff.
 
-3. **Resolved-output helper import audit.**
+2. **Resolved-output helper import audit.**
    - Goal: confirm remaining `renderResolvedOutput(...)` users are true
      evaluated-output selectors and not source-only fallback wrappers.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
 
-4. **Context-dependent source override regression audit.**
+3. **Context-dependent source override regression audit.**
    - Goal: keep `Collection` and `RawRules` as the only source-only subclasses
      that opt out of inherited context-dependent render, and add/adjust tests
      only if that frontier moves.
    - Required proof: source-only subclass scan plus focused source-render tests.
 
-5. **Expression-like native delegation regression audit.**
+4. **Expression-like native delegation regression audit.**
    - Goal: keep expression-like render callers on the shared resolved-output
      adapter only where tests prove non-self evaluated nodes need native render.
    - Required proof: helper call-site scan plus focused expression/wrapper
      render tests.
 
-6. **Typed node structural frontier split.**
+5. **Typed node structural frontier split.**
    - Goal: turn the current package `tsc --noEmit` failure into small typed-node
      checkpoints instead of treating it as render-helper cleanup.
    - Required proof: focused type-error sample and one narrowed package/type
      surface per checkpoint.
 
-7. **Call dynamic output regression audit.**
+6. **Call dynamic output regression audit.**
    - Goal: keep dynamic non-string call-name output on the evaluated call path
      without reintroducing generic source-output fallback.
    - Required proof: focused call tests plus helper call-site scan.
+
+7. **Declaration non-declaration fallback regression audit.**
+   - Goal: keep declaration eval outputs that become non-declarations on their
+     own finalized/source syntax path without turning it into a generic bridge.
+   - Required proof: focused declaration tests plus source-output call-site
+     scan.
 
 ## Backlog
 
