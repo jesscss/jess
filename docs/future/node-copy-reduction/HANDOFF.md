@@ -57,6 +57,10 @@ current state, immediate queue, and verification commands.
   evaluated result through that result's native render path. Already-evaluated
   fallback calls are treated as finalized call syntax so optional CSS-function
   fallback output does not re-evaluate the fallback name.
+- `Call`'s local dynamic-call output helper is named
+  `renderEvaluatedCallOutput(...)` so it does not read as the shared
+  `renderResolvedOutput(...)` adapter. Keep it local unless call output starts
+  sharing behavior with other node families.
 - `JsExpression.render(...)` and `StyleImport.render(...)` now use
   `renderResolvedOutput(...)` after local evaluation instead of treating the
   evaluated result as source output.
@@ -174,49 +178,47 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call local render helper naming audit.**
-   - Goal: inspect `Call`'s private `renderResolvedOutput(...)` name now that
-     the shared helper has the same name, and decide whether the call-local
-     helper should be renamed or split.
-   - Required proof: focused call tests plus helper call-site scan for any code
-     change.
-
-2. **Declaration fallback render helper audit.**
+1. **Declaration fallback render helper audit.**
    - Goal: inspect the remaining declaration non-property fallback that still
      uses source-output render for `VarDeclaration`/`CustomDeclaration`-style
      outputs and decide whether it should become a named local helper.
    - Required proof: focused declaration/var-declaration tests plus helper
      call-site scan for any code change.
 
-3. **Remaining source-output helper scan.**
+2. **Remaining source-output helper scan.**
    - Goal: rerun the production call-site scan and ensure each remaining
      `renderSourceOutput(...)` caller has a queue item or is base source
      serialization.
    - Required proof: call-site scan plus updated handoff.
 
-4. **Resolved-output helper import audit.**
+3. **Resolved-output helper import audit.**
    - Goal: confirm remaining `renderResolvedOutput(...)` users are true
      evaluated-output selectors and not source-only fallback wrappers.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
 
-5. **Context-dependent source override regression audit.**
+4. **Context-dependent source override regression audit.**
    - Goal: keep `Collection` and `RawRules` as the only source-only subclasses
      that opt out of inherited context-dependent render, and add/adjust tests
      only if that frontier moves.
    - Required proof: source-only subclass scan plus focused source-render tests.
 
-6. **Expression-like native delegation regression audit.**
+5. **Expression-like native delegation regression audit.**
    - Goal: keep expression-like render callers on the shared resolved-output
      adapter only where tests prove non-self evaluated nodes need native render.
    - Required proof: helper call-site scan plus focused expression/wrapper
      render tests.
 
-7. **Typed node structural frontier split.**
+6. **Typed node structural frontier split.**
    - Goal: turn the current package `tsc --noEmit` failure into small typed-node
      checkpoints instead of treating it as render-helper cleanup.
    - Required proof: focused type-error sample and one narrowed package/type
      surface per checkpoint.
+
+7. **Call dynamic output regression audit.**
+   - Goal: keep dynamic non-string call-name output on the evaluated call path
+     without reintroducing generic source-output fallback.
+   - Required proof: focused call tests plus helper call-site scan.
 
 ## Backlog
 

@@ -259,7 +259,7 @@ export class Call extends Node<CallValue, CallOptions> {
     return finishCall();
   }
 
-  private renderResolvedOutput(
+  private renderEvaluatedCallOutput(
     node: Node,
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
@@ -323,7 +323,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (typeof this.value.name !== 'string') {
         return pipe(
           () => this.deriveResolveSurface().eval(context),
-          node => this.renderResolvedOutput(node, context, bufferOrOptions, options)
+          node => this.renderEvaluatedCallOutput(node, context, bufferOrOptions, options)
         );
       }
       // Plain CSS calls render args/content explicitly so async child failures
@@ -343,7 +343,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     return pipe(
       () => this.deriveResolveSurface().eval(context),
-      node => this.renderResolvedOutput(node, context, bufferOrOptions, options)
+      node => this.renderEvaluatedCallOutput(node, context, bufferOrOptions, options)
     );
   }
 
