@@ -10,7 +10,7 @@ import { N } from './node-type.js';
 import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
-  renderSourceOutput,
+  renderResolvedOutput,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -177,7 +177,7 @@ export class Interpolated<
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveValue(context),
-      node => renderSourceOutput(context, node, bufferOrOptions, options)
+      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
     );
   }
 
