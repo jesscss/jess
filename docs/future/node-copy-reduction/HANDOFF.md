@@ -86,6 +86,9 @@ current state, immediate queue, and verification commands.
   surfaces, `StyleImport`, and the declaration non-property fallback for
   `VarDeclaration`/`CustomDeclaration`-style outputs. All are either source
   serialization or still listed in the queue below.
+- Base source render helper boundary audit is complete: keep
+  `renderSourceOutput(...)` only for source-owned syntax and explicit
+  source-output fallbacks, not generic evaluated output serialization.
 - Plain source-only `Comment` nodes use inherited base render; source-only
   subclasses should not keep local render overrides unless they inherit from a
   context-dependent base like `Rules`. Base render owns the same
@@ -151,50 +154,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Base source render helper boundary audit.**
-   - Goal: confirm `renderSourceOutput(...)` still belongs in the base
-     source-serialization path after shrinkable evaluated surfaces are removed.
-   - Required proof: focused node-render-buffer coverage plus updated handoff.
-
-2. **Selector/interpolated render bridge audit.**
+1. **Selector/interpolated render bridge audit.**
    - Goal: inspect selector-valued and interpolated string render paths that
      still use `renderSourceOutput(...)` after local eval/resolve, without
      confusing selector payload output with generic expression output.
    - Required proof: focused selector/interpolated tests plus render-buffer
      frontier.
 
-3. **JsExpression/import-style render bridge audit.**
+2. **JsExpression/import-style render bridge audit.**
    - Goal: inspect JS expression and import-style render surfaces that still
      use the source-output helper, and separate true evaluated syntax from
      source-only import/reference boundaries.
    - Required proof: focused js-expr/import-style tests plus materialization
      frontier.
 
-4. **Base source subclasses audit.**
+3. **Base source subclasses audit.**
    - Goal: scan remaining source-only subclasses for local render overrides or
      helper imports that should collapse to inherited source render.
    - Required proof: node-render-buffer coverage plus frontier scans.
 
-5. **Final expression-like helper removal audit.**
+4. **Final expression-like helper removal audit.**
    - Goal: after selector/interpolated/JS/import-style passes, decide whether
      any expression-like caller still justifies `renderResolvedOutput(...)` or
      whether it can shrink again.
    - Required proof: helper call-site scan plus focused tests for any code
      change.
 
-6. **Package type-debt follow-up audit.**
+5. **Package type-debt follow-up audit.**
    - Goal: separate existing async-render type debt from the eval/render helper
      cleanup so failed `tsc --noEmit` output does not get mistaken for a new
      import-boundary regression.
    - Required proof: focused type-error sample plus handoff update; broad
      cleanup is a separate checkpoint.
 
-7. **Call local render helper naming audit.**
+6. **Call local render helper naming audit.**
    - Goal: inspect `Call`'s private `renderResolvedOutput(...)` name now that
      the shared helper has the same name, and decide whether the call-local
      helper should be renamed or split.
    - Required proof: focused call tests plus helper call-site scan for any code
      change.
+
+7. **Declaration fallback render helper audit.**
+   - Goal: inspect the remaining declaration non-property fallback that still
+     uses source-output render for `VarDeclaration`/`CustomDeclaration`-style
+     outputs and decide whether it should become a named local helper.
+   - Required proof: focused declaration/var-declaration tests plus helper
+     call-site scan for any code change.
 
 ## Backlog
 

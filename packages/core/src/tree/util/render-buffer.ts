@@ -164,6 +164,13 @@ export function prepareBufferPrintState(context: Context, options?: PrintOptions
   return prepareRenderPrintState(context, detached);
 }
 
+/**
+ * Serialize an already-source-owned node surface through render print state.
+ *
+ * This is the base `Node.render(...)` path and the fallback for node kinds
+ * whose evaluated output is still intentionally their own source syntax. Do
+ * not use it as a generic "eval completed, now serialize" bridge.
+ */
 export function renderSourceOutput(
   context: Context,
   node: RenderableOutput,
