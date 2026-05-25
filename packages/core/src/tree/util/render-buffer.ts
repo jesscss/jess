@@ -187,6 +187,14 @@ export function renderSourceOutput(
     : out;
 }
 
+/**
+ * Serialize a caller's local eval/resolve result.
+ *
+ * Expression-like nodes use this after they have chosen a resolved output. If
+ * that output is a different node with native buffer render, delegate to it so
+ * render stays linear. If evaluation stayed on the same finalized syntax
+ * surface, source serialization is the correct fallback.
+ */
 export function renderResolvedOutput(
   context: Context,
   source: RenderableOutput,
