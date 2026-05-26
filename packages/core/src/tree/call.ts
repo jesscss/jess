@@ -141,6 +141,70 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(name);
   }
 
+  private markCallOutput<T extends Node>(node: T): T {
+    node.inherit(this);
+    if (
+      isNode(node, N.Rules)
+      && node.value.length > 0
+      && node.value.every(child => isNode(child, N.Declaration | N.Comment))
+      && !(
+        isNode(this.value.name, N.Reference)
+        && (this.value.name.options?.type === 'mixin'
+          || this.value.name.options?.type === 'mixin-ruleset')
+      )
+    ) {
+      node.options.callDeclarationOutput = true;
+    }
+    return node;
+  }
+
+  private async evalPlainDynamicFunction(context: Context): Promise<Node | undefined> {
+    if (
+      typeof this.value.name === 'string'
+      || this.value.contentNode
+      || this.options?.silentFail
+      || this.options?.markImportant
+    ) {
+      return undefined;
+    }
+    const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference)
+      && this.value.name.options?.type === 'variable';
+    const name = preservesRulesLikeVariableTarget
+      ? this.derivePreserveRulesLikeReference(this.value.name)
+      : copyWithReusableLeaves(this.value.name);
+    const evaluatedName = await name.eval(context);
+    const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+    if (
+      !isExtendedFn(fn)
+      || fn._internal
+      || fn.options?.params
+    ) {
+      return undefined;
+    }
+
+    context.callStack.push(this);
+    context.parenFrames.push(false);
+    const originalCaller = context.caller;
+    context.caller = this;
+    try {
+      const result = this.value.args
+        ? await callWithContext(context, fn, ...this.value.args.value)
+        : await callWithContext(context, fn);
+      if (isNode(result)) {
+        return this.markCallOutput(await result.eval(context));
+      }
+      const castResult = cast(result);
+      if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+        return this.markCallOutput(castResult.value[0]!);
+      }
+      return this.markCallOutput(castResult);
+    } finally {
+      context.caller = originalCaller;
+      context.parenFrames.pop();
+      context.callStack.pop();
+    }
+  }
+
   private serializeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
@@ -311,8 +375,13 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       if (typeof this.value.name !== 'string') {
         return pipe(
-          () => this.deriveResolveSurface().eval(context),
-          node => this.renderOutput(context, node, bufferOrOptions, options)
+          () => this.evalPlainDynamicFunction(context),
+          node => node
+            ? this.renderOutput(context, node, bufferOrOptions, options)
+            : pipe(
+                () => this.deriveResolveSurface().eval(context),
+                output => this.renderOutput(context, output, bufferOrOptions, options)
+              )
         );
       }
       // Plain CSS calls render args/content explicitly so async child failures
@@ -331,8 +400,13 @@ export class Call extends Node<CallValue, CallOptions> {
       return this.renderPlainFunctionCall(this, context, prepared);
     }
     return pipe(
-      () => this.deriveResolveSurface().eval(context),
-      node => this.renderOutput(context, node, bufferOrOptions, options)
+      () => this.evalPlainDynamicFunction(context),
+      node => node
+        ? this.renderOutput(context, node, bufferOrOptions, options)
+        : pipe(
+            () => this.deriveResolveSurface().eval(context),
+            output => this.renderOutput(context, output, bufferOrOptions, options)
+          )
     );
   }
 
@@ -346,7 +420,10 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    return this.deriveResolveSurface().eval(context);
+    return pipe(
+      () => this.evalPlainDynamicFunction(context),
+      node => node ?? this.deriveResolveSurface().eval(context)
+    );
   }
 
   /** Recursively makes declarations important */
@@ -376,23 +453,6 @@ export class Call extends Node<CallValue, CallOptions> {
     let args = this.value.args;
     let markImportant = this._options?.markImportant;
     const preservesRulesLikeVariableTarget = isNode(name, N.Reference) && name.options?.type === 'variable';
-    const markCallDeclarationOutput = !(
-      isNode(this.value.name, N.Reference)
-      && (this.value.name.options?.type === 'mixin'
-        || this.value.name.options?.type === 'mixin-ruleset')
-    );
-    const adoptCallWhitespace = <T extends Node>(node: T): T => {
-      node.inherit(this);
-      if (
-        isNode(node, N.Rules)
-        && node.value.length > 0
-        && node.value.every(child => isNode(child, N.Declaration | N.Comment))
-        && markCallDeclarationOutput
-      ) {
-        node.options.callDeclarationOutput = true;
-      }
-      return node;
-    };
     const evalArgNodes = async (
       nodes?: List<Node>,
       options?: { preserveSourceParents?: boolean }
@@ -500,16 +560,16 @@ export class Call extends Node<CallValue, CallOptions> {
           if (markImportant && isNode(evald, N.Rules)) {
             this.makeImportant(evald);
           }
-          return adoptCallWhitespace(evald);
+          return this.markCallOutput(evald);
         }
-        return adoptCallWhitespace(cast(result));
+        return this.markCallOutput(cast(result));
       } catch (e) {
         context.caller = originalCaller;
         context.callStack.pop();
         context.parenFrames.pop();
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (this.parent?.type === 'SelectorCapture') {
-            return adoptCallWhitespace(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+            return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
@@ -522,7 +582,7 @@ export class Call extends Node<CallValue, CallOptions> {
         const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : stringifyValueOf(n);
-        return adoptCallWhitespace(this.deriveCall(
+        return this.markCallOutput(this.deriveCall(
           {
             ...this.value,
             name: fallbackName,
@@ -564,24 +624,24 @@ export class Call extends Node<CallValue, CallOptions> {
             if (markImportant && isNode(evald, N.Rules)) {
               this.makeImportant(evald);
             }
-            return adoptCallWhitespace(evald);
+            return this.markCallOutput(evald);
           }
           if (markImportant && isNode(evald, N.Rules)) {
             this.makeImportant(evald);
           }
-          return adoptCallWhitespace(evald);
+          return this.markCallOutput(evald);
         }
         let castResult = cast(result);
         if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-          return adoptCallWhitespace(castResult.value[0]!);
+          return this.markCallOutput(castResult.value[0]!);
         }
-        return adoptCallWhitespace(castResult);
+        return this.markCallOutput(castResult);
       } catch (e) {
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
           if (this.parent?.type === 'SelectorCapture') {
-            return adoptCallWhitespace(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+            return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
             throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
@@ -594,7 +654,7 @@ export class Call extends Node<CallValue, CallOptions> {
         const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : stringifyValueOf(n);
-        return adoptCallWhitespace(this.deriveCall(
+        return this.markCallOutput(this.deriveCall(
           {
             ...this.value,
             name: fallbackName,
@@ -640,7 +700,7 @@ export class Call extends Node<CallValue, CallOptions> {
         name: typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n),
         args: evaluatedArgs
       }, callOptions, this.location, this.treeContext);
-      return adoptCallWhitespace(node);
+      return this.markCallOutput(node);
     };
   }
 }

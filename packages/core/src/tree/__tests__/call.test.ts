@@ -312,6 +312,50 @@ describe('Call', () => {
     expect(rule.registrationPrepared).toBe(false);
   });
 
+  it('uses source args directly for plain dynamic JS function render and resolve', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const root = rules([]);
+    const originalValue = new CountingSequence([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    root.register('function', new JsFunction({
+      name: 'echo',
+      fn: (value: Sequence) => any(value === originalValue ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'echo' }, { type: 'function' }),
+      args: originalArgs
+    });
+    const buffer = createRenderBuffer('flat');
+
+    CountingSequence.countConstructions = true;
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('ok');
+      expect(await rule.render(context, buffer)).toBe('ok');
+      expect((await rule.resolve(context)).toTrimmedString()).toBe('ok');
+      expect(buffer.parts).toEqual(['ok']);
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
   it('renders optional non-string fallback calls through native output', async () => {
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
     const rule = call({

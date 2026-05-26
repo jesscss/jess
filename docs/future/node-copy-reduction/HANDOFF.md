@@ -117,6 +117,11 @@ current state, immediate queue, and verification commands.
 - Dynamic `Call.render(...)` buffer output delegates the caller buffer directly
   to the evaluated output node. It no longer renders the evaluated node to a
   string and then writes that string into the buffer.
+- Plain dynamic JS function calls now evaluate only an owned dynamic name and
+  pass source args directly through render/resolve. That removes the full
+  copied `Call`/arg surface for non-metadata functions while leaving metadata
+  rawArgs, optional fallback, content-node, and rules-like variable paths on
+  their guarded surfaces.
 - `Call.resolve(...)` now returns already evaluated call nodes directly instead
   of re-entering `evalNode(...)`. The remaining dynamic call resolve/render
   work is the unprepared dynamic-name copied surface.
@@ -388,45 +393,43 @@ backlog below.
      parentage guard, root extend matching against the generated header, and
      existing extend-boundary output guards.
 
-2. **Dynamic call-state first implementation slice.**
-   - Goal: replace one `deriveResolveSurface()` use with direct evaluated output
-     or a tiny local state record, but only where source arg/name parentage and
-     metadata `rawArgs` isolation are already guarded.
-   - Required proof: dynamic/fallback call tests plus metadata rawArgs mutation
-     isolation.
-
-3. **At-rule state model first proof.**
+2. **At-rule state model first proof.**
    - Goal: pick one derived at-rule surface and prove whether a side-state shape
      can carry prepared name/prelude/body data without mutating the source node.
    - Required proof: at-rule source-isolation tests plus nested at-rule,
      hoist-to-root, and root-only output guards.
 
-4. **Call resolve-surface source-free args slice.**
-   - Goal: prove whether a dynamic/fallback call with source-free args can avoid
-     the full copied resolve surface while preserving fallback output.
-   - Required proof: dynamic/fallback call tests plus source parentage guards.
+3. **Call fallback/content resolve-surface slice.**
+   - Goal: split optional fallback and content-node dynamic calls into the
+     smallest state needed for finalized fallback syntax without a full copied
+     pre-call `Call` surface.
+   - Required proof: direct render, buffer render, resolve, source parentage,
+     source evaluated-state, optional fallback output, and content-node output.
 
-5. **Call dynamic render/resolve pre-copy slice.**
-   - Goal: split the first safe dynamic render/resolve branch after callable
-     name evaluation. Plain positional JS functions and metadata-backed
-     functions should not both pay for the same copied `Call` surface when
-     `callWithContext(...)` already owns metadata args.
-   - Required proof: direct render, buffer render, and resolve tests for plain
-     positional JS functions, metadata rawArgs mutation isolation, source call
-     `evaluated` state, source arg parentage/evaluation state, and fallback
-     output.
+4. **Metadata call rawArgs boundary audit.**
+   - Goal: confirm metadata-backed functions still have exactly one owned
+     `rawArgs` surface after the plain dynamic JS split.
+   - Required proof: metadata rawArgs mutation isolation and metadata param
+     evaluation from the owned arg surface.
 
-6. **At-rule prepare-registration derivation audit.**
+5. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic
      isolation versus removable derived wrappers.
    - Required proof: at-rule source-isolation tests and root-only/hoist guards.
 
-7. **Mixin output-slot replacement design slice.**
+6. **Mixin output-slot replacement design slice.**
    - Goal: after the first proof, identify the smallest wrapper responsibility
      that an output-slot record could own without changing lookup, reference,
      guard, or caller-fallback behavior.
    - Required proof: focused mixin output tests plus a written source/slot
      responsibility split before implementation.
+
+7. **Rules-like variable call state slice.**
+   - Goal: keep detached ruleset variable calls from mutating source parents
+     while shrinking the copied call/name surface that preserves lexical
+     rules-like lookup.
+   - Required proof: non-leaky/leaky detached ruleset call tests plus source
+     parentage and caller fallback guards.
 
 ## Backlog
 
