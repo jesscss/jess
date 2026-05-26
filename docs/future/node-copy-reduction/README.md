@@ -199,6 +199,17 @@ These are architectural seams, not a live ordered queue. Use
    branch `Rules.render(context)` for trimmed block output. Remaining work is
    about eval-only output wrappers, not adding another control render helper.
 
+6. **Mixin output slots**: current mixin output wrappers are generated `Rules`
+   owners because they carry lookup visibility, mixin-output gating,
+   reference-mode clearing, repeated placement, and definition/caller
+   `ScopeFrame` links. A future replacement should be an output-slot record,
+   not another tree: source body, evaluated placement children, scope frame,
+   visibility gates, reference/import flags, rule index, and caller fallback.
+   It should stream its children through `Rules.render(...)`/child render paths
+   and register only the lookup state needed for that placement. Do not move
+   declarations or selectors into a parallel AST just to avoid constructing a
+   `Rules` wrapper.
+
 ## Guardrails
 
 - Base `Node.copy()` / `Node.clone()`, keyset copies, bitset copies, reusable

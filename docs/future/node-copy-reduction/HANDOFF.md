@@ -274,6 +274,12 @@ current state, immediate queue, and verification commands.
   placement without stamping call-site parents onto source bodies. A future
   render-buffer output-slot model may replace some of these wrappers, but do
   not delete them as a local cleanup.
+- Mixin output slot design checkpoint is current. The target replacement for
+  generated mixin `Rules` wrappers is an output-slot record carrying source
+  body, evaluated placement children, scope frame, visibility/reference gates,
+  rule index, and caller fallback. It should stream through existing render
+  paths and register only per-placement lookup state; it must not become a
+  parallel output tree.
 - `@charset` output-order handling lives in `Rules` registration prep.
   `Any.prepareRegistration()` is mark-only again.
 - Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
@@ -336,52 +342,51 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Mixin output slot design checkpoint.**
-   - Goal: sketch the smallest render-buffer output-slot model that could carry
-     mixin placement, lookup visibility, and caller/definition frames without a
-     generated `Rules` wrapper.
-   - Required proof: concrete current wrapper responsibilities and the focused
-     mixin tests that must keep passing before any code change.
-
-2. **Call dynamic state model follow-up.**
+1. **Call dynamic state model follow-up.**
    - Goal: replace the remaining call resolve surface only if a smaller state
      object can hold evaluated dynamic name/args/content plus optional fallback
      syntax without reparenting source children.
    - Required proof: current dynamic/fallback JS function tests plus source
      parent assertions.
 
-3. **At-rule direct render compatibility audit.**
+2. **At-rule direct render compatibility audit.**
    - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
      the same way as `Rules.render(...)`, separating production evaluated output
      from direct node API compatibility.
    - Required proof: focused at-rule render tests, public compiler render
      coverage when relevant, and a call-site scan.
 
-4. **Declaration prepared-state design checkpoint.**
+3. **Declaration prepared-state design checkpoint.**
    - Goal: if declaration prep is revisited, design the smallest side-state
      shape for prepared name/assignment data before touching code.
    - Required proof: source-isolation tests plus merged assignment and custom
      property render tests.
 
-5. **Ruleset generated-state design checkpoint.**
+4. **Ruleset generated-state design checkpoint.**
    - Goal: design the smallest state object that could replace `ownSelector`
      metadata copies while preserving source parentage, extend matching, and
      header rendering.
    - Required proof: ruleset header/cache tests plus selector parentage guards.
 
-6. **Syntax-wrapper same-node render branch.**
+5. **Syntax-wrapper same-node render branch.**
    - Goal: replace `renderResolvedOutput(...)` for `Paren`, `Quoted`, `Url`,
      `Operation`, `Interpolated`, and selector wrappers only if each node can
      keep its same-node source syntax fallback locally without recursion.
    - Required proof: direct/buffer parity and source-parent tests for every
      changed wrapper family.
 
-7. **Generated selector state spike.**
+6. **Generated selector state spike.**
    - Goal: prototype one non-production helper or failing test that demonstrates
      how generated selector state would preserve source parentage without owned
      child copies.
    - Required proof: no behavior change unless the focused selector parentage
      tests prove the replacement.
+
+7. **Mixin output-slot spike.**
+   - Goal: prototype the smallest non-production output-slot type or failing
+     test for replacing a generated mixin `Rules` wrapper.
+   - Required proof: focused mixin output/guard/caller-fallback tests before any
+     behavior change.
 
 ## Backlog
 
