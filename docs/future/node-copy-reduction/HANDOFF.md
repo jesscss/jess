@@ -210,6 +210,10 @@ current state, immediate queue, and verification commands.
   function calls pass their argument containers directly. Metadata-backed
   functions keep one owned `rawArgs` list because `this.rawArgs` is mutable
   user-code API surface; focused tests prove both sides of that split.
+- Mixin argument binding audit is current. Param/default/rest/`@arguments`
+  binding uses live `ScopeFrame` slots and `cloneBoundValue(...)` only owns
+  non-reusable bound values; focused tests cover scalar reuse, container
+  ownership, rest expansion, `@arguments`, and declaration-lookup bypass.
 - `@charset` output-order handling lives in `Rules` registration prep.
   `Any.prepareRegistration()` is mark-only again.
 - Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
@@ -271,40 +275,34 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Mixin argument binding surface audit.**
-   - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
-     `@arguments` construction for avoidable copies now that function-call
-     surfaces are classified.
-   - Required proof: focused mixin argument tests plus node-copy frontier scan.
-
-2. **Call dynamic render surface reduction.**
+1. **Call dynamic render surface reduction.**
    - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
      resolve paths, and remove copies that are only protecting source syntax
      when native render can stream the result directly.
    - Required proof: focused call dynamic-name direct/buffer tests and
      source-parent assertions.
 
-3. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+2. **Unevaluated `Rules.render(...)` compatibility narrowing.**
    - Goal: keep direct unevaluated `Rules.render(...)` support only where node
      tests or public API compatibility require it, and avoid adding new
      production callers.
    - Required proof: call-site scan plus focused `Rules` render tests.
 
-4. **Declaration preparation derivation audit.**
+3. **Declaration preparation derivation audit.**
    - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
      derivation and assignment-normalization node creation, separating required
      lookup identity mutation from output-only carrier surfaces.
    - Required proof: focused assignment merge/conditional assignment tests plus
      node-creation audit before/after output.
 
-5. **Ruleset evaluated render reuse proof.**
+4. **Ruleset evaluated render reuse proof.**
    - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
      evaluated rulesets should serialize the existing surface, while direct
      unevaluated compatibility rendering stays isolated.
    - Required proof: focused ruleset render/buffer tests and call-count guard
      proving evaluated render does not re-enter eval.
 
-6. **Resolved-output wrapper narrowing.**
+5. **Resolved-output wrapper narrowing.**
    - Goal: inspect the remaining wrapper-like helper callers
      (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
      remove the adapter only where the evaluated output cannot be the same
@@ -312,12 +310,19 @@ backlog below.
    - Required proof: focused direct/buffer parity tests for each changed node
      family and helper call-site scan.
 
-7. **Selector ownership model follow-up.**
+6. **Selector ownership model follow-up.**
    - Goal: design a smaller generated-selector ownership model only if it can
      preserve canonical source child parentage without per-constructor
      copy-with-reusable-leaves scaffolding.
    - Required proof: the existing selector parentage tests plus new tests for
      whichever constructor path changes.
+
+7. **Mixin output wrapper surface audit.**
+   - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
+     and mixin output grouping wrappers for carrier-only containers now that
+     argument binding itself is classified.
+   - Required proof: focused mixin output/guard tests plus materialization and
+     node-copy frontier scans.
 
 ## Backlog
 
