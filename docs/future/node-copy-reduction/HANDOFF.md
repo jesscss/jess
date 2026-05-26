@@ -218,6 +218,10 @@ current state, immediate queue, and verification commands.
   `ComplexSelector`, `CompoundSelector`, and attribute/pseudo selector output
   still need owned changed surfaces so resolved selector render does not
   reparent unchanged canonical selector children.
+- Selector ownership model follow-up is current. A shared helper would only
+  hide the same ownership decision today; the next real reduction requires a
+  different generated-selector state model that preserves canonical source
+  parentage without per-constructor child ownership.
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
   functions keep one owned raw/callback arg-list surface because `this.rawArgs`
   is a documented mutable runtime API; `Call` no longer creates a second
@@ -292,54 +296,53 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Selector ownership model follow-up.**
-   - Goal: design a smaller generated-selector ownership model only if it can
-     preserve canonical source child parentage without per-constructor
-     copy-with-reusable-leaves scaffolding.
-   - Required proof: the existing selector parentage tests plus new tests for
-     whichever constructor path changes.
-
-2. **Mixin output wrapper surface audit.**
+1. **Mixin output wrapper surface audit.**
    - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
      and mixin output grouping wrappers for carrier-only containers now that
      argument binding itself is classified.
    - Required proof: focused mixin output/guard tests plus materialization and
      node-copy frontier scans.
 
-3. **Call dynamic resolve-surface audit.**
+2. **Call dynamic resolve-surface audit.**
    - Goal: inspect whether `deriveResolveSurface()` is still required for
      non-string call names after direct buffer delegation, especially optional
      fallback calls and referenced JS functions.
    - Required proof: focused call fallback/dynamic tests and source-parent
      assertions before removing any copy.
 
-4. **Rules direct unevaluated render compatibility audit.**
+3. **Rules direct unevaluated render compatibility audit.**
    - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
      a compatibility API or move to an explicit helper so production render has
      no hidden derive path.
    - Required proof: direct node render tests, public compiler render tests,
      and a call-site scan.
 
-5. **Declaration prep state model follow-up.**
+4. **Declaration prep state model follow-up.**
    - Goal: revisit declaration preparation only if a future state model can hold
      assignment/name prep without mutating a declaration surface.
    - Required proof: the current declaration source-isolation tests plus
      assignment merge/conditional assignment coverage.
 
-6. **Ruleset generated body/selector carrier audit.**
+5. **Ruleset generated body/selector carrier audit.**
    - Goal: inspect remaining ruleset generated selector/body surfaces after
      evaluated/prepared render reuse, especially `ownSelector` metadata and
      child-rule registration surfaces.
    - Required proof: focused ruleset parentage/header tests and node-creation
      audit before/after.
 
-7. **Resolved-output remaining caller audit.**
+6. **Resolved-output remaining caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers
      (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
      `ImportStyle`) and remove the adapter only where same-surface source
      syntax fallback is impossible.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for each changed family.
+
+7. **Selector generated-state design checkpoint.**
+   - Goal: draft the minimal state model needed to replace selector child
+     ownership copies without changing parentage or extend semantics.
+   - Required proof: concrete affected constructors plus tests that would fail
+     if source children were reparented.
 
 ## Backlog
 
