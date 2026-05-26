@@ -90,6 +90,12 @@ current state, immediate queue, and verification commands.
 - Dynamic `Call.render(...)` buffer output delegates the caller buffer directly
   to the evaluated output node. It no longer renders the evaluated node to a
   string and then writes that string into the buffer.
+- Call dynamic resolve-surface audit is current. `deriveResolveSurface()` still
+  protects referenced JS function calls, optional fallback calls, content-node
+  calls, and rules-like variable calls from mutating source name/args/parentage;
+  focused tests prove source args stay canonical and fallback output is derived
+  without cloning the source call. The stale unsafe assertion in
+  `Call.resolve(...)` is gone.
 - `JsExpression.render(...)` and `StyleImport.render(...)` now use
   `renderResolvedOutput(...)` after local evaluation instead of treating the
   evaluated result as source output.
@@ -303,34 +309,27 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call dynamic resolve-surface audit.**
-   - Goal: inspect whether `deriveResolveSurface()` is still required for
-     non-string call names after direct buffer delegation, especially optional
-     fallback calls and referenced JS functions.
-   - Required proof: focused call fallback/dynamic tests and source-parent
-     assertions before removing any copy.
-
-2. **Rules direct unevaluated render compatibility audit.**
+1. **Rules direct unevaluated render compatibility audit.**
    - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
      a compatibility API or move to an explicit helper so production render has
      no hidden derive path.
    - Required proof: direct node render tests, public compiler render tests,
      and a call-site scan.
 
-3. **Declaration prep state model follow-up.**
+2. **Declaration prep state model follow-up.**
    - Goal: revisit declaration preparation only if a future state model can hold
      assignment/name prep without mutating a declaration surface.
    - Required proof: the current declaration source-isolation tests plus
      assignment merge/conditional assignment coverage.
 
-4. **Ruleset generated body/selector carrier audit.**
+3. **Ruleset generated body/selector carrier audit.**
    - Goal: inspect remaining ruleset generated selector/body surfaces after
      evaluated/prepared render reuse, especially `ownSelector` metadata and
      child-rule registration surfaces.
    - Required proof: focused ruleset parentage/header tests and node-creation
      audit before/after.
 
-5. **Resolved-output remaining caller audit.**
+4. **Resolved-output remaining caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers
      (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
      `ImportStyle`) and remove the adapter only where same-surface source
@@ -338,18 +337,25 @@ backlog below.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for each changed family.
 
-6. **Selector generated-state design checkpoint.**
+5. **Selector generated-state design checkpoint.**
    - Goal: draft the minimal state model needed to replace selector child
      ownership copies without changing parentage or extend semantics.
    - Required proof: concrete affected constructors plus tests that would fail
      if source children were reparented.
 
-7. **Mixin output slot design checkpoint.**
+6. **Mixin output slot design checkpoint.**
    - Goal: sketch the smallest render-buffer output-slot model that could carry
      mixin placement, lookup visibility, and caller/definition frames without a
      generated `Rules` wrapper.
    - Required proof: concrete current wrapper responsibilities and the focused
      mixin tests that must keep passing before any code change.
+
+7. **Call dynamic state model follow-up.**
+   - Goal: replace the remaining call resolve surface only if a smaller state
+     object can hold evaluated dynamic name/args/content plus optional fallback
+     syntax without reparenting source children.
+   - Required proof: current dynamic/fallback JS function tests plus source
+     parent assertions.
 
 ## Backlog
 

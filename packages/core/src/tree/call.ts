@@ -354,7 +354,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return this.evalNode(context);
     }
-    return this.deriveResolveSurface().eval(context) as MaybePromise<Node>;
+    return this.deriveResolveSurface().eval(context);
   }
 
   /** Recursively makes declarations important */
