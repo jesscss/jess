@@ -5,14 +5,24 @@ import {
   negative,
   num,
   ref,
+  Rules,
   rules,
-  type Rules as RulesClass,
   vardecl
 } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Negative', () => {
   let context: Context;
+
+  const setRoot = async (node: Rules): Promise<void> => {
+    const evald = await node.eval(context);
+    expect(evald).toBeInstanceOf(Rules);
+    if (!(evald instanceof Rules)) {
+      throw new Error('Expected Rules');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+  };
 
   beforeEach(() => {
     context = new Context();
@@ -29,9 +39,7 @@ describe('Negative', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
     let negativeResolveCalls = 0;
@@ -54,9 +62,7 @@ describe('Negative', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const buffer = createRenderBuffer('flat');
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
@@ -81,9 +87,7 @@ describe('Negative', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
     const resolved = await negativeNode.resolve(context);

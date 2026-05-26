@@ -1,8 +1,18 @@
-import { expr, any, list, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { expr, any, list, ref, Rules, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
+const setRoot = async (node: Rules): Promise<void> => {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(Rules);
+  if (!(evald instanceof Rules)) {
+    throw new Error('Expected Rules');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+};
+
 describe('Expression', () => {
   beforeEach(() => {
     context = new Context();
@@ -21,9 +31,7 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
     const originalResolve = renderedNode.resolve;
@@ -50,9 +58,7 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const buffer = createRenderBuffer('flat');
     const expressionChild = ref({ key: 'value' }, { type: 'variable' });
@@ -88,9 +94,7 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const nodeToResolve = expr(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await nodeToResolve.resolve(context);
@@ -108,9 +112,7 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const nodeToResolve = expr(list([
       any('one'),

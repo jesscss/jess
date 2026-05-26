@@ -145,6 +145,9 @@ current state, immediate queue, and verification commands.
 - `DefaultGuard.render(...)` and `Condition.render(...)` no longer use
   `renderResolvedOutput(...)`; they always choose a `Bool`, so render delegates
   directly to that native output node.
+- `Negative.render(...)` and `Expression.render(...)` no longer use
+  `renderResolvedOutput(...)`; both choose evaluated child/result nodes and
+  delegate directly to those nodes' native render paths.
 - Expression-like native delegation regression audit is current: direct string
   render and buffer render for expression/wrapper nodes choose the same locally
   evaluated output, including async expression-like cases covered by
@@ -277,8 +280,9 @@ Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
 remaining source/resolved output helper calls. The old container output helper
 count is now zero; production `source-output` audit count is down to the base
-source render site only. Production `resolved-output` audit count is 11 after
-removing the Bool-only guard/condition callers.
+source render site only. Production `resolved-output` audit count is 9 after
+removing the Bool-only guard/condition callers and the negative/expression
+wrappers.
 
 ## Immediate Queue
 
@@ -288,54 +292,54 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Resolved-output wrapper narrowing.**
-   - Goal: inspect the remaining wrapper-like helper callers
-     (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
-     remove the adapter only where the evaluated output cannot be the same
-     source syntax surface.
-   - Required proof: focused direct/buffer parity tests for each changed node
-     family and helper call-site scan.
-
-2. **Selector ownership model follow-up.**
+1. **Selector ownership model follow-up.**
    - Goal: design a smaller generated-selector ownership model only if it can
      preserve canonical source child parentage without per-constructor
      copy-with-reusable-leaves scaffolding.
    - Required proof: the existing selector parentage tests plus new tests for
      whichever constructor path changes.
 
-3. **Mixin output wrapper surface audit.**
+2. **Mixin output wrapper surface audit.**
    - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
      and mixin output grouping wrappers for carrier-only containers now that
      argument binding itself is classified.
    - Required proof: focused mixin output/guard tests plus materialization and
      node-copy frontier scans.
 
-4. **Call dynamic resolve-surface audit.**
+3. **Call dynamic resolve-surface audit.**
    - Goal: inspect whether `deriveResolveSurface()` is still required for
      non-string call names after direct buffer delegation, especially optional
      fallback calls and referenced JS functions.
    - Required proof: focused call fallback/dynamic tests and source-parent
      assertions before removing any copy.
 
-5. **Rules direct unevaluated render compatibility audit.**
+4. **Rules direct unevaluated render compatibility audit.**
    - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
      a compatibility API or move to an explicit helper so production render has
      no hidden derive path.
    - Required proof: direct node render tests, public compiler render tests,
      and a call-site scan.
 
-6. **Declaration prep state model follow-up.**
+5. **Declaration prep state model follow-up.**
    - Goal: revisit declaration preparation only if a future state model can hold
      assignment/name prep without mutating a declaration surface.
    - Required proof: the current declaration source-isolation tests plus
      assignment merge/conditional assignment coverage.
 
-7. **Ruleset generated body/selector carrier audit.**
+6. **Ruleset generated body/selector carrier audit.**
    - Goal: inspect remaining ruleset generated selector/body surfaces after
      evaluated/prepared render reuse, especially `ownSelector` metadata and
      child-rule registration surfaces.
    - Required proof: focused ruleset parentage/header tests and node-creation
      audit before/after.
+
+7. **Resolved-output remaining caller audit.**
+   - Goal: inspect the remaining `renderResolvedOutput(...)` callers
+     (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
+     `ImportStyle`) and remove the adapter only where same-surface source
+     syntax fallback is impossible.
+   - Required proof: helper call-site scan and focused direct/buffer parity
+     tests for each changed family.
 
 ## Backlog
 

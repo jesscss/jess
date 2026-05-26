@@ -3,7 +3,7 @@ import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions, ty
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
-  renderResolvedOutput,
+  isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -48,7 +48,9 @@ export class Expression extends Node<Node> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evalNode(context),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions)
     );
   }
 
