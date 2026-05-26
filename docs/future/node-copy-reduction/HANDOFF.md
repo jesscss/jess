@@ -25,6 +25,9 @@ current state, immediate queue, and verification commands.
 - `Rules.render(...)` no longer derives a second root surface when called on an
   already evaluated `Rules` node. That keeps the public compile path from
   paying for a duplicate evaluated root before buffer serialization.
+- `Rules.render(...)` also reuses registration-prepared roots instead of
+  deriving again before eval. Direct unevaluated `Rules.render(...)` remains the
+  isolated compatibility path that derives before eval.
 - Public render APIs now have focused coverage proving `Compiler.render(...)`,
   `renderString(...)`, and `renderToResult(...)` enter `Rules.render(...)` with
   an already evaluated root. Unevaluated `Rules.render(...)` remains a
@@ -238,7 +241,7 @@ to stay.
 
 | Surface | Current shape | Next proof |
 | --- | --- | --- |
-| `Rules.render(...)` source roots | Public compile renders already evaluated roots. Unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
+| `Rules.render(...)` source roots | Public compile renders already evaluated roots; registration-prepared roots are reused. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
 | `AtRule.render(...)` | Reuses evaluated/prepared at-rule surfaces when available; direct unevaluated render still derives before eval for compatibility. | Split required body/prelude mutation from direct unevaluated compatibility rendering. |
 | `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one lazy declaration surface when value/important mutation is needed; true non-declaration outputs delegate to native render. | Split remaining declaration preparation derivation from assignment-normalization semantics. |
@@ -278,27 +281,21 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Unevaluated `Rules.render(...)` compatibility narrowing.**
-   - Goal: keep direct unevaluated `Rules.render(...)` support only where node
-     tests or public API compatibility require it, and avoid adding new
-     production callers.
-   - Required proof: call-site scan plus focused `Rules` render tests.
-
-2. **Declaration preparation derivation audit.**
+1. **Declaration preparation derivation audit.**
    - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
      derivation and assignment-normalization node creation, separating required
      lookup identity mutation from output-only carrier surfaces.
    - Required proof: focused assignment merge/conditional assignment tests plus
      node-creation audit before/after output.
 
-3. **Ruleset evaluated render reuse proof.**
+2. **Ruleset evaluated render reuse proof.**
    - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
      evaluated rulesets should serialize the existing surface, while direct
      unevaluated compatibility rendering stays isolated.
    - Required proof: focused ruleset render/buffer tests and call-count guard
      proving evaluated render does not re-enter eval.
 
-4. **Resolved-output wrapper narrowing.**
+3. **Resolved-output wrapper narrowing.**
    - Goal: inspect the remaining wrapper-like helper callers
      (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
      remove the adapter only where the evaluated output cannot be the same
@@ -306,26 +303,33 @@ backlog below.
    - Required proof: focused direct/buffer parity tests for each changed node
      family and helper call-site scan.
 
-5. **Selector ownership model follow-up.**
+4. **Selector ownership model follow-up.**
    - Goal: design a smaller generated-selector ownership model only if it can
      preserve canonical source child parentage without per-constructor
      copy-with-reusable-leaves scaffolding.
    - Required proof: the existing selector parentage tests plus new tests for
      whichever constructor path changes.
 
-6. **Mixin output wrapper surface audit.**
+5. **Mixin output wrapper surface audit.**
    - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
      and mixin output grouping wrappers for carrier-only containers now that
      argument binding itself is classified.
    - Required proof: focused mixin output/guard tests plus materialization and
      node-copy frontier scans.
 
-7. **Call dynamic resolve-surface audit.**
+6. **Call dynamic resolve-surface audit.**
    - Goal: inspect whether `deriveResolveSurface()` is still required for
      non-string call names after direct buffer delegation, especially optional
      fallback calls and referenced JS functions.
    - Required proof: focused call fallback/dynamic tests and source-parent
      assertions before removing any copy.
+
+7. **Rules direct unevaluated render compatibility audit.**
+   - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
+     a compatibility API or move to an explicit helper so production render has
+     no hidden derive path.
+   - Required proof: direct node render tests, public compiler render tests,
+     and a call-site scan.
 
 ## Backlog
 

@@ -1930,7 +1930,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root;
-    const value = this.evaluated ? this : this.derive().eval(context);
+    const value = this.evaluated
+      ? this
+      : this.registrationPrepared
+        ? this.eval(context)
+        : this.derive().eval(context);
     if (isRenderBuffer(bufferOrOptions)) {
       return isThenable(value)
         ? value.then(node => writeRulesRenderOutput(bufferOrOptions, this, node, context, options))
