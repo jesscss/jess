@@ -122,6 +122,10 @@ current state, immediate queue, and verification commands.
   copied `Call`/arg surface for non-metadata functions while leaving metadata
   rawArgs, optional fallback, content-node, and rules-like variable paths on
   their guarded surfaces.
+- Metadata-backed dynamic JS function coverage now spans eval, direct render,
+  buffer render, and resolve. Those calls still get exactly one owned rawArgs
+  surface for mutable user-code metadata while the source call args stay
+  canonical and unevaluated.
 - `Call.resolve(...)` now returns already evaluated call nodes directly instead
   of re-entering `evalNode(...)`. The remaining dynamic call resolve/render
   work is the unprepared dynamic-name copied surface.
@@ -406,30 +410,31 @@ backlog below.
    - Required proof: direct render, buffer render, resolve, source parentage,
      source evaluated-state, optional fallback output, and content-node output.
 
-4. **Metadata call rawArgs boundary audit.**
-   - Goal: confirm metadata-backed functions still have exactly one owned
-     `rawArgs` surface after the plain dynamic JS split.
-   - Required proof: metadata rawArgs mutation isolation and metadata param
-     evaluation from the owned arg surface.
-
-5. **At-rule prepare-registration derivation audit.**
+4. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic
      isolation versus removable derived wrappers.
    - Required proof: at-rule source-isolation tests and root-only/hoist guards.
 
-6. **Mixin output-slot replacement design slice.**
+5. **Mixin output-slot replacement design slice.**
    - Goal: after the first proof, identify the smallest wrapper responsibility
      that an output-slot record could own without changing lookup, reference,
      guard, or caller-fallback behavior.
    - Required proof: focused mixin output tests plus a written source/slot
      responsibility split before implementation.
 
-7. **Rules-like variable call state slice.**
+6. **Rules-like variable call state slice.**
    - Goal: keep detached ruleset variable calls from mutating source parents
      while shrinking the copied call/name surface that preserves lexical
      rules-like lookup.
    - Required proof: non-leaky/leaky detached ruleset call tests plus source
      parentage and caller fallback guards.
+
+7. **Call metadata state replacement slice.**
+   - Goal: replace the metadata path's full pre-call copied `Call` surface with
+     a smaller rawArgs owner only if the owned-list contract remains intact.
+   - Required proof: metadata rawArgs mutation isolation across eval/render/
+     resolve, metadata param evaluation from the owned arg surface, and source
+     call/arg parentage guards.
 
 ## Backlog
 

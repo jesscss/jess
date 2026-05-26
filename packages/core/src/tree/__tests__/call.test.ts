@@ -886,6 +886,59 @@ describe('Call', () => {
     expect(originalArgs.parent).toBe(rule);
   });
 
+  it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
+    const seenRawArgs: List[] = [];
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'mutate-raw',
+      fn: defineFunction(
+        'mutate-raw',
+        async function(this: { rawArgs: List }) {
+          seenRawArgs.push(this.rawArgs);
+          this.rawArgs.value.push(any('mutated'));
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const makeRule = () => {
+      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalArgs = list([originalValue]);
+      return {
+        originalValue,
+        originalArgs,
+        rule: call({
+          name: ref({ key: 'mutate-raw' }, { type: 'function' }),
+          args: originalArgs
+        })
+      };
+    };
+    const direct = makeRule();
+    const buffered = makeRule();
+    const resolved = makeRule();
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(direct.rule.render(context))).resolves.toBe('2');
+    expect(await buffered.rule.render(context, buffer)).toBe('2');
+    expect((await resolved.rule.resolve(context)).toTrimmedString()).toBe('2');
+    expect(buffer.parts).toEqual(['2']);
+    expect(seenRawArgs).toHaveLength(3);
+    for (const rawArgs of seenRawArgs) {
+      expect(rawArgs).not.toBe(direct.originalArgs);
+      expect(rawArgs).not.toBe(buffered.originalArgs);
+      expect(rawArgs).not.toBe(resolved.originalArgs);
+    }
+    for (const { originalValue, originalArgs, rule } of [direct, buffered, resolved]) {
+      expect(originalArgs.value).toEqual([originalValue]);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+      expect(rule.evaluated).toBe(false);
+    }
+  });
+
   it('evaluates metadata JS function params from the owned arg surface', async () => {
     let receivedArg: Sequence | undefined;
     const originalValue = seq([any('red'), dimension(10, 'px')]);
