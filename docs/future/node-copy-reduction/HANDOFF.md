@@ -54,6 +54,12 @@ current state, immediate queue, and verification commands.
 - `Ruleset.render(...)` reuses already evaluated rulesets and
   registration-prepared ruleset surfaces. Direct unevaluated render still
   prepares/evals an isolated ruleset surface.
+- Ruleset generated body/selector carrier audit is current. The remaining
+  ruleset prep/generated surfaces are semantic: `ownSelector` preserves
+  source selector parentage while extend/header metadata owns an isolated
+  selector, child `Rules` registration reuses the body surface intentionally,
+  and header/composed-selector caches stay render-local. Do not collapse these
+  into source selectors without a generated-selector state model.
 - Nil-selector ruleset render has focused coverage proving the evaluated body
   is rendered through native `Rules.render(...)` for direct and buffer output.
 - Evaluated at-rule/ruleset render no longer goes through
@@ -318,14 +324,7 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Ruleset generated body/selector carrier audit.**
-   - Goal: inspect remaining ruleset generated selector/body surfaces after
-     evaluated/prepared render reuse, especially `ownSelector` metadata and
-     child-rule registration surfaces.
-   - Required proof: focused ruleset parentage/header tests and node-creation
-     audit before/after.
-
-2. **Resolved-output remaining caller audit.**
+1. **Resolved-output remaining caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers
      (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
      `ImportStyle`) and remove the adapter only where same-surface source
@@ -333,38 +332,44 @@ backlog below.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for each changed family.
 
-3. **Selector generated-state design checkpoint.**
+2. **Selector generated-state design checkpoint.**
    - Goal: draft the minimal state model needed to replace selector child
      ownership copies without changing parentage or extend semantics.
    - Required proof: concrete affected constructors plus tests that would fail
      if source children were reparented.
 
-4. **Mixin output slot design checkpoint.**
+3. **Mixin output slot design checkpoint.**
    - Goal: sketch the smallest render-buffer output-slot model that could carry
      mixin placement, lookup visibility, and caller/definition frames without a
      generated `Rules` wrapper.
    - Required proof: concrete current wrapper responsibilities and the focused
      mixin tests that must keep passing before any code change.
 
-5. **Call dynamic state model follow-up.**
+4. **Call dynamic state model follow-up.**
    - Goal: replace the remaining call resolve surface only if a smaller state
      object can hold evaluated dynamic name/args/content plus optional fallback
      syntax without reparenting source children.
    - Required proof: current dynamic/fallback JS function tests plus source
      parent assertions.
 
-6. **At-rule direct render compatibility audit.**
+5. **At-rule direct render compatibility audit.**
    - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
      the same way as `Rules.render(...)`, separating production evaluated output
      from direct node API compatibility.
    - Required proof: focused at-rule render tests, public compiler render
      coverage when relevant, and a call-site scan.
 
-7. **Declaration prepared-state design checkpoint.**
+6. **Declaration prepared-state design checkpoint.**
    - Goal: if declaration prep is revisited, design the smallest side-state
      shape for prepared name/assignment data before touching code.
    - Required proof: source-isolation tests plus merged assignment and custom
      property render tests.
+
+7. **Ruleset generated-state design checkpoint.**
+   - Goal: design the smallest state object that could replace `ownSelector`
+     metadata copies while preserving source parentage, extend matching, and
+     header rendering.
+   - Required proof: ruleset header/cache tests plus selector parentage guards.
 
 ## Backlog
 
