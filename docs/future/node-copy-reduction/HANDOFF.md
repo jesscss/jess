@@ -117,6 +117,11 @@ current state, immediate queue, and verification commands.
   `prepareRegistration(...)` derivation is required isolation: registration
   prep normalizes assignment/name lookup state, while render/resolve must leave
   the canonical source declaration unprepared and unevaluated.
+- Declaration prep state model follow-up is closed for now. The focused
+  assignment/source-isolation tests still require one derived declaration prep
+  surface because assignment normalization rewrites value/name/options while the
+  source declaration and its value subtree stay unprepared. Reopen only with a
+  concrete side-state model for prepared name/assignment data.
 - `Selector.render(...)`, `Interpolated.render(...)`, and
   `InterpolatedSelector.render(...)` now use `renderResolvedOutput(...)` after
   their selector/string-specific local resolution.
@@ -313,20 +318,14 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Declaration prep state model follow-up.**
-   - Goal: revisit declaration preparation only if a future state model can hold
-     assignment/name prep without mutating a declaration surface.
-   - Required proof: the current declaration source-isolation tests plus
-     assignment merge/conditional assignment coverage.
-
-2. **Ruleset generated body/selector carrier audit.**
+1. **Ruleset generated body/selector carrier audit.**
    - Goal: inspect remaining ruleset generated selector/body surfaces after
      evaluated/prepared render reuse, especially `ownSelector` metadata and
      child-rule registration surfaces.
    - Required proof: focused ruleset parentage/header tests and node-creation
      audit before/after.
 
-3. **Resolved-output remaining caller audit.**
+2. **Resolved-output remaining caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers
      (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
      `ImportStyle`) and remove the adapter only where same-surface source
@@ -334,32 +333,38 @@ backlog below.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for each changed family.
 
-4. **Selector generated-state design checkpoint.**
+3. **Selector generated-state design checkpoint.**
    - Goal: draft the minimal state model needed to replace selector child
      ownership copies without changing parentage or extend semantics.
    - Required proof: concrete affected constructors plus tests that would fail
      if source children were reparented.
 
-5. **Mixin output slot design checkpoint.**
+4. **Mixin output slot design checkpoint.**
    - Goal: sketch the smallest render-buffer output-slot model that could carry
      mixin placement, lookup visibility, and caller/definition frames without a
      generated `Rules` wrapper.
    - Required proof: concrete current wrapper responsibilities and the focused
      mixin tests that must keep passing before any code change.
 
-6. **Call dynamic state model follow-up.**
+5. **Call dynamic state model follow-up.**
    - Goal: replace the remaining call resolve surface only if a smaller state
      object can hold evaluated dynamic name/args/content plus optional fallback
      syntax without reparenting source children.
    - Required proof: current dynamic/fallback JS function tests plus source
      parent assertions.
 
-7. **At-rule direct render compatibility audit.**
+6. **At-rule direct render compatibility audit.**
    - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
      the same way as `Rules.render(...)`, separating production evaluated output
      from direct node API compatibility.
    - Required proof: focused at-rule render tests, public compiler render
      coverage when relevant, and a call-site scan.
+
+7. **Declaration prepared-state design checkpoint.**
+   - Goal: if declaration prep is revisited, design the smallest side-state
+     shape for prepared name/assignment data before touching code.
+   - Required proof: source-isolation tests plus merged assignment and custom
+     property render tests.
 
 ## Backlog
 
