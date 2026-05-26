@@ -184,9 +184,27 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
     };
+    const evalForRender = (): MaybePromise<Node> => {
+      if (this.evaluated) {
+        return this;
+      }
+      return this.registrationPrepared
+        ? this.eval(context)
+        : this.deriveAtRule(this.value).eval(context);
+    };
     return pipe(
-      () => this.deriveAtRule(this.value).eval(context),
-      node => node instanceof Nil ? '' : renderEvaluatedAtRule(node)
+      evalForRender,
+      (node) => {
+        if (node instanceof Nil) {
+          return '';
+        }
+        if (node instanceof AtRule) {
+          return renderEvaluatedAtRule(node);
+        }
+        return isRenderBuffer(bufferOrOptions)
+          ? node.render(context, bufferOrOptions, options)
+          : node.render(context, bufferOrOptions);
+      }
     );
   }
 
@@ -739,6 +757,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    if (this.evaluated) {
+      return this;
+    }
+    if (this.registrationPrepared) {
+      return this.eval(context);
+    }
     return this.deriveAtRule(this.value).eval(context);
   }
 

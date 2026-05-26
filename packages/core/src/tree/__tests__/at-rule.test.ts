@@ -328,6 +328,37 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders already evaluated at-rules without deriving another eval surface', async () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const evald = await node.eval(context);
+    const originalEval = AtRule.prototype.eval;
+    let evalCalls = 0;
+    AtRule.prototype.eval = function countEvalCalls(
+      this: AtRule,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      expect(evald.render(context)).toBeString(`
+        @media screen {
+          color: red;
+        }
+      `);
+      expect(evalCalls).toBe(0);
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
   it('resolves at-rules without touching render state', async () => {
     const root = rules([
       vardecl({

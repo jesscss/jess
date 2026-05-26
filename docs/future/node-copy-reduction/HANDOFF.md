@@ -38,6 +38,9 @@ current state, immediate queue, and verification commands.
 - `AtRule.render(...)` no longer uses the generic source-output render bridge.
   It evaluates a derived at-rule surface, then writes that at-rule through the
   at-rule/ruleset serializer with active render print state.
+- `AtRule.render(...)` now reuses an already evaluated at-rule directly and
+  uses a registration-prepared at-rule surface when available. The remaining
+  direct unevaluated render path still derives before eval for compatibility.
 - `Ruleset.render(...)` no longer uses the generic source-output render bridge.
   It serializes evaluated rulesets through container output and delegates
   nil-selector body output to native `Rules.render(...)`.
@@ -222,7 +225,7 @@ to stay.
 | Surface | Current shape | Next proof |
 | --- | --- | --- |
 | `Rules.render(...)` source roots | Public compile renders already evaluated roots. Unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
-| `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then calls `serializeRulesContainer(...)` with active render print state. | Split required body/prelude mutation from direct container streaming. |
+| `AtRule.render(...)` | Reuses evaluated/prepared at-rule surfaces when available; direct unevaluated render still derives before eval for compatibility. | Split required body/prelude mutation from direct unevaluated compatibility rendering. |
 | `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one lazy declaration surface when value/important mutation is needed; true non-declaration outputs delegate to native render. | Split remaining declaration preparation derivation from assignment-normalization semantics. |
 | Function/mixin argument metadata | Plain JS calls pass direct args; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
@@ -260,51 +263,51 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **At-rule/ruleset derived surface proof.**
-   - Goal: now that the container helper is gone, prove which remaining
-     at-rule/ruleset derived surfaces are mutation isolation versus serializer
-     carriers, then reduce only the latter.
-   - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
-     before/after, and parentage checks for any removed surface.
-
-2. **Resolved-output helper caller audit.**
+1. **Resolved-output helper caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
      them into same-surface source syntax, native delegation, or removable
      wrapper cases.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for any changed node family.
 
-3. **Selector ownership constructor audit.**
+2. **Selector ownership constructor audit.**
    - Goal: review selector `with*` constructors for unchanged-child ownership
      copies that are still required only because constructors parent children.
    - Required proof: focused selector parentage tests before changing any
      constructor ownership rule.
 
-4. **Mixin argument binding surface audit.**
+3. **Mixin argument binding surface audit.**
    - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
      `@arguments` construction for avoidable copies now that function-call
      surfaces are classified.
    - Required proof: focused mixin argument tests plus node-copy frontier scan.
 
-5. **Call dynamic render surface reduction.**
+4. **Call dynamic render surface reduction.**
    - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
      resolve paths, and remove copies that are only protecting source syntax
      when native render can stream the result directly.
    - Required proof: focused call dynamic-name direct/buffer tests and
      source-parent assertions.
 
-6. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+5. **Unevaluated `Rules.render(...)` compatibility narrowing.**
    - Goal: keep direct unevaluated `Rules.render(...)` support only where node
      tests or public API compatibility require it, and avoid adding new
      production callers.
    - Required proof: call-site scan plus focused `Rules` render tests.
 
-7. **Declaration preparation derivation audit.**
+6. **Declaration preparation derivation audit.**
    - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
      derivation and assignment-normalization node creation, separating required
      lookup identity mutation from output-only carrier surfaces.
    - Required proof: focused assignment merge/conditional assignment tests plus
      node-creation audit before/after output.
+
+7. **Ruleset evaluated render reuse proof.**
+   - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
+     evaluated rulesets should serialize the existing surface, while direct
+     unevaluated compatibility rendering stays isolated.
+   - Required proof: focused ruleset render/buffer tests and call-count guard
+     proving evaluated render does not re-enter eval.
 
 ## Backlog
 
