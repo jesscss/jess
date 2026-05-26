@@ -963,7 +963,7 @@ describe('Mixin', () => {
       expect(css).toContain('sub-scope-only: inside;');
     });
 
-    it('does not stamp call-site back-pointers on ordinary mixin body output while preserving caller fallback', async () => {
+    it('keeps ordinary mixin output as a runtime wrapper without stamping source body parents', async () => {
       const mixinNoParam = mixin({
         name: any('.mixinNoParam'),
         params: list([
@@ -980,6 +980,7 @@ describe('Mixin', () => {
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ])
       });
+      const mixinBody = mixinNoParam.value.rules;
 
       const callerRules = rules([
         vardecl({ name: 'parameterDefault', value: any('inside') }),
@@ -1009,6 +1010,12 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       expect(Reflect.has(result, 'sourceParent')).toBe(false);
+      expect(result).not.toBe(mixinBody);
+      expect(result.sourceNode).toBe(mixinBody);
+      expect(result.options.isMixinOutput).toBe(false);
+      expect(result.options.referenceMode).toBe(false);
+      expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
+      expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');

@@ -307,6 +307,11 @@ current state, immediate queue, and verification commands.
   placement without stamping call-site parents onto source bodies. A future
   render-buffer output-slot model may replace some of these wrappers, but do
   not delete them as a local cleanup.
+- Mixin output-slot first proof is current. Focused coverage now asserts that
+  ordinary mixin output is a runtime wrapper: it links back to the source body,
+  clears reference mode, keeps caller fallback through `ScopeFrame`, preserves
+  definition-side default-param lookup, and leaves the source body parented to
+  the canonical mixin.
 - Mixin output slot design checkpoint is current. The target replacement for
   generated mixin `Rules` wrappers is an output-slot record carrying source
   body, evaluated placement children, scope frame, visibility/reference gates,
@@ -383,32 +388,25 @@ backlog below.
      parentage guard, root extend matching against the generated header, and
      existing extend-boundary output guards.
 
-2. **Mixin output-slot first proof.**
-   - Goal: pick one generated mixin `Rules` wrapper and prove whether it is only
-     delayed output placement or whether it still carries lookup/visibility
-     state.
-   - Required proof: focused mixin output, guard, reference-mode, and
-     caller-fallback tests before any behavior change.
-
-3. **Dynamic call-state first implementation slice.**
+2. **Dynamic call-state first implementation slice.**
    - Goal: replace one `deriveResolveSurface()` use with direct evaluated output
      or a tiny local state record, but only where source arg/name parentage and
      metadata `rawArgs` isolation are already guarded.
    - Required proof: dynamic/fallback call tests plus metadata rawArgs mutation
      isolation.
 
-4. **At-rule state model first proof.**
+3. **At-rule state model first proof.**
    - Goal: pick one derived at-rule surface and prove whether a side-state shape
      can carry prepared name/prelude/body data without mutating the source node.
    - Required proof: at-rule source-isolation tests plus nested at-rule,
      hoist-to-root, and root-only output guards.
 
-5. **Call resolve-surface source-free args slice.**
+4. **Call resolve-surface source-free args slice.**
    - Goal: prove whether a dynamic/fallback call with source-free args can avoid
      the full copied resolve surface while preserving fallback output.
    - Required proof: dynamic/fallback call tests plus source parentage guards.
 
-6. **Call dynamic render/resolve pre-copy slice.**
+5. **Call dynamic render/resolve pre-copy slice.**
    - Goal: split the first safe dynamic render/resolve branch after callable
      name evaluation. Plain positional JS functions and metadata-backed
      functions should not both pay for the same copied `Call` surface when
@@ -418,10 +416,17 @@ backlog below.
      `evaluated` state, source arg parentage/evaluation state, and fallback
      output.
 
-7. **At-rule prepare-registration derivation audit.**
+6. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic
      isolation versus removable derived wrappers.
    - Required proof: at-rule source-isolation tests and root-only/hoist guards.
+
+7. **Mixin output-slot replacement design slice.**
+   - Goal: after the first proof, identify the smallest wrapper responsibility
+     that an output-slot record could own without changing lookup, reference,
+     guard, or caller-fallback behavior.
+   - Required proof: focused mixin output tests plus a written source/slot
+     responsibility split before implementation.
 
 ## Backlog
 
