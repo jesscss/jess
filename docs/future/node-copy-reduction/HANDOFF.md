@@ -106,6 +106,11 @@ current state, immediate queue, and verification commands.
   focused tests prove source args stay canonical and fallback output is derived
   without cloning the source call. The stale unsafe assertion in
   `Call.resolve(...)` is gone.
+- Call dynamic state model follow-up is current. A smaller replacement for
+  `deriveResolveSurface()` would need to carry evaluated name, evaluated
+  args/content, finalized fallback name/options, caller pointer, and
+  parent/source preservation flags without exposing mutable source args to
+  metadata JS functions or reparenting canonical call children.
 - `JsExpression.render(...)` and `StyleImport.render(...)` now use
   `renderResolvedOutput(...)` after local evaluation instead of treating the
   evaluated result as source output.
@@ -342,51 +347,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call dynamic state model follow-up.**
-   - Goal: replace the remaining call resolve surface only if a smaller state
-     object can hold evaluated dynamic name/args/content plus optional fallback
-     syntax without reparenting source children.
-   - Required proof: current dynamic/fallback JS function tests plus source
-     parent assertions.
-
-2. **At-rule direct render compatibility audit.**
+1. **At-rule direct render compatibility audit.**
    - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
      the same way as `Rules.render(...)`, separating production evaluated output
      from direct node API compatibility.
    - Required proof: focused at-rule render tests, public compiler render
      coverage when relevant, and a call-site scan.
 
-3. **Declaration prepared-state design checkpoint.**
+2. **Declaration prepared-state design checkpoint.**
    - Goal: if declaration prep is revisited, design the smallest side-state
      shape for prepared name/assignment data before touching code.
    - Required proof: source-isolation tests plus merged assignment and custom
      property render tests.
 
-4. **Ruleset generated-state design checkpoint.**
+3. **Ruleset generated-state design checkpoint.**
    - Goal: design the smallest state object that could replace `ownSelector`
      metadata copies while preserving source parentage, extend matching, and
      header rendering.
    - Required proof: ruleset header/cache tests plus selector parentage guards.
 
-5. **Syntax-wrapper same-node render branch.**
+4. **Syntax-wrapper same-node render branch.**
    - Goal: replace `renderResolvedOutput(...)` for `Paren`, `Quoted`, `Url`,
      `Operation`, `Interpolated`, and selector wrappers only if each node can
      keep its same-node source syntax fallback locally without recursion.
    - Required proof: direct/buffer parity and source-parent tests for every
      changed wrapper family.
 
-6. **Generated selector state spike.**
+5. **Generated selector state spike.**
    - Goal: prototype one non-production helper or failing test that demonstrates
      how generated selector state would preserve source parentage without owned
      child copies.
    - Required proof: no behavior change unless the focused selector parentage
      tests prove the replacement.
 
-7. **Mixin output-slot spike.**
+6. **Mixin output-slot spike.**
    - Goal: prototype the smallest non-production output-slot type or failing
      test for replacing a generated mixin `Rules` wrapper.
    - Required proof: focused mixin output/guard/caller-fallback tests before any
      behavior change.
+
+7. **Dynamic call-state spike.**
+   - Goal: prototype a non-production state object or failing test that replaces
+     one `deriveResolveSurface()` use without source arg/name reparenting.
+   - Required proof: dynamic/fallback call tests plus metadata rawArgs mutation
+     isolation.
 
 ## Backlog
 

@@ -209,6 +209,14 @@ These are architectural seams, not a live ordered queue. Use
    and register only the lookup state needed for that placement. Do not move
    declarations or selectors into a parallel AST just to avoid constructing a
    `Rules` wrapper.
+7. **Dynamic call state**: dynamic calls still derive a call surface to protect
+   source name, args, content, and optional fallback syntax while the call
+   evaluates referenced functions, rules-like variables, and fallback CSS
+   function output. The likely replacement is a small call-eval state record:
+   evaluated name, evaluated args/content, finalized fallback name/options,
+   caller pointer, and parent/source preservation flags. It must not expose
+   mutable source args to metadata JS functions or reparent canonical call
+   children.
 
 ## Guardrails
 
