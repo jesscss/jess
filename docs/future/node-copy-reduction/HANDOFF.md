@@ -87,6 +87,10 @@ current state, immediate queue, and verification commands.
   eval results intentionally use base source serialization so parameter vars
   keep `$name` syntax; the declaration-local source-output fallback helper is
   gone.
+- Declaration eval no longer has separate `withValue(...)` and
+  `withImportant(...)` declaration-copy surfaces. Eval uses one lazy derived
+  declaration surface only when mutation is needed, then updates that surface
+  through canonical `set(...)` adoption.
 - `Selector.render(...)`, `Interpolated.render(...)`, and
   `InterpolatedSelector.render(...)` now use `renderResolvedOutput(...)` after
   their selector/string-specific local resolution.
@@ -220,7 +224,7 @@ to stay.
 | `Rules.render(...)` source roots | Public compile renders already evaluated roots. Unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
 | `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then calls `serializeRulesContainer(...)` with active render print state. | Split required body/prelude mutation from direct container streaming. |
 | `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
-| `Declaration.render(...)` | Prepares/evals a declaration surface; true non-declaration outputs delegate to native render. | Reduce `withValue(...)` / `withImportant(...)` eval surfaces where semantic state permits. |
+| `Declaration.render(...)` | Prepares/evals one lazy declaration surface when value/important mutation is needed; true non-declaration outputs delegate to native render. | Split remaining declaration preparation derivation from assignment-normalization semantics. |
 | Function/mixin argument metadata | Plain JS calls pass direct args; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
 
@@ -256,51 +260,51 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Declaration eval `with*` surface reduction.**
-   - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
-     `withImportant(...)` surfaces where the evaluated value can be streamed or
-     represented as narrow runtime state instead of another declaration node.
-   - Required proof: focused declaration merge/interpolation/custom-property
-     tests plus node-creation audit before/after output.
-
-2. **At-rule/ruleset derived surface proof.**
+1. **At-rule/ruleset derived surface proof.**
    - Goal: now that the container helper is gone, prove which remaining
      at-rule/ruleset derived surfaces are mutation isolation versus serializer
      carriers, then reduce only the latter.
    - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
      before/after, and parentage checks for any removed surface.
 
-3. **Resolved-output helper caller audit.**
+2. **Resolved-output helper caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
      them into same-surface source syntax, native delegation, or removable
      wrapper cases.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for any changed node family.
 
-4. **Selector ownership constructor audit.**
+3. **Selector ownership constructor audit.**
    - Goal: review selector `with*` constructors for unchanged-child ownership
      copies that are still required only because constructors parent children.
    - Required proof: focused selector parentage tests before changing any
      constructor ownership rule.
 
-5. **Mixin argument binding surface audit.**
+4. **Mixin argument binding surface audit.**
    - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
      `@arguments` construction for avoidable copies now that function-call
      surfaces are classified.
    - Required proof: focused mixin argument tests plus node-copy frontier scan.
 
-6. **Call dynamic render surface reduction.**
+5. **Call dynamic render surface reduction.**
    - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
      resolve paths, and remove copies that are only protecting source syntax
      when native render can stream the result directly.
    - Required proof: focused call dynamic-name direct/buffer tests and
      source-parent assertions.
 
-7. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+6. **Unevaluated `Rules.render(...)` compatibility narrowing.**
    - Goal: keep direct unevaluated `Rules.render(...)` support only where node
      tests or public API compatibility require it, and avoid adding new
      production callers.
    - Required proof: call-site scan plus focused `Rules` render tests.
+
+7. **Declaration preparation derivation audit.**
+   - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
+     derivation and assignment-normalization node creation, separating required
+     lookup identity mutation from output-only carrier surfaces.
+   - Required proof: focused assignment merge/conditional assignment tests plus
+     node-creation audit before/after output.
 
 ## Backlog
 

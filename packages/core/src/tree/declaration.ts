@@ -221,22 +221,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  private withValue(value: Node): this {
-    return this.withParts({
-      name: this.copyNameForDerived(this.value.name),
-      value,
-      important: this.copyImportantForDerived(this.value.important)
-    });
-  }
-
-  private withImportant(important: Any<'flag'>): this {
-    return this.withParts({
-      name: this.copyNameForDerived(this.value.name),
-      value: this.copyValueForDerived(this.value.value),
-      important
-    });
-  }
-
   private formatNonCustomValue(valOut: string, _options: PrintOptions) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
@@ -520,14 +504,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
+        let ownsEvalSurface = node.registrationPrepared;
+        const ensureEvalSurface = () => {
+          if (!ownsEvalSurface) {
+            node = node.derive();
+            ownsEvalSurface = true;
+          }
+          return node;
+        };
         const setVal = (newValue: Node) => {
           if (node.value.value !== newValue) {
-            node = node.withValue(newValue);
+            ensureEvalSurface().set('value', newValue);
           }
         };
         const setImportant = (important: Any<'flag'>) => {
           if (node.value.important !== important) {
-            node = node.withImportant(important);
+            ensureEvalSurface().set('important', important);
           }
         };
         const normalizeMergedLeadingPlaceholder = () => {
