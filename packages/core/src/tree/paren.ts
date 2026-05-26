@@ -8,7 +8,11 @@ import { List } from './list.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import type { RenderBuffer } from './util/render-buffer.js';
+import {
+  isRenderBuffer,
+  writeRenderText,
+  type RenderBuffer
+} from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
@@ -90,6 +94,13 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const guardValue = getDefaultGuardValue(this.value, context);
+    if (guardValue !== undefined) {
+      const out = String(guardValue);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderText(bufferOrOptions, out)
+        : out;
+    }
     return pipe(
       () => this.evaluateValue(context, 'resolve'),
       node => this.renderOutput(context, node, bufferOrOptions, options)

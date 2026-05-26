@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, list, num, paren, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, Bool, call, list, num, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -25,6 +25,17 @@ class CountingWriter extends OutputWriter {
     this.captures++;
     return super.capture(fn);
   }
+}
+
+async function evalRoot(node: Rules, context: Context): Promise<Rules> {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(Rules);
+  if (!(evald instanceof Rules)) {
+    throw new Error('Expected Rules result');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+  return evald;
 }
 
 describe('Paren', () => {
@@ -52,9 +63,7 @@ describe('Paren', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await evalRoot(node, context);
 
     const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
     let parenResolveCalls = 0;
@@ -77,9 +86,7 @@ describe('Paren', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await evalRoot(node, context);
 
     const buffer = createRenderBuffer('flat');
     const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
@@ -94,6 +101,52 @@ describe('Paren', () => {
     expect(parenResolveCalls).toBe(0);
     expect(parenNode.evaluated).toBe(false);
     expect(parenNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders default() values without allocating temporary Bool nodes', async () => {
+    const originalToTrimmedString = Bool.prototype.toTrimmedString;
+    let boolStringCalls = 0;
+    Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Bool,
+      ...args: Parameters<Bool['toTrimmedString']>
+    ) {
+      boolStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+    try {
+      context.isDefault = true;
+      const parenNode = paren(call({ name: 'default' }));
+
+      expect(await Promise.resolve(parenNode.render(context))).toBe('true');
+      expect(boolStringCalls).toBe(0);
+      expect(parenNode.evaluated).toBe(false);
+    } finally {
+      Bool.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('writes default() render output into flat buffers without temporary Bool nodes', async () => {
+    const originalToTrimmedString = Bool.prototype.toTrimmedString;
+    let boolStringCalls = 0;
+    Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Bool,
+      ...args: Parameters<Bool['toTrimmedString']>
+    ) {
+      boolStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+    try {
+      context.isDefault = false;
+      const buffer = createRenderBuffer('flat');
+      const parenNode = paren(call({ name: 'default' }));
+
+      expect(await parenNode.render(context, buffer)).toBe('false');
+      expect(buffer.parts).toEqual(['false']);
+      expect(boolStringCalls).toBe(0);
+      expect(parenNode.evaluated).toBe(false);
+    } finally {
+      Bool.prototype.toTrimmedString = originalToTrimmedString;
+    }
   });
 
   it('streams paren values without capture scaffolding', () => {
@@ -116,9 +169,7 @@ describe('Paren', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await evalRoot(node, context);
 
     const parenNode = paren(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await parenNode.resolve(context);
@@ -136,9 +187,7 @@ describe('Paren', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await evalRoot(node, context);
 
     const parenNode = paren(list([
       any('one'),
