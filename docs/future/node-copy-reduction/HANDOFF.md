@@ -117,6 +117,9 @@ current state, immediate queue, and verification commands.
 - Dynamic `Call.render(...)` buffer output delegates the caller buffer directly
   to the evaluated output node. It no longer renders the evaluated node to a
   string and then writes that string into the buffer.
+- `Call.resolve(...)` now returns already evaluated call nodes directly instead
+  of re-entering `evalNode(...)`. The remaining dynamic call resolve/render
+  work is the unprepared dynamic-name copied surface.
 - Call dynamic resolve-surface audit is current. `deriveResolveSurface()` still
   protects referenced JS function calls, optional fallback calls, content-node
   calls, and rules-like variable calls from mutating source name/args/parentage;

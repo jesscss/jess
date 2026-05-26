@@ -155,6 +155,7 @@ later serializer can walk it.
 - Dynamic non-string calls render by locally evaluating the call surface and
   then using the evaluated result's native render path. Already-evaluated
   fallback calls are finalized syntax, not another name-evaluation request.
+  Already-evaluated calls also resolve directly without re-entering eval.
   Dynamic calls use the base `renderOutput(...)` primitive for the final
   output delegation; keep remaining call-state work focused on
   `deriveResolveSurface()`, not a new render helper. Do not replace the
