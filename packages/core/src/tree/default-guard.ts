@@ -4,6 +4,7 @@ import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
@@ -31,11 +32,11 @@ export class DefaultGuard extends Node<string> {
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const node = this.evalNode(context);
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
+    const out = String(Boolean(context.isDefault));
     return isRenderBuffer(bufferOrOptions)
-      ? node.render(context, bufferOrOptions, options)
-      : node.render(context, bufferOrOptions);
+      ? writeRenderText(bufferOrOptions, out)
+      : out;
   }
 }
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

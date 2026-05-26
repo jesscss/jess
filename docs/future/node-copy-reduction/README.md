@@ -138,6 +138,9 @@ later serializer can walk it.
   their local output and then call the base `renderOutput(...)` primitive. The
   old resolved-output adapter is gone; do not recreate a generic "resolved
   value, now serialize" bridge outside the node inheritance model.
+- Condition/default-guard render is a direct boolean text path. Keep
+  `eval()` / `resolve()` returning `Bool` nodes, but do not allocate a `Bool`
+  during render just to print `true` or `false`.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
@@ -145,6 +148,9 @@ later serializer can walk it.
 - Dynamic non-string calls render by locally evaluating the call surface and
   then using the evaluated result's native render path. Already-evaluated
   fallback calls are finalized syntax, not another name-evaluation request.
+  Dynamic calls use the base `renderOutput(...)` primitive for the final
+  output delegation; keep remaining call-state work focused on
+  `deriveResolveSurface()`, not a new render helper.
 - `packages/core/src/define-function.ts` is no longer blocked by unrelated
   focused lint debt. Function argument-surface work should keep metadata access
   typed and avoid rebuilding unused validation paths.

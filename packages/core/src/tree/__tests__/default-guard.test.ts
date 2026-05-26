@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { defaultguard } from '../index.js';
+import { Bool, defaultguard } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('DefaultGuard', () => {
@@ -43,6 +43,26 @@ describe('DefaultGuard', () => {
     expect(await node.render(context, buffer)).toBe('true');
     expect(buffer.parts).toEqual(['true']);
     expect(resolveCalls).toBe(0);
+  });
+
+  it('renders default guard values without allocating a Bool output node', () => {
+    const originalToTrimmedString = Bool.prototype.toTrimmedString;
+    let boolStringCalls = 0;
+    Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Bool,
+      ...args: Parameters<Bool['toTrimmedString']>
+    ) {
+      boolStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+    try {
+      context.isDefault = true;
+
+      expect(defaultguard('default').render(context)).toBe('true');
+      expect(boolStringCalls).toBe(0);
+    } finally {
+      Bool.prototype.toTrimmedString = originalToTrimmedString;
+    }
   });
 
   it('resolves default guard values without touching render state', async () => {

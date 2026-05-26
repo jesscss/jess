@@ -5,6 +5,7 @@ import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -78,28 +79,31 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
-      () => this.evaluateCondition(context, 'resolve'),
-      node => isRenderBuffer(bufferOrOptions)
-        ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions)
+      () => this.evaluateConditionBoolean(context, 'resolve'),
+      (value) => {
+        const out = String(value);
+        return isRenderBuffer(bufferOrOptions)
+          ? writeRenderText(bufferOrOptions, out)
+          : out;
+      }
     );
   }
 
   static getBool(node: Node, negated: boolean): Bool {
-    if (node instanceof Bool) {
-      return new Bool(negated ? !node.value : node.value);
-    }
-    // Less guards treat only explicit booleans as truthy.
-    // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
-    return new Bool(negated);
+    return new Bool(Condition.getBoolValue(node, negated));
+  }
+
+  static getBoolValue(node: Node, negated: boolean): boolean {
+    const value = node instanceof Bool ? node.value : false;
+    return negated ? !value : value;
   }
 
   static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
-      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
+      case 'and': return Condition.getBoolValue(a, false) && Condition.getBoolValue(b, false);
+      case 'or': return Condition.getBoolValue(a, false) || Condition.getBoolValue(b, false);
       default:
         switch (a.compare(b)) {
           case -1:
@@ -114,7 +118,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
   }
 
-  private evaluateCondition(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Bool> {
+  private evaluateConditionBoolean(context: Context, mode: 'eval' | 'resolve'): MaybePromise<boolean> {
     let [left, op, right] = this.value;
     let negated = this._options?.negate === true;
     const normalizeDefaultCall = (node: Node): Node => {
@@ -163,14 +167,20 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       },
       ([a, b]) => {
         if (!b) {
-          const unary = Condition.getBool(a, negated);
-          return unary;
+          return Condition.getBoolValue(a, negated);
         }
         a = normalizeDefaultCall(a);
         b = normalizeDefaultCall(b);
         let result = Condition.getResult(a, b, op!);
-        return new Bool(negated ? !result : result);
+        return negated ? !result : result;
       }
+    );
+  }
+
+  private evaluateCondition(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Bool> {
+    return pipe(
+      () => this.evaluateConditionBoolean(context, mode),
+      value => new Bool(value)
     );
   }
 

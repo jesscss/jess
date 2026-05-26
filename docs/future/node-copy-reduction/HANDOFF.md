@@ -81,9 +81,12 @@ current state, immediate queue, and verification commands.
   resolved sequence surfaces. Resolved sequences serialize through sequence
   syntax; resolved non-sequence values delegate to that value's native render
   path.
-- `Expression.render(...)`, `Negative.render(...)`, `Condition.render(...)`,
-  and `DefaultGuard.render(...)` choose evaluated child/result nodes and
-  delegate directly to those nodes' native render paths.
+- `Expression.render(...)` and `Negative.render(...)` choose evaluated
+  child/result nodes and delegate directly to those nodes' native render paths.
+- `Condition.render(...)` and `DefaultGuard.render(...)` now stream boolean
+  text directly instead of allocating a temporary `Bool` output node just to
+  print `true` / `false`. Their `eval()` / `resolve()` contracts still return
+  `Bool` nodes.
 - `Operation.render(...)`, `Paren.render(...)`, `Quoted.render(...)`, and
   `Url.render(...)` choose local output and call the base `renderOutput(...)`
   primitive. They no longer use a generic resolved-output adapter.
@@ -94,12 +97,11 @@ current state, immediate queue, and verification commands.
   evaluated result through that result's native render path. Already-evaluated
   fallback calls are treated as finalized call syntax so optional CSS-function
   fallback output does not re-evaluate the fallback name.
-- `Call`'s local dynamic-call output helper is named
-  `renderEvaluatedCallOutput(...)`. Keep it local unless call output starts
-  sharing behavior with other node families.
-- Call dynamic output regression audit is current:
-  `renderEvaluatedCallOutput(...)` remains local to `Call`, focused call tests
-  cover direct/buffer dynamic non-string output, and optional fallback calls use
+- `Call.render(...)` delegates dynamic evaluated output through the base
+  `renderOutput(...)` primitive. The old local `renderEvaluatedCallOutput(...)`
+  helper is gone.
+- Call dynamic output regression audit is current: focused call tests cover
+  direct/buffer dynamic non-string output, and optional fallback calls use
   native call output instead of a generic source bridge.
 - Dynamic `Call.render(...)` buffer output delegates the caller buffer directly
   to the evaluated output node. It no longer renders the evaluated node to a
@@ -164,6 +166,9 @@ current state, immediate queue, and verification commands.
   `Quoted.render(...)`, `Url.render(...)`, `Selector.render(...)`,
   `Interpolated.render(...)`, and `InterpolatedSelector.render(...)` all now
   choose local output explicitly instead of sharing a resolved-output bridge.
+- Condition/default guard render allocation audit is closed. Direct and buffer
+  render are covered by tests that patch `Bool.toTrimmedString(...)`, proving
+  render does not delegate through a temporary `Bool` output node.
 - Expression-like native delegation regression audit is current: direct string
   render and buffer render for expression/wrapper nodes choose the same locally
   evaluated output, including async expression-like cases covered by
@@ -243,6 +248,11 @@ current state, immediate queue, and verification commands.
   hoist/root placement, and composed-header cache. It must not become AST v2 or
   reparent source selector leaves. Until that model exists, the constructor
   ownership copies remain the safe boundary.
+- The generated selector / mixin output-slot / dynamic call / at-rule state
+  spike entries have been collapsed into implementation slices. The design
+  targets are already documented here and in the README; future queue items
+  should name the first removable surface or focused proof, not another broad
+  "spike".
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
   functions keep one owned raw/callback arg-list surface because `this.rawArgs`
   is a documented mutable runtime API; `Call` no longer creates a second
@@ -317,8 +327,9 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
 container, source-output, and resolved-output helper counts are now zero in
-production. The current audit shows 45 render-context node-creation surfaces,
-down from the previous 52 after localizing syntax-wrapper same-node fallback.
+production. The current audit shows `new-node: 304` and 44 render-context
+node-creation surfaces, down from 305 / 45 after direct condition/default-guard
+render.
 
 ## Immediate Queue
 
@@ -328,42 +339,43 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Generated selector state spike.**
-   - Goal: prototype one non-production helper or failing test that demonstrates
-     how generated selector state would preserve source parentage without owned
-     child copies.
-   - Required proof: no behavior change unless the focused selector parentage
-     tests prove the replacement.
+1. **Generated selector state first proof.**
+   - Goal: replace this broad item with the first concrete generated-selector
+     state proof: a focused parentage test around one existing owned selector
+     placement, then a minimal state object only if that test proves the seam.
+   - Required proof: selector parentage, extend matching, and rendered-header
+     guards for the chosen placement.
 
-2. **Mixin output-slot spike.**
-   - Goal: prototype the smallest non-production output-slot type or failing
-     test for replacing a generated mixin `Rules` wrapper.
-   - Required proof: focused mixin output/guard/caller-fallback tests before any
-     behavior change.
+2. **Mixin output-slot first proof.**
+   - Goal: pick one generated mixin `Rules` wrapper and prove whether it is only
+     delayed output placement or whether it still carries lookup/visibility
+     state.
+   - Required proof: focused mixin output, guard, reference-mode, and
+     caller-fallback tests before any behavior change.
 
-3. **Dynamic call-state spike.**
-   - Goal: prototype a non-production state object or failing test that replaces
-     one `deriveResolveSurface()` use without source arg/name reparenting.
+3. **Dynamic call-state first implementation slice.**
+   - Goal: replace one `deriveResolveSurface()` use with direct evaluated output
+     or a tiny local state record, but only where source arg/name parentage and
+     metadata `rawArgs` isolation are already guarded.
    - Required proof: dynamic/fallback call tests plus metadata rawArgs mutation
      isolation.
 
-4. **At-rule state model follow-up.**
-   - Goal: define the smallest side-state shape that could replace derived
-     at-rule surfaces for prepared name/prelude/body data without mutating the
-     source node.
+4. **At-rule state model first proof.**
+   - Goal: pick one derived at-rule surface and prove whether a side-state shape
+     can carry prepared name/prelude/body data without mutating the source node.
    - Required proof: at-rule source-isolation tests plus nested at-rule,
      hoist-to-root, and root-only output guards.
 
-5. **Call resolve-surface first deletion slice.**
-   - Goal: find one `deriveResolveSurface()` path that can be replaced by
-     direct evaluated output or a tiny local state record without touching
-     metadata `rawArgs`.
+5. **Call resolve-surface source-free args slice.**
+   - Goal: prove whether a dynamic/fallback call with source-free args can avoid
+     the full copied resolve surface while preserving fallback output.
    - Required proof: dynamic/fallback call tests plus source parentage guards.
 
-6. **Condition/default guard render allocation audit.**
-   - Goal: decide whether render-time `Bool` allocations in conditions/default
-     guards are semantic or can reuse/directly stream boolean output.
-   - Required proof: condition/default guard direct and buffer render tests.
+6. **Condition/default guard eval allocation follow-up.**
+   - Goal: decide whether repeated `Bool` construction in condition
+     eval/resolve is semantic, reusable, or just audit noise after render was
+     fixed.
+   - Required proof: condition/default guard eval and render tests.
 
 7. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic

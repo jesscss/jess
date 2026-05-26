@@ -259,17 +259,6 @@ export class Call extends Node<CallValue, CallOptions> {
     return finishCall();
   }
 
-  private renderEvaluatedCallOutput(
-    node: Node,
-    context: Context,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): MaybePromise<string> {
-    return isRenderBuffer(bufferOrOptions)
-      ? node.render(context, bufferOrOptions, options)
-      : node.render(context, bufferOrOptions);
-  }
-
   constructor(value: CallValue, options?: CallOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Function calls are always non-static and may be async
@@ -323,7 +312,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (typeof this.value.name !== 'string') {
         return pipe(
           () => this.deriveResolveSurface().eval(context),
-          node => this.renderEvaluatedCallOutput(node, context, bufferOrOptions, options)
+          node => this.renderOutput(context, node, bufferOrOptions, options)
         );
       }
       // Plain CSS calls render args/content explicitly so async child failures
@@ -343,7 +332,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     return pipe(
       () => this.deriveResolveSurface().eval(context),
-      node => this.renderEvaluatedCallOutput(node, context, bufferOrOptions, options)
+      node => this.renderOutput(context, node, bufferOrOptions, options)
     );
   }
 

@@ -1,4 +1,4 @@
-import { any, bool, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, bool, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -72,6 +72,30 @@ describe('Condition', () => {
       expect(conditionResolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
+    });
+
+    it('renders boolean results without allocating a Bool output node', () => {
+      const originalToTrimmedString = Bool.prototype.toTrimmedString;
+      let boolStringCalls = 0;
+      Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+        this: Bool,
+        ...args: Parameters<Bool['toTrimmedString']>
+      ) {
+        boolStringCalls++;
+        return originalToTrimmedString.apply(this, args);
+      };
+      try {
+        const node = condition([
+          bool(true),
+          '=',
+          bool(false)
+        ]);
+
+        expect(node.render(context)).toBe('false');
+        expect(boolStringCalls).toBe(0);
+      } finally {
+        Bool.prototype.toTrimmedString = originalToTrimmedString;
+      }
     });
 
     it('writes evaluated condition render output into flat buffers', async () => {
