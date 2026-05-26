@@ -167,6 +167,38 @@ describe('Ampersand', () => {
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
+  it('renders appended generated selectors without reparenting source selectors', async () => {
+    const parentSelector = sel([el('.button')]);
+    const nestedSelector = sel([amp('-primary')]);
+    const sourceParentChildren = [...parentSelector.value];
+    const sourceNestedChildren = [...nestedSelector.value];
+    const node = rules([
+      ruleset({
+        selector: parentSelector,
+        rules: rules([
+          ruleset({
+            selector: nestedSelector,
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      .button-primary {
+        color: red;
+      }
+    `);
+    expect(parentSelector.value).toEqual(sourceParentChildren);
+    expect(nestedSelector.value).toEqual(sourceNestedChildren);
+    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+  });
+
   it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
     const originalClone = Ampersand.prototype.clone;
     let clonedAmpersands = 0;

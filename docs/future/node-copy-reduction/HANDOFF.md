@@ -272,6 +272,11 @@ current state, immediate queue, and verification commands.
   hoist/root placement, and composed-header cache. It must not become AST v2 or
   reparent source selector leaves. Until that model exists, the constructor
   ownership copies remain the safe boundary.
+- Generated appended ampersand selector proof is current: output renders from
+  the generated placement without reparenting source selector children. A later
+  root extend does not yet match that generated appended header, so the next
+  generated-selector slice must be explicit extend metadata/indexing for that
+  placement, not a local serializer cleanup.
 - The generated selector / mixin output-slot / dynamic call / at-rule state
   spike entries have been collapsed into implementation slices. The design
   targets are already documented here and in the README; future queue items
@@ -367,12 +372,13 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Generated selector state first proof.**
-   - Goal: replace this broad item with the first concrete generated-selector
-     state proof: a focused parentage test around one existing owned selector
-     placement, then a minimal state object only if that test proves the seam.
-   - Required proof: selector parentage, extend matching, and rendered-header
-     guards for the chosen placement.
+1. **Generated appended selector extend metadata slice.**
+   - Goal: make generated appended ampersand headers such as `.button-primary`
+     visible to later root extends without reparenting the canonical nested
+     selector or turning the generated placement into AST v2.
+   - Required proof: appended ampersand rendered-header guard, source selector
+     parentage guard, root extend matching against the generated header, and
+     existing extend-boundary output guards.
 
 2. **Mixin output-slot first proof.**
    - Goal: pick one generated mixin `Rules` wrapper and prove whether it is only
