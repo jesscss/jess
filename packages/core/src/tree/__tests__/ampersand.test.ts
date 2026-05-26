@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
+  extend,
+  ExtendFlag,
   Ampersand,
   BasicSelector,
   type SimpleSelector, type Combinator
@@ -190,6 +192,48 @@ describe('Ampersand', () => {
 
     expect(css).toBeString(`
       .button-primary {
+        color: red;
+      }
+    `);
+    expect(parentSelector.value).toEqual(sourceParentChildren);
+    expect(nestedSelector.value).toEqual(sourceNestedChildren);
+    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+  });
+
+  it('extends appended generated selectors without reparenting source selectors', async () => {
+    const parentSelector = sel([el('.button')]);
+    const nestedSelector = sel([amp('-primary')]);
+    const sourceParentChildren = [...parentSelector.value];
+    const sourceNestedChildren = [...nestedSelector.value];
+    const node = rules([
+      ruleset({
+        selector: parentSelector,
+        rules: rules([
+          ruleset({
+            selector: nestedSelector,
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.theme'),
+        rules: rules([
+          extend({
+            target: el('.button-primary'),
+            flag: ExtendFlag.Exact
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      .button-primary,
+      .theme {
         color: red;
       }
     `);

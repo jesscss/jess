@@ -276,7 +276,12 @@ function classifyInstructionMatch(
     if (classified) {
       return classified;
     }
-    if (parentSelector && !partial && selector.valueOf() === target.valueOf()) {
+    if (
+      parentSelector
+      && !partial
+      && selector.hoistToRoot !== true
+      && selector.valueOf() === target.valueOf()
+    ) {
       // Exact nested matches like `.dd` under `.aa` must not fall back to the
       // parentless matcher, which would incorrectly treat the local fragment
       // as the full selector.
