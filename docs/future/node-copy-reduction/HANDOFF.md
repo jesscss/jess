@@ -234,6 +234,13 @@ current state, immediate queue, and verification commands.
   binding uses live `ScopeFrame` slots and `cloneBoundValue(...)` only owns
   non-reusable bound values; focused tests cover scalar reuse, container
   ownership, rest expansion, `@arguments`, and declaration-lookup bypass.
+- Mixin output wrapper audit is current. The remaining derived `Rules` surfaces
+  in mixin output are semantic runtime owners, not plain serializer carriers:
+  they carry lookup visibility, mixin-output gating, reference-mode clearing,
+  definition/caller `ScopeFrame` chains, guard isolation, and repeated output
+  placement without stamping call-site parents onto source bodies. A future
+  render-buffer output-slot model may replace some of these wrappers, but do
+  not delete them as a local cleanup.
 - `@charset` output-order handling lives in `Rules` registration prep.
   `Any.prepareRegistration()` is mark-only again.
 - Pending declaration-name prep is a narrow lookup-identity retry, not a hidden
@@ -296,41 +303,34 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Mixin output wrapper surface audit.**
-   - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
-     and mixin output grouping wrappers for carrier-only containers now that
-     argument binding itself is classified.
-   - Required proof: focused mixin output/guard tests plus materialization and
-     node-copy frontier scans.
-
-2. **Call dynamic resolve-surface audit.**
+1. **Call dynamic resolve-surface audit.**
    - Goal: inspect whether `deriveResolveSurface()` is still required for
      non-string call names after direct buffer delegation, especially optional
      fallback calls and referenced JS functions.
    - Required proof: focused call fallback/dynamic tests and source-parent
      assertions before removing any copy.
 
-3. **Rules direct unevaluated render compatibility audit.**
+2. **Rules direct unevaluated render compatibility audit.**
    - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
      a compatibility API or move to an explicit helper so production render has
      no hidden derive path.
    - Required proof: direct node render tests, public compiler render tests,
      and a call-site scan.
 
-4. **Declaration prep state model follow-up.**
+3. **Declaration prep state model follow-up.**
    - Goal: revisit declaration preparation only if a future state model can hold
      assignment/name prep without mutating a declaration surface.
    - Required proof: the current declaration source-isolation tests plus
      assignment merge/conditional assignment coverage.
 
-5. **Ruleset generated body/selector carrier audit.**
+4. **Ruleset generated body/selector carrier audit.**
    - Goal: inspect remaining ruleset generated selector/body surfaces after
      evaluated/prepared render reuse, especially `ownSelector` metadata and
      child-rule registration surfaces.
    - Required proof: focused ruleset parentage/header tests and node-creation
      audit before/after.
 
-6. **Resolved-output remaining caller audit.**
+5. **Resolved-output remaining caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers
      (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
      `ImportStyle`) and remove the adapter only where same-surface source
@@ -338,11 +338,18 @@ backlog below.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for each changed family.
 
-7. **Selector generated-state design checkpoint.**
+6. **Selector generated-state design checkpoint.**
    - Goal: draft the minimal state model needed to replace selector child
      ownership copies without changing parentage or extend semantics.
    - Required proof: concrete affected constructors plus tests that would fail
      if source children were reparented.
+
+7. **Mixin output slot design checkpoint.**
+   - Goal: sketch the smallest render-buffer output-slot model that could carry
+     mixin placement, lookup visibility, and caller/definition frames without a
+     generated `Rules` wrapper.
+   - Required proof: concrete current wrapper responsibilities and the focused
+     mixin tests that must keep passing before any code change.
 
 ## Backlog
 
