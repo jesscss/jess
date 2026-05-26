@@ -87,6 +87,11 @@ current state, immediate queue, and verification commands.
   text directly instead of allocating a temporary `Bool` output node just to
   print `true` / `false`. Their `eval()` / `resolve()` contracts still return
   `Bool` nodes.
+- `Condition` default-guard normalization now uses a shared primitive
+  `getDefaultGuardValue(...)` helper. `default()` / `??` checks no longer
+  allocate intermediate `Bool` nodes before collapsing back to a boolean; fresh
+  `Bool` nodes remain only at the `eval()` / `resolve()` API boundary where a
+  node result is the contract.
 - `Operation.render(...)`, `Paren.render(...)`, `Quoted.render(...)`, and
   `Url.render(...)` choose local output and call the base `renderOutput(...)`
   primitive. They no longer use a generic resolved-output adapter.
@@ -117,6 +122,11 @@ current state, immediate queue, and verification commands.
   args/content, finalized fallback name/options, caller pointer, and
   parent/source preservation flags without exposing mutable source args to
   metadata JS functions or reparenting canonical call children.
+- Call source-free args audit is current. Directly evaluating the source call
+  is not a safe shortcut because `Node.eval(...)` marks the source call
+  evaluated, and metadata-backed functions may mutate `this.rawArgs`. The next
+  removable slice must happen after name evaluation, when plain positional
+  function calls can be separated from metadata/rawArgs calls.
 - `JsExpression.render(...)` and `StyleImport.render(...)` delegate evaluated
   output directly to the chosen node's native render path instead of treating
   the evaluated result as source output.
@@ -169,6 +179,10 @@ current state, immediate queue, and verification commands.
 - Condition/default guard render allocation audit is closed. Direct and buffer
   render are covered by tests that patch `Bool.toTrimmedString(...)`, proving
   render does not delegate through a temporary `Bool` output node.
+- Condition/default guard eval allocation follow-up is closed. Reusable
+  singleton `Bool` nodes are intentionally not the target because nodes carry
+  mutable parent/source/runtime flags. The kept eval/resolve allocation is the
+  API result; intermediate default-guard normalization is now primitive.
 - Expression-like native delegation regression audit is current: direct string
   render and buffer render for expression/wrapper nodes choose the same locally
   evaluated output, including async expression-like cases covered by
@@ -327,9 +341,9 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
 container, source-output, and resolved-output helper counts are now zero in
-production. The current audit shows `new-node: 304` and 44 render-context
-node-creation surfaces, down from 305 / 45 after direct condition/default-guard
-render.
+production. The current audit shows `new-node: 301` and 42 render-context
+node-creation surfaces, down from 304 / 44 after primitive default-guard
+normalization.
 
 ## Immediate Queue
 
@@ -371,11 +385,12 @@ backlog below.
      the full copied resolve surface while preserving fallback output.
    - Required proof: dynamic/fallback call tests plus source parentage guards.
 
-6. **Condition/default guard eval allocation follow-up.**
-   - Goal: decide whether repeated `Bool` construction in condition
-     eval/resolve is semantic, reusable, or just audit noise after render was
-     fixed.
-   - Required proof: condition/default guard eval and render tests.
+6. **Paren default-guard output allocation follow-up.**
+   - Goal: decide whether `Paren.render(...)` can stream a primitive
+     `default()` / `??` result directly instead of wrapping it in a temporary
+     `Bool`, while keeping `eval()` / `resolve()` node-result contracts.
+   - Required proof: paren/default guard direct and buffer render tests plus
+     existing condition/default guard tests.
 
 7. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic

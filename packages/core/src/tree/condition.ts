@@ -8,22 +8,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-
-function getCallReferenceKey(name: unknown): string {
-  if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
-    return '';
-  }
-  const value = Reflect.get(name, 'value');
-  if (!value || typeof value !== 'object') {
-    return '';
-  }
-  const key = Reflect.get(value, 'key');
-  return String(
-    key && typeof key === 'object' && 'valueOf' in key
-      ? Reflect.apply(Reflect.get(key, 'valueOf'), key, [])
-      : key ?? ''
-  );
-}
+import { getDefaultGuardValue } from './util/default-guard.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -39,6 +24,8 @@ export type ConditionValue = [
 export type ConditionOptions = {
   negate?: boolean;
 };
+
+type ConditionResultValue = Node | boolean;
 
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
   eval(context: Context): MaybePromise<Bool>;
@@ -95,16 +82,21 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return new Bool(Condition.getBoolValue(node, negated));
   }
 
-  static getBoolValue(node: Node, negated: boolean): boolean {
-    const value = node instanceof Bool ? node.value : false;
+  static getBoolValue(node: ConditionResultValue, negated: boolean): boolean {
+    const value = typeof node === 'boolean'
+      ? node
+      : node instanceof Bool ? node.value : false;
     return negated ? !value : value;
   }
 
-  static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
+  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator): boolean {
     switch (op) {
       case 'and': return Condition.getBoolValue(a, false) && Condition.getBoolValue(b, false);
       case 'or': return Condition.getBoolValue(a, false) || Condition.getBoolValue(b, false);
       default:
+        if (typeof a === 'boolean' || typeof b === 'boolean') {
+          return op === '=' && Condition.getBoolValue(a, false) === Condition.getBoolValue(b, false);
+        }
         switch (a.compare(b)) {
           case -1:
             return op === '<' || op === '<=';
@@ -121,29 +113,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   private evaluateConditionBoolean(context: Context, mode: 'eval' | 'resolve'): MaybePromise<boolean> {
     let [left, op, right] = this.value;
     let negated = this._options?.negate === true;
-    const normalizeDefaultCall = (node: Node): Node => {
-      if (node.type === 'DefaultGuard') {
-        return new Bool(Boolean(context.isDefault));
-      }
-      if (node.type === 'Paren') {
-        const inner = node.value;
-        return inner instanceof Node ? normalizeDefaultCall(inner) : node;
-      }
-      if (node.type !== 'Call') {
-        return node;
-      }
-      const rawValue = node.value;
-      if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
-        return node;
-      }
-      const rawName = rawValue.name;
-      const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-      const refKey = getCallReferenceKey(rawName);
-      if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
-        return new Bool(Boolean(context.isDefault));
-      }
-      return node;
-    };
+    const normalizeDefaultCall = (node: Node): ConditionResultValue => getDefaultGuardValue(node, context) ?? node;
 
     return pipe(
       () => mode === 'eval' ? left.eval(context) : left.resolve(context),
@@ -155,7 +125,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         }
         return a;
       },
-      (a) => {
+      (a: Node | ConditionResultValue) => {
         if (!right) {
           return [a];
         }
@@ -165,13 +135,13 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         }
         return [a, b];
       },
-      ([a, b]) => {
+      ([a, b]: readonly [ConditionResultValue, Node?]) => {
         if (!b) {
           return Condition.getBoolValue(a, negated);
         }
-        a = normalizeDefaultCall(a);
-        b = normalizeDefaultCall(b);
-        let result = Condition.getResult(a, b, op!);
+        const leftValue = a instanceof Node ? normalizeDefaultCall(a) : a;
+        const rightValue = normalizeDefaultCall(b);
+        let result = Condition.getResult(leftValue, rightValue, op!);
         return negated ? !result : result;
       }
     );

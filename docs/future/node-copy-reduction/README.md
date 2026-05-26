@@ -140,7 +140,10 @@ later serializer can walk it.
   value, now serialize" bridge outside the node inheritance model.
 - Condition/default-guard render is a direct boolean text path. Keep
   `eval()` / `resolve()` returning `Bool` nodes, but do not allocate a `Bool`
-  during render just to print `true` or `false`.
+  during render just to print `true` or `false`. Default-guard normalization
+  should use primitive booleans until a public node-result API requires a fresh
+  `Bool`; do not introduce shared singleton `Bool` nodes because node parent
+  and runtime flags are mutable.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
@@ -150,7 +153,9 @@ later serializer can walk it.
   fallback calls are finalized syntax, not another name-evaluation request.
   Dynamic calls use the base `renderOutput(...)` primitive for the final
   output delegation; keep remaining call-state work focused on
-  `deriveResolveSurface()`, not a new render helper.
+  `deriveResolveSurface()`, not a new render helper. Do not replace the
+  derived surface with direct source-call eval unless the replacement preserves
+  source `evaluated` state and keeps metadata `rawArgs` mutation isolated.
 - `packages/core/src/define-function.ts` is no longer blocked by unrelated
   focused lint debt. Function argument-surface work should keep metadata access
   typed and avoid rebuilding unused validation paths.

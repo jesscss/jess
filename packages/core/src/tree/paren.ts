@@ -9,22 +9,7 @@ import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import type { RenderBuffer } from './util/render-buffer.js';
-
-function getCallReferenceKey(name: unknown): string {
-  if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
-    return '';
-  }
-  const value = Reflect.get(name, 'value');
-  if (!value || typeof value !== 'object') {
-    return '';
-  }
-  const key = Reflect.get(value, 'key');
-  return String(
-    key && typeof key === 'object' && 'valueOf' in key
-      ? Reflect.apply(Reflect.get(key, 'valueOf'), key, [])
-      : key ?? ''
-  );
-}
+import { getDefaultGuardValue } from './util/default-guard.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -38,28 +23,8 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 };
 
 const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | undefined => {
-  if (!node) {
-    return;
-  }
-  if (node.type === 'DefaultGuard') {
-    return new Bool(Boolean(context.isDefault));
-  }
-  if (node instanceof Paren) {
-    return getDefaultGuardBool(node.value, context);
-  }
-  if (node.type !== 'Call') {
-    return;
-  }
-  const rawValue = node.value;
-  if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
-    return;
-  }
-  const rawName = rawValue.name;
-  const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-  const refKey = getCallReferenceKey(rawName);
-  if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
-    return new Bool(Boolean(context.isDefault));
-  }
+  const value = getDefaultGuardValue(node, context);
+  return value === undefined ? undefined : new Bool(value);
 };
 
 function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>): void {

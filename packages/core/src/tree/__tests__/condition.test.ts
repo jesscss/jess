@@ -1,4 +1,4 @@
-import { any, Bool, bool, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, bool, call, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -92,6 +92,27 @@ describe('Condition', () => {
         ]);
 
         expect(node.render(context)).toBe('false');
+        expect(boolStringCalls).toBe(0);
+      } finally {
+        Bool.prototype.toTrimmedString = originalToTrimmedString;
+      }
+    });
+
+    it('renders default() conditions without allocating temporary Bool nodes', async () => {
+      const originalToTrimmedString = Bool.prototype.toTrimmedString;
+      let boolStringCalls = 0;
+      Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+        this: Bool,
+        ...args: Parameters<Bool['toTrimmedString']>
+      ) {
+        boolStringCalls++;
+        return originalToTrimmedString.apply(this, args);
+      };
+      try {
+        context.isDefault = true;
+        const node = condition([call({ name: 'default' })]);
+
+        expect(await node.render(context)).toBe('true');
         expect(boolStringCalls).toBe(0);
       } finally {
         Bool.prototype.toTrimmedString = originalToTrimmedString;
