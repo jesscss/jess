@@ -163,6 +163,12 @@ current state, immediate queue, and verification commands.
   are expression/wrapper/selector/import-style nodes that perform local
   eval/resolve before choosing output. `Call` has its own local
   `renderEvaluatedCallOutput(...)` helper and no longer shares this name.
+- Resolved-output remaining caller audit is current. `JsExpression.render(...)`
+  and `StyleImport.render(...)` now delegate evaluated output directly to the
+  chosen node's native render path. The remaining production
+  `renderResolvedOutput(...)` callers are syntax-preserving wrappers/selectors
+  that may return themselves and therefore still need the same-surface source
+  fallback unless a smaller same-node branch replaces the helper.
 - `DefaultGuard.render(...)` and `Condition.render(...)` no longer use
   `renderResolvedOutput(...)`; they always choose a `Bool`, so render delegates
   directly to that native output node.
@@ -312,9 +318,9 @@ Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
 remaining source/resolved output helper calls. The old container output helper
 count is now zero; production `source-output` audit count is down to the base
-source render site only. Production `resolved-output` audit count is 9 after
-removing the Bool-only guard/condition callers and the negative/expression
-wrappers.
+source render site only. Production `resolved-output` audit count is 7 after
+removing the Bool-only guard/condition callers, the negative/expression
+wrappers, and the direct eval-output `JsExpression` / `StyleImport` callers.
 
 ## Immediate Queue
 
@@ -324,52 +330,51 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Resolved-output remaining caller audit.**
-   - Goal: inspect the remaining `renderResolvedOutput(...)` callers
-     (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
-     `ImportStyle`) and remove the adapter only where same-surface source
-     syntax fallback is impossible.
-   - Required proof: helper call-site scan and focused direct/buffer parity
-     tests for each changed family.
-
-2. **Selector generated-state design checkpoint.**
+1. **Selector generated-state design checkpoint.**
    - Goal: draft the minimal state model needed to replace selector child
      ownership copies without changing parentage or extend semantics.
    - Required proof: concrete affected constructors plus tests that would fail
      if source children were reparented.
 
-3. **Mixin output slot design checkpoint.**
+2. **Mixin output slot design checkpoint.**
    - Goal: sketch the smallest render-buffer output-slot model that could carry
      mixin placement, lookup visibility, and caller/definition frames without a
      generated `Rules` wrapper.
    - Required proof: concrete current wrapper responsibilities and the focused
      mixin tests that must keep passing before any code change.
 
-4. **Call dynamic state model follow-up.**
+3. **Call dynamic state model follow-up.**
    - Goal: replace the remaining call resolve surface only if a smaller state
      object can hold evaluated dynamic name/args/content plus optional fallback
      syntax without reparenting source children.
    - Required proof: current dynamic/fallback JS function tests plus source
      parent assertions.
 
-5. **At-rule direct render compatibility audit.**
+4. **At-rule direct render compatibility audit.**
    - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
      the same way as `Rules.render(...)`, separating production evaluated output
      from direct node API compatibility.
    - Required proof: focused at-rule render tests, public compiler render
      coverage when relevant, and a call-site scan.
 
-6. **Declaration prepared-state design checkpoint.**
+5. **Declaration prepared-state design checkpoint.**
    - Goal: if declaration prep is revisited, design the smallest side-state
      shape for prepared name/assignment data before touching code.
    - Required proof: source-isolation tests plus merged assignment and custom
      property render tests.
 
-7. **Ruleset generated-state design checkpoint.**
+6. **Ruleset generated-state design checkpoint.**
    - Goal: design the smallest state object that could replace `ownSelector`
      metadata copies while preserving source parentage, extend matching, and
      header rendering.
    - Required proof: ruleset header/cache tests plus selector parentage guards.
+
+7. **Syntax-wrapper same-node render branch.**
+   - Goal: replace `renderResolvedOutput(...)` for `Paren`, `Quoted`, `Url`,
+     `Operation`, `Interpolated`, and selector wrappers only if each node can
+     keep its same-node source syntax fallback locally without recursion.
+   - Required proof: direct/buffer parity and source-parent tests for every
+     changed wrapper family.
 
 ## Backlog
 

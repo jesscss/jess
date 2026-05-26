@@ -16,7 +16,7 @@ import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
 import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
 import {
-  renderResolvedOutput,
+  isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
@@ -851,7 +851,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evalNode(context),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions)
     );
   }
 
