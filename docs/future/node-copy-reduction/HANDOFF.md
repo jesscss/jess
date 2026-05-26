@@ -290,6 +290,10 @@ current state, immediate queue, and verification commands.
   selector guard in extend matching still protects ordinary child fragments,
   but `hoistToRoot` generated selectors are treated as already-composed
   headers and can match root-level exact extends.
+- At-rule frame-header proof is current: comment-free frame headers no longer
+  create owned name/prelude surfaces just to suppress file trivia. The clone
+  path is retained only when structural `Comment` children must be stripped
+  from the temporary header string.
 - The generated selector / mixin output-slot / dynamic call / at-rule state
   spike entries have been collapsed into implementation slices. The design
   targets are already documented here and in the README; future queue items
@@ -390,51 +394,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **At-rule state model first proof.**
-   - Goal: pick one derived at-rule surface and prove whether a side-state shape
-     can carry prepared name/prelude/body data without mutating the source node.
-   - Required proof: at-rule source-isolation tests plus nested at-rule,
-     hoist-to-root, and root-only output guards.
-
-2. **Call fallback/content resolve-surface slice.**
+1. **Call fallback/content resolve-surface slice.**
    - Goal: split optional fallback and content-node dynamic calls into the
      smallest state needed for finalized fallback syntax without a full copied
      pre-call `Call` surface.
    - Required proof: direct render, buffer render, resolve, source parentage,
      source evaluated-state, optional fallback output, and content-node output.
 
-3. **At-rule prepare-registration derivation audit.**
+2. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic
      isolation versus removable derived wrappers.
    - Required proof: at-rule source-isolation tests and root-only/hoist guards.
 
-4. **Mixin output-slot replacement design slice.**
+3. **Mixin output-slot replacement design slice.**
    - Goal: after the first proof, identify the smallest wrapper responsibility
      that an output-slot record could own without changing lookup, reference,
      guard, or caller-fallback behavior.
    - Required proof: focused mixin output tests plus a written source/slot
      responsibility split before implementation.
 
-5. **Rules-like variable call state slice.**
+4. **Rules-like variable call state slice.**
    - Goal: keep detached ruleset variable calls from mutating source parents
      while shrinking the copied call/name surface that preserves lexical
      rules-like lookup.
    - Required proof: non-leaky/leaky detached ruleset call tests plus source
      parentage and caller fallback guards.
 
-6. **Call metadata state replacement slice.**
+5. **Call metadata state replacement slice.**
    - Goal: replace the metadata path's full pre-call copied `Call` surface with
      a smaller rawArgs owner only if the owned-list contract remains intact.
    - Required proof: metadata rawArgs mutation isolation across eval/render/
      resolve, metadata param evaluation from the owned arg surface, and source
      call/arg parentage guards.
 
-7. **Generated selector state model follow-up.**
+6. **Generated selector state model follow-up.**
    - Goal: reduce remaining generated selector owned-placement surfaces only
      after proving the specific placement has no unique parentage, extend,
      visibility, or render-local metadata responsibility.
    - Required proof: source selector parentage, extend matching, pseudo arg,
      framed ampersand, and ruleset header guards for the selected placement.
+
+7. **At-rule direct render compatibility follow-up.**
+   - Goal: narrow the remaining direct unevaluated `AtRule.render(...)`
+     compatibility derive path, or document the exact mutation surface that
+     still requires it.
+   - Required proof: direct render, buffer render, source parentage,
+     root-only/hoist behavior, and nested at-rule output guards.
 
 ## Backlog
 

@@ -495,6 +495,23 @@ describe('AtRule', () => {
     }
   });
 
+  it('strips structural comments from comment-free at-rule frame headers only when needed', () => {
+    const sourceComment = comment('/* frame note */');
+    const prelude = seq([
+      any('screen', { role: 'keyword' }),
+      sourceComment
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude,
+      rules: rules([])
+    });
+
+    expect(node.getHeaderString(getPrintOptions(), true)).toBe('@media screen {\n');
+    expect(sourceComment.parent).toBe(prelude);
+    expect(prelude.parent).toBe(node);
+  });
+
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),

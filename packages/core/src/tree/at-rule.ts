@@ -81,6 +81,22 @@ function clearRulesetFramesForAtRuleBody(
   };
 }
 
+function hasCommentChild(value: unknown): boolean {
+  if (isNode(value, N.Comment)) {
+    return true;
+  }
+  if (value instanceof Node) {
+    return hasCommentChild(value.value);
+  }
+  if (Array.isArray(value)) {
+    return value.some(hasCommentChild);
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value).some(hasCommentChild);
+  }
+  return false;
+}
+
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
 export const ROOT_ONLY_AT_RULES = [
   '@charset',
@@ -435,7 +451,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     let idt = indent(options.depth);
     let out = idt;
 
-    if (withoutComments) {
+    if (withoutComments && (hasCommentChild(name) || hasCommentChild(prelude))) {
       name = this.ownName(name);
       if (prelude) {
         prelude = this.ownNode(prelude);
