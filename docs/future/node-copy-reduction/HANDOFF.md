@@ -249,6 +249,12 @@ current state, immediate queue, and verification commands.
   hide the same ownership decision today; the next real reduction requires a
   different generated-selector state model that preserves canonical source
   parentage without per-constructor child ownership.
+- Selector generated-state design checkpoint is current. The target is a small
+  side-state record beside a canonical selector, carrying only per-placement
+  evaluated children, visibility/extend metadata, selector-bit library,
+  hoist/root placement, and composed-header cache. It must not become AST v2 or
+  reparent source selector leaves. Until that model exists, the constructor
+  ownership copies remain the safe boundary.
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
   functions keep one owned raw/callback arg-list surface because `this.rawArgs`
   is a documented mutable runtime API; `Call` no longer creates a second
@@ -330,51 +336,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Selector generated-state design checkpoint.**
-   - Goal: draft the minimal state model needed to replace selector child
-     ownership copies without changing parentage or extend semantics.
-   - Required proof: concrete affected constructors plus tests that would fail
-     if source children were reparented.
-
-2. **Mixin output slot design checkpoint.**
+1. **Mixin output slot design checkpoint.**
    - Goal: sketch the smallest render-buffer output-slot model that could carry
      mixin placement, lookup visibility, and caller/definition frames without a
      generated `Rules` wrapper.
    - Required proof: concrete current wrapper responsibilities and the focused
      mixin tests that must keep passing before any code change.
 
-3. **Call dynamic state model follow-up.**
+2. **Call dynamic state model follow-up.**
    - Goal: replace the remaining call resolve surface only if a smaller state
      object can hold evaluated dynamic name/args/content plus optional fallback
      syntax without reparenting source children.
    - Required proof: current dynamic/fallback JS function tests plus source
      parent assertions.
 
-4. **At-rule direct render compatibility audit.**
+3. **At-rule direct render compatibility audit.**
    - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
      the same way as `Rules.render(...)`, separating production evaluated output
      from direct node API compatibility.
    - Required proof: focused at-rule render tests, public compiler render
      coverage when relevant, and a call-site scan.
 
-5. **Declaration prepared-state design checkpoint.**
+4. **Declaration prepared-state design checkpoint.**
    - Goal: if declaration prep is revisited, design the smallest side-state
      shape for prepared name/assignment data before touching code.
    - Required proof: source-isolation tests plus merged assignment and custom
      property render tests.
 
-6. **Ruleset generated-state design checkpoint.**
+5. **Ruleset generated-state design checkpoint.**
    - Goal: design the smallest state object that could replace `ownSelector`
      metadata copies while preserving source parentage, extend matching, and
      header rendering.
    - Required proof: ruleset header/cache tests plus selector parentage guards.
 
-7. **Syntax-wrapper same-node render branch.**
+6. **Syntax-wrapper same-node render branch.**
    - Goal: replace `renderResolvedOutput(...)` for `Paren`, `Quoted`, `Url`,
      `Operation`, `Interpolated`, and selector wrappers only if each node can
      keep its same-node source syntax fallback locally without recursion.
    - Required proof: direct/buffer parity and source-parent tests for every
      changed wrapper family.
+
+7. **Generated selector state spike.**
+   - Goal: prototype one non-production helper or failing test that demonstrates
+     how generated selector state would preserve source parentage without owned
+     child copies.
+   - Required proof: no behavior change unless the focused selector parentage
+     tests prove the replacement.
 
 ## Backlog
 

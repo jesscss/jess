@@ -174,6 +174,15 @@ These are architectural seams, not a live ordered queue. Use
    and direct comment children may still need owned placement surfaces. Reduce
    these with parentage, visibility, and extend-output tests; do not collapse
    them by pattern.
+   The likely next model is a small generated-selector state object, not a
+   new selector AST. It would sit beside a canonical selector node and carry
+   only per-placement facts: evaluated replacement children, visibility
+   overrides, selector-bit library, extend metadata, hoist/root placement, and
+   composed-header cache. It must not own source children, rewrite source
+   parentage, or become a second tree. Until that exists, keep the focused
+   `SelectorList` / `ComplexSelector` / `CompoundSelector` ownership copies
+   that prevent generated selector output from reparenting canonical source
+   selector leaves.
 3. **Function/mixin argument surfaces**: metadata-backed functions still need
    one copied raw-argument ownership surface for `this.rawArgs`,
    `this.args()`, preprocessing, lazy params, validation, and
