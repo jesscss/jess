@@ -352,6 +352,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string | MaybePromise<string> {
+    if (isNode(node, N.VarDeclaration)) {
+      return isRenderBuffer(bufferOrOptions)
+        ? Node.prototype.render.call(node, context, bufferOrOptions, options)
+        : Node.prototype.render.call(node, context, bufferOrOptions);
+    }
     if (!(node instanceof Declaration)) {
       return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)

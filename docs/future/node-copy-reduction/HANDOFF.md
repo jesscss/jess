@@ -79,8 +79,10 @@ current state, immediate queue, and verification commands.
   evaluated result as source output.
 - `Declaration.render(...)` evaluates/prepares declaration state locally and
   writes evaluated declaration syntax directly. True non-declaration eval
-  results now render through that node's native render path; the
-  declaration-local source-output fallback helper is gone.
+  results now render through that node's native render path. `VarDeclaration`
+  eval results intentionally use base source serialization so parameter vars
+  keep `$name` syntax; the declaration-local source-output fallback helper is
+  gone.
 - `Selector.render(...)`, `Interpolated.render(...)`, and
   `InterpolatedSelector.render(...)` now use `renderResolvedOutput(...)` after
   their selector/string-specific local resolution.
