@@ -28,6 +28,10 @@ current state, immediate queue, and verification commands.
 - `Rules.render(...)` also reuses registration-prepared roots instead of
   deriving again before eval. Direct unevaluated `Rules.render(...)` remains the
   isolated compatibility path that derives before eval.
+- `Rules.render(...)` now names that branch as `evalForRender(...)`, so the
+  direct unevaluated derive path is explicitly compatibility/debug behavior.
+  Public compiler render APIs still prove they enter `Rules.render(...)` with
+  evaluated roots.
 - Public render APIs now have focused coverage proving `Compiler.render(...)`,
   `renderString(...)`, and `renderToResult(...)` enter `Rules.render(...)` with
   an already evaluated root. Unevaluated `Rules.render(...)` remains a
@@ -309,27 +313,20 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Rules direct unevaluated render compatibility audit.**
-   - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
-     a compatibility API or move to an explicit helper so production render has
-     no hidden derive path.
-   - Required proof: direct node render tests, public compiler render tests,
-     and a call-site scan.
-
-2. **Declaration prep state model follow-up.**
+1. **Declaration prep state model follow-up.**
    - Goal: revisit declaration preparation only if a future state model can hold
      assignment/name prep without mutating a declaration surface.
    - Required proof: the current declaration source-isolation tests plus
      assignment merge/conditional assignment coverage.
 
-3. **Ruleset generated body/selector carrier audit.**
+2. **Ruleset generated body/selector carrier audit.**
    - Goal: inspect remaining ruleset generated selector/body surfaces after
      evaluated/prepared render reuse, especially `ownSelector` metadata and
      child-rule registration surfaces.
    - Required proof: focused ruleset parentage/header tests and node-creation
      audit before/after.
 
-4. **Resolved-output remaining caller audit.**
+3. **Resolved-output remaining caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers
      (`Paren`, `Quoted`, `Url`, `JsExpression`, `Operation`, selectors,
      `ImportStyle`) and remove the adapter only where same-surface source
@@ -337,25 +334,32 @@ backlog below.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for each changed family.
 
-5. **Selector generated-state design checkpoint.**
+4. **Selector generated-state design checkpoint.**
    - Goal: draft the minimal state model needed to replace selector child
      ownership copies without changing parentage or extend semantics.
    - Required proof: concrete affected constructors plus tests that would fail
      if source children were reparented.
 
-6. **Mixin output slot design checkpoint.**
+5. **Mixin output slot design checkpoint.**
    - Goal: sketch the smallest render-buffer output-slot model that could carry
      mixin placement, lookup visibility, and caller/definition frames without a
      generated `Rules` wrapper.
    - Required proof: concrete current wrapper responsibilities and the focused
      mixin tests that must keep passing before any code change.
 
-7. **Call dynamic state model follow-up.**
+6. **Call dynamic state model follow-up.**
    - Goal: replace the remaining call resolve surface only if a smaller state
      object can hold evaluated dynamic name/args/content plus optional fallback
      syntax without reparenting source children.
    - Required proof: current dynamic/fallback JS function tests plus source
      parent assertions.
+
+7. **At-rule direct render compatibility audit.**
+   - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
+     the same way as `Rules.render(...)`, separating production evaluated output
+     from direct node API compatibility.
+   - Required proof: focused at-rule render tests, public compiler render
+     coverage when relevant, and a call-site scan.
 
 ## Backlog
 

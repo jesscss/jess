@@ -1926,15 +1926,23 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return w.getSince(mark);
   }
 
+  private evalForRender(context: Context): MaybePromise<Rules> {
+    if (this.evaluated) {
+      return this;
+    }
+    if (this.registrationPrepared) {
+      return this.eval(context);
+    }
+    // Direct render on an unevaluated Rules node is a compatibility/debug API.
+    // Public compiler render APIs evaluate the root before serialization.
+    return this.derive().eval(context);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root;
-    const value = this.evaluated
-      ? this
-      : this.registrationPrepared
-        ? this.eval(context)
-        : this.derive().eval(context);
+    const value = this.evalForRender(context);
     if (isRenderBuffer(bufferOrOptions)) {
       return isThenable(value)
         ? value.then(node => writeRulesRenderOutput(bufferOrOptions, this, node, context, options))
