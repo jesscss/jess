@@ -1,4 +1,4 @@
-import { any, bool, condition, dimension, list, num, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, bool, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -117,8 +117,12 @@ describe('Condition', () => {
         })
       ]);
       const evald = await root.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      expect(evald).toBeInstanceOf(Rules);
+      if (!(evald instanceof Rules)) {
+        throw new Error('Expected Rules');
+      }
+      context.root = evald;
+      context.rulesContext = evald;
 
       const node = condition([
         list([

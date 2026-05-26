@@ -129,6 +129,9 @@ current state, immediate queue, and verification commands.
   are expression/wrapper/selector/import-style nodes that perform local
   eval/resolve before choosing output. `Call` has its own local
   `renderEvaluatedCallOutput(...)` helper and no longer shares this name.
+- `DefaultGuard.render(...)` and `Condition.render(...)` no longer use
+  `renderResolvedOutput(...)`; they always choose a `Bool`, so render delegates
+  directly to that native output node.
 - Expression-like native delegation regression audit is current: direct string
   render and buffer render for expression/wrapper nodes choose the same locally
   evaluated output, including async expression-like cases covered by
@@ -253,7 +256,8 @@ Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
 remaining source/resolved output helper calls. The old container output helper
 count is now zero; production `source-output` audit count is down to the base
-source render site only.
+source render site only. Production `resolved-output` audit count is 11 after
+removing the Bool-only guard/condition callers.
 
 ## Immediate Queue
 
@@ -263,51 +267,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Resolved-output helper caller audit.**
-   - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
-     them into same-surface source syntax, native delegation, or removable
-     wrapper cases.
-   - Required proof: helper call-site scan and focused direct/buffer parity
-     tests for any changed node family.
-
-2. **Selector ownership constructor audit.**
+1. **Selector ownership constructor audit.**
    - Goal: review selector `with*` constructors for unchanged-child ownership
      copies that are still required only because constructors parent children.
    - Required proof: focused selector parentage tests before changing any
      constructor ownership rule.
 
-3. **Mixin argument binding surface audit.**
+2. **Mixin argument binding surface audit.**
    - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
      `@arguments` construction for avoidable copies now that function-call
      surfaces are classified.
    - Required proof: focused mixin argument tests plus node-copy frontier scan.
 
-4. **Call dynamic render surface reduction.**
+3. **Call dynamic render surface reduction.**
    - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
      resolve paths, and remove copies that are only protecting source syntax
      when native render can stream the result directly.
    - Required proof: focused call dynamic-name direct/buffer tests and
      source-parent assertions.
 
-5. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+4. **Unevaluated `Rules.render(...)` compatibility narrowing.**
    - Goal: keep direct unevaluated `Rules.render(...)` support only where node
      tests or public API compatibility require it, and avoid adding new
      production callers.
    - Required proof: call-site scan plus focused `Rules` render tests.
 
-6. **Declaration preparation derivation audit.**
+5. **Declaration preparation derivation audit.**
    - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
      derivation and assignment-normalization node creation, separating required
      lookup identity mutation from output-only carrier surfaces.
    - Required proof: focused assignment merge/conditional assignment tests plus
      node-creation audit before/after output.
 
-7. **Ruleset evaluated render reuse proof.**
+6. **Ruleset evaluated render reuse proof.**
    - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
      evaluated rulesets should serialize the existing surface, while direct
      unevaluated compatibility rendering stays isolated.
    - Required proof: focused ruleset render/buffer tests and call-count guard
      proving evaluated render does not re-enter eval.
+
+7. **Resolved-output wrapper narrowing.**
+   - Goal: inspect the remaining wrapper-like helper callers
+     (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
+     remove the adapter only where the evaluated output cannot be the same
+     source syntax surface.
+   - Required proof: focused direct/buffer parity tests for each changed node
+     family and helper call-site scan.
 
 ## Backlog
 
