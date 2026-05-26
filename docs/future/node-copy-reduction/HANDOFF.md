@@ -81,6 +81,9 @@ current state, immediate queue, and verification commands.
   `renderEvaluatedCallOutput(...)` remains local to `Call`, focused call tests
   cover direct/buffer dynamic non-string output, and optional fallback calls use
   native call output instead of a generic source bridge.
+- Dynamic `Call.render(...)` buffer output delegates the caller buffer directly
+  to the evaluated output node. It no longer renders the evaluated node to a
+  string and then writes that string into the buffer.
 - `JsExpression.render(...)` and `StyleImport.render(...)` now use
   `renderResolvedOutput(...)` after local evaluation instead of treating the
   evaluated result as source output.
@@ -275,34 +278,27 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call dynamic render surface reduction.**
-   - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
-     resolve paths, and remove copies that are only protecting source syntax
-     when native render can stream the result directly.
-   - Required proof: focused call dynamic-name direct/buffer tests and
-     source-parent assertions.
-
-2. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+1. **Unevaluated `Rules.render(...)` compatibility narrowing.**
    - Goal: keep direct unevaluated `Rules.render(...)` support only where node
      tests or public API compatibility require it, and avoid adding new
      production callers.
    - Required proof: call-site scan plus focused `Rules` render tests.
 
-3. **Declaration preparation derivation audit.**
+2. **Declaration preparation derivation audit.**
    - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
      derivation and assignment-normalization node creation, separating required
      lookup identity mutation from output-only carrier surfaces.
    - Required proof: focused assignment merge/conditional assignment tests plus
      node-creation audit before/after output.
 
-4. **Ruleset evaluated render reuse proof.**
+3. **Ruleset evaluated render reuse proof.**
    - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
      evaluated rulesets should serialize the existing surface, while direct
      unevaluated compatibility rendering stays isolated.
    - Required proof: focused ruleset render/buffer tests and call-count guard
      proving evaluated render does not re-enter eval.
 
-5. **Resolved-output wrapper narrowing.**
+4. **Resolved-output wrapper narrowing.**
    - Goal: inspect the remaining wrapper-like helper callers
      (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
      remove the adapter only where the evaluated output cannot be the same
@@ -310,19 +306,26 @@ backlog below.
    - Required proof: focused direct/buffer parity tests for each changed node
      family and helper call-site scan.
 
-6. **Selector ownership model follow-up.**
+5. **Selector ownership model follow-up.**
    - Goal: design a smaller generated-selector ownership model only if it can
      preserve canonical source child parentage without per-constructor
      copy-with-reusable-leaves scaffolding.
    - Required proof: the existing selector parentage tests plus new tests for
      whichever constructor path changes.
 
-7. **Mixin output wrapper surface audit.**
+6. **Mixin output wrapper surface audit.**
    - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
      and mixin output grouping wrappers for carrier-only containers now that
      argument binding itself is classified.
    - Required proof: focused mixin output/guard tests plus materialization and
      node-copy frontier scans.
+
+7. **Call dynamic resolve-surface audit.**
+   - Goal: inspect whether `deriveResolveSurface()` is still required for
+     non-string call names after direct buffer delegation, especially optional
+     fallback calls and referenced JS functions.
+   - Required proof: focused call fallback/dynamic tests and source-parent
+     assertions before removing any copy.
 
 ## Backlog
 

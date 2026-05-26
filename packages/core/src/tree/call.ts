@@ -266,7 +266,7 @@ export class Call extends Node<CallValue, CallOptions> {
     options?: PrintOptions
   ): MaybePromise<string> {
     return isRenderBuffer(bufferOrOptions)
-      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
+      ? node.render(context, bufferOrOptions, options)
       : node.render(context, bufferOrOptions);
   }
 
