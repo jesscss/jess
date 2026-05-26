@@ -25,6 +25,10 @@ current state, immediate queue, and verification commands.
 - `Rules.render(...)` no longer derives a second root surface when called on an
   already evaluated `Rules` node. That keeps the public compile path from
   paying for a duplicate evaluated root before buffer serialization.
+- Public render APIs now have focused coverage proving `Compiler.render(...)`,
+  `renderString(...)`, and `renderToResult(...)` enter `Rules.render(...)` with
+  an already evaluated root. Unevaluated `Rules.render(...)` remains a
+  compatibility/test path, not the production compile shape.
 - Base `Node.render(context)` is direct source serialization. Nodes with
   context-dependent output choose local evaluated output and serialize through
   shared print state.
@@ -213,7 +217,7 @@ to stay.
 
 | Surface | Current shape | Next proof |
 | --- | --- | --- |
-| `Rules.render(...)` source roots | Unevaluated `Rules` still derive before eval so source trees are not mutated. Already evaluated roots now render directly. | Prove whether public compile always reaches render with an evaluated root; if yes, keep unevaluated render as compatibility only. |
+| `Rules.render(...)` source roots | Public compile renders already evaluated roots. Unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
 | `AtRule.render(...)` | Derives an at-rule surface, evaluates it, then calls `serializeRulesContainer(...)` with active render print state. | Split required body/prelude mutation from direct container streaming. |
 | `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals a declaration surface; true non-declaration outputs delegate to native render. | Reduce `withValue(...)` / `withImportant(...)` eval surfaces where semantic state permits. |
@@ -252,52 +256,51 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Unevaluated `Rules.render(...)` compatibility audit.**
-   - Goal: decide whether unevaluated root/body render still needs to derive
-     before eval, or whether all production callers can render only evaluated
-     rules.
-   - Required proof: public output API call graph plus focused root/body render
-     tests.
-
-2. **Declaration eval `with*` surface reduction.**
+1. **Declaration eval `with*` surface reduction.**
    - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
      `withImportant(...)` surfaces where the evaluated value can be streamed or
      represented as narrow runtime state instead of another declaration node.
    - Required proof: focused declaration merge/interpolation/custom-property
      tests plus node-creation audit before/after output.
 
-3. **At-rule/ruleset derived surface proof.**
+2. **At-rule/ruleset derived surface proof.**
    - Goal: now that the container helper is gone, prove which remaining
      at-rule/ruleset derived surfaces are mutation isolation versus serializer
      carriers, then reduce only the latter.
    - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
      before/after, and parentage checks for any removed surface.
 
-4. **Resolved-output helper caller audit.**
+3. **Resolved-output helper caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
      them into same-surface source syntax, native delegation, or removable
      wrapper cases.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for any changed node family.
 
-5. **Selector ownership constructor audit.**
+4. **Selector ownership constructor audit.**
    - Goal: review selector `with*` constructors for unchanged-child ownership
      copies that are still required only because constructors parent children.
    - Required proof: focused selector parentage tests before changing any
      constructor ownership rule.
 
-6. **Mixin argument binding surface audit.**
+5. **Mixin argument binding surface audit.**
    - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
      `@arguments` construction for avoidable copies now that function-call
      surfaces are classified.
    - Required proof: focused mixin argument tests plus node-copy frontier scan.
 
-7. **Call dynamic render surface reduction.**
+6. **Call dynamic render surface reduction.**
    - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
      resolve paths, and remove copies that are only protecting source syntax
      when native render can stream the result directly.
    - Required proof: focused call dynamic-name direct/buffer tests and
      source-parent assertions.
+
+7. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+   - Goal: keep direct unevaluated `Rules.render(...)` support only where node
+     tests or public API compatibility require it, and avoid adding new
+     production callers.
+   - Required proof: call-site scan plus focused `Rules` render tests.
 
 ## Backlog
 
