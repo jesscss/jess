@@ -88,11 +88,11 @@ current state, immediate queue, and verification commands.
   print `true` / `false`. Their `eval()` / `resolve()` contracts still return
   `Bool` nodes.
 - `Condition` default-guard normalization now uses a shared primitive
-  `getDefaultGuardValue(...)` helper. `default()` / `??` checks no longer
-  allocate intermediate `Bool` nodes before collapsing back to a boolean; fresh
-  `Bool` nodes remain only at the `eval()` / `resolve()` API boundary where a
-  node result is the contract.
-- `Paren.render(...)` also short-circuits direct `default()` / `??` values to
+  `getDefaultGuardValue(...)` helper. `default()` checks no longer allocate
+  intermediate `Bool` nodes before collapsing back to a boolean; fresh `Bool`
+  nodes remain only at the `eval()` / `resolve()` API boundary where a node
+  result is the contract.
+- `Paren.render(...)` also short-circuits direct `default()` values to
   primitive boolean text. `Paren.eval()` / `resolve()` still return `Bool`
   nodes for the public node-result contract.
 - `Operation.render(...)`, `Paren.render(...)`, `Quoted.render(...)`, and

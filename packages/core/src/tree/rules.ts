@@ -3946,7 +3946,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (isNode(node, N.Call)) {
         const name = node.value.name;
         const callName = String(typeof name === 'string' ? name : name.valueOf());
-        if (callName === 'default' || callName === '??') {
+        if (callName === 'default') {
           return true;
         }
       }

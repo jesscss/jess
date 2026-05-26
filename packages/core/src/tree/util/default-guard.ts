@@ -38,7 +38,7 @@ export function getDefaultGuardValue(node: Node | undefined, context: Context): 
   const rawName = rawValue.name;
   const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
   const refKey = getCallReferenceKey(rawName);
-  if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
+  if (callName === 'default' || refKey === 'default') {
     return Boolean(context.isDefault);
   }
 }

@@ -144,8 +144,8 @@ later serializer can walk it.
   should use primitive booleans until a public node-result API requires a fresh
   `Bool`; do not introduce shared singleton `Bool` nodes because node parent
   and runtime flags are mutable. `Paren.render(...)` follows the same render
-  rule for direct `default()` / `??` values while preserving `Bool` node
-  results for eval/resolve.
+  rule for direct `default()` values while preserving `Bool` node results for
+  eval/resolve.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
