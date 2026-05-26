@@ -359,6 +359,30 @@ describe('AtRule', () => {
     }
   });
 
+  it('renders static at-rules without deriving or evaluating', () => {
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: seq([any('svg')])
+    });
+    const originalEval = AtRule.prototype.eval;
+    let evalCalls = 0;
+    AtRule.prototype.eval = function countEvalCalls(
+      this: AtRule,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      expect(node.render(context)).toBe('@namespace svg;');
+      expect(evalCalls).toBe(0);
+      expect(node.evaluated).toBe(false);
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
   it('resolves at-rules without touching render state', async () => {
     const root = rules([
       vardecl({

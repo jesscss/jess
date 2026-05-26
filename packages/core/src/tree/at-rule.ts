@@ -192,6 +192,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (this.evaluated) {
       return this;
     }
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     if (this.registrationPrepared) {
       return this.eval(context);
     }
