@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, type NodeOptions } from './node.js';
+import { Node, defineType, F_STATIC, F_VISIBLE, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
 import { Any } from './any.js';
 import { Rules } from './rules.js';
@@ -755,6 +755,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   override resolve(context: Context): MaybePromise<Node> {
     if (this.evaluated) {
+      return this;
+    }
+    if (this.hasFlag(F_STATIC)) {
       return this;
     }
     if (this.registrationPrepared) {

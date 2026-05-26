@@ -55,6 +55,9 @@ current state, immediate queue, and verification commands.
   `evalForRender(...)`. Direct unevaluated at-rule render is an isolated
   direct-node/debug path; public compiler render enters through evaluated
   `Rules` output.
+- `AtRule.resolve(...)` now returns fully static at-rules directly instead of
+  deriving and evaluating a second at-rule surface. Dynamic/unprepared at-rule
+  resolve still derives to preserve source isolation.
 - `Ruleset.render(...)` no longer uses the generic source-output render bridge.
   It serializes evaluated rulesets through container output and delegates
   nil-selector body output to native `Rules.render(...)`.

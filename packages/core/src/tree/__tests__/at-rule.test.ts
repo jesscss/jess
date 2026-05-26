@@ -396,6 +396,33 @@ describe('AtRule', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('resolves static at-rules without deriving or evaluating', () => {
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: seq([any('svg')])
+    });
+    const originalEval = AtRule.prototype.eval;
+    let evalCalls = 0;
+    AtRule.prototype.eval = function countEvalCalls(
+      this: AtRule,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      const resolved = node.resolve(context);
+
+      expect(resolved).toBe(node);
+      expect(evalCalls).toBe(0);
+      expect(node.evaluated).toBe(false);
+      expect(context.printState.writer).toBeUndefined();
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
   it('serializes comment trivia between at-rule preludes and blocks', () => {
     const name = any('@-webkit-keyframes', { role: 'atkeyword' });
     name._location = [0, 1, 1, 17, 1, 18];

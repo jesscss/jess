@@ -122,6 +122,8 @@ later serializer can walk it.
 - `AtRule.render(...)` still needs a derived evaluated at-rule surface, but it
   writes that surface through the at-rule/ruleset serializer directly instead
   of using the generic source-output render bridge.
+- `AtRule.resolve(...)` returns static at-rules directly. Dynamic at-rules
+  still derive before eval so prelude/body mutation does not touch the source.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated
   rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
   delegates to that body's native render path.
