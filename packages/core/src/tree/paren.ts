@@ -8,10 +8,7 @@ import { List } from './list.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import {
-  renderResolvedOutput,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 
 function getCallReferenceKey(name: unknown): string {
   if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
@@ -130,7 +127,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evaluateValue(context, 'resolve'),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => this.renderOutput(context, node, bufferOrOptions, options)
     );
   }
 

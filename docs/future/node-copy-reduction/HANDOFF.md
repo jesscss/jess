@@ -39,6 +39,9 @@ current state, immediate queue, and verification commands.
 - Base `Node.render(context)` is direct source serialization. Nodes with
   context-dependent output choose local evaluated output and serialize through
   shared print state.
+- Base `Node` now exposes protected `renderSource(...)` and `renderOutput(...)`
+  primitives. Context-dependent nodes can choose local output without importing
+  a generic resolved-output utility.
 - `Reference.render(...)` now renders the locally evaluated referenced node
   through that node's native render path, including async referenced values; it
   does not source-serialize the resolved value as a completed output surface.
@@ -67,10 +70,10 @@ current state, immediate queue, and verification commands.
 - Nil-selector ruleset render has focused coverage proving the evaluated body
   is rendered through native `Rules.render(...)` for direct and buffer output.
 - Evaluated at-rule/ruleset render no longer goes through
-  `renderRulesContainerOutput(...)`; that helper is gone. The two container
-  nodes call `serializeRulesContainer(...)` directly with active render print
-  state, so the remaining work is the actual derived container surface, not a
-  wrapper abstraction.
+  the old container-output helper; the two container nodes call
+  `serializeRulesContainer(...)` directly with active render print state, so
+  the remaining work is the actual derived container surface, not a wrapper
+  abstraction.
 - `Block.render(...)` and `List.render(...)` no longer use the generic
   source-output bridge. They resolve local child values, then serialize through
   their own block/list syntax printers with active render print state.
@@ -78,14 +81,12 @@ current state, immediate queue, and verification commands.
   resolved sequence surfaces. Resolved sequences serialize through sequence
   syntax; resolved non-sequence values delegate to that value's native render
   path.
-- `Expression.render(...)` and `Operation.render(...)` now use
-  `renderResolvedOutput(...)` after local eval/resolve so non-self evaluated
-  outputs can use native render while stable self-output remains source syntax.
-- `Paren.render(...)`, `Quoted.render(...)`, and `Url.render(...)` use the
-  same resolved-output path after wrapper-local value resolution.
-- `Negative.render(...)`, `Condition.render(...)`, and
-  `DefaultGuard.render(...)` also use `renderResolvedOutput(...)` after local
-  evaluation.
+- `Expression.render(...)`, `Negative.render(...)`, `Condition.render(...)`,
+  and `DefaultGuard.render(...)` choose evaluated child/result nodes and
+  delegate directly to those nodes' native render paths.
+- `Operation.render(...)`, `Paren.render(...)`, `Quoted.render(...)`, and
+  `Url.render(...)` choose local output and call the base `renderOutput(...)`
+  primitive. They no longer use a generic resolved-output adapter.
 - Plain CSS `Call.render(...)` awaits async direct `calc(...)` arguments
   without the old broad source fallback. Nested `calc(...)` direct and buffer
   render now share the same evaluated normalization path used by Less output.
@@ -94,8 +95,7 @@ current state, immediate queue, and verification commands.
   fallback calls are treated as finalized call syntax so optional CSS-function
   fallback output does not re-evaluate the fallback name.
 - `Call`'s local dynamic-call output helper is named
-  `renderEvaluatedCallOutput(...)` so it does not read as the shared
-  `renderResolvedOutput(...)` adapter. Keep it local unless call output starts
+  `renderEvaluatedCallOutput(...)`. Keep it local unless call output starts
   sharing behavior with other node families.
 - Call dynamic output regression audit is current:
   `renderEvaluatedCallOutput(...)` remains local to `Call`, focused call tests
@@ -115,9 +115,9 @@ current state, immediate queue, and verification commands.
   args/content, finalized fallback name/options, caller pointer, and
   parent/source preservation flags without exposing mutable source args to
   metadata JS functions or reparenting canonical call children.
-- `JsExpression.render(...)` and `StyleImport.render(...)` now use
-  `renderResolvedOutput(...)` after local evaluation instead of treating the
-  evaluated result as source output.
+- `JsExpression.render(...)` and `StyleImport.render(...)` delegate evaluated
+  output directly to the chosen node's native render path instead of treating
+  the evaluated result as source output.
 - `Declaration.render(...)` evaluates/prepares declaration state locally and
   writes evaluated declaration syntax directly. True non-declaration eval
   results now render through that node's native render path. `VarDeclaration`
@@ -138,8 +138,8 @@ current state, immediate queue, and verification commands.
   source declaration and its value subtree stay unprepared. Reopen only with a
   concrete side-state model for prepared name/assignment data.
 - `Selector.render(...)`, `Interpolated.render(...)`, and
-  `InterpolatedSelector.render(...)` now use `renderResolvedOutput(...)` after
-  their selector/string-specific local resolution.
+  `InterpolatedSelector.render(...)` choose local output and call the base
+  `renderOutput(...)` primitive.
 - `SelectorCapture.render(...)` resolves the selector payload locally and
   renders that selector through its native render path instead of the generic
   source-output bridge.
@@ -149,48 +149,27 @@ current state, immediate queue, and verification commands.
 - `renderEvalOutput(...)`, `writeRootAwareEvalOutput(...)`, and
   `renderChosenOutput(...)` are gone. Current local eval/resolve render paths
   use native streaming or native source serialization.
-- Remaining `renderSourceOutput(...)` sites are classified:
-  - `renderSourceOutput(...)` is private to `tree/util/render-buffer.ts`;
-  - `renderResolvedOutput(...)` is the narrow adapter for a caller that has
-    already chosen an evaluated output node and needs native render delegation
-    when that output is not the source node;
-  - named wrapper bridge surfaces have been removed; do not add another helper
-    family around these two source/resolved-output roles.
+- `renderSourceOutput(...)` and `renderResolvedOutput(...)` are gone. Source
+  serialization belongs to base `Node.render(...)` / `renderSource(...)`;
+  different evaluated outputs render through that node's native render method.
 - Render helper placement remains in `tree/util/render-buffer.ts` because the
   helper depends only on context, print state, and buffer shapes. Do not move it
   into a node module that would require importing evaluated node classes.
-- Current production `renderSourceOutput(...)` call sites are private to
-  `tree/util/render-buffer.ts`: the internal same-node fallback inside
-  `renderResolvedOutput(...)`. Base `Node.render(...)` owns source
-  serialization directly.
-- Final expression-like helper audit is complete: keep
-  `renderResolvedOutput(...)` as the single local-eval output adapter. It exists
-  only to delegate different resolved nodes to their native render path and to
-  fall back to source syntax when evaluation stays on the same finalized
-  surface.
-- Resolved-output helper import audit is current: remaining production callers
-  are expression/wrapper/selector/import-style nodes that perform local
-  eval/resolve before choosing output. `Call` has its own local
-  `renderEvaluatedCallOutput(...)` helper and no longer shares this name.
-- Resolved-output remaining caller audit is current. `JsExpression.render(...)`
-  and `StyleImport.render(...)` now delegate evaluated output directly to the
-  chosen node's native render path. The remaining production
-  `renderResolvedOutput(...)` callers are syntax-preserving wrappers/selectors
-  that may return themselves and therefore still need the same-surface source
-  fallback unless a smaller same-node branch replaces the helper.
-- `DefaultGuard.render(...)` and `Condition.render(...)` no longer use
-  `renderResolvedOutput(...)`; they always choose a `Bool`, so render delegates
-  directly to that native output node.
-- `Negative.render(...)` and `Expression.render(...)` no longer use
-  `renderResolvedOutput(...)`; both choose evaluated child/result nodes and
-  delegate directly to those nodes' native render paths.
+- Resolved-output helper removal is current: no production `tree/*.ts` file
+  imports `renderResolvedOutput(...)`. The helper itself was deleted from
+  `tree/util/render-buffer.ts`, and the remaining internal render-buffer
+  helpers are buffer/writer/test adapters only.
+- `DefaultGuard.render(...)`, `Condition.render(...)`, `Negative.render(...)`,
+  `Expression.render(...)`, `Operation.render(...)`, `Paren.render(...)`,
+  `Quoted.render(...)`, `Url.render(...)`, `Selector.render(...)`,
+  `Interpolated.render(...)`, and `InterpolatedSelector.render(...)` all now
+  choose local output explicitly instead of sharing a resolved-output bridge.
 - Expression-like native delegation regression audit is current: direct string
   render and buffer render for expression/wrapper nodes choose the same locally
   evaluated output, including async expression-like cases covered by
   `node-render-buffer.test.ts`.
 - Base source render helper boundary audit is complete: base `Node.render(...)`
-  owns source serialization directly; `renderSourceOutput(...)` is no longer a
-  public helper surface.
+  owns source serialization directly; there is no separate source-output helper.
 - Base source subclasses audit is complete: no redundant source-only subclass
   render override remains. `Comment`, `Any`, `Anonymous`, `Nil`, and `Rest`
   use inherited base source render; `Combinator` rides the selector render path.
@@ -336,12 +315,10 @@ Current top files by static surface count:
 9. `packages/core/src/tree/ruleset.ts`
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
-`derive*`/`.derive(...)` surfaces, `copyWithReusableLeaves(...)`, and the
-remaining source/resolved output helper calls. The old container output helper
-count is now zero; production `source-output` audit count is down to the base
-source render site only. Production `resolved-output` audit count is 7 after
-removing the Bool-only guard/condition callers, the negative/expression
-wrappers, and the direct eval-output `JsExpression` / `StyleImport` callers.
+`derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
+container, source-output, and resolved-output helper counts are now zero in
+production. The current audit shows 45 render-context node-creation surfaces,
+down from the previous 52 after localizing syntax-wrapper same-node fallback.
 
 ## Immediate Queue
 
@@ -351,50 +328,47 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Declaration prepared-state design checkpoint.**
-   - Goal: if declaration prep is revisited, design the smallest side-state
-     shape for prepared name/assignment data before touching code.
-   - Required proof: source-isolation tests plus merged assignment and custom
-     property render tests.
-
-2. **Ruleset generated-state design checkpoint.**
-   - Goal: design the smallest state object that could replace `ownSelector`
-     metadata copies while preserving source parentage, extend matching, and
-     header rendering.
-   - Required proof: ruleset header/cache tests plus selector parentage guards.
-
-3. **Syntax-wrapper same-node render branch.**
-   - Goal: replace `renderResolvedOutput(...)` for `Paren`, `Quoted`, `Url`,
-     `Operation`, `Interpolated`, and selector wrappers only if each node can
-     keep its same-node source syntax fallback locally without recursion.
-   - Required proof: direct/buffer parity and source-parent tests for every
-     changed wrapper family.
-
-4. **Generated selector state spike.**
+1. **Generated selector state spike.**
    - Goal: prototype one non-production helper or failing test that demonstrates
      how generated selector state would preserve source parentage without owned
      child copies.
    - Required proof: no behavior change unless the focused selector parentage
      tests prove the replacement.
 
-5. **Mixin output-slot spike.**
+2. **Mixin output-slot spike.**
    - Goal: prototype the smallest non-production output-slot type or failing
      test for replacing a generated mixin `Rules` wrapper.
    - Required proof: focused mixin output/guard/caller-fallback tests before any
      behavior change.
 
-6. **Dynamic call-state spike.**
+3. **Dynamic call-state spike.**
    - Goal: prototype a non-production state object or failing test that replaces
      one `deriveResolveSurface()` use without source arg/name reparenting.
    - Required proof: dynamic/fallback call tests plus metadata rawArgs mutation
      isolation.
 
-7. **At-rule state model follow-up.**
+4. **At-rule state model follow-up.**
    - Goal: define the smallest side-state shape that could replace derived
      at-rule surfaces for prepared name/prelude/body data without mutating the
      source node.
    - Required proof: at-rule source-isolation tests plus nested at-rule,
      hoist-to-root, and root-only output guards.
+
+5. **Call resolve-surface first deletion slice.**
+   - Goal: find one `deriveResolveSurface()` path that can be replaced by
+     direct evaluated output or a tiny local state record without touching
+     metadata `rawArgs`.
+   - Required proof: dynamic/fallback call tests plus source parentage guards.
+
+6. **Condition/default guard render allocation audit.**
+   - Goal: decide whether render-time `Bool` allocations in conditions/default
+     guards are semantic or can reuse/directly stream boolean output.
+   - Required proof: condition/default guard direct and buffer render tests.
+
+7. **At-rule prepare-registration derivation audit.**
+   - Goal: split at-rule name/body registration prep surfaces into semantic
+     isolation versus removable derived wrappers.
+   - Required proof: at-rule source-isolation tests and root-only/hoist guards.
 
 ## Backlog
 
@@ -402,10 +376,10 @@ These are remaining architecture themes and supporting guard work, not the
 current top-priority queue. Promote one only after turning it into a concrete
 checkpoint.
 
-- **Regression guard scans.** Keep the recent declaration, source-output,
-  resolved-output, context-dependent source override, expression-like
-  delegation, and Less parser type-frontier scans available as proof when a
-  single-pass checkpoint touches those surfaces.
+- **Regression guard scans.** Keep the recent declaration, bridge-removal,
+  context-dependent source override, expression-like delegation, and Less
+  parser type-frontier scans available as proof when a single-pass checkpoint
+  touches those surfaces.
 - **Typed node structural frontier.** Continue splitting the remaining
   `tsc --noEmit` failures by node-family shape, but do not let type cleanup
   displace runtime node-creation reduction unless it directly unlocks a

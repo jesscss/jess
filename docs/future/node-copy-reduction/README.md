@@ -101,7 +101,8 @@ later serializer can walk it.
   static/source serializer. It does not call `resolve()` or serialize an
   evaluated wrapper. Nodes whose output depends on context must override
   `render(...)`, choose the evaluated value locally, and serialize that value
-  through the same print-state machinery. Expression-like native render
+  through the protected `renderOutput(...)` / `renderSource(...)` base
+  primitives. Expression-like native render
   overloads must also await async child resolution instead of falling back to
   authored syntax; direct string render and buffer render should choose the
   same evaluated value. Static or source-only nodes should use the base render
@@ -111,7 +112,7 @@ later serializer can walk it.
   invisible side-effect nodes must override when evaluation still needs to run.
 - `Collection` and `RawRules` are intentional source-only exceptions because
   they inherit from context-dependent `Rules`; they delegate to base
-  `Node.render(...)` rather than the generic source-output helper directly.
+  `Node.render(...)`.
 - `Reference.render(...)` follows that rule by evaluating the reference locally
   and then rendering the referenced node through its native render path,
   including async referenced values. Do not turn references back into "eval
@@ -124,16 +125,19 @@ later serializer can walk it.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated
   rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
   delegates to that body's native render path.
-- `renderRulesContainerOutput(...)` is the shared adapter for evaluated
-  at-rule/ruleset container output. Keep it limited to print-state and buffer
-  plumbing around `serializeRulesContainer(...)`; do not grow it into a
-  general render wrapper.
+- There is no shared at-rule/ruleset render bridge anymore. `AtRule.render(...)`
+  and `Ruleset.render(...)` call `serializeRulesContainer(...)` directly with
+  active render print state.
 - `Block.render(...)` and `List.render(...)` resolve local child values, then
   serialize through their native block/list syntax printers. They do not use
   the generic source-output bridge as a completed-output serializer.
 - `Sequence.render(...)` follows the same local-syntax rule for resolved
   sequences, while delegating non-sequence resolved outputs to that node's
   native render path.
+- Expression, wrapper, selector, interpolation, and URL render paths choose
+  their local output and then call the base `renderOutput(...)` primitive. The
+  old resolved-output adapter is gone; do not recreate a generic "resolved
+  value, now serialize" bridge outside the node inheritance model.
 - Plain CSS calls render their arguments/content natively. Direct and buffer
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through

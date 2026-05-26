@@ -9,10 +9,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable, pipe } from '@jesscss/awaitable-pipe';
-import {
-  renderResolvedOutput,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
 // Placeholder that's very unlikely to appear in user strings
@@ -177,7 +174,7 @@ export class Interpolated<
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveValue(context),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => this.renderOutput(context, node, bufferOrOptions, options)
     );
   }
 

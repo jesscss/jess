@@ -4,10 +4,7 @@ import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation, type TreeC
 import type { Context } from '../context.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
-import {
-  renderResolvedOutput,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 
 export type QuotedOptions = {
   quote?: '"' | '\'';
@@ -76,7 +73,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.evaluateValue(context, 'resolve'),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => this.renderOutput(context, node, bufferOrOptions, options)
     );
   }
 

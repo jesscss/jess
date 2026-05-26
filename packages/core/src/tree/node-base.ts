@@ -1170,6 +1170,14 @@ export abstract class Node<
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
+    return this.renderSource(context, bufferOrOptions, options);
+  }
+
+  protected renderSource(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
     const prepared = buffer
@@ -1179,6 +1187,20 @@ export abstract class Node<
     return buffer
       ? writeRenderText(buffer, out)
       : out;
+  }
+
+  protected renderOutput(
+    context: Context,
+    node: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (node === this) {
+      return this.renderSource(context, bufferOrOptions, options);
+    }
+    return isRenderBuffer(bufferOrOptions)
+      ? node.render(context, bufferOrOptions, options)
+      : node.render(context, bufferOrOptions);
   }
 
   /**

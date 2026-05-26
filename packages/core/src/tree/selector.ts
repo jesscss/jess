@@ -4,10 +4,7 @@ import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
-import {
-  renderResolvedOutput,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 import type { PrintOptions } from './util/print.js';
 
 const { isArray } = Array;
@@ -135,7 +132,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveForRender(context),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => this.renderOutput(context, node, bufferOrOptions, options)
     );
   }
 

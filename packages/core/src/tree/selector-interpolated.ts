@@ -5,10 +5,7 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
 import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
-import {
-  renderResolvedOutput,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
   eval(context: Context): MaybePromise<Selector>;
@@ -60,7 +57,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
       () => this.resolveValue(context),
-      node => renderResolvedOutput(context, this, node, bufferOrOptions, options)
+      node => this.renderOutput(context, node, bufferOrOptions, options)
     );
   }
 

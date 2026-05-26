@@ -164,53 +164,6 @@ export function prepareBufferPrintState(context: Context, options?: PrintOptions
   return prepareRenderPrintState(context, detached);
 }
 
-/**
- * Serialize an already-source-owned node surface through render print state.
- *
- * This is the base `Node.render(...)` path and the fallback for node kinds
- * whose evaluated output is still intentionally their own source syntax. Do
- * not use it as a generic "eval completed, now serialize" bridge.
- */
-function renderSourceOutput(
-  context: Context,
-  node: RenderableOutput,
-  bufferOrOptions?: RenderBuffer | PrintOptions,
-  options?: PrintOptions
-): string {
-  const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-  const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
-  const prepared = buffer
-    ? prepareBufferPrintState(context, options)
-    : prepareRenderPrintState(context, printOptions);
-  const out = node.toTrimmedString(prepared);
-  return buffer
-    ? writeRenderText(buffer, out)
-    : out;
-}
-
-/**
- * Serialize a caller's local eval/resolve result.
- *
- * Expression-like nodes use this after they have chosen a resolved output. If
- * that output is a different node with native buffer render, delegate to it so
- * render stays linear. If evaluation stayed on the same finalized syntax
- * surface, source serialization is the correct fallback.
- */
-export function renderResolvedOutput(
-  context: Context,
-  source: RenderableOutput,
-  resolved: RenderableOutput,
-  bufferOrOptions?: RenderBuffer | PrintOptions,
-  options?: PrintOptions
-): MaybePromise<string> {
-  if (resolved === source || !hasNativeBufferRender(resolved)) {
-    return renderSourceOutput(context, resolved, bufferOrOptions, options);
-  }
-  return isRenderBuffer(bufferOrOptions)
-    ? resolved.render(context, bufferOrOptions, options)
-    : resolved.render(context, bufferOrOptions);
-}
-
 export function renderInvisibleEffect(
   effect: MaybePromise<unknown>,
   bufferOrOptions?: RenderBuffer | PrintOptions

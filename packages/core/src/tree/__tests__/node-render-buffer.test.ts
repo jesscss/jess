@@ -71,10 +71,7 @@ import {
   renderInvisibleEffect,
   renderNodeToBuffer,
   renderNodeToString,
-  renderNodeToWriter,
-  renderResolvedOutput,
-  writeRenderText,
-  type RenderBuffer
+  renderNodeToWriter
 } from '../util/render-buffer.js';
 
 const asyncResolvedAdapterNode = {
@@ -127,31 +124,6 @@ class AsyncValueNode extends Node<string> {
 class RenderBufferSelector extends Selector<string> {
   override valueOf() {
     return this.value;
-  }
-}
-
-class NativeResolvedOutputNode extends Node<string> {
-  override resolve() {
-    throw new Error('resolved output helper should not resolve chosen output');
-  }
-
-  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
-  override render(context: Context, options?: PrintOptions): string;
-  override render(
-    context: Context,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): string {
-    void context;
-    void options;
-    if (bufferOrOptions && 'kind' in bufferOrOptions) {
-      writeRenderText(bufferOrOptions, 'native-output');
-    }
-    return 'native-output';
-  }
-
-  override toTrimmedString() {
-    throw new Error('resolved output helper should use native render for chosen outputs');
   }
 }
 
@@ -293,17 +265,6 @@ describe('renderNodeToBuffer', () => {
     expect(syncBuffer.parts).toEqual([]);
     expect(asyncBuffer.parts).toEqual([]);
     expect(rejectedBuffer.parts).toEqual([]);
-  });
-
-  it('renders chosen resolved output through native render when it is not the source node', () => {
-    const context = new Context();
-    const source = any('source');
-    const resolved = new NativeResolvedOutputNode('resolved');
-    const buffer = createRenderBuffer('flat');
-
-    expect(renderResolvedOutput(context, source, resolved)).toBe('native-output');
-    expect(renderResolvedOutput(context, source, resolved, buffer)).toBe('native-output');
-    expect(buffer.parts).toEqual(['native-output']);
   });
 
   it('uses native root render without consulting public resolve', () => {
