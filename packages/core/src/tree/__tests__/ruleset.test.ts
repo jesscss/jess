@@ -144,6 +144,58 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders already evaluated rulesets without re-entering eval', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const evald = await node.eval(context);
+    const originalEval = evald.eval;
+    let evalCalls = 0;
+    evald.eval = function countEvalCalls(
+      this: typeof evald,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    await expect(Promise.resolve(evald.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(evalCalls).toBe(0);
+  });
+
+  it('renders registration-prepared rulesets without deriving another prep surface', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const prepared = await node.prepareRegistration(context);
+    const originalPrepareRegistration = prepared.prepareRegistration;
+    let prepareCalls = 0;
+    prepared.prepareRegistration = function countPrepareCalls(
+      this: typeof prepared,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    await expect(Promise.resolve(prepared.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(prepareCalls).toBe(0);
+  });
+
   it('renders nil-selector rulesets through the native body render path', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })

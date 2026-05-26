@@ -47,6 +47,9 @@ current state, immediate queue, and verification commands.
 - `Ruleset.render(...)` no longer uses the generic source-output render bridge.
   It serializes evaluated rulesets through container output and delegates
   nil-selector body output to native `Rules.render(...)`.
+- `Ruleset.render(...)` reuses already evaluated rulesets and
+  registration-prepared ruleset surfaces. Direct unevaluated render still
+  prepares/evals an isolated ruleset surface.
 - Nil-selector ruleset render has focused coverage proving the evaluated body
   is rendered through native `Rules.render(...)` for direct and buffer output.
 - Evaluated at-rule/ruleset render no longer goes through
@@ -247,7 +250,7 @@ to stay.
 | --- | --- | --- |
 | `Rules.render(...)` source roots | Public compile renders already evaluated roots; registration-prepared roots are reused. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
 | `AtRule.render(...)` | Reuses evaluated/prepared at-rule surfaces when available; direct unevaluated render still derives before eval for compatibility. | Split required body/prelude mutation from direct unevaluated compatibility rendering. |
-| `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
+| `Ruleset.render(...)` | Reuses evaluated/prepared ruleset surfaces; unevaluated rulesets still prepare/eval an isolated surface, evaluated rulesets serialize directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one isolated declaration surface for assignment/name prep and value/important mutation; true non-declaration outputs delegate to native render. | Keep source isolation unless a new state model replaces preparation mutation. |
 | Function/mixin argument metadata | Plain JS calls pass direct args; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
@@ -285,14 +288,7 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Ruleset evaluated render reuse proof.**
-   - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
-     evaluated rulesets should serialize the existing surface, while direct
-     unevaluated compatibility rendering stays isolated.
-   - Required proof: focused ruleset render/buffer tests and call-count guard
-     proving evaluated render does not re-enter eval.
-
-2. **Resolved-output wrapper narrowing.**
+1. **Resolved-output wrapper narrowing.**
    - Goal: inspect the remaining wrapper-like helper callers
      (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
      remove the adapter only where the evaluated output cannot be the same
@@ -300,39 +296,46 @@ backlog below.
    - Required proof: focused direct/buffer parity tests for each changed node
      family and helper call-site scan.
 
-3. **Selector ownership model follow-up.**
+2. **Selector ownership model follow-up.**
    - Goal: design a smaller generated-selector ownership model only if it can
      preserve canonical source child parentage without per-constructor
      copy-with-reusable-leaves scaffolding.
    - Required proof: the existing selector parentage tests plus new tests for
      whichever constructor path changes.
 
-4. **Mixin output wrapper surface audit.**
+3. **Mixin output wrapper surface audit.**
    - Goal: inspect `createDerivedRulesSurface(...)`, `ensureOuterRules(...)`,
      and mixin output grouping wrappers for carrier-only containers now that
      argument binding itself is classified.
    - Required proof: focused mixin output/guard tests plus materialization and
      node-copy frontier scans.
 
-5. **Call dynamic resolve-surface audit.**
+4. **Call dynamic resolve-surface audit.**
    - Goal: inspect whether `deriveResolveSurface()` is still required for
      non-string call names after direct buffer delegation, especially optional
      fallback calls and referenced JS functions.
    - Required proof: focused call fallback/dynamic tests and source-parent
      assertions before removing any copy.
 
-6. **Rules direct unevaluated render compatibility audit.**
+5. **Rules direct unevaluated render compatibility audit.**
    - Goal: decide whether direct unevaluated `Rules.render(...)` should stay as
      a compatibility API or move to an explicit helper so production render has
      no hidden derive path.
    - Required proof: direct node render tests, public compiler render tests,
      and a call-site scan.
 
-7. **Declaration prep state model follow-up.**
+6. **Declaration prep state model follow-up.**
    - Goal: revisit declaration preparation only if a future state model can hold
      assignment/name prep without mutating a declaration surface.
    - Required proof: the current declaration source-isolation tests plus
      assignment merge/conditional assignment coverage.
+
+7. **Ruleset generated body/selector carrier audit.**
+   - Goal: inspect remaining ruleset generated selector/body surfaces after
+     evaluated/prepared render reuse, especially `ownSelector` metadata and
+     child-rule registration surfaces.
+   - Required proof: focused ruleset parentage/header tests and node-creation
+     audit before/after.
 
 ## Backlog
 

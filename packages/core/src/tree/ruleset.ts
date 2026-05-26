@@ -597,13 +597,27 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);
     };
+    const evalForRender = (): MaybePromise<Node> => {
+      if (this.evaluated) {
+        return this;
+      }
+      return this.registrationPrepared
+        ? this.eval(context)
+        : this.evalPrepared(context);
+    };
     return pipe(
-      () => this.evalPrepared(context),
+      evalForRender,
       renderEvaluated
     );
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    if (this.evaluated) {
+      return this;
+    }
+    if (this.registrationPrepared) {
+      return this.eval(context);
+    }
     return this.evalPrepared(context);
   }
 
