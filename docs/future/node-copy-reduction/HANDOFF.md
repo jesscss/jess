@@ -301,6 +301,8 @@ current state, immediate queue, and verification commands.
   canonical source rules without deriving an eval surface. Direct render still
   uses the compatibility eval surface because buffer render preserves trailing
   rule separators that raw source body serialization trims.
+- Registration-prepared `Rules.resolve(...)` now reuses the prepared surface
+  instead of deriving another root before eval, matching the render fast path.
 - The generated selector / mixin output-slot / dynamic call / at-rule state
   spike entries have been collapsed into implementation slices. The design
   targets are already documented here and in the README; future queue items
@@ -366,7 +368,7 @@ to stay.
 
 | Surface | Current shape | Next proof |
 | --- | --- | --- |
-| `Rules.render(...)` source roots | Public compile renders already evaluated roots; registration-prepared roots are reused. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests; static `Rules.resolve(...)` reuses the source. | Keep this compatibility path isolated; do not treat it as the production compile target. |
+| `Rules.render(...)` source roots | Public compile renders already evaluated roots; registration-prepared roots are reused by render and resolve. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests; static `Rules.resolve(...)` reuses the source. | Keep this compatibility path isolated; do not treat it as the production compile target. |
 | `AtRule.render(...)` | Reuses evaluated/prepared/static at-rule surfaces when available; direct dynamic unevaluated render still derives before eval through the named compatibility branch. | Split required body/prelude mutation from direct dynamic unevaluated compatibility rendering. |
 | `Ruleset.render(...)` | Reuses evaluated/prepared ruleset surfaces; unevaluated rulesets still prepare/eval an isolated surface, evaluated rulesets serialize directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one isolated declaration surface for assignment/name prep and value/important mutation; true non-declaration outputs delegate to native render. | Keep source isolation unless a new state model replaces preparation mutation. |

@@ -3445,6 +3445,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.evaluated || this.hasFlag(F_STATIC)) {
       return this;
     }
+    if (this.registrationPrepared) {
+      return this.eval(context);
+    }
     return this.derive().eval(context);
   }
 }

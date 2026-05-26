@@ -235,6 +235,28 @@ describe('Rules', () => {
     expect(node.evaluated).toBe(false);
   });
 
+  it('resolves registration-prepared rules without deriving another root surface', async () => {
+    const source = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+    const prepared = await source.prepareRegistration(context);
+    const originalDerive = prepared.derive;
+    let deriveCalls = 0;
+    prepared.derive = function countDeriveCalls(
+      this: typeof prepared,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    const resolved = await prepared.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('color: red;');
+    expect(deriveCalls).toBe(0);
+  });
+
   it('handles charset output-order bookkeeping without child registration prep', async () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
     charset.prepareRegistration = () => {
