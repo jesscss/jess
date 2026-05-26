@@ -48,6 +48,10 @@ current state, immediate queue, and verification commands.
 - `AtRule.render(...)` now reuses an already evaluated at-rule directly and
   uses a registration-prepared at-rule surface when available. The remaining
   direct unevaluated render path still derives before eval for compatibility.
+- `AtRule.render(...)` now names that compatibility branch as
+  `evalForRender(...)`. Direct unevaluated at-rule render is an isolated
+  direct-node/debug path; public compiler render enters through evaluated
+  `Rules` output.
 - `Ruleset.render(...)` no longer uses the generic source-output render bridge.
   It serializes evaluated rulesets through container output and delegates
   nil-selector body output to native `Rules.render(...)`.
@@ -307,7 +311,7 @@ to stay.
 | Surface | Current shape | Next proof |
 | --- | --- | --- |
 | `Rules.render(...)` source roots | Public compile renders already evaluated roots; registration-prepared roots are reused. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests. | Keep this compatibility path isolated; do not treat it as the production compile target. |
-| `AtRule.render(...)` | Reuses evaluated/prepared at-rule surfaces when available; direct unevaluated render still derives before eval for compatibility. | Split required body/prelude mutation from direct unevaluated compatibility rendering. |
+| `AtRule.render(...)` | Reuses evaluated/prepared at-rule surfaces when available; direct unevaluated render still derives before eval through the named compatibility branch. | Split required body/prelude mutation from direct unevaluated compatibility rendering. |
 | `Ruleset.render(...)` | Reuses evaluated/prepared ruleset surfaces; unevaluated rulesets still prepare/eval an isolated surface, evaluated rulesets serialize directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one isolated declaration surface for assignment/name prep and value/important mutation; true non-declaration outputs delegate to native render. | Keep source isolation unless a new state model replaces preparation mutation. |
 | Function/mixin argument metadata | Plain JS calls pass direct args; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
@@ -347,50 +351,50 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **At-rule direct render compatibility audit.**
-   - Goal: classify the remaining unevaluated `AtRule.render(...)` derive path
-     the same way as `Rules.render(...)`, separating production evaluated output
-     from direct node API compatibility.
-   - Required proof: focused at-rule render tests, public compiler render
-     coverage when relevant, and a call-site scan.
-
-2. **Declaration prepared-state design checkpoint.**
+1. **Declaration prepared-state design checkpoint.**
    - Goal: if declaration prep is revisited, design the smallest side-state
      shape for prepared name/assignment data before touching code.
    - Required proof: source-isolation tests plus merged assignment and custom
      property render tests.
 
-3. **Ruleset generated-state design checkpoint.**
+2. **Ruleset generated-state design checkpoint.**
    - Goal: design the smallest state object that could replace `ownSelector`
      metadata copies while preserving source parentage, extend matching, and
      header rendering.
    - Required proof: ruleset header/cache tests plus selector parentage guards.
 
-4. **Syntax-wrapper same-node render branch.**
+3. **Syntax-wrapper same-node render branch.**
    - Goal: replace `renderResolvedOutput(...)` for `Paren`, `Quoted`, `Url`,
      `Operation`, `Interpolated`, and selector wrappers only if each node can
      keep its same-node source syntax fallback locally without recursion.
    - Required proof: direct/buffer parity and source-parent tests for every
      changed wrapper family.
 
-5. **Generated selector state spike.**
+4. **Generated selector state spike.**
    - Goal: prototype one non-production helper or failing test that demonstrates
      how generated selector state would preserve source parentage without owned
      child copies.
    - Required proof: no behavior change unless the focused selector parentage
      tests prove the replacement.
 
-6. **Mixin output-slot spike.**
+5. **Mixin output-slot spike.**
    - Goal: prototype the smallest non-production output-slot type or failing
      test for replacing a generated mixin `Rules` wrapper.
    - Required proof: focused mixin output/guard/caller-fallback tests before any
      behavior change.
 
-7. **Dynamic call-state spike.**
+6. **Dynamic call-state spike.**
    - Goal: prototype a non-production state object or failing test that replaces
      one `deriveResolveSurface()` use without source arg/name reparenting.
    - Required proof: dynamic/fallback call tests plus metadata rawArgs mutation
      isolation.
+
+7. **At-rule state model follow-up.**
+   - Goal: define the smallest side-state shape that could replace derived
+     at-rule surfaces for prepared name/prelude/body data without mutating the
+     source node.
+   - Required proof: at-rule source-isolation tests plus nested at-rule,
+     hoist-to-root, and root-only output guards.
 
 ## Backlog
 

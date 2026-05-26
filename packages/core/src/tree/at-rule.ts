@@ -172,6 +172,18 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return serializeRulesContainer(this, printOptions);
   }
 
+  private evalForRender(context: Context): MaybePromise<Node> {
+    if (this.evaluated) {
+      return this;
+    }
+    if (this.registrationPrepared) {
+      return this.eval(context);
+    }
+    // Direct render on an unevaluated AtRule is a compatibility/debug API.
+    // Public compiler render enters through an evaluated root Rules container.
+    return this.deriveAtRule(this.value).eval(context);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -184,16 +196,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
     };
-    const evalForRender = (): MaybePromise<Node> => {
-      if (this.evaluated) {
-        return this;
-      }
-      return this.registrationPrepared
-        ? this.eval(context)
-        : this.deriveAtRule(this.value).eval(context);
-    };
     return pipe(
-      evalForRender,
+      () => this.evalForRender(context),
       (node) => {
         if (node instanceof Nil) {
           return '';
