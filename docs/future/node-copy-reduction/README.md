@@ -158,6 +158,9 @@ later serializer can walk it.
   `deriveResolveSurface()`, not a new render helper. Do not replace the
   derived surface with direct source-call eval unless the replacement preserves
   source `evaluated` state and keeps metadata `rawArgs` mutation isolated.
+  Metadata functions evaluate params from their owned arg surface; dynamic
+  render/resolve still needs a narrower post-name state slice before the
+  copied call surface can shrink safely.
 - `packages/core/src/define-function.ts` is no longer blocked by unrelated
   focused lint debt. Function argument-surface work should keep metadata access
   typed and avoid rebuilding unused validation paths.
@@ -205,8 +208,9 @@ These are architectural seams, not a live ordered queue. Use
    `this.args()`, preprocessing, lazy params, validation, and
    `@arguments`-style behavior. That retained surface protects the canonical
    call argument list from user-code mutation through `this.rawArgs`. Plain
-   functions should keep receiving positional args directly, and `Call` should
-   not pre-copy metadata args before handing them to `callWithContext(...)`.
+   functions should keep receiving positional args directly. The remaining
+   call work is the dynamic render/resolve pre-copy before callable-name
+   dispatch, not another rawArgs surface inside `callWithContext(...)`.
 4. **Context shadow state**: the frame model is a kept part of the target
    architecture. Audit this seam for redundant save/restore, stale aliases, or
    overly broad context mutation; do not replace `liveSlotsByName`,

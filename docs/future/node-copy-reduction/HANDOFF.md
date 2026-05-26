@@ -276,12 +276,15 @@ current state, immediate queue, and verification commands.
   "spike".
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
   functions keep one owned raw/callback arg-list surface because `this.rawArgs`
-  is a documented mutable runtime API; `Call` no longer creates a second
-  pre-copy before `callWithContext(...)`.
+  is a documented mutable runtime API. `callWithContext(...)` now evaluates
+  metadata params from that owned arg surface, not from the source call args.
+  Dynamic render/resolve can still create a pre-call copied call surface before
+  the callable name is known; that is the next call-state slice.
 - Function/mixin argument-surface audit is current. Plain positional JS
   function calls pass their argument containers directly. Metadata-backed
   functions keep one owned `rawArgs` list because `this.rawArgs` is mutable
-  user-code API surface; focused tests prove both sides of that split.
+  user-code API surface; focused tests prove both sides of that split and that
+  metadata param evaluation uses the owned list.
 - Mixin argument binding audit is current. Param/default/rest/`@arguments`
   binding uses live `ScopeFrame` slots and `cloneBoundValue(...)` only owns
   non-reusable bound values; focused tests cover scalar reuse, container
@@ -348,10 +351,10 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
 container, source-output, and resolved-output helper counts are now zero in
-production. The current audit still shows `new-node: 301` and 42
-render-context node-creation surfaces. The Paren default-guard render cleanup
-is a runtime allocation reduction on an uncounted path, not a static audit
-count change.
+production. The current audit shows `new-node: 291`, with method-context
+hotspots concentrated in `evalNode`, `render`, `resolve`, and
+`prepareRegistration`. The audit now ignores commented-out code and tracks
+method bodies instead of letting overload signatures poison later lines.
 
 ## Immediate Queue
 
@@ -393,12 +396,15 @@ backlog below.
      the full copied resolve surface while preserving fallback output.
    - Required proof: dynamic/fallback call tests plus source parentage guards.
 
-6. **Call post-name plain JS arg-state slice.**
-   - Goal: split the first safe post-name branch inside dynamic calls: plain
-     positional JS function calls should not need the same state surface as
-     metadata-backed `rawArgs` calls once the callable name is known.
-   - Required proof: plain positional JS function tests, metadata rawArgs
-     mutation isolation, source call `evaluated` state, and fallback output.
+6. **Call dynamic render/resolve pre-copy slice.**
+   - Goal: split the first safe dynamic render/resolve branch after callable
+     name evaluation. Plain positional JS functions and metadata-backed
+     functions should not both pay for the same copied `Call` surface when
+     `callWithContext(...)` already owns metadata args.
+   - Required proof: direct render, buffer render, and resolve tests for plain
+     positional JS functions, metadata rawArgs mutation isolation, source call
+     `evaluated` state, source arg parentage/evaluation state, and fallback
+     output.
 
 7. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic

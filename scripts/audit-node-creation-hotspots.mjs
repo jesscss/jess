@@ -50,14 +50,41 @@ function methodContext(line) {
   return undefined;
 }
 
+function braceDelta(line) {
+  return (line.match(/\{/gu)?.length ?? 0) - (line.match(/\}/gu)?.length ?? 0);
+}
+
 const matches = [];
 for (const file of walk(treeDir)) {
   const relative = path.relative(rootDir, file);
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/u);
   let currentMethod = 'module';
+  let pendingMethod;
+  let methodDepth = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    currentMethod = methodContext(line) ?? currentMethod;
+    const trimmed = line.trim();
+    let openedMethodThisLine = false;
+    const nextMethod = methodContext(line);
+    if (nextMethod) {
+      pendingMethod = nextMethod;
+    }
+    if (pendingMethod && line.includes('{')) {
+      currentMethod = pendingMethod;
+      pendingMethod = undefined;
+      methodDepth = braceDelta(line);
+      openedMethodThisLine = true;
+    }
+    if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
+      if (currentMethod !== 'module' && !openedMethodThisLine) {
+        methodDepth += braceDelta(line);
+        if (methodDepth <= 0) {
+          currentMethod = 'module';
+          methodDepth = 0;
+        }
+      }
+      continue;
+    }
     for (const { name, pattern } of patterns) {
       if (pattern.test(line)) {
         matches.push({
@@ -67,6 +94,15 @@ for (const file of walk(treeDir)) {
           method: currentMethod,
           text: line.trim()
         });
+      }
+    }
+    if (currentMethod !== 'module') {
+      if (!openedMethodThisLine) {
+        methodDepth += braceDelta(line);
+      }
+      if (methodDepth <= 0) {
+        currentMethod = 'module';
+        methodDepth = 0;
       }
     }
   }

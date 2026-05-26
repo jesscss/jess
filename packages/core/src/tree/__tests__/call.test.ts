@@ -824,6 +824,40 @@ describe('Call', () => {
     expect(originalArgs.parent).toBe(rule);
   });
 
+  it('evaluates metadata JS function params from the owned arg surface', async () => {
+    let receivedArg: Sequence | undefined;
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'inspect-owned',
+      fn: defineFunction(
+        'inspect-owned',
+        async function(value: Sequence) {
+          receivedArg = value;
+          return any(value !== originalValue ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const rule = call({
+      name: ref({ key: 'inspect-owned' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(receivedArg).toBeDefined();
+    expect(receivedArg).not.toBe(originalValue);
+    expect(originalValue.evaluated).toBe(false);
+    expect(originalValue.parent).toBe(originalArgs);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
   it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

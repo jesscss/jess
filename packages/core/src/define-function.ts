@@ -355,6 +355,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   } else {
     originalArgsList = new List(args.map(arg => isNode(arg) ? copyWithReusableLeaves(arg) : arg));
   }
+  args = [...originalArgsList.value];
 
   const params = runtimeFn.options?.params;
   const options = runtimeFn.options;
