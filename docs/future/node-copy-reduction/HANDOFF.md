@@ -378,10 +378,10 @@ surfaces so the next pass attacks the largest honest runtime paths first.
 Current top files by static surface count:
 
 1. `packages/core/src/tree/rules.ts`
-2. `packages/core/src/tree/declaration.ts`
-3. `packages/core/src/tree/call.ts`
-4. `packages/core/src/tree/import-style.ts`
-5. `packages/core/src/tree/dimension.ts`
+2. `packages/core/src/tree/call.ts`
+3. `packages/core/src/tree/declaration.ts`
+4. `packages/core/src/tree/dimension.ts`
+5. `packages/core/src/tree/import-style.ts`
 6. `packages/core/src/tree/at-rule.ts`
 7. `packages/core/src/tree/reference.ts`
 8. `packages/core/src/tree/ampersand.ts`
@@ -390,10 +390,12 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
 container, source-output, and resolved-output helper counts are now zero in
-production. The current audit shows `new-node: 291`, with method-context
-hotspots concentrated in `evalNode`, `render`, `resolve`, and
-`prepareRegistration`. The audit now ignores commented-out code and tracks
-method bodies instead of letting overload signatures poison later lines.
+production. The current audit shows `new-node: 291`, `derive: 42`,
+`with-surface: 39`, `copy-leaves: 35`, and `clone-leaves: 2`; method-context
+hotspots are concentrated in `evalNode`, with the remaining render/resolve
+derive sites limited to `Call`, `AtRule`, and `Rules`. The audit ignores
+commented-out code and tracks method bodies instead of letting overload
+signatures poison later lines.
 
 ## Immediate Queue
 
