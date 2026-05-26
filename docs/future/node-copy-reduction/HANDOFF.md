@@ -198,6 +198,10 @@ current state, immediate queue, and verification commands.
   parentage while generated wrappers own their children. Existing focused
   guards cover implicit `:is(...)` ampersands, framed ampersands,
   extend-boundary output, pseudo args, and ruleset headers.
+- Selector constructor ownership audit is current. `SelectorList`,
+  `ComplexSelector`, `CompoundSelector`, and attribute/pseudo selector output
+  still need owned changed surfaces so resolved selector render does not
+  reparent unchanged canonical selector children.
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
   functions keep one owned raw/callback arg-list surface because `this.rawArgs`
   is a documented mutable runtime API; `Call` no longer creates a second
@@ -267,52 +271,53 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Selector ownership constructor audit.**
-   - Goal: review selector `with*` constructors for unchanged-child ownership
-     copies that are still required only because constructors parent children.
-   - Required proof: focused selector parentage tests before changing any
-     constructor ownership rule.
-
-2. **Mixin argument binding surface audit.**
+1. **Mixin argument binding surface audit.**
    - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
      `@arguments` construction for avoidable copies now that function-call
      surfaces are classified.
    - Required proof: focused mixin argument tests plus node-copy frontier scan.
 
-3. **Call dynamic render surface reduction.**
+2. **Call dynamic render surface reduction.**
    - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
      resolve paths, and remove copies that are only protecting source syntax
      when native render can stream the result directly.
    - Required proof: focused call dynamic-name direct/buffer tests and
      source-parent assertions.
 
-4. **Unevaluated `Rules.render(...)` compatibility narrowing.**
+3. **Unevaluated `Rules.render(...)` compatibility narrowing.**
    - Goal: keep direct unevaluated `Rules.render(...)` support only where node
      tests or public API compatibility require it, and avoid adding new
      production callers.
    - Required proof: call-site scan plus focused `Rules` render tests.
 
-5. **Declaration preparation derivation audit.**
+4. **Declaration preparation derivation audit.**
    - Goal: inspect the remaining `Declaration.prepareRegistration(...)`
      derivation and assignment-normalization node creation, separating required
      lookup identity mutation from output-only carrier surfaces.
    - Required proof: focused assignment merge/conditional assignment tests plus
      node-creation audit before/after output.
 
-6. **Ruleset evaluated render reuse proof.**
+5. **Ruleset evaluated render reuse proof.**
    - Goal: mirror the at-rule proof for `Ruleset.render(...)`: already
      evaluated rulesets should serialize the existing surface, while direct
      unevaluated compatibility rendering stays isolated.
    - Required proof: focused ruleset render/buffer tests and call-count guard
      proving evaluated render does not re-enter eval.
 
-7. **Resolved-output wrapper narrowing.**
+6. **Resolved-output wrapper narrowing.**
    - Goal: inspect the remaining wrapper-like helper callers
      (`Negative`, `Expression`, `Paren`, `Quoted`, `Url`, `JsExpression`) and
      remove the adapter only where the evaluated output cannot be the same
      source syntax surface.
    - Required proof: focused direct/buffer parity tests for each changed node
      family and helper call-site scan.
+
+7. **Selector ownership model follow-up.**
+   - Goal: design a smaller generated-selector ownership model only if it can
+     preserve canonical source child parentage without per-constructor
+     copy-with-reusable-leaves scaffolding.
+   - Required proof: the existing selector parentage tests plus new tests for
+     whichever constructor path changes.
 
 ## Backlog
 
