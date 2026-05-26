@@ -3442,6 +3442,9 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    if (this.evaluated || this.hasFlag(F_STATIC)) {
+      return this;
+    }
     return this.derive().eval(context);
   }
 }

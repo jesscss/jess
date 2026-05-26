@@ -216,6 +216,25 @@ describe('Rules', () => {
     expect(deriveCalls).toBe(0);
   });
 
+  it('resolves static rules without deriving another root surface', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const originalDerive = node.derive;
+    let deriveCalls = 0;
+    node.derive = function countDeriveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    expect(node.resolve(context)).toBe(node);
+    expect(deriveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+  });
+
   it('handles charset output-order bookkeeping without child registration prep', async () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
     charset.prepareRegistration = () => {
