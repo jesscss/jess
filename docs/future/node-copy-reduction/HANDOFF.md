@@ -94,9 +94,9 @@ current state, immediate queue, and verification commands.
   or unused validation paths.
 - `renderEvalOutput(...)`, `writeRootAwareEvalOutput(...)`, and
   `renderChosenOutput(...)` are gone. Current local eval/resolve render paths
-  use native streaming or `renderSourceOutput(...)`.
+  use native streaming or native source serialization.
 - Remaining `renderSourceOutput(...)` sites are classified:
-  - base `Node.render(...)` is source serialization infrastructure;
+  - `renderSourceOutput(...)` is private to `tree/util/render-buffer.ts`;
   - `renderResolvedOutput(...)` is the narrow adapter for a caller that has
     already chosen an evaluated output node and needs native render delegation
     when that output is not the source node;
@@ -105,9 +105,10 @@ current state, immediate queue, and verification commands.
 - Render helper placement remains in `tree/util/render-buffer.ts` because the
   helper depends only on context, print state, and buffer shapes. Do not move it
   into a node module that would require importing evaluated node classes.
-- Current production `renderSourceOutput(...)` call sites are: base
-  `Node.render(...)` and the internal same-node fallback inside
-  `renderResolvedOutput(...)`.
+- Current production `renderSourceOutput(...)` call sites are private to
+  `tree/util/render-buffer.ts`: the internal same-node fallback inside
+  `renderResolvedOutput(...)`. Base `Node.render(...)` owns source
+  serialization directly.
 - Final expression-like helper audit is complete: keep
   `renderResolvedOutput(...)` as the single local-eval output adapter. It exists
   only to delegate different resolved nodes to their native render path and to
@@ -121,9 +122,9 @@ current state, immediate queue, and verification commands.
   render and buffer render for expression/wrapper nodes choose the same locally
   evaluated output, including async expression-like cases covered by
   `node-render-buffer.test.ts`.
-- Base source render helper boundary audit is complete: keep
-  `renderSourceOutput(...)` only for source-owned syntax and explicit
-  source-output fallbacks, not generic evaluated output serialization.
+- Base source render helper boundary audit is complete: base `Node.render(...)`
+  owns source serialization directly; `renderSourceOutput(...)` is no longer a
+  public helper surface.
 - Base source subclasses audit is complete: no redundant source-only subclass
   render override remains. `Comment`, `Any`, `Anonymous`, `Nil`, and `Rest`
   use inherited base source render; `Combinator` rides the selector render path.
@@ -134,9 +135,8 @@ current state, immediate queue, and verification commands.
   context-dependent base like `Rules`. Base render owns the same
   invisible/full-render gate as source serialization.
 - `Collection` and `RawRules` are the remaining intentional source-only
-  overrides because they inherit from context-dependent `Rules`; both now
-  delegate explicitly to base `Node.render(...)` instead of calling
-  `renderSourceOutput(...)` directly.
+  overrides because they inherit from context-dependent `Rules`; both delegate
+  explicitly to base `Node.render(...)`.
 - Context-dependent source override regression audit is current:
   `Collection` and `RawRules` are still the only source-only subclasses that
   use `Node.prototype.render.call(...)` to opt out of inherited `Rules.render`.
@@ -252,52 +252,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Helper bridge deletion pass.**
-   - Goal: remove or narrow `renderSourceOutput(...)`,
-     `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
-     wrapper helpers once their remaining callers have been reduced or proven.
-   - Required proof: helper call-site scans plus focused direct/buffer render
-     parity tests.
-
-2. **Unevaluated `Rules.render(...)` compatibility audit.**
+1. **Unevaluated `Rules.render(...)` compatibility audit.**
    - Goal: decide whether unevaluated root/body render still needs to derive
      before eval, or whether all production callers can render only evaluated
      rules.
    - Required proof: public output API call graph plus focused root/body render
      tests.
 
-3. **Declaration eval `with*` surface reduction.**
+2. **Declaration eval `with*` surface reduction.**
    - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
      `withImportant(...)` surfaces where the evaluated value can be streamed or
      represented as narrow runtime state instead of another declaration node.
    - Required proof: focused declaration merge/interpolation/custom-property
      tests plus node-creation audit before/after output.
 
-4. **At-rule/ruleset derived surface proof.**
+3. **At-rule/ruleset derived surface proof.**
    - Goal: now that the container helper is gone, prove which remaining
      at-rule/ruleset derived surfaces are mutation isolation versus serializer
      carriers, then reduce only the latter.
    - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
      before/after, and parentage checks for any removed surface.
 
-5. **Resolved-output helper caller audit.**
+4. **Resolved-output helper caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
      them into same-surface source syntax, native delegation, or removable
      wrapper cases.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for any changed node family.
 
-6. **Selector ownership constructor audit.**
+5. **Selector ownership constructor audit.**
    - Goal: review selector `with*` constructors for unchanged-child ownership
      copies that are still required only because constructors parent children.
    - Required proof: focused selector parentage tests before changing any
      constructor ownership rule.
 
-7. **Mixin argument binding surface audit.**
+6. **Mixin argument binding surface audit.**
    - Goal: inspect `Rules.evalCall(...)` argument binding, rest params, and
      `@arguments` construction for avoidable copies now that function-call
      surfaces are classified.
    - Required proof: focused mixin argument tests plus node-copy frontier scan.
+
+7. **Call dynamic render surface reduction.**
+   - Goal: inspect `Call.deriveResolveSurface()` for dynamic-name render and
+     resolve paths, and remove copies that are only protecting source syntax
+     when native render can stream the result directly.
+   - Required proof: focused call dynamic-name direct/buffer tests and
+     source-parent assertions.
 
 ## Backlog
 

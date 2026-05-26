@@ -8,7 +8,8 @@ import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
 import {
   type PrintOptions,
-  getPrintOptions
+  getPrintOptions,
+  prepareRenderPrintState
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -17,7 +18,9 @@ import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
 import { isPlainObject } from './util/collections.js';
 import {
-  renderSourceOutput,
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -1167,7 +1170,15 @@ export abstract class Node<
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
-    return renderSourceOutput(context, this, bufferOrOptions, options);
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, printOptions);
+    const out = this.toTrimmedString(prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   /**

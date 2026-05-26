@@ -171,7 +171,7 @@ export function prepareBufferPrintState(context: Context, options?: PrintOptions
  * whose evaluated output is still intentionally their own source syntax. Do
  * not use it as a generic "eval completed, now serialize" bridge.
  */
-export function renderSourceOutput(
+function renderSourceOutput(
   context: Context,
   node: RenderableOutput,
   bufferOrOptions?: RenderBuffer | PrintOptions,
