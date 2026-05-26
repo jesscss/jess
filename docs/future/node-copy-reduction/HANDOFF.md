@@ -313,6 +313,12 @@ current state, immediate queue, and verification commands.
   functions keep one owned `rawArgs` list because `this.rawArgs` is mutable
   user-code API surface; focused tests prove both sides of that split and that
   metadata param evaluation uses the owned list.
+- Call fallback/content resolve-surface audit is current: the remaining full
+  copied `Call` surface cannot be replaced by constructing a smaller `Call`
+  that borrows source `args` or `contentNode`, because `Call` construction owns
+  child parentage. The next reduction needs a call-output state record carrying
+  evaluated/fallback name, owned raw args when required, evaluated args, content
+  output, and options without adopting canonical children.
 - Mixin argument binding audit is current. Param/default/rest/`@arguments`
   binding uses live `ScopeFrame` slots and `cloneBoundValue(...)` only owns
   non-reusable bound values; focused tests cover scalar reuse, container
@@ -397,12 +403,12 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call fallback/content resolve-surface slice.**
-   - Goal: split optional fallback and content-node dynamic calls into the
-     smallest state needed for finalized fallback syntax without a full copied
-     pre-call `Call` surface.
-   - Required proof: direct render, buffer render, resolve, source parentage,
-     source evaluated-state, optional fallback output, and content-node output.
+1. **Call output-state first implementation slice.**
+   - Goal: introduce the smallest non-node call-output state needed to replace
+     one `deriveResolveSurface()` path without constructing a partial `Call`
+     that borrows canonical children.
+   - Required proof: selected direct render, buffer render, resolve, source
+     parentage, source evaluated-state, and existing metadata/fallback guards.
 
 2. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic

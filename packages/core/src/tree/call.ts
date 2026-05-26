@@ -108,6 +108,9 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   private deriveResolveSurface(): Call {
+    // Do not replace this with a smaller Call that borrows source args/content.
+    // Constructing a Call adopts child parents; the next reduction needs a
+    // call-output state record rather than another partially owned node.
     const name = typeof this.value.name === 'string'
       ? this.value.name
       : copyWithReusableLeaves(this.value.name);
