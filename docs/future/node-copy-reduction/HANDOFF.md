@@ -177,6 +177,11 @@ current state, immediate queue, and verification commands.
   `:is(...)`, pseudo args, framed ampersands, and ruleset headers. Keep owned
   placement surfaces only where parentage/visibility tests prove they are
   semantic.
+- Generated selector/output ownership audit is current. The remaining owned
+  selector placements are not just serializer carriers: they preserve source
+  parentage while generated wrappers own their children. Existing focused
+  guards cover implicit `:is(...)` ampersands, framed ampersands,
+  extend-boundary output, pseudo args, and ruleset headers.
 - Function-call cleanup keeps plain positional JS args canonical. Metadata
   functions keep one owned raw/callback arg-list surface because `this.rawArgs`
   is a documented mutable runtime API; `Call` no longer creates a second
@@ -207,7 +212,7 @@ to stay.
 | `Ruleset.render(...)` | Runs `prepareRegistration(...)` + `evalNode(...)`; evaluated rulesets call `serializeRulesContainer(...)` directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals a declaration surface; true non-declaration outputs delegate to native render. | Reduce `withValue(...)` / `withImportant(...)` eval surfaces where semantic state permits. |
 | Function/mixin argument metadata | Metadata-backed calls keep one owned raw/callback argument surface for mutable user-code APIs. | Keep this surface only for documented mutation APIs; plain calls should remain direct. |
-| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused cases. | Remove only with parentage/visibility/output tests. |
+| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
 
 ## Node-Creation Hotspots
 
@@ -241,54 +246,53 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Generated selector/output ownership reduction.**
-   - Goal: audit generated selector placement, extend output, `:is(...)`,
-     pseudo args, framed ampersands, and ruleset headers for avoidable owned
-     output surfaces.
-   - Required proof: parentage/visibility/output tests for each removed or kept
-     surface.
-
-2. **Function/mixin argument surface reduction.**
+1. **Function/mixin argument surface reduction.**
    - Goal: keep metadata-backed raw/callback arg ownership only where user-code
      mutation semantics require it, and ensure plain calls do not pre-copy or
      clone argument trees.
    - Required proof: focused `Call` / define-function / mixin tests and
      node-copy frontier scan.
 
-3. **Helper bridge deletion pass.**
+2. **Helper bridge deletion pass.**
    - Goal: remove or narrow `renderSourceOutput(...)`,
      `renderResolvedOutput(...)`, `renderNonDeclarationOutput(...)`, and local
      wrapper helpers once their remaining callers have been reduced or proven.
    - Required proof: helper call-site scans plus focused direct/buffer render
      parity tests.
 
-4. **Unevaluated `Rules.render(...)` compatibility audit.**
+3. **Unevaluated `Rules.render(...)` compatibility audit.**
    - Goal: decide whether unevaluated root/body render still needs to derive
      before eval, or whether all production callers can render only evaluated
      rules.
    - Required proof: public output API call graph plus focused root/body render
      tests.
 
-5. **Declaration eval `with*` surface reduction.**
+4. **Declaration eval `with*` surface reduction.**
    - Goal: reduce `Declaration.evalNode(...)` `withValue(...)` /
      `withImportant(...)` surfaces where the evaluated value can be streamed or
      represented as narrow runtime state instead of another declaration node.
    - Required proof: focused declaration merge/interpolation/custom-property
      tests plus node-creation audit before/after output.
 
-6. **At-rule/ruleset derived surface proof.**
+5. **At-rule/ruleset derived surface proof.**
    - Goal: now that the container helper is gone, prove which remaining
      at-rule/ruleset derived surfaces are mutation isolation versus serializer
      carriers, then reduce only the latter.
    - Required proof: focused at-rule/ruleset/nesting tests, node-creation audit
      before/after, and parentage checks for any removed surface.
 
-7. **Resolved-output helper caller audit.**
+6. **Resolved-output helper caller audit.**
    - Goal: inspect the remaining `renderResolvedOutput(...)` callers and split
      them into same-surface source syntax, native delegation, or removable
      wrapper cases.
    - Required proof: helper call-site scan and focused direct/buffer parity
      tests for any changed node family.
+
+7. **Selector ownership constructor audit.**
+   - Goal: review selector `with*` constructors for unchanged-child ownership
+     copies that are still required only because constructors parent children.
+   - Required proof: focused selector parentage tests before changing any
+     constructor ownership rule.
 
 ## Backlog
 
