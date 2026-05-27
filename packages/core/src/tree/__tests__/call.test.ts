@@ -986,6 +986,39 @@ describe('Call', () => {
     }
   });
 
+  it('keeps optional metadata failures on the owned rawArgs surface before rethrowing', async () => {
+    let rawArgsDuringCall: List | undefined;
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'badMeta',
+      fn: defineFunction(
+        'badMeta',
+        async function(this: { rawArgs: List }) {
+          rawArgsDuringCall = this.rawArgs;
+          this.rawArgs.value.push(any('mutated'));
+          throw new Error('bad metadata function');
+        },
+        { params: [{ name: 'value', type: Any }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalArgs = list([any('red')]);
+    const rule = call({
+      name: ref({ key: 'badMeta' }, { type: 'function', fallbackValue: true }),
+      args: originalArgs
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context))).rejects.toThrow('bad metadata function');
+
+    expect(rawArgsDuringCall).toBeDefined();
+    expect(rawArgsDuringCall).not.toBe(originalArgs);
+    expect(rawArgsDuringCall?.value).toHaveLength(2);
+    expect(originalArgs.value).toHaveLength(1);
+    expect(originalArgs.parent).toBe(rule);
+    expect(rule.evaluated).toBe(false);
+  });
+
   it('evaluates metadata JS function params from the owned arg surface', async () => {
     let receivedArg: Sequence | undefined;
     const originalValue = seq([any('red'), dimension(10, 'px')]);

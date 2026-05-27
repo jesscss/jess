@@ -335,6 +335,10 @@ current state, immediate queue, and verification commands.
   output path for render and resolve. Metadata/rawArgs functions still stay on
   the owned raw-arg surface; the fallback fast path is limited to positional
   JS functions without params metadata or internal list-arg calling.
+- Metadata function failure guard is current: params-metadata functions remain
+  on the owned `rawArgs` surface before errors rethrow, even when the call is
+  marked `silentFail`. Do not route metadata functions through the positional
+  optional fallback fast path.
 - Call fallback/content resolve-surface audit is current: the remaining full
   copied `Call` surface cannot be replaced by constructing a smaller `Call`
   that borrows source `args` or `contentNode`, because `Call` construction owns
