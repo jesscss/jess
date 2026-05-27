@@ -749,7 +749,7 @@ describe('Control Nodes', () => {
       tick: yes;
       tick: yes;
     `);
-    expect(sourcePrepCalls).toBe(2);
+    expect(sourcePrepCalls).toBe(0);
     expect(tickDecl.parent).toBe(loopRules);
   });
 

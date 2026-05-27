@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { rules, ruleset, decl, sel, el, spaced } from '../index.js';
 import { Context } from '../../context.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { F_STATIC } from '../node.js';
 
 describe('Basic Ruleset Rendering', () => {
   let context: Context;
@@ -63,6 +64,48 @@ describe('Basic Ruleset Rendering', () => {
         color: red;
       }
     `);
+  });
+
+  it('renders plain static root rules without deriving an eval surface', () => {
+    const node = rules([
+      decl({ name: 'color', value: spaced([el('red')]) })
+    ]);
+    const deriveSpy = vi.spyOn(node, 'derive');
+    const evalSpy = vi.spyOn(node, 'eval');
+
+    expect(node.hasFlag(F_STATIC)).toBe(true);
+    expect(node.render(context)).toBeString(`
+      color: red;
+    `);
+    expect(deriveSpy).not.toHaveBeenCalled();
+    expect(evalSpy).not.toHaveBeenCalled();
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(node.value[0]!.parent).toBe(node);
+  });
+
+  it('keeps static fragment string and buffer render separators without deriving', () => {
+    const node = rules([
+      decl({ name: 'color', value: spaced([el('red')]) }),
+      decl({ name: 'background', value: spaced([el('blue')]) })
+    ]);
+    const deriveSpy = vi.spyOn(node, 'derive');
+    const buffer = createRenderBuffer('flat');
+
+    expect(node.hasFlag(F_STATIC)).toBe(true);
+    expect(node.render(context)).toBeString(`
+      color: red;
+      background: blue;`
+    );
+    expect(node.render(context, buffer)).toBeString(`
+      color: red;
+      background: blue;
+    `);
+    expect(buffer.parts.join('')).toBeString(`
+      color: red;
+      background: blue;
+    `);
+    expect(deriveSpy).not.toHaveBeenCalled();
   });
 
   it('resolves a root rules container without touching render state', async () => {

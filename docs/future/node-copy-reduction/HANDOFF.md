@@ -73,10 +73,13 @@ truth, the immediate pop queue, and verification.
   state args. Already-evaluated finalized call output is marked before native
   render so optional fallback calls do not re-enter name evaluation.
 - Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
-  before final string/buffer emission. It still evaluates an owned Rules
-  surface for compatibility, but root/fragment separator behavior is now
-  explicit state instead of loose `derive().eval(...)` output. Do not blindly
-  route static `Rules.resolve(...)` through that state: static resolve is
+  before final string/buffer emission. Plain static rule-leaf bodies now
+  serialize the canonical source rules without deriving/evaling, matching the
+  identity side of static `Rules.resolve(context)` while preserving
+  root/fragment separator behavior. Broader static Rules can still need
+  rules-level eval for nesting, hoists, controls, and declaration merges, so
+  they stay on the compatibility surface. Do not blindly route static
+  `Rules.resolve(...)` through that state: static resolve is
   identity-preserving, while static direct render still has body-fragment
   serializer semantics.
 - Generated `:is(...)` pseudo rendering now has a
@@ -254,6 +257,15 @@ eval-context count for hot-path movement.
   through `RulesRenderState` breaks static body-fragment render semantics, so
   the next Rules work must split static identity resolve from direct
   body-fragment serialization before deleting the compatibility surface.
+- Plain static direct `Rules.render(...)` narrowing is done. Plain declaration
+  leaf roots/fragments now render from the canonical source Rules without
+  deriving/evaling, and focused coverage proves root output, fragment string
+  trimming, buffer separator preservation, no derive/eval calls, loop-body
+  reuse without registration prep, source child parentage, and unchanged
+  static resolve behavior. Broader static Rules still eval when they may carry
+  nesting, hoists, controls, or declaration merges. Audit counts are unchanged
+  because this narrows a runtime branch rather than deleting the remaining
+  compatibility derive site.
 - Generated pseudo placement queue item was audited. The only proven fact is
   still single-selector-list wrapper omission for generated `:is(...)`. No
   visibility, extend metadata, or composed-header fact should be added until a
@@ -299,16 +311,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Narrow direct unevaluated `Rules.render(...)` without changing static resolve.**
-
-   - Goal: make `RulesRenderState` able to narrow direct unevaluated render
-     without changing `Rules.resolve(context)` identity for static nodes or
-     buffer-vs-string separator behavior for fragments.
-   - Required proof: static resolve identity, fragment separator trimming,
-     flat-buffer separators, registration-prepared roots, and source child
-     parentage.
-
-2. **Prove or reject selector placement metadata for generated pseudo output.**
+1. **Prove or reject selector placement metadata for generated pseudo output.**
 
    - Goal: add a focused selector-shape test for one candidate fact
      (visibility, extend metadata, or composed-header cache) and only then move
@@ -317,7 +320,7 @@ family can be audited and reduced.
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
-3. **Reduce one selector-family `inherit(...)` cluster.**
+2. **Reduce one selector-family `inherit(...)` cluster.**
 
    - Goal: choose one selector family (`CompoundSelector`, `ComplexSelector`,
      `SelectorList`, or generated pseudo extend output), classify every
@@ -326,7 +329,7 @@ family can be audited and reduced.
      focused output coverage for each touched node family, and audit delta or
      explicit ownership-boundary blocker.
 
-4. **Use `DeclarationEvalState` to remove one declaration derive surface.**
+3. **Use `DeclarationEvalState` to remove one declaration derive surface.**
 
    - Goal: move either assignment normalization or value/important finalization
      onto `DeclarationEvalState` so one current declaration derive path can be
@@ -335,7 +338,7 @@ family can be audited and reduced.
      important flags, declaration-name interpolation, nil declaration output,
      and source parentage.
 
-5. **Add import placement/comment state and delete the clone-leaves site.**
+4. **Add import placement/comment state and delete the clone-leaves site.**
 
    - Goal: model first-use import-local placement state, including direct
      comment children, so the remaining `cloneChildrenWithReusableLeaves(...)`
@@ -344,7 +347,7 @@ family can be audited and reduced.
      import direct comments, repeated import parentage, imported mixin/ruleset
      lookup, and `clone-leaves` audit delta.
 
-6. **Move dynamic call name copying into a narrower state-owned rule.**
+5. **Move dynamic call name copying into a narrower state-owned rule.**
 
    - Goal: prove which dynamic call names truly need an owned eval node after
      the copied fallback `Call` surface was deleted. Preserve-rules-like
@@ -354,7 +357,7 @@ family can be audited and reduced.
      metadata functions, recursive/detached call names, source name parentage,
      and no OOM/regression in the full call suite.
 
-7. **Split the remaining at-rule isolation surface by responsibility.**
+6. **Split the remaining at-rule isolation surface by responsibility.**
 
    - Goal: after final body output moved to side-state, classify the remaining
      derived at-rule wrapper responsibilities into prelude evaluation, body
@@ -364,6 +367,17 @@ family can be audited and reduced.
      root-only keyframes/font-face, layer names, extend chaining across
      at-rules, source prelude/body parentage, and Less all-less media/import
      fixtures.
+
+7. **Split non-static direct `Rules.render(...)` from public `Rules.resolve(...)`.**
+
+   - Goal: after static render narrowing, classify the remaining non-static
+     direct-render derive surface into registration prep, body-fragment
+     serialization, and public resolve compatibility; delete or narrow any
+     branch that can use state-owned render output without changing
+     `Rules.resolve(context)`.
+   - Required proof: dynamic declarations, control nodes, registration retry,
+     direct root/fragment render, buffer render parity, source child parentage,
+     and no change to public `safeCompile(...)` tree-surface behavior.
 
 ## Backlog
 

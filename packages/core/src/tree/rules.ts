@@ -93,6 +93,23 @@ function isImportAtRule(node: Node): node is AtRule {
     && String(node.value.name.valueOf?.() ?? node.value.name ?? '').trim() === '@import';
 }
 
+function isPlainStaticRuleLeaf(node: Node): boolean {
+  if (isNode(node, N.Comment | N.Nil)) {
+    return true;
+  }
+  if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
+    return false;
+  }
+  const assign = Reflect.get(node.options, 'assign');
+  const normalizedFromAssign = Reflect.get(node.options, 'normalizedFromAssign');
+  return normalizedFromAssign === undefined
+    && (assign === undefined || assign === ':');
+}
+
+function canRenderStaticRulesDirectly(rules: Rules): boolean {
+  return rules.hasFlag(F_STATIC) && rules.value.every(isPlainStaticRuleLeaf);
+}
+
 function renderRulesToString(
   source: Rules,
   node: Node,
@@ -130,14 +147,12 @@ function writeRulesRenderOutput(
   context: Context,
   options: PrintOptions | undefined
 ): string {
+  const prepared = prepareBufferPrintState(context, options);
   return writeRenderText(
     buffer,
-    renderRulesToPreparedString(
-      source,
-      node,
-      context,
-      prepareBufferPrintState(context, options)
-    )
+    node.type === 'Rules'
+      ? node.toString(prepared)
+      : renderRulesToPreparedString(source, node, context, prepared)
   );
 }
 
@@ -1946,7 +1961,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
-    if (this.evaluated) {
+    if (this.evaluated || canRenderStaticRulesDirectly(this)) {
       return { source: this, output: this, sourceWasRoot };
     }
     if (this.registrationPrepared) {

@@ -141,6 +141,12 @@ later serializer can walk it.
   evaluate name/prelude into local render state without evaluating a derived
   at-rule surface. Leaf `resolve(...)` still returns an owned at-rule node;
   body/root-hoist at-rules still use the compatibility isolation surface.
+- Plain static direct `Rules.render(...)` is split from the compatibility path:
+  rule-leaf bodies serialize the canonical source tree without deriving/evaling.
+  Broader static Rules can still carry nesting, hoists, controls, or
+  declaration merges, so they stay on the owned eval surface until registration
+  prep, body-fragment serialization, and public resolve compatibility are
+  separated.
 - `AtRule.resolve(...)` returns static at-rules directly. Dynamic at-rules
   still derive before eval so prelude/body mutation does not touch the source.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated
