@@ -358,8 +358,9 @@ describe('Call', () => {
 
   it('renders optional non-string fallback calls through native output', async () => {
     const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
     const rule = call({
-      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      name,
       args
     }, { silentFail: true });
     rule.resolve = () => {
@@ -371,6 +372,24 @@ describe('Call', () => {
     expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
     expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
     expect(args.parent).toBe(rule);
+    expect(name.parent).toBe(rule);
+    expect(name.evaluated).toBe(false);
+    expect(rule.evaluated).toBe(false);
+  });
+
+  it('resolves optional missing dynamic function fallback without evaluating the source call surface', async () => {
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(true);
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+    expect(args.parent).toBe(rule);
+    expect(name.parent).toBe(rule);
+    expect(name.evaluated).toBe(false);
+    expect(rule.evaluated).toBe(false);
   });
 
   it('writes finalized CSS call output into segmented buffers', () => {

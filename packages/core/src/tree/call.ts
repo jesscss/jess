@@ -144,6 +144,34 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(name);
   }
 
+  private copyNameForEval(name: Node): Node {
+    return isNode(name, N.Reference) && name.options?.type === 'variable'
+      ? this.derivePreserveRulesLikeReference(name)
+      : copyWithReusableLeaves(name);
+  }
+
+  private async evalArgNodes(
+    context: Context,
+    nodes?: List<Node>,
+    options?: { preserveSourceParents?: boolean }
+  ): Promise<List<Node> | undefined> {
+    if (!nodes) {
+      return undefined;
+    }
+    const out: Node[] = [];
+    for (const node of nodes.value) {
+      const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence)
+        ? copyWithReusableLeaves(node)
+        : node;
+      const evald = await evalTarget.eval(context) as Node;
+      if (evald === node && options?.preserveSourceParents) {
+        evald.frozen = true;
+      }
+      out.push(evald);
+    }
+    return list(out, nodes.options);
+  }
+
   private markCallOutput<T extends Node>(node: T): T {
     node.inherit(this);
     if (
@@ -161,6 +189,51 @@ export class Call extends Node<CallValue, CallOptions> {
     return node;
   }
 
+  private async evalOptionalFallbackOutput(context: Context): Promise<Node | undefined> {
+    if (
+      typeof this.value.name === 'string'
+      || !this.options?.silentFail
+      || this.options?.markImportant
+      || this.value.contentNode
+    ) {
+      return undefined;
+    }
+
+    const name = this.copyNameForEval(this.value.name);
+    context.callStack.push(this);
+    context.parenFrames.push(false);
+    try {
+      let evaluatedName: unknown = await name.eval(context);
+      if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
+        evaluatedName = await evaluatedName.eval(context);
+      }
+      if (
+        isExtendedFn(isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName)
+        || isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
+        || evaluatedName instanceof MixinCollection
+        || Array.isArray(evaluatedName)
+      ) {
+        return undefined;
+      }
+      const evaluatedArgs = await this.evalArgNodes(context, this.value.args, { preserveSourceParents: true });
+      return this.markCallOutput(new Call(
+        {
+          ...this.value,
+          name: typeof evaluatedName === 'string' || evaluatedName instanceof Node
+            ? evaluatedName
+            : stringifyValueOf(evaluatedName),
+          args: evaluatedArgs
+        },
+        this._options ? { ...this._options, silentFail: false } : { silentFail: false },
+        this.location,
+        this.treeContext
+      ));
+    } finally {
+      context.parenFrames.pop();
+      context.callStack.pop();
+    }
+  }
+
   private async evalPlainDynamicFunction(context: Context): Promise<Node | undefined> {
     if (
       typeof this.value.name === 'string'
@@ -170,11 +243,7 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return undefined;
     }
-    const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference)
-      && this.value.name.options?.type === 'variable';
-    const name = preservesRulesLikeVariableTarget
-      ? this.derivePreserveRulesLikeReference(this.value.name)
-      : copyWithReusableLeaves(this.value.name);
+    const name = this.copyNameForEval(this.value.name);
     const evaluatedName = await name.eval(context);
     const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
     if (
@@ -382,8 +451,13 @@ export class Call extends Node<CallValue, CallOptions> {
           node => node
             ? this.renderOutput(context, node, bufferOrOptions, options)
             : pipe(
-                () => this.deriveResolveSurface().eval(context),
-                output => this.renderOutput(context, output, bufferOrOptions, options)
+                () => this.evalOptionalFallbackOutput(context),
+                fallback => fallback
+                  ? this.renderOutput(context, fallback, bufferOrOptions, options)
+                  : pipe(
+                      () => this.deriveResolveSurface().eval(context),
+                      output => this.renderOutput(context, output, bufferOrOptions, options)
+                    )
               )
         );
       }
@@ -407,8 +481,13 @@ export class Call extends Node<CallValue, CallOptions> {
       node => node
         ? this.renderOutput(context, node, bufferOrOptions, options)
         : pipe(
-            () => this.deriveResolveSurface().eval(context),
-            output => this.renderOutput(context, output, bufferOrOptions, options)
+            () => this.evalOptionalFallbackOutput(context),
+            fallback => fallback
+              ? this.renderOutput(context, fallback, bufferOrOptions, options)
+              : pipe(
+                  () => this.deriveResolveSurface().eval(context),
+                  output => this.renderOutput(context, output, bufferOrOptions, options)
+                )
           )
     );
   }
@@ -425,7 +504,10 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     return pipe(
       () => this.evalPlainDynamicFunction(context),
-      node => node ?? this.deriveResolveSurface().eval(context)
+      node => node ?? pipe(
+        () => this.evalOptionalFallbackOutput(context),
+        fallback => fallback ?? this.deriveResolveSurface().eval(context)
+      )
     );
   }
 
@@ -456,26 +538,6 @@ export class Call extends Node<CallValue, CallOptions> {
     let args = this.value.args;
     let markImportant = this._options?.markImportant;
     const preservesRulesLikeVariableTarget = isNode(name, N.Reference) && name.options?.type === 'variable';
-    const evalArgNodes = async (
-      nodes?: List<Node>,
-      options?: { preserveSourceParents?: boolean }
-    ) => {
-      if (!nodes) {
-        return undefined;
-      }
-      const out: Node[] = [];
-      for (const node of nodes.value) {
-        const evalTarget = options?.preserveSourceParents && isNode(node, N.List | N.Sequence)
-          ? copyWithReusableLeaves(node)
-          : node;
-        const evald = await evalTarget.eval(context) as Node;
-        if (evald === node && options?.preserveSourceParents) {
-          evald.frozen = true;
-        }
-        out.push(evald);
-      }
-      return list(out, nodes.options);
-    };
 
     context.callStack.push(this);
     context.parenFrames.push(false);
@@ -515,7 +577,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // already a MixinCollection from Reference, use as-is
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
-      const argNodes = await evalArgNodes(args) ?? list([]);
+      const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
@@ -589,7 +651,7 @@ export class Call extends Node<CallValue, CallOptions> {
           {
             ...this.value,
             name: fallbackName,
-            args: await evalArgNodes(args, { preserveSourceParents: true })
+            args: await this.evalArgNodes(context, args, { preserveSourceParents: true })
           },
           {
             ...this.options,
@@ -661,7 +723,7 @@ export class Call extends Node<CallValue, CallOptions> {
           {
             ...this.value,
             name: fallbackName,
-            args: await evalArgNodes(args, { preserveSourceParents: true })
+            args: await this.evalArgNodes(context, args, { preserveSourceParents: true })
           },
           {
             ...this.options,
@@ -679,7 +741,7 @@ export class Call extends Node<CallValue, CallOptions> {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await evalArgNodes(args, { preserveSourceParents: true });
+      const evaluatedArgs = await this.evalArgNodes(context, args, { preserveSourceParents: true });
 
       if (n === 'calc') {
         context.calcFrames--;

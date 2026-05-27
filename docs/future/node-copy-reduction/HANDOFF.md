@@ -319,6 +319,10 @@ current state, immediate queue, and verification commands.
   functions keep one owned `rawArgs` list because `this.rawArgs` is mutable
   user-code API surface; focused tests prove both sides of that split and that
   metadata param evaluation uses the owned list.
+- Optional missing dynamic function fallback now uses a narrow call-output
+  path instead of first deriving a copied source `Call` surface. It copies only
+  the dynamic name for lookup, evaluates output args with source-parent
+  preservation, and leaves the source call/name/args unevaluated and parented.
 - Call fallback/content resolve-surface audit is current: the remaining full
   copied `Call` surface cannot be replaced by constructing a smaller `Call`
   that borrows source `args` or `contentNode`, because `Call` construction owns
@@ -372,7 +376,7 @@ to stay.
 | `AtRule.render(...)` | Reuses evaluated/prepared/static at-rule surfaces when available; direct dynamic unevaluated render still derives before eval through the named compatibility branch. | Split required body/prelude mutation from direct dynamic unevaluated compatibility rendering. |
 | `Ruleset.render(...)` | Reuses evaluated/prepared ruleset surfaces; unevaluated rulesets still prepare/eval an isolated surface, evaluated rulesets serialize directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one isolated declaration surface for assignment/name prep and value/important mutation; true non-declaration outputs delegate to native render. | Keep source isolation unless a new state model replaces preparation mutation. |
-| Function/mixin argument metadata | Plain JS calls pass direct args; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
+| Function/mixin argument metadata | Plain JS calls pass direct args; optional missing dynamic function fallback skips the copied source `Call` surface; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
 
 ## Node-Creation Hotspots
@@ -411,52 +415,52 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call output-state first implementation slice.**
-   - Goal: introduce the smallest non-node call-output state needed to replace
-     one `deriveResolveSurface()` path without constructing a partial `Call`
-     that borrows canonical children.
-   - Required proof: selected direct render, buffer render, resolve, source
-     parentage, source evaluated-state, and existing metadata/fallback guards.
-
-2. **At-rule prepare-registration derivation audit.**
+1. **At-rule prepare-registration derivation audit.**
    - Goal: split at-rule name/body registration prep surfaces into semantic
      isolation versus removable derived wrappers.
    - Required proof: at-rule source-isolation tests and root-only/hoist guards.
 
-3. **Mixin output-slot replacement design slice.**
+2. **Mixin output-slot replacement design slice.**
    - Goal: after the first proof, identify the smallest wrapper responsibility
      that an output-slot record could own without changing lookup, reference,
      guard, or caller-fallback behavior.
    - Required proof: focused mixin output tests plus a written source/slot
      responsibility split before implementation.
 
-4. **Rules-like variable call state slice.**
+3. **Rules-like variable call state slice.**
    - Goal: keep detached ruleset variable calls from mutating source parents
      while shrinking the copied call/name surface that preserves lexical
      rules-like lookup.
    - Required proof: non-leaky/leaky detached ruleset call tests plus source
      parentage and caller fallback guards.
 
-5. **Call metadata state replacement slice.**
+4. **Call metadata state replacement slice.**
    - Goal: replace the metadata path's full pre-call copied `Call` surface with
      a smaller rawArgs owner only if the owned-list contract remains intact.
    - Required proof: metadata rawArgs mutation isolation across eval/render/
      resolve, metadata param evaluation from the owned arg surface, and source
      call/arg parentage guards.
 
-6. **Generated selector state model follow-up.**
+5. **Generated selector state model follow-up.**
    - Goal: reduce remaining generated selector owned-placement surfaces only
      after proving the specific placement has no unique parentage, extend,
      visibility, or render-local metadata responsibility.
    - Required proof: source selector parentage, extend matching, pseudo arg,
      framed ampersand, and ruleset header guards for the selected placement.
 
-7. **At-rule dynamic direct render compatibility follow-up.**
+6. **At-rule dynamic direct render compatibility follow-up.**
    - Goal: narrow the remaining dynamic unevaluated `AtRule.render(...)`
      compatibility derive path, or document the exact name/prelude/body mutation
      surface that still requires it.
    - Required proof: direct render, buffer render, source parentage,
      root-only/hoist behavior, and nested at-rule output guards.
+
+7. **Call optional JS failure fallback state slice.**
+   - Goal: extend the narrow fallback-output path to the optional JS-function
+     failure case, without weakening metadata/rawArgs or fallback-name behavior.
+   - Required proof: optional JS failure direct render, buffer render, resolve,
+     source call/name/arg parentage, source evaluated-state, and existing
+     metadata rawArgs guards.
 
 ## Backlog
 
