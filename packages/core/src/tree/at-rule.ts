@@ -52,6 +52,15 @@ type AtRuleBodyRegistrationContext = {
   savedRulesetFrames: Context['rulesetFrames'] | undefined;
 };
 
+type AtRuleBodyState = {
+  source: AtRule;
+  output: AtRule;
+  evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
+  hoistToRoot?: boolean;
+  frames?: AtRule['frames'];
+};
+
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
   let depth = 0;
@@ -99,6 +108,10 @@ function hasCommentChild(value: unknown): boolean {
 
 function isAtRuleValue(value: unknown): value is AtRuleValue {
   return Boolean(value && typeof value === 'object' && 'name' in value);
+}
+
+function isAtRuleBodyState(value: unknown): value is AtRuleBodyState {
+  return Boolean(value && typeof value === 'object' && 'source' in value && 'output' in value);
 }
 
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
@@ -192,7 +205,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return serializeRulesContainer(this, printOptions);
   }
 
-  private evalForRender(context: Context): MaybePromise<Node | AtRuleValue> {
+  private evalForRender(context: Context): MaybePromise<Node | AtRuleValue | AtRuleBodyState> {
     if (this.evaluated) {
       return this;
     }
@@ -207,7 +220,33 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     // Direct render on an unevaluated AtRule is a compatibility/debug API.
     // Public compiler render enters through an evaluated root Rules container.
-    return this.deriveAtRule(this.value).eval(context);
+    return this.evalBodyState(context);
+  }
+
+  private evalBodyState(context: Context): MaybePromise<AtRuleBodyState> {
+    const output = this.deriveAtRule(this.value);
+    const evaluated = output.eval(context);
+    const toState = (node: AtRule | Nil): AtRuleBodyState => {
+      if (node instanceof Nil) {
+        return {
+          source: this,
+          output,
+          hoistToRoot: output.hoistToRoot,
+          frames: output.frames
+        };
+      }
+      return {
+        source: this,
+        output: node,
+        evaluatedPrelude: node.value.prelude,
+        evaluatedBody: node.value.rules,
+        hoistToRoot: node.hoistToRoot,
+        frames: node.frames
+      };
+    };
+    return isThenable(evaluated)
+      ? evaluated.then(toState)
+      : toState(evaluated);
   }
 
   private evalLeafValue(context: Context): MaybePromise<AtRuleValue> {
@@ -295,6 +334,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
         if (node instanceof AtRule) {
           return renderEvaluatedAtRule(node);
+        }
+        if (isAtRuleBodyState(node)) {
+          return renderEvaluatedAtRule(node.output);
         }
         if (isAtRuleValue(node)) {
           return this.renderLeafValue(node, context, bufferOrOptions, options);

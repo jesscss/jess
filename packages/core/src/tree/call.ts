@@ -58,6 +58,14 @@ export type CallOptions = {
   modernSyntax?: boolean;
 };
 
+type CallEvalState = {
+  source: Call;
+  surface: Call;
+  caller?: Call;
+  markImportant?: boolean;
+  preservesRulesLikeVariableTarget: boolean;
+};
+
 /**
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.
@@ -107,13 +115,16 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(this);
   }
 
-  private deriveResolveSurface(): Call {
-    // Do not replace this with a smaller Call that borrows source args/content.
-    // Constructing a Call adopts child parents; the next reduction needs a
-    // call-output state record rather than another partially owned node.
+  private createEvalState(context: Context): CallEvalState {
+    // This is still a compatibility ownership surface. The state object is the
+    // narrow place to move fallback name/args/content and rules-like lookup
+    // facts as they stop needing an owned Call node.
+    const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference) && this.value.name.options?.type === 'variable';
     const name = typeof this.value.name === 'string'
       ? this.value.name
-      : copyWithReusableLeaves(this.value.name);
+      : preservesRulesLikeVariableTarget
+        ? this.derivePreserveRulesLikeReference(this.value.name)
+        : copyWithReusableLeaves(this.value.name);
     const args = this.value.args
       ? copyWithReusableLeaves(this.value.args)
       : undefined;
@@ -123,14 +134,28 @@ export class Call extends Node<CallValue, CallOptions> {
     if (args !== undefined && !isNode(args, N.List)) {
       throw new TypeError('Copied call arguments must remain a List');
     }
-    return this.deriveCall(
-      { name, args, contentNode },
-      this._options ? { ...this._options } : undefined
-    );
+    return {
+      source: this,
+      surface: this.deriveCall(
+        { name, args, contentNode },
+        this._options ? { ...this._options } : undefined
+      ),
+      caller: context.caller,
+      markImportant: this._options?.markImportant,
+      preservesRulesLikeVariableTarget
+    };
+  }
+
+  private evalState(context: Context): Promise<Node> {
+    const state = this.createEvalState(context);
+    return Promise.resolve(state.surface.eval(context));
   }
 
   private derivePreserveRulesLikeReference(name: Node): Node {
     if (!isNode(name, N.Reference)) {
+      return name;
+    }
+    if (name.options?.preserveRulesLike === true) {
       return name;
     }
     return new Reference(
@@ -551,7 +576,7 @@ export class Call extends Node<CallValue, CallOptions> {
                       metadataOutput => metadataOutput
                         ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
                         : pipe(
-                            () => this.deriveResolveSurface().eval(context),
+                            () => this.evalState(context),
                             output => this.renderOutput(context, output, bufferOrOptions, options)
                           )
                     )
@@ -586,7 +611,7 @@ export class Call extends Node<CallValue, CallOptions> {
                   metadataOutput => metadataOutput
                     ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
                     : pipe(
-                        () => this.deriveResolveSurface().eval(context),
+                        () => this.evalState(context),
                         output => this.renderOutput(context, output, bufferOrOptions, options)
                       )
                 )
@@ -610,7 +635,7 @@ export class Call extends Node<CallValue, CallOptions> {
         () => this.evalOptionalFallbackOutput(context),
         fallback => fallback ?? pipe(
           () => this.evalMetadataDynamicFunction(context),
-          metadataOutput => metadataOutput ?? this.deriveResolveSurface().eval(context)
+          metadataOutput => metadataOutput ?? this.evalState(context)
         )
       )
     );

@@ -57,7 +57,20 @@ truth, the immediate pop queue, and verification.
   render without invoking `AtRule.eval(...)`. Dynamic leaf `resolve(...)` now
   uses an explicit leaf-only owned result instead of the generic at-rule
   derive surface. Body/root-hoist at-rules stay on the existing isolation
-  surface.
+  surface, but direct render now routes through an `AtRuleBodyState` record so
+  registration/extend-root facts have a named place to split next.
+- Dynamic call fallback render/resolve now routes through `CallEvalState`.
+  The state still owns a compatibility `Call` surface, but the old
+  `deriveResolveSurface()` entry point is gone and rules-like variable names
+  can carry `preserveRulesLike` on the state-owned reference instead of
+  deriving a second reference during eval.
+- Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
+  before final string/buffer emission. It still evaluates an owned Rules
+  surface for compatibility, but root/fragment separator behavior is now
+  explicit state instead of loose `derive().eval(...)` output.
+- Generated `:is(...)` pseudo rendering now has a
+  `GeneratedPseudoPlacementState` prototype. It carries only source/name/arg
+  for placement rendering and must not grow into a selector AST replacement.
 - A `MixinOutputSlot` type now exists as an explicit compatibility record on
   generated mixin-output `Rules` wrappers. Slot-aware helpers cover
   `isMixinOutput` / visibility checks in `Rules`, `Reference`, serializer
@@ -108,7 +121,7 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 298`, `derive: 42`, `with-surface: 40`,
+Latest audit: `new-node: 298`, `derive: 39`, `with-surface: 40`,
 `copy-leaves: 35`, `clone-leaves: 2`, module-context count `361`.
 
 ## Completed Queue Pass
@@ -125,9 +138,9 @@ Latest audit: `new-node: 298`, `derive: 42`, `with-surface: 40`,
   children into another tree.
 - Dynamic call content/rules-like proof is done. Plain CSS content render is
   already direct; metadata calls already use one owned raw-args surface; the
-  remaining fallback path is `deriveResolveSurface()` because a `Call` node
-  adopts name/args/content children. Replace that with a call-eval state
-  record.
+  remaining fallback path now enters through `CallEvalState`, which still
+  carries a compatibility `Call` surface until fallback name/args/content and
+  rules-like lookup state are fully split.
 - Rules fragment proof is done. Direct unevaluated `Rules.render(...)` remains
   a compatibility body-fragment path; public compiler output enters through an
   evaluated root and flat buffer.
@@ -152,6 +165,19 @@ Latest audit: `new-node: 298`, `derive: 42`, `with-surface: 40`,
 - Mixin-output wrappers now carry an explicit `mixinOutputSlot` record. The
   wrapper remains the compatibility carrier, but read helpers prefer slot
   state so the next work can move more facts off ad hoc node options.
+- Initial `AtRuleBodyState` is done. Direct at-rule body render now returns a
+  state record around the compatibility output surface. The remaining work is
+  to move body registration, extend-root bookkeeping, and final render facts
+  out of that owned output at-rule.
+- Initial `CallEvalState` is done. Dynamic fallback render/resolve no longer
+  calls `deriveResolveSurface().eval(...)`, and state-owned variable names can
+  carry `preserveRulesLike` without a second reference derivation.
+- Initial `RulesRenderState` is done. Direct unevaluated rules render has an
+  explicit root/fragment state wrapper while preserving existing separator
+  behavior.
+- Generated pseudo placement-state prototype is done. The generated `:is(...)`
+  serializer special case now routes through a tiny placement state object
+  with no parallel selector tree.
 
 ## Immediate Queue
 
@@ -160,45 +186,45 @@ is completed, remove it and add or promote enough work to keep the queue full.
 If an item is too broad, replace it with the smallest honest next checkpoint
 and move the broader theme to the backlog.
 
-1. **Introduce `AtRuleBodyState`.**
+1. **Split `AtRuleBodyState` registration from render state.**
 
-   - Goal: replace the direct-render derived at-rule surface with an explicit
-     state object for evaluated prelude, evaluated body, hoist flag, frames,
-     root-only frame clearing, and extend-root registrations.
-   - Required proof: dynamic body render, root-only keyframes under a parent
-     ruleset, nested extend roots, direct/buffer parity, and source body
-     parentage/eval-state.
+   - Goal: separate body registration/extend-root bookkeeping from final
+     render placement so `AtRuleBodyState` does not stay a wrapper around a
+     fully evaluated at-rule node.
+   - Required proof: nested extend roots, layer names, root-only frame
+     clearing, direct/buffer render parity, and source body parentage.
 
-2. **Introduce `CallEvalState` for dynamic fallback calls.**
+2. **Move `CallEvalState` fallback syntax off the owned `Call` surface.**
 
-   - Goal: replace `deriveResolveSurface().eval(context)` in render/resolve
-     with a state record carrying evaluated/fallback name, args/content,
-     caller pointer, mark-important flag, and optional-fallback metadata.
+   - Goal: carry fallback name, evaluated args/content, caller pointer, and
+     mark-important state directly in `CallEvalState`, constructing a `Call`
+     only when finalized CSS call syntax is the actual output.
    - Required proof: content-node render/resolve, optional fallback, metadata
-     rawArgs isolation, source name/args/content parentage, and rules-like
-     variable calls.
+     rawArgs isolation, source name/args/content parentage, and strict-unit
+     fallback behavior.
 
-3. **Split rules-like variable call lookup from `Call` ownership.**
+3. **Finish rules-like variable call lookup state.**
 
    - Goal: move `preserveRulesLike` and caller fallback state into
-     `CallEvalState` so a copied `Reference`/`Call` is not the lookup carrier.
+     `CallEvalState` / lookup state so `Call.evalNode(...)` no longer derives
+     a preserve-rules-like `Reference` for the normal eval path.
    - Required proof: leaky/non-leaky detached ruleset calls, render/resolve
      parity, and source name eval-state.
 
-4. **Narrow direct unevaluated `Rules.render(...)`.**
+4. **Move `RulesRenderState` off the compatibility `Rules` surface.**
 
-   - Goal: decide whether the compatibility fragment path can prepare/evaluate
-     into local output state rather than `derive().eval(context)`.
+   - Goal: evaluate body children into local output state where possible
+     instead of retaining `this.derive().eval(context)` as the body-fragment
+     carrier.
    - Required proof: fragment separator trimming, flat-buffer separators,
      registration-prepared roots, static resolve identity, and source child
      parentage.
 
-5. **Prototype generated pseudo placement state.**
+5. **Expand generated pseudo placement state one step.**
 
-   - Goal: choose generated `:is(...)` pseudo arguments as the first selector
-     placement state record, carrying evaluated argument output, visibility,
-     extend metadata, and composed-header cache without reparenting source
-     selector children.
+   - Goal: add the next needed generated selector fact to
+     `GeneratedPseudoPlacementState` only if tests prove it belongs there
+     (visibility, extend metadata, or composed-header cache).
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
@@ -210,13 +236,13 @@ and move the broader theme to the backlog.
    - Required proof: source parentage/eval-state guard plus focused output
      coverage for that exact path.
 
-7. **Split `AtRuleBodyState` registration from render state.**
+7. **Reduce one remaining call eval-node fallback constructor.**
 
-   - Goal: after `AtRuleBodyState` exists, separate body registration/extend
-     root bookkeeping from final render placement so the state object does not
-     become a second at-rule AST.
-   - Required proof: nested extend roots, layer names, root-only frame
-     clearing, and direct/buffer render parity.
+   - Goal: pick either optional JS failure output or non-function dynamic
+     call output and move it behind `CallEvalState` so finalized syntax is
+     constructed once at the boundary.
+   - Required proof: optional fallback render/resolve, source args parentage,
+     and strict/loose unit mode behavior.
 
 ## Backlog
 

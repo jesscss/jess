@@ -24,6 +24,24 @@ export type PseudoSelectorValue = {
   arg?: Node;
 };
 
+type GeneratedPseudoPlacementState = {
+  source: PseudoSelector;
+  name: ':is';
+  arg: Selector;
+};
+
+function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
+  const { name, arg } = source.value;
+  if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
+    return {
+      source,
+      name,
+      arg
+    };
+  }
+  return undefined;
+}
+
 /**
  * A pseudo selector
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
@@ -35,7 +53,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const w = options.writer!;
     let { name, arg } = this.value;
     const mark = w.mark();
-    if (this.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
+    const generatedState = getGeneratedPseudoPlacementState(this);
+    if (generatedState) {
+      ({ name, arg } = generatedState);
       const argMark = w.mark();
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
