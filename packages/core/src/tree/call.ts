@@ -62,6 +62,8 @@ type CallEvalState = {
   source: Call;
   surface?: Call;
   name: string | Node;
+  args?: List<Node>;
+  contentNode?: Node;
   caller?: Call;
   markImportant?: boolean;
   preservesRulesLikeVariableTarget: boolean;
@@ -135,6 +137,8 @@ export class Call extends Node<CallValue, CallOptions> {
       return {
         source: this,
         name,
+        args: this.value.args,
+        contentNode: this.value.contentNode,
         caller: context.caller,
         markImportant: this._options?.markImportant,
         preservesRulesLikeVariableTarget
@@ -152,6 +156,8 @@ export class Call extends Node<CallValue, CallOptions> {
     return {
       source: this,
       name,
+      args,
+      contentNode,
       surface: this.deriveCall(
         { name, args, contentNode },
         this._options ? { ...this._options } : undefined
@@ -190,7 +196,7 @@ export class Call extends Node<CallValue, CallOptions> {
   ): Promise<Call> {
     const evaluatedArgs = await state.source.evalArgNodes(
       context,
-      state.source.value.args,
+      state.args,
       { preserveSourceParents: true }
     );
     return state.source.createFinalizedCallOutput(

@@ -94,6 +94,10 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 type DeclarationEvalState = {
   source: Declaration;
   output: Node;
+  name?: DeclarationValue['name'];
+  value?: Node;
+  important?: Any<'flag'>;
+  nil: boolean;
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
@@ -372,7 +376,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
     return pipe(
       () => this.evalPrepared(context),
-      output => ({ source: this, output })
+      output => ({
+        source: this,
+        output,
+        name: output instanceof Declaration ? output.value.name : undefined,
+        value: output instanceof Declaration ? output.value.value : undefined,
+        important: output instanceof Declaration ? output.value.important : undefined,
+        nil: output instanceof Nil
+      })
     );
   }
 

@@ -61,14 +61,16 @@ truth, the immediate pop queue, and verification.
   registration/extend-root facts have a named place to split next. Dynamic
   body `resolve(context)` also routes through that state seam. Nestable body
   extend-root finalization now passes through `AtRuleBodyRegistrationState`
-  rather than loose local parameters, but it still mutates the evaluated output
-  at-rule.
+  rather than loose local parameters, and that registration state is now
+  recoverable through render/resolve body state. It still mutates the evaluated
+  output at-rule.
 - Dynamic call fallback render/resolve now routes through `CallEvalState`.
-  The state can now carry just the evaluated name/final syntax facts without
-  eagerly owning args/content. Finalized fallback CSS call syntax is built at
-  one boundary, and rules-like variable `evalNode(...)` lookup also uses the
-  state-owned name. The remaining compatibility surface is the broad fallback
-  `Call` used when the whole call still needs normal `Call.eval(...)`.
+  The state carries name, args, content, caller, mark-important, and
+  rules-like variable lookup facts. Finalized fallback CSS call syntax is built
+  at one boundary using state-owned args, and rules-like variable
+  `evalNode(...)` lookup also uses the state-owned name. The remaining
+  compatibility surface is the broad fallback `Call` used when the whole call
+  still needs normal `Call.eval(...)`.
 - Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
   before final string/buffer emission. It still evaluates an owned Rules
   surface for compatibility, but root/fragment separator behavior is now
@@ -139,9 +141,10 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 296`, `derive: 36`, `with-surface: 40`,
-`copy-leaves: 35`, `clone-leaves: 2`, module-context count `361`,
-resolve-context count `1`.
+Latest audit: `new-node: 297`, `derive: 36`, `with-surface: 40`,
+`copy-leaves: 35`, `clone-leaves: 2`, module-context count `362`,
+resolve-context count `1`. The new audit entry is the module-level at-rule
+registration `WeakMap`, not a hot eval-node allocation.
 
 ## Completed Queue Pass
 
@@ -224,14 +227,19 @@ resolve-context count `1`.
   `Node.set(...)` calls are tests.
 - At-rule body registration state extraction is started. Nestable-body
   registration now has `AtRuleBodyRegistrationState` carrying `bodyToEval`,
-  `finalRules`, parent extend root, and layer name. The output at-rule still
+  `finalRules`, parent extend root, and layer name. `AtRuleBodyState` can now
+  recover that registration state after eval. The output at-rule still
   receives `value.rules = finalRules`, so the next pass must move final body
   selection/rendering off that mutation.
 - Declaration render/resolve state extraction is started. `Declaration.render`
   and `Declaration.resolve` now share `DeclarationEvalState`, keeping
   custom-property raw value serialization and merge/important behavior behind
-  one explicit seam. The declaration still derives for registration/eval
-  mutation.
+  one explicit seam. The state now carries output name/value/important/nil
+  facts, but the declaration still derives for registration/eval mutation.
+- Call fallback state extraction continued. `CallEvalState` now carries
+  name/args/content instead of making finalized fallback syntax read args from
+  `source.value`. The remaining `state.surface.eval(context)` path is still a
+  compatibility evaluator.
 - Call fallback queue item was audited. The remaining `CallEvalState.surface`
   path is not a rename target: it protects dynamic fallback name/args/content
   evaluation from mutating source containers. Removing it needs a direct
@@ -248,6 +256,10 @@ resolve-context count `1`.
   clone preserves direct comment children for repeated import placements;
   `copyWithReusableLeaves(...)` intentionally nils comments, so this stays
   until import placement/comment state exists.
+- `inherit(...)` helper-family audit was scoped. The largest cluster is
+  selector extend/placement code, where most uses construct owned generated
+  selector output. Do not count those as carrier-only without focused
+  parentage and output tests for a whole selector family.
 
 ## Immediate Queue
 
@@ -263,15 +275,16 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Move at-rule final body selection off output-at-rule mutation.**
+1. **Move at-rule final body rendering off output-at-rule mutation.**
 
    - Goal: make `AtRuleBodyState` carry final body output and registration
-     state through render/resolve without assigning `node.value.rules =
-     finalRules` as the only carrier.
+     state all the way through direct render/resolve, then serialize from that
+     state without assigning `node.value.rules = finalRules` as the only
+     carrier.
    - Required proof: nested extend roots, layer names, root-only frame
      clearing, direct/buffer render parity, and source body parentage.
 
-2. **Extract direct `CallEvalState` fallback evaluation.**
+2. **Make `Call.evalState(...)` evaluate from state-owned values.**
 
    - Goal: evaluate state-owned fallback name/args/content directly, replacing
      the remaining `state.surface.eval(context)` path without evaluating
@@ -280,7 +293,7 @@ family can be audited and reduced.
      source name/args/content parentage, referenced JS functions, optional
      fallback output, and strict-unit fallback behavior.
 
-3. **Split static Rules resolve identity from direct body-fragment render.**
+3. **Narrow direct unevaluated `Rules.render(...)` without changing static resolve.**
 
    - Goal: make `RulesRenderState` able to narrow direct unevaluated render
      without changing `Rules.resolve(context)` identity for static nodes or
@@ -289,7 +302,7 @@ family can be audited and reduced.
      flat-buffer separators, registration-prepared roots, and source child
      parentage.
 
-4. **Prove or reject the next generated pseudo placement fact.**
+4. **Prove or reject selector placement metadata for generated pseudo output.**
 
    - Goal: add a focused selector-shape test for one candidate fact
      (visibility, extend metadata, or composed-header cache) and only then move
@@ -298,25 +311,25 @@ family can be audited and reduced.
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
-5. **Audit the `inherit(...)` helper family by ownership boundary.**
+5. **Reduce one selector-family `inherit(...)` cluster.**
 
-   - Goal: classify the broad `.inherit(...)` set into source metadata
-     inheritance, generated placement ownership, and carrier-only mutation;
-     remove carrier-only uses across at least one whole node family.
+   - Goal: choose one selector family (`CompoundSelector`, `ComplexSelector`,
+     `SelectorList`, or generated pseudo extend output), classify every
+     `.inherit(...)` use in that family, and remove only carrier-only uses.
    - Required proof: source parentage/eval-state guards for removed surfaces,
      focused output coverage for each touched node family, and audit delta or
      explicit ownership-boundary blocker.
 
-6. **Move declaration assignment/value facts into `DeclarationEvalState`.**
+6. **Use `DeclarationEvalState` to remove one declaration derive surface.**
 
-   - Goal: extend the new declaration state seam so assignment normalization,
-     evaluated value, important flag, and nil result can be carried without
-     deriving a declaration surface purely for render/resolve.
+   - Goal: move either assignment normalization or value/important finalization
+     onto `DeclarationEvalState` so one current declaration derive path can be
+     deleted instead of merely observed.
    - Required proof: custom property no-space value output, property merge,
      important flags, declaration-name interpolation, nil declaration output,
      and source parentage.
 
-7. **Design import placement/comment state before deleting clone-leaves.**
+7. **Add import placement/comment state and delete the clone-leaves site.**
 
    - Goal: model first-use import-local placement state, including direct
      comment children, so the remaining `cloneChildrenWithReusableLeaves(...)`

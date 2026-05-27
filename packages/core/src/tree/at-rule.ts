@@ -69,6 +69,8 @@ type AtRuleBodyState = {
   frames?: AtRule['frames'];
 };
 
+const atRuleBodyRegistrationState = new WeakMap<AtRule, AtRuleBodyRegistrationState>();
+
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
   let depth = 0;
@@ -248,6 +250,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         output: node,
         evaluatedPrelude: node.value.prelude,
         evaluatedBody: node.value.rules,
+        registration: atRuleBodyRegistrationState.get(node),
         hoistToRoot: node.hoistToRoot,
         frames: node.frames
       };
@@ -594,6 +597,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     context.extendRoots.pushExtendRoot(registration.bodyToEval);
     context.extendRoots.popExtendRoot();
+    atRuleBodyRegistrationState.set(node, registration);
     return registration;
   }
 
