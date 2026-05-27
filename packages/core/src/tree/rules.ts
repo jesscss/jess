@@ -74,6 +74,12 @@ type RulesRenderState = {
   source: Rules;
   output: Rules;
   sourceWasRoot: boolean;
+  kind: 'direct-render';
+};
+type RulesResolveState = {
+  source: Rules;
+  output: Rules;
+  kind: 'public-resolve';
 };
 
 function isIndexedRuleChild(node: Node): boolean {
@@ -138,6 +144,23 @@ function renderRulesStateToString(
   options: PrintOptions | undefined
 ): string {
   return renderRulesToString(state.source, state.output, context, options, state.sourceWasRoot);
+}
+
+function createRulesRenderState(source: Rules, output: Rules, sourceWasRoot: boolean): RulesRenderState {
+  return {
+    source,
+    output,
+    sourceWasRoot,
+    kind: 'direct-render'
+  };
+}
+
+function createRulesResolveState(source: Rules, output: Rules): RulesResolveState {
+  return {
+    source,
+    output,
+    kind: 'public-resolve'
+  };
 }
 
 function writeRulesRenderOutput(
@@ -1962,11 +1985,11 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
     if (this.evaluated || canRenderStaticRulesDirectly(this)) {
-      return { source: this, output: this, sourceWasRoot };
+      return createRulesRenderState(this, this, sourceWasRoot);
     }
     if (this.registrationPrepared) {
       const output = this.eval(context);
-      const toState = (rules: Rules): RulesRenderState => ({ source: this, output: rules, sourceWasRoot });
+      const toState = (rules: Rules): RulesRenderState => createRulesRenderState(this, rules, sourceWasRoot);
       return isThenable(output)
         ? output.then(toState)
         : toState(output);
@@ -1974,7 +1997,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     // Direct render on an unevaluated Rules node is a compatibility/debug API.
     // Public compiler render APIs evaluate the root before serialization.
     const output = this.derive().eval(context);
-    const toState = (rules: Rules): RulesRenderState => ({ source: this, output: rules, sourceWasRoot });
+    const toState = (rules: Rules): RulesRenderState => createRulesRenderState(this, rules, sourceWasRoot);
     return isThenable(output)
       ? output.then(toState)
       : toState(output);
@@ -3490,7 +3513,14 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
-    return this.derive().eval(context);
+    const output = this.derive().eval(context);
+    const toState = (rules: Rules): RulesResolveState => createRulesResolveState(this, rules);
+    const state = isThenable(output)
+      ? output.then(toState)
+      : toState(output);
+    return isThenable(state)
+      ? state.then(resolved => resolved.output)
+      : state.output;
   }
 }
 

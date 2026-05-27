@@ -152,11 +152,11 @@ Latest audit: `new-node: 297`, `derive: 35`, `with-surface: 40`,
 eval-context count `37`, resolve-context count `1`. The module count includes
 module-level state records such as the at-rule body `WeakMap`s; use the
 eval-context count for hot-path movement.
-Current working audit after the latest selector/call pass: `new-node: 298`,
-`derive: 34`, `with-surface: 40`, `copy-leaves: 31`, `clone-leaves: 2`,
-module-context count `365`, eval-context count `37`, resolve-context count
-`1`. The new node sighting is the selector-list owned-collapse proof; the
-derive/copy drops are from deleting the dynamic call broad name-copy helper.
+Current working audit after the latest eval-state pass: `new-node: 298`,
+`derive: 33`, `with-surface: 40`, `copy-leaves: 31`, `clone-leaves: 2`,
+module-context count `367`, eval-context count `34`, resolve-context count
+`1`. The derive/eval-context drops are from moving declaration eval mutation
+into state and splitting rules/at-rule/import/ampersand responsibility records.
 
 ## Completed Queue Pass
 
@@ -324,6 +324,24 @@ derive/copy drops are from deleting the dynamic call broad name-copy helper.
   surface were re-audited. Focused tests prove they still carry real behavior;
   the next queue splits those responsibilities instead of deleting wrappers by
   pattern.
+- Declaration eval mutation is now local state. `Declaration.evalNode(...)`
+  no longer derives a lazy mutation surface for value/important normalization;
+  it builds an owned declaration only when output actually changes and keeps
+  unchanged source name/value/important parented to the source declaration.
+- Import first-use placement now has an explicit `ImportPlacementState` seam.
+  The direct-comment clone-leaves site remains because repeated import
+  placements still need import-site-local parent chains and direct child
+  comments until that state can emit comments without child clones.
+- At-rule body/root-hoist responsibilities are split into named frame and
+  prelude helpers. The derived body wrapper remains, but frame clearing,
+  dynamic prelude evaluation, and body ownership now have separate seams.
+- Rules direct render and public resolve now use separate state records:
+  `direct-render` keeps fragment serializer semantics, while `public-resolve`
+  isolates the remaining non-static resolve wrapper.
+- Ampersand append output now enters through `AmpersandAppendPlacementState`,
+  with source selector, append value, output selector, and hoist placement
+  recorded at one boundary. The generated selector output is still semantic
+  until visibility/extend/composed-header facts can move to state.
 
 ## Immediate Queue
 
@@ -339,69 +357,65 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Move declaration eval mutation into `DeclarationEvalState`.**
+1. **Render declarations directly from `DeclarationEvalState`.**
 
-   - Goal: replace the current `ensureEvalSurface()` mutation path with state
-     fields for evaluated value, important flag, and nil output, then construct
-     an owned declaration only at the public `resolve(...)` boundary.
-   - Required proof: custom property raw/no-space output, property merge,
-     important propagation, declaration-name interpolation, nil output, and
-     source parentage.
+   - Goal: let render-only declaration paths serialize evaluated value state
+     without constructing an output `Declaration`; keep node output only where
+     public resolve/eval still needs a node.
+   - Required proof: custom-property raw/no-space output, interpolation,
+     merge/important behavior, nil output, source parentage, direct render,
+     buffer render, and audit delta.
 
-2. **Prototype import placement/comment state before deleting clone-leaves.**
+2. **Delete import first-use child clone with placement/comment emission.**
 
-   - Goal: create a small import-local placement record that carries direct
-     comment children and import-site parent/root facts. Only then replace the
-     first-use `cloneChildrenWithReusableLeaves(...)` site.
-   - Required proof: repeated import direct comments, reference/multiple
-     parent chains, imported mixin/ruleset lookup, compose/reference parity,
-     and `clone-leaves` audit delta.
+   - Goal: teach `ImportPlacementState` to emit direct comments and placement
+     parent/root facts without `cloneChildrenWithReusableLeaves(...)`.
+   - Required proof: repeated direct comments, reference/multiple parent
+     chains, imported lookup, compose/reference parity, and `clone-leaves`
+     audit delta.
 
-3. **Split at-rule body eval isolation from root-hoist frame clearing.**
+3. **Narrow non-static `Rules.resolve(...)` wrapper ownership.**
 
-   - Goal: keep `AtRuleBodyState`, but move root-only frame clearing into a
-     named state helper so body eval isolation and hoist frame behavior can be
-     reduced independently.
-   - Required proof: root-only keyframes/font-face, nested media in mixins,
-     layer names, extend chaining across at-rules, source body parentage, and
-     Less media/import fixtures.
+   - Goal: replace carrier-only public resolve wrappers with a prepared/evaled
+     resolve state while preserving identity for static resolve and fragment
+     semantics for direct render.
+   - Required proof: static identity resolve, dynamic declarations, nested
+     lookup, registration-prepared resolve, source parentage, and safeCompile
+     tree-surface parity.
 
-4. **Split at-rule dynamic prelude evaluation from body wrapper ownership.**
+4. **Narrow non-static `Rules.render(...)` compatibility wrapper.**
 
-   - Goal: for dynamic body at-rules, reuse the leaf prelude render/resolve
-     state path before entering body evaluation, so the remaining wrapper is
-     only about body/root-hoist ownership.
-   - Required proof: dynamic prelude variables, async prelude failure cleanup,
-     nested media in mixins, source prelude parentage, and at-rule render
-     buffer parity.
+   - Goal: render from `RulesRenderState` after registration prep without
+     building a full output `Rules` tree for carrier-only direct-render cases.
+   - Required proof: controls, hoists, declaration merges, fragment/root
+     separators, buffer parity, source parentage, and unchanged public resolve.
 
-5. **Extract a non-static `Rules.render(...)` compatibility state.**
+5. **Split at-rule wrapper into prelude/body/placement output state.**
 
-   - Goal: give direct non-static render a state record for registration prep
-     and body-fragment serialization without routing public `Rules.resolve(...)`
-     through render semantics.
-   - Required proof: dynamic declarations, control nodes, registration retry,
-     direct root/fragment render, buffer parity, source child parentage, and
-     unchanged `safeCompile(...)` tree-surface behavior.
+   - Goal: carry evaluated prelude, body output, root-hoist frame state, and
+     registration facts in side-state, constructing an owned `AtRule` only for
+     public resolve boundaries that truly need one.
+   - Required proof: dynamic preludes, root-only at-rules, nested media/mixins,
+     layers, extend chaining, source parentage, direct render, and buffer
+     render.
 
-6. **Narrow public `Rules.resolve(...)` owned-wrapper use.**
+6. **Move at-rule registration/root-hoist finalization fully to state.**
 
-   - Goal: classify which non-static resolve calls need a full owned `Rules`
-     wrapper versus a prepared/evaluated state handoff, then remove only the
-     carrier-only branch.
-   - Required proof: static identity resolve, registration-prepared resolve,
-     dynamic declaration resolve, nested rule lookup, source parentage, and no
-     change to direct render fragment semantics.
-
-7. **Audit ampersand append generated-selector ownership as a family.**
-
-   - Goal: classify append/template output in `ampersand.ts` as semantic
-     generated selector owners versus serializer carriers. Do not add placement
-     state unless it carries proven visibility, extend, or composed-header
+   - Goal: make `AtRuleBodyRegistrationState` the owner of layer/extend/root
+     finalization so the derived at-rule wrapper stops carrying registration
      facts.
-   - Required proof: appended ampersands, selector lists, interpolation
-     replacements, extend matching, generated `:is(...)`, source parentage,
-     direct/buffer render parity, and audit delta or explicit blocker.
+   - Required proof: layer names, extend-root registration, nested at-rules,
+     import/reference interactions, source body parentage, and Less fixture
+     parity.
+
+7. **Promote ampersand append placement state to the generated-selector owner.**
+
+   - Goal: move proven hoist/extend/composed-header facts for append/template
+     outputs into `AmpersandAppendPlacementState`, then delete carrier-only
+     selector wrapper construction if tests prove it is not semantic.
+   - Required proof: appended ampersands, template replacements, selector
+     lists, generated `:is(...)`, extend matching, source parentage, direct
+     render, buffer render, and audit delta or explicit blocker.
 
 ## Backlog
 

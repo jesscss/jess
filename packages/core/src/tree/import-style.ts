@@ -153,6 +153,13 @@ export type StyleImportValue = {
 export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   eval(context: Context): MaybePromise<Rules>;
 }
+
+type ImportPlacementState = {
+  source: Rules;
+  children: Node[];
+  preservesDirectCommentChildren: true;
+};
+
 /**
  * This is a generic class for:
  *   - Sass+ `@use` (for stylesheets)
@@ -207,6 +214,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
     return this.deriveRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
+  }
+
+  private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+    return {
+      source: sourceRules,
+      children: cloneChildrenWithReusableLeaves(sourceRules.value),
+      preservesDirectCommentChildren: true
+    };
+  }
+
+  private materializeImportPlacementState(state: ImportPlacementState): Rules {
+    return this.deriveRulesSurface(state.source, state.children);
   }
 
   private getPostludeNodes(postlude?: Node): Node[] {
@@ -648,7 +667,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // preparation/eval. Reusing the canonical source tree here lets the first
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
-          rules = this.deriveRulesSurface(rules, cloneChildrenWithReusableLeaves(rules.value));
+          rules = this.materializeImportPlacementState(
+            this.createFirstUseImportPlacementState(rules)
+          );
         }
 
         // Compose caching semantics:

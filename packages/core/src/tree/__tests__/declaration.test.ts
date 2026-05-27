@@ -187,6 +187,39 @@ describe('Declaration', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('evaluates declaration values without deriving a lazy eval mutation surface', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const sourceName = any('color');
+    const sourceValue = ref({ key: 'tone' }, { type: 'variable' });
+    const node = decl({
+      name: sourceName,
+      value: sourceValue
+    });
+    const originalDerive = Reflect.get(node, 'derive');
+    if (typeof originalDerive !== 'function') {
+      throw new TypeError('Expected declaration derive method');
+    }
+    let deriveCalls = 0;
+    Reflect.set(node, 'derive', function countDerive(this: unknown, ...args: unknown[]) {
+      deriveCalls++;
+      return Reflect.apply(originalDerive, this, args);
+    });
+
+    const output = await node.evalNode(context);
+
+    expect(output.toTrimmedString()).toBe('color: red');
+    expect(output).not.toBe(node);
+    expect(deriveCalls).toBe(0);
+    expect(sourceName.parent).toBe(node);
+    expect(sourceValue.parent).toBe(node);
+  });
+
   it('normalizes assignment registration without preparing value subtrees', async () => {
     const value = any('one');
     let valuePrepCalls = 0;

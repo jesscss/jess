@@ -100,6 +100,12 @@ type DeclarationEvalState = {
   nil: boolean;
 };
 
+type DeclarationValueState = {
+  value: Node;
+  important?: Any<'flag'>;
+  changed: boolean;
+};
+
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (isNode(node, N.Reference)) {
     return node.options?.type !== 'function';
@@ -534,34 +540,45 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return pipe(
       () => {
         let node = this;
-        let ownsEvalSurface = node.registrationPrepared;
-        const ensureEvalSurface = () => {
-          if (!ownsEvalSurface) {
-            node = node.derive();
-            ownsEvalSurface = true;
-          }
-          return node;
+        const state: DeclarationValueState = {
+          value: node.value.value,
+          important: node.value.important,
+          changed: false
         };
         const setVal = (newValue: Node) => {
-          if (node.value.value !== newValue) {
-            const surface = ensureEvalSurface();
-            surface.adopt(newValue);
-            surface.value.value = newValue;
+          if (state.value !== newValue) {
+            state.value = newValue;
+            state.changed = true;
           }
         };
         const setImportant = (important: Any<'flag'>) => {
-          if (node.value.important !== important) {
-            const surface = ensureEvalSurface();
-            surface.adopt(important);
-            surface.value.important = important;
+          if (state.important !== important) {
+            state.important = important;
+            state.changed = true;
           }
+        };
+        const outputDeclaration = (): this => {
+          if (!state.changed) {
+            return node;
+          }
+          const output = node.withParts({
+            name: this.copyNameForDerived(node.value.name),
+            value: state.value === node.value.value
+              ? this.copyValueForDerived(state.value)
+              : state.value,
+            important: state.important === node.value.important
+              ? this.copyImportantForDerived(state.important)
+              : state.important
+          });
+          output.registrationPrepared = node.registrationPrepared;
+          return output;
         };
         const normalizeMergedLeadingPlaceholder = () => {
           const normalizedAssign = node.options.normalizedFromAssign;
           const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(node.value.value, N.List)) {
+          if (!isListMergedAssign || !isNode(state.value, N.List)) {
             return;
           }
           const mergedItems: Node[] = [];
@@ -580,7 +597,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               mergedItems.push(child);
             }
           };
-          collect(node.value.value);
+          collect(state.value);
           if (mergedItems.length === 0) {
             setVal(new Nil());
             return;
@@ -603,7 +620,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           const isCustomProperty = name.valueOf().startsWith('--');
           if (isCustomProperty) {
             if (!shouldResolveCustomPropertyValue(value)) {
-              return node;
+              return outputDeclaration();
             }
             context.inCustom = true;
           }
@@ -616,13 +633,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               }
               setVal(newValue);
               normalizeMergedLeadingPlaceholder();
-              if (context.hasImportantSource && !node.value.important) {
+              if (context.hasImportantSource && !state.important) {
                 setImportant(any('!important', { role: 'flag' }));
               }
               if (context.hasImportantSource) {
                 context.popImportantSource();
               }
-              return node;
+              return outputDeclaration();
             });
           }
           context.inCustom = false;
@@ -634,14 +651,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           }
           setVal(maybeNewValue);
           normalizeMergedLeadingPlaceholder();
-          if (context.hasImportantSource && !node.value.important) {
+          if (context.hasImportantSource && !state.important) {
             setImportant(any('!important', { role: 'flag' }));
           }
           if (context.hasImportantSource) {
             context.popImportantSource();
           }
         }
-        return node;
+        return outputDeclaration();
       }
     ) as MaybePromise<this | Nil>;
   }

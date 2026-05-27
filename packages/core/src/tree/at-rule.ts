@@ -52,6 +52,11 @@ type AtRuleBodyRegistrationContext = {
   savedRulesetFrames: Context['rulesetFrames'] | undefined;
 };
 
+type AtRuleBodyFrameState = {
+  clearRulesetFrames: boolean;
+  restoreRulesetFrames: () => void;
+};
+
 type AtRuleBodyRegistrationState = {
   bodyToEval: Rules;
   finalRules: Rules;
@@ -99,6 +104,29 @@ function clearRulesetFramesForAtRuleBody(
   return () => {
     context.rulesetFrames = savedRulesetFrames;
   };
+}
+
+function createAtRuleBodyFrameState(node: AtRule, context: Context): AtRuleBodyFrameState {
+  let clearRulesetFrames = false;
+  if (context.bubbleRootAtRules && node.isRootOnly()) {
+    const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
+    if (hasRulesetParent) {
+      node.hoistToRoot = true;
+      clearRulesetFrames = true;
+    }
+  }
+  return {
+    clearRulesetFrames,
+    restoreRulesetFrames: () => undefined
+  };
+}
+
+function activateAtRuleBodyFrameState(
+  state: AtRuleBodyFrameState,
+  context: Context
+): () => void {
+  state.restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, state.clearRulesetFrames);
+  return state.restoreRulesetFrames;
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -283,11 +311,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!prelude) {
           return { name };
         }
-        const resolvedPrelude = withRulesContext(
-          context,
-          liftedAtRulePreludeRulesContext(context.rulesContext),
-          () => prelude.eval(context)
-        );
+        const resolvedPrelude = this.evalPreludeValue(prelude, context);
         if (isThenable(resolvedPrelude)) {
           return Promise.resolve(resolvedPrelude).then(resolved => ({ name, prelude: resolved }));
         }
@@ -296,6 +320,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           prelude: resolvedPrelude as Node
         };
       }
+    );
+  }
+
+  private evalPreludeValue(prelude: Node, context: Context): MaybePromise<Node> {
+    return withRulesContext(
+      context,
+      liftedAtRulePreludeRulesContext(context.rulesContext),
+      () => prelude.eval(context)
     );
   }
 
@@ -716,19 +748,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
 
-    // Check if this is a root-only at-rule that should bubble to root
-    // when nested inside a Ruleset. Use hoistToRoot for in-place rendering.
-    let shouldClearRulesetFrames = false;
-    if (context.bubbleRootAtRules && node.isRootOnly()) {
-      const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
-      if (hasRulesetParent) {
-        // Mark for hoisting - this will render at root level but in-place
-        node.hoistToRoot = true;
-        // We'll clear rulesetFrames when evaluating internal rules
-        // to prevent selector inheritance from piercing through
-        shouldClearRulesetFrames = true;
-      }
-    }
+    const bodyFrameState = createAtRuleBodyFrameState(node, context);
 
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
@@ -742,11 +762,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (prelude) {
           // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
           // This matches Less behavior for mixin parameters referenced from nested @media preludes.
-          const out = withRulesContext(
-            context,
-            liftedAtRulePreludeRulesContext(context.rulesContext),
-            () => prelude.eval(context)
-          );
+          const out = this.evalPreludeValue(prelude, context);
           if (isThenable(out)) {
             return Promise.resolve(out).then(
               (n) => {
@@ -809,7 +825,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 bodyToEval = resolved;
                 context.extendRoots.pushExtendRoot(bodyToEval);
                 pushedExtendRoot = true;
-                restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, shouldClearRulesetFrames);
+                restoreRulesetFrames = activateAtRuleBodyFrameState(bodyFrameState, context);
                 const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
                 let evalOut: MaybePromise<Rules>;
                 try {
@@ -855,7 +871,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // For root-only at-rules that are hoisted, clear rulesetFrames
           // so internal rulesets don't inherit parent selectors
-          restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, shouldClearRulesetFrames);
+          restoreRulesetFrames = activateAtRuleBodyFrameState(bodyFrameState, context);
 
           let out: MaybePromise<Rules>;
           try {
