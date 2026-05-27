@@ -58,19 +58,23 @@ truth, the immediate pop queue, and verification.
   uses an explicit leaf-only owned result instead of the generic at-rule
   derive surface. Body/root-hoist at-rules stay on the existing isolation
   surface, but direct render now routes through an `AtRuleBodyState` record so
-  registration/extend-root facts have a named place to split next.
+  registration/extend-root facts have a named place to split next. Nestable
+  body extend-root finalization is now one helper, not three duplicated
+  blocks, but it still mutates the evaluated output at-rule.
 - Dynamic call fallback render/resolve now routes through `CallEvalState`.
-  The state still owns a compatibility `Call` surface, but the old
-  `deriveResolveSurface()` entry point is gone and rules-like variable names
-  can carry `preserveRulesLike` on the state-owned reference instead of
-  deriving a second reference during eval.
+  The state can now carry just the evaluated name/final syntax facts without
+  eagerly owning args/content. Finalized fallback CSS call syntax is built at
+  one boundary, and rules-like variable `evalNode(...)` lookup also uses the
+  state-owned name. The remaining compatibility surface is the broad fallback
+  `Call` used when the whole call still needs normal `Call.eval(...)`.
 - Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
   before final string/buffer emission. It still evaluates an owned Rules
   surface for compatibility, but root/fragment separator behavior is now
   explicit state instead of loose `derive().eval(...)` output.
 - Generated `:is(...)` pseudo rendering now has a
   `GeneratedPseudoPlacementState` prototype. It carries only source/name/arg
-  for placement rendering and must not grow into a selector AST replacement.
+  plus the proven single-selector-list wrapper omission flag for placement
+  rendering and must not grow into a selector AST replacement.
 - A `MixinOutputSlot` type now exists as an explicit compatibility record on
   generated mixin-output `Rules` wrappers. Slot-aware helpers cover
   `isMixinOutput` / visibility checks in `Rules`, `Reference`, serializer
@@ -121,7 +125,7 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 298`, `derive: 39`, `with-surface: 40`,
+Latest audit: `new-node: 296`, `derive: 37`, `with-surface: 40`,
 `copy-leaves: 35`, `clone-leaves: 2`, module-context count `361`.
 
 ## Completed Queue Pass
@@ -178,6 +182,21 @@ Latest audit: `new-node: 298`, `derive: 39`, `with-surface: 40`,
 - Generated pseudo placement-state prototype is done. The generated `:is(...)`
   serializer special case now routes through a tiny placement state object
   with no parallel selector tree.
+- Call finalized fallback syntax extraction is done. Optional JS failure
+  output, optional non-function fallback output, and generic non-function
+  dynamic call output now construct finalized CSS call syntax through one
+  `CallEvalState` boundary without eagerly copying args/content for state-only
+  paths.
+- Rules-like variable call lookup-state extraction is done. The ordinary
+  `Call.evalNode(...)` variable-call branch now evaluates the state-owned
+  preserve-rules-like name instead of deriving that reference inline.
+- Generated pseudo placement state now carries its first proven placement fact:
+  generated `:is(...)` can omit its wrapper when a selector-list argument
+  serializes to a single selector.
+- At-rule nestable-body registration finalization is deduplicated. The
+  register/take-layer/register-inner/push-pop sequence now has one helper,
+  which is the next seam for moving registration off the evaluated output
+  at-rule.
 
 ## Immediate Queue
 
@@ -186,32 +205,25 @@ is completed, remove it and add or promote enough work to keep the queue full.
 If an item is too broad, replace it with the smallest honest next checkpoint
 and move the broader theme to the backlog.
 
-1. **Split `AtRuleBodyState` registration from render state.**
+1. **Move at-rule body registration state off the output at-rule.**
 
-   - Goal: separate body registration/extend-root bookkeeping from final
-     render placement so `AtRuleBodyState` does not stay a wrapper around a
-     fully evaluated at-rule node.
+   - Goal: move the helper-owned nestable body registration facts
+     (`bodyToEval`, `finalRules`, `layerName`, parent extend root) into an
+     explicit state record so `AtRuleBodyState` stops depending on a fully
+     evaluated at-rule as the registration carrier.
    - Required proof: nested extend roots, layer names, root-only frame
      clearing, direct/buffer render parity, and source body parentage.
 
-2. **Move `CallEvalState` fallback syntax off the owned `Call` surface.**
+2. **Move the broad `CallEvalState` fallback eval off the owned `Call` surface.**
 
-   - Goal: carry fallback name, evaluated args/content, caller pointer, and
-     mark-important state directly in `CallEvalState`, constructing a `Call`
-     only when finalized CSS call syntax is the actual output.
-   - Required proof: content-node render/resolve, optional fallback, metadata
-     rawArgs isolation, source name/args/content parentage, and strict-unit
-     fallback behavior.
+   - Goal: replace `state.surface.eval(context)` for the remaining fallback
+     path with direct state evaluation of name/args/content, preserving caller
+     and mark-important behavior.
+   - Required proof: content-node render/resolve, metadata rawArgs isolation,
+     source name/args/content parentage, referenced JS functions, and
+     strict-unit fallback behavior.
 
-3. **Finish rules-like variable call lookup state.**
-
-   - Goal: move `preserveRulesLike` and caller fallback state into
-     `CallEvalState` / lookup state so `Call.evalNode(...)` no longer derives
-     a preserve-rules-like `Reference` for the normal eval path.
-   - Required proof: leaky/non-leaky detached ruleset calls, render/resolve
-     parity, and source name eval-state.
-
-4. **Move `RulesRenderState` off the compatibility `Rules` surface.**
+3. **Move `RulesRenderState` off the compatibility `Rules` surface.**
 
    - Goal: evaluate body children into local output state where possible
      instead of retaining `this.derive().eval(context)` as the body-fragment
@@ -220,7 +232,7 @@ and move the broader theme to the backlog.
      registration-prepared roots, static resolve identity, and source child
      parentage.
 
-5. **Expand generated pseudo placement state one step.**
+4. **Add the next proven generated pseudo placement fact.**
 
    - Goal: add the next needed generated selector fact to
      `GeneratedPseudoPlacementState` only if tests prove it belongs there
@@ -228,7 +240,7 @@ and move the broader theme to the backlog.
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
-6. **Delete one hot-path mutation-helper use.**
+5. **Delete one hot-path mutation-helper use.**
 
    - Goal: pick a single `inherit(...)`, `set(...)`, or `derive*` site from
      the node-creation audit and replace it with local render/eval state or a
@@ -236,13 +248,21 @@ and move the broader theme to the backlog.
    - Required proof: source parentage/eval-state guard plus focused output
      coverage for that exact path.
 
-7. **Reduce one remaining call eval-node fallback constructor.**
+6. **Split declaration render preparation into explicit state.**
 
-   - Goal: pick either optional JS failure output or non-function dynamic
-     call output and move it behind `CallEvalState` so finalized syntax is
-     constructed once at the boundary.
-   - Required proof: optional fallback render/resolve, source args parentage,
-     and strict/loose unit mode behavior.
+   - Goal: identify the assignment/name/value/important facts currently
+     carried by the isolated declaration surface and introduce the smallest
+     render/eval state seam without changing custom-property as-authored value
+     serialization.
+   - Required proof: custom property no-space value output, property merge,
+     important flags, declaration-name interpolation, and source parentage.
+
+7. **Narrow dynamic at-rule body resolve.**
+
+   - Goal: route dynamic body `resolve(context)` through the at-rule body state
+     seam instead of directly calling `this.deriveAtRule(this.value).eval(...)`.
+   - Required proof: dynamic body resolve, nested media with mixin params,
+     root-only hoist, and source prelude/body parentage.
 
 ## Backlog
 

@@ -564,6 +564,26 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
   }
 
+  private _registerEvaluatedNestableBody(
+    node: AtRule,
+    context: Context,
+    bodyToEval: Rules,
+    finalRules: Rules,
+    parentExtendRoot?: Rules
+  ): void {
+    context.extendRoots.popExtendRoot();
+    const layerName = context.extendRoots.takeLayerName(node);
+    const parent = parentExtendRoot ?? context.root ?? undefined;
+    context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, { layerName });
+    registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
+    if (finalRules !== bodyToEval) {
+      context.extendRoots.registerRoot(finalRules, bodyToEval, { layerName });
+      registerInnerExtendRootIfHoisted(finalRules, context, layerName);
+    }
+    context.extendRoots.pushExtendRoot(bodyToEval);
+    context.extendRoots.popExtendRoot();
+  }
+
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     let { name, prelude, rules } = this.value;
@@ -776,19 +796,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                   node.value.rules = finalRules;
-                  context.extendRoots.popExtendRoot();
-                  const layerName = context.extendRoots.takeLayerName(node);
-                  const parent = parentExtendRoot ?? context.root ?? undefined;
-                  context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, {
-                    layerName
-                  });
-                  registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
-                  if (finalRules !== bodyToEval) {
-                    context.extendRoots.registerRoot(finalRules as Rules, bodyToEval, { layerName });
-                    registerInnerExtendRootIfHoisted(finalRules, context, layerName);
-                  }
-                  context.extendRoots.pushExtendRoot(bodyToEval);
-                  context.extendRoots.popExtendRoot();
+                  this._registerEvaluatedNestableBody(node, context, bodyToEval, finalRules, parentExtendRoot);
                   return node;
                 };
                 if (isThenable(evalOut)) {
@@ -834,19 +842,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               node.value.rules = finalRules;
               if (pushedExtendRoot && node.isNestable()) {
-                context.extendRoots.popExtendRoot();
-                const layerName = context.extendRoots.takeLayerName(node);
-                const parent = parentExtendRoot ?? context.root ?? undefined;
-                context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, {
-                  layerName
-                });
-                registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
-                if (finalRules !== bodyToEval) {
-                  context.extendRoots.registerRoot(finalRules as Rules, bodyToEval, { layerName });
-                  registerInnerExtendRootIfHoisted(finalRules, context, layerName);
-                }
-                context.extendRoots.pushExtendRoot(bodyToEval);
-                context.extendRoots.popExtendRoot();
+                this._registerEvaluatedNestableBody(node, context, bodyToEval, finalRules, parentExtendRoot);
               }
 
               return node;
@@ -862,17 +858,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
           node.value.rules = finalRules;
           if (pushedExtendRoot && node.isNestable()) {
-            context.extendRoots.popExtendRoot();
-            const layerName = context.extendRoots.takeLayerName(node);
-            const parent = parentExtendRoot ?? context.root ?? undefined;
-            context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, { layerName });
-            registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
-            if (finalRules !== bodyToEval) {
-              context.extendRoots.registerRoot(finalRules as Rules, bodyToEval, { layerName });
-              registerInnerExtendRootIfHoisted(finalRules, context, layerName);
-            }
-            context.extendRoots.pushExtendRoot(bodyToEval);
-            context.extendRoots.popExtendRoot();
+            this._registerEvaluatedNestableBody(node, context, bodyToEval, finalRules, parentExtendRoot);
           }
         }
         return node;

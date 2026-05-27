@@ -28,6 +28,7 @@ type GeneratedPseudoPlacementState = {
   source: PseudoSelector;
   name: ':is';
   arg: Selector;
+  omitWrapperForSingleSelectorList: boolean;
 };
 
 function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
@@ -36,7 +37,8 @@ function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseu
     return {
       source,
       name,
-      arg
+      arg,
+      omitWrapperForSingleSelectorList: isNode(arg, N.SelectorList)
     };
   }
   return undefined;
@@ -60,7 +62,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
       const out = w.getSince(argMark);
-      if (isNode(arg, N.SelectorList) && !out.includes(',')) {
+      if (generatedState.omitWrapperForSingleSelectorList && !out.includes(',')) {
         return w.getSince(mark);
       }
       w.restore(argMark);
