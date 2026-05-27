@@ -93,6 +93,35 @@ describe('AtRule', () => {
     expect(prelude.parent).toBe(node);
   });
 
+  it('derives at-rule registration prep only when child rules return a prepared replacement', async () => {
+    const sourcePrelude = seq([any('screen', { role: 'keyword' })]);
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const preparedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    sourceRules.prepareRegistration = () => preparedRules;
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+
+    const prepared = await node.prepareRegistration(context);
+
+    expect(prepared).not.toBe(node);
+    expect(prepared).toBeInstanceOf(AtRule);
+    if (!(prepared instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(prepared.value.rules).toBe(preparedRules);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(node.registrationPrepared).toBe(false);
+    expect(prepared.registrationPrepared).toBe(true);
+  });
+
   it('restores at-rule body registration context when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.parent'),

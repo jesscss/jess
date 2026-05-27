@@ -294,6 +294,10 @@ current state, immediate queue, and verification commands.
   create owned name/prelude surfaces just to suppress file trivia. The clone
   path is retained only when structural `Comment` children must be stripped
   from the temporary header string.
+- At-rule registration-prep derivation audit is current. Static/non-interpolated
+  at-rules stay canonical when body prep does not replace the body; interpolated
+  names and replacement child `Rules` prep require a derived at-rule surface so
+  prepared name/body state does not rewrite the canonical source at-rule.
 - Static at-rule direct render is source-native: unevaluated static leaf
   at-rules now render without deriving or evaluating a compatibility surface,
   matching the existing static resolve behavior.
@@ -415,52 +419,54 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **At-rule prepare-registration derivation audit.**
-   - Goal: split at-rule name/body registration prep surfaces into semantic
-     isolation versus removable derived wrappers.
-   - Required proof: at-rule source-isolation tests and root-only/hoist guards.
-
-2. **Mixin output-slot replacement design slice.**
+1. **Mixin output-slot replacement design slice.**
    - Goal: after the first proof, identify the smallest wrapper responsibility
      that an output-slot record could own without changing lookup, reference,
      guard, or caller-fallback behavior.
    - Required proof: focused mixin output tests plus a written source/slot
      responsibility split before implementation.
 
-3. **Rules-like variable call state slice.**
+2. **Rules-like variable call state slice.**
    - Goal: keep detached ruleset variable calls from mutating source parents
      while shrinking the copied call/name surface that preserves lexical
      rules-like lookup.
    - Required proof: non-leaky/leaky detached ruleset call tests plus source
      parentage and caller fallback guards.
 
-4. **Call metadata state replacement slice.**
+3. **Call metadata state replacement slice.**
    - Goal: replace the metadata path's full pre-call copied `Call` surface with
      a smaller rawArgs owner only if the owned-list contract remains intact.
    - Required proof: metadata rawArgs mutation isolation across eval/render/
      resolve, metadata param evaluation from the owned arg surface, and source
      call/arg parentage guards.
 
-5. **Generated selector state model follow-up.**
+4. **Generated selector state model follow-up.**
    - Goal: reduce remaining generated selector owned-placement surfaces only
      after proving the specific placement has no unique parentage, extend,
      visibility, or render-local metadata responsibility.
    - Required proof: source selector parentage, extend matching, pseudo arg,
      framed ampersand, and ruleset header guards for the selected placement.
 
-6. **At-rule dynamic direct render compatibility follow-up.**
+5. **At-rule dynamic direct render compatibility follow-up.**
    - Goal: narrow the remaining dynamic unevaluated `AtRule.render(...)`
      compatibility derive path, or document the exact name/prelude/body mutation
      surface that still requires it.
    - Required proof: direct render, buffer render, source parentage,
      root-only/hoist behavior, and nested at-rule output guards.
 
-7. **Call optional JS failure fallback state slice.**
+6. **Call optional JS failure fallback state slice.**
    - Goal: extend the narrow fallback-output path to the optional JS-function
      failure case, without weakening metadata/rawArgs or fallback-name behavior.
    - Required proof: optional JS failure direct render, buffer render, resolve,
      source call/name/arg parentage, source evaluated-state, and existing
      metadata rawArgs guards.
+
+7. **At-rule dynamic body/prelude render-state split.**
+   - Goal: isolate which part of direct dynamic unevaluated at-rule render still
+     needs a derived surface: prelude mutation, body mutation, hoist/root frame
+     state, or some combination.
+   - Required proof: separate dynamic-prelude, dynamic-body, and root-only
+     render/resolve guards before removing or narrowing the compatibility path.
 
 ## Backlog
 
