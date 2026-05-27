@@ -9,7 +9,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyOwnedWithReusableLeaves, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 /**
  * @example
@@ -65,6 +65,17 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       node.hoistToRoot = true;
     }
     return node.inherit(this);
+  }
+
+  private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
+    if (!sourceValue.includes(item)) {
+      return item.inherit(this);
+    }
+    const owned = copyOwnedWithReusableLeaves(item);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector copy');
+    }
+    return owned.inherit(this);
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
@@ -168,7 +179,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           return (new Nil()).inherit(this);
         }
         if (value.length === 1) {
-          return value[0]!.inherit(this) as Selector;
+          return this.collapsedSelector(value[0]!, currentValue);
         }
         const changed = (
           value.length !== currentValue.length
@@ -223,7 +234,7 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           return (new Nil()).inherit(this);
         }
         if (value.length === 1) {
-          return value[0]!.inherit(this) as Selector;
+          return this.collapsedSelector(value[0]!, currentValue);
         }
         const changed = (
           value.length !== currentValue.length

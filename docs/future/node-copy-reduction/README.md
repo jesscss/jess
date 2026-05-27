@@ -162,8 +162,8 @@ later serializer can walk it.
   derived surface with direct source-call eval unless the replacement preserves
   source `evaluated` state and keeps metadata `rawArgs` mutation isolated.
   Metadata functions evaluate params from their owned arg surface; dynamic
-  render/resolve still needs a narrower post-name state slice before the
-  copied call surface can shrink safely.
+  metadata render/resolve now skips the copied source-call surface and relies
+  on `callWithContext(...)` for the single owned `rawArgs` list.
 - `packages/core/src/define-function.ts` is no longer blocked by unrelated
   focused lint debt. Function argument-surface work should keep metadata access
   typed and avoid rebuilding unused validation paths.
@@ -211,9 +211,10 @@ These are architectural seams, not a live ordered queue. Use
    `this.args()`, preprocessing, lazy params, validation, and
    `@arguments`-style behavior. That retained surface protects the canonical
    call argument list from user-code mutation through `this.rawArgs`. Plain
-   functions should keep receiving positional args directly. The remaining
-   call work is the dynamic render/resolve pre-copy before callable-name
-   dispatch, not another rawArgs surface inside `callWithContext(...)`.
+   functions should keep receiving positional args directly. Dynamic metadata
+   render/resolve already routes through the owned `callWithContext(...)`
+   rawArgs list instead of a copied source `Call`; the remaining call work is
+   content-node and rules-like/fallback state, not another rawArgs surface.
 4. **Context shadow state**: the frame model is a kept part of the target
    architecture. Audit this seam for redundant save/restore, stale aliases, or
    overly broad context mutation; do not replace `liveSlotsByName`,
@@ -236,13 +237,15 @@ These are architectural seams, not a live ordered queue. Use
 7. **Dynamic call state**: dynamic calls still derive a call surface to protect
    source name, args, content, and optional fallback syntax while the call
    evaluates referenced functions, rules-like variables, and fallback CSS
-   function output. Plain dynamic JS functions without metadata now skip that
-   full copied call/arg surface: render/resolve evaluates only an owned dynamic
-   name and passes source args directly. The likely replacement for the
-   remaining paths is a small call-eval state record: evaluated name, evaluated
-   args/content, finalized fallback name/options, caller pointer, and
-   parent/source preservation flags. It must not expose mutable source args to
-   metadata JS functions or reparent canonical call children.
+   function output. Plain dynamic JS functions without metadata and
+   metadata-backed dynamic calls now skip that full copied call/arg surface:
+   render/resolve evaluates only an owned dynamic name, then either passes
+   source args directly or lets `callWithContext(...)` create the one owned
+   rawArgs list. The likely replacement for the remaining paths is a small
+   call-eval state record: evaluated name, evaluated args/content, finalized
+   fallback name/options, caller pointer, and parent/source preservation flags.
+   It must not expose mutable source args to metadata JS functions or reparent
+   canonical call children.
 
 ## Guardrails
 

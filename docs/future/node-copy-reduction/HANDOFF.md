@@ -284,6 +284,11 @@ current state, immediate queue, and verification commands.
   hoist/root placement, and composed-header cache. It must not become AST v2 or
   reparent source selector leaves. Until that model exists, the constructor
   ownership copies remain the safe boundary.
+- Selector collapse ownership proof is current. When `CompoundSelector` or
+  `ComplexSelector` eval/resolve collapses to one surviving source child, the
+  result must own that child instead of calling `inherit(...)` on the canonical
+  source selector. Focused tests cover unresolved-ampersand collapse for both
+  shapes and prove source parent/location state stays canonical.
 - Generated appended ampersand selector proof is current: output renders from
   the generated placement without reparenting source selector children. A later
   root extend now matches that generated appended header. The exact nested
@@ -401,7 +406,7 @@ to stay.
 | `Ruleset.render(...)` | Reuses evaluated/prepared ruleset surfaces; unevaluated rulesets still prepare/eval an isolated surface, evaluated rulesets serialize directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one isolated declaration surface for assignment/name prep and value/important mutation; true non-declaration outputs delegate to native render. | Keep source isolation unless a new state model replaces preparation mutation. |
 | Function/mixin argument metadata | Plain JS calls pass direct args; optional missing dynamic function fallback skips the copied source `Call` surface; metadata-backed dynamic render/resolve now skip the copied source `Call` too and keep only the owned raw/callback argument surface created by `callWithContext(...)` for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
-| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
+| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, selector collapse, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
 
 ## Node-Creation Hotspots
 
@@ -424,10 +429,11 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
 container, source-output, and resolved-output helper counts are now zero in
-production. The current audit shows `new-node: 293`, `derive: 42`,
+production. The current audit shows `new-node: 295`, `derive: 42`,
 `with-surface: 39`, `copy-leaves: 35`, and `clone-leaves: 2`; method-context
-hotspots are concentrated in `evalNode`, with the remaining render/resolve
-derive sites limited to `Call`, `AtRule`, and `Rules`. The audit ignores
+hotspots are concentrated in `evalNode`, module-context count is `357`, and
+the remaining render/resolve derive sites are limited to `Call`, `AtRule`, and
+`Rules`. The audit ignores
 commented-out code and tracks method bodies instead of letting overload
 signatures poison later lines.
 
@@ -439,41 +445,34 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Generated selector state model follow-up.**
-   - Goal: reduce remaining generated selector owned-placement surfaces only
-     after proving the specific placement has no unique parentage, extend,
-     visibility, or render-local metadata responsibility.
-   - Required proof: source selector parentage, extend matching, pseudo arg,
-     framed ampersand, and ruleset header guards for the selected placement.
-
-2. **At-rule dynamic direct render compatibility follow-up.**
+1. **At-rule dynamic direct render compatibility follow-up.**
    - Goal: narrow the remaining dynamic unevaluated `AtRule.render(...)`
      compatibility derive path, or document the exact name/prelude/body mutation
      surface that still requires it.
    - Required proof: direct render, buffer render, source parentage,
      root-only/hoist behavior, and nested at-rule output guards.
 
-3. **At-rule dynamic body/prelude render-state split.**
+2. **At-rule dynamic body/prelude render-state split.**
    - Goal: isolate which part of direct dynamic unevaluated at-rule render still
      needs a derived surface: prelude mutation, body mutation, hoist/root frame
      state, or some combination.
    - Required proof: separate dynamic-prelude, dynamic-body, and root-only
      render/resolve guards before removing or narrowing the compatibility path.
 
-4. **Mixin output-slot first removable field.**
+3. **Mixin output-slot first removable field.**
    - Goal: choose one field currently carried by generated mixin `Rules`
      wrappers and prove whether it belongs in a future slot record or can be
      deleted outright.
    - Required proof: focused mixin output lookup/render tests plus source body
      parentage and caller-fallback guards.
 
-5. **Call content-node fallback state slice.**
+4. **Call content-node fallback state slice.**
    - Goal: reduce the dynamic call path for calls with `contentNode` without
      constructing a full copied source call before the callable result is known.
    - Required proof: content-node render, resolve, source content parentage,
      source evaluated-state, and metadata/rawArgs guard coverage.
 
-6. **Rules-like variable call copied-call follow-up.**
+5. **Rules-like variable call copied-call follow-up.**
    - Goal: replace the remaining full copied `Call` surface used by dynamic
      render/resolve of rules-like variable calls with a narrower state record,
      now that the source-name preservation contract is pinned.
@@ -481,7 +480,7 @@ backlog below.
      resolve, source name/content parentage, source evaluated-state, and caller
      fallback guards.
 
-7. **Rules direct unevaluated render compatibility follow-up.**
+6. **Rules direct unevaluated render compatibility follow-up.**
    - Goal: keep the remaining `Rules.render(...)` direct unevaluated derive path
      isolated, and narrow or document the exact fragment/newline/registration
      reason it cannot yet stream from source state.
@@ -489,6 +488,13 @@ backlog below.
      direct node render preserves existing fragment separators, static
      `Rules.resolve(...)` remains source-native, and source children keep
      canonical parentage/eval state.
+
+7. **Selector generated-state next placement proof.**
+   - Goal: choose the next specific generated selector placement after collapse
+     ownership and prove whether its owned surface is semantic or removable.
+   - Required proof: source selector parentage plus whichever of extend matching,
+     pseudo arg, framed ampersand, visibility, or ruleset-header behavior the
+     selected placement owns.
 
 ## Backlog
 

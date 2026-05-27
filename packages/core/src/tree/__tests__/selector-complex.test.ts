@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { amp, any, attr, co, compound, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -26,6 +26,15 @@ const token = (image: string): IToken => ({
 });
 
 let context: Context;
+
+async function useEvaluatedRules(node: Rules): Promise<void> {
+  const evald = await node.eval(context);
+  if (!(evald instanceof Rules)) {
+    throw new TypeError('Expected Rules');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 describe('Complex selector', () => {
   beforeEach(() => {
@@ -62,9 +71,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
 
       const rendered = sel([
         compound([
@@ -89,9 +96,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
       const buffer = createRenderBuffer('segmented');
 
       const selectorNode = sel([
@@ -148,9 +153,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
 
       const selector = sel([
         compound([
@@ -180,9 +183,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
 
       const selector = sel([
         compound([
@@ -206,6 +207,23 @@ describe('Complex selector', () => {
       expect(sourceCombinator.parent).toBe(selector);
       expect(sourceChild.parent).toBe(selector);
       expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
+    });
+
+    test('keeps source complex child canonical when eval collapses to one selector', async () => {
+      const selector = sel([
+        amp(),
+        el('.keep')
+      ]);
+      const sourceChild = selector.value[1]!;
+      const sourceParent = sourceChild.parent;
+      const sourceLocation = sourceChild.location;
+      const resolved = await selector.eval(context);
+
+      expect(resolved.toTrimmedString()).toBe('.keep');
+      expect(resolved).not.toBe(sourceChild);
+      expect(sourceChild.parent).toBe(sourceParent);
+      expect(sourceChild.location).toBe(sourceLocation);
+      expect(selector.toTrimmedString()).toBe('&.keep');
     });
   });
 
