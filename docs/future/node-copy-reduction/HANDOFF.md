@@ -57,14 +57,14 @@ truth, the immediate pop queue, and verification.
   render without invoking `AtRule.eval(...)`. `resolve(...)` still returns an
   owned at-rule node, and body/root-hoist at-rules stay on the existing
   isolation surface.
-- Full immediate-queue pass is current. Broad queue items were reduced to the
-  next concrete deletion/proof targets: at-rule direct render must split its
-  state by responsibility; mixin output wrappers still carry real
-  scope/visibility/fallback fields; content-node and rules-like dynamic calls
-  still need a non-`Call` state record before the copied surface can go away;
-  direct unevaluated `Rules.render(...)` is still a compatibility fragment
-  path; generated selector ownership must next attack one placement; mutation
-  helper work should target one hot eval/render path at a time.
+- The broad proof queue has been processed. Current conclusions:
+  at-rule bodies/root-hoist still need explicit state before the full surface
+  can be deleted; mixin output wrappers are the current output-slot stand-in;
+  remaining dynamic-call fallback paths need a non-`Call` state record;
+  direct unevaluated `Rules.render(...)` is a compatibility fragment path;
+  generated selector ownership is semantic until a placement-state record
+  carries visibility/extend/composed-header facts; mutation-helper cleanup
+  should attack one hot path at a time.
 - Remaining broad typecheck red is separate typed-node structural debt. Do not
   let it displace runtime node-creation reduction unless it directly unlocks a
   copy/materialization deletion.
@@ -103,6 +103,36 @@ Current top surface kinds: `new` node construction, `with*` output surfaces,
 Latest audit: `new-node: 297`, `derive: 43`, `with-surface: 40`,
 `copy-leaves: 35`, `clone-leaves: 2`, module-context count `360`.
 
+## Completed Queue Pass
+
+- At-rule body/root-hoist proof is done. Focused coverage now includes direct
+  and buffer render for a dynamic body while proving the canonical prelude/body
+  remain parented to the source at-rule and unevaluated. Existing root-only
+  frame-clearing and nested extend-root tests remain the semantic blockers for
+  deleting the body/root-hoist surface.
+- Mixin output-slot proof is done. Existing tests cover repeated placement,
+  leaky/targeted lookup behavior, no source body reparenting, and no source
+  `Rules` root clone. The wrapper is still carrying real placement state, so
+  the next step is extracting an explicit slot record, not moving source body
+  children into another tree.
+- Dynamic call content/rules-like proof is done. Plain CSS content render is
+  already direct; metadata calls already use one owned raw-args surface; the
+  remaining fallback path is `deriveResolveSurface()` because a `Call` node
+  adopts name/args/content children. Replace that with a call-eval state
+  record.
+- Rules fragment proof is done. Direct unevaluated `Rules.render(...)` remains
+  a compatibility body-fragment path; public compiler output enters through an
+  evaluated root and flat buffer.
+- Selector pseudo proof is done. `:is(...)` and unknown pseudo args have source
+  serializer, parser-shape, direct render, buffer render, and extend matching
+  coverage. Generated pseudo placement still needs owned/stateful output.
+- Mutation-helper proof is done. The collapsed selector source-child bug
+  establishes the rule: never `inherit(...)` onto a canonical child. Each
+  remaining helper deletion needs focused parentage/eval-state output proof.
+- Leaf at-rule resolve proof is done. Dynamic leaf render is local; dynamic
+  leaf `resolve(...)` still returns an owned `AtRule` node to preserve the
+  public resolve contract without reparenting source name/prelude children.
+
 ## Immediate Queue
 
 This is a pop queue. Keep at least seven concrete items here. When the top item
@@ -110,68 +140,79 @@ is completed, remove it and add or promote enough work to keep the queue full.
 If an item is too broad, replace it with the smallest honest next checkpoint
 and move the broader theme to the backlog.
 
-1. **At-rule body/root-hoist state proof.**
+1. **Introduce `AtRuleBodyState`.**
 
-   - Goal: prove which body/root-hoist facts block removing the full
-     direct-render at-rule surface after prelude state is separated.
-   - Required proof: body registration/eval mutation, root-only frame clearing,
-     nested extend-root registration, and source body parentage.
+   - Goal: replace the direct-render derived at-rule surface with an explicit
+     state object for evaluated prelude, evaluated body, hoist flag, frames,
+     root-only frame clearing, and extend-root registrations.
+   - Required proof: dynamic body render, root-only keyframes under a parent
+     ruleset, nested extend roots, direct/buffer parity, and source body
+     parentage/eval-state.
 
-2. **Mixin output-slot visibility field extraction.**
+2. **Narrow dynamic leaf `AtRule.resolve(...)`.**
 
-   - Goal: pick the wrapper `rulesVisibility` / `isMixinOutput` pair and prove
-     whether it can move into output-slot state before replacing the wrapper.
-   - Required proof: untargeted lookup guard, targeted mixin-output lookup,
-     repeated placement render, and source body parentage.
+   - Goal: replace `deriveAtRule(value, sourceValue)` for leaf resolve with a
+     tiny owned leaf output path while preserving the public `Node` result.
+   - Required proof: dynamic namespace/import leaves, source name/prelude
+     parentage, no source eval-state mutation, and static leaf identity.
 
-3. **Dynamic call content-node state record proof.**
+3. **Add a `MixinOutputSlot` record beside the current wrapper.**
 
-   - Goal: introduce or prove the smallest non-`Call` state needed to evaluate
-     dynamic calls with `contentNode` without adopting source children.
-   - Required proof: content-node render, resolve, source content parentage,
-     source evaluated-state, metadata/rawArgs guard, and optional fallback
-     behavior.
+   - Goal: define the non-AST fields currently carried by generated mixin
+     `Rules` wrappers: source body, evaluated placement children, scope frame,
+     lookup visibility, mixin-output gate, reference/import flags, rule index,
+     and caller fallback.
+   - Required proof: repeated placement, leaky and non-leaky lookups, targeted
+     lookup, source body parentage, and no source root clone.
 
-4. **Rules-like variable call state record proof.**
+4. **Route mixin-output lookup through slot-aware helpers.**
 
-   - Goal: replace the remaining copied `Call` surface for rules-like variable
-     calls with a state record carrying preserve-rules-like lookup and caller
-     fallback without reparenting the source name.
-   - Required proof: non-leaky/leaky detached ruleset call tests, render,
-     resolve, source name/content parentage, source evaluated-state, and caller
-     fallback guards.
+   - Goal: move `isMixinOutput` / `rulesVisibility` reads out of scattered
+     node-option checks into a helper that can accept either current wrappers
+     or the future slot record.
+   - Required proof: `Rules.find(...)`, `Reference` lookup, and serializer
+     gating keep the current behavior.
 
-5. **Rules direct-render fragment compatibility proof.**
+5. **Introduce `CallEvalState` for dynamic fallback calls.**
 
-   - Goal: isolate the exact fragment/newline/registration reason direct
-     unevaluated `Rules.render(...)` still derives, then delete or document the
-     compatibility surface.
-   - Required proof: compiler render enters with evaluated roots, direct node
-     render preserves fragment separators, static `Rules.resolve(...)` stays
-     source-native, and source children keep canonical parentage/eval state.
+   - Goal: replace `deriveResolveSurface().eval(context)` in render/resolve
+     with a state record carrying evaluated/fallback name, args/content,
+     caller pointer, mark-important flag, and optional-fallback metadata.
+   - Required proof: content-node render/resolve, optional fallback, metadata
+     rawArgs isolation, source name/args/content parentage, and rules-like
+     variable calls.
 
-6. **Selector pseudo-argument placement proof.**
+6. **Split rules-like variable call lookup from `Call` ownership.**
 
-   - Goal: choose pseudo-argument generated selector output as the next
-     placement after collapse ownership and prove whether its owned surface is
-     semantic or removable.
-   - Required proof: `:is(...)` / unknown pseudo args, source selector
-     parentage, extend matching or visibility behavior, and direct/buffer
-     render parity.
+   - Goal: move `preserveRulesLike` and caller fallback state into
+     `CallEvalState` so a copied `Reference`/`Call` is not the lookup carrier.
+   - Required proof: leaky/non-leaky detached ruleset calls, render/resolve
+     parity, and source name eval-state.
 
-7. **Mutation-helper hot path proof.**
+7. **Narrow direct unevaluated `Rules.render(...)`.**
 
-   - Goal: pick one hot eval/render path using `inherit(...)`, `set(...)`, or a
-     derived wrapper and prove whether helper use is an ownership boundary or
-     replaceable mutation.
+   - Goal: decide whether the compatibility fragment path can prepare/evaluate
+     into local output state rather than `derive().eval(context)`.
+   - Required proof: fragment separator trimming, flat-buffer separators,
+     registration-prepared roots, static resolve identity, and source child
+     parentage.
+
+8. **Prototype generated pseudo placement state.**
+
+   - Goal: choose generated `:is(...)` pseudo arguments as the first selector
+     placement state record, carrying evaluated argument output, visibility,
+     extend metadata, and composed-header cache without reparenting source
+     selector children.
+   - Required proof: generated `:is(...)`, unknown pseudo args, extend
+     matching, source serializers, and direct/buffer render parity.
+
+9. **Delete one hot-path mutation-helper use.**
+
+   - Goal: pick a single `inherit(...)`, `set(...)`, or `derive*` site from
+     the node-creation audit and replace it with local render/eval state or a
+     proven owned result.
    - Required proof: source parentage/eval-state guard plus focused output
-     coverage for the selected path.
-
-8. **At-rule leaf resolve state follow-up.**
-   - Goal: decide whether dynamic leaf `AtRule.resolve(...)` can use a smaller
-     owned leaf output/state path than `deriveAtRule(value, sourceValue)`.
-   - Required proof: resolved node contract, source name/prelude parentage,
-     no source eval-state mutation, and static/import leaf output parity.
+     coverage for that exact path.
 
 ## Backlog
 
