@@ -14,6 +14,11 @@ import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet } from './bitset.js';
+import {
+  canSearchRulesEntry,
+  isOptionalRulesEntry,
+  isPublicRulesEntry
+} from './mixin-output-slot.js';
 
 const { isArray } = Array;
 
@@ -183,21 +188,7 @@ export abstract class Registry<
        * and before the start position (if relevant)
        */
       rulesSet = rulesSet.filter((n) => {
-        // Check RulesEntry visibility first, then fall back to the actual Rules node's visibility
-        // Rules constructor sets defaults, so visibility should always be defined
-        const entryVisibility = filterType ? n.rulesVisibility?.[filterType] : undefined;
-        const nodeVisibility = filterType ? n.node.options.rulesVisibility?.[filterType] : undefined;
-        const visibility = entryVisibility ?? nodeVisibility;
-
-        const isMixinOutput = n.node.options?.isMixinOutput === true;
-        // Mixin output Rules should never participate in untargeted lookups.
-        // They are only searchable when the lookup has an explicit target.
-        if (isMixinOutput) {
-          return options?.hasTarget === true;
-        }
-        // Otherwise, follow normal visibility rules
-        // Only 'public' and 'optional' are visible (not 'private' or undefined)
-        const isVisible = visibility === 'public' || visibility === 'optional';
+        const isVisible = canSearchRulesEntry(n, filterType, options?.hasTarget);
         /**
          * Sass `@forward`:
          * Forwarded Rules should not be visible to lookups within the current stylesheet scope
@@ -261,10 +252,7 @@ export abstract class Registry<
           // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
           let result = r.node.find(findType, key, actualChildFilterType as any, newOpts);
           if (result) {
-            // Check if this Rules has optional visibility (from RulesEntry or the actual Rules node)
-            const entryVisibility = filterType ? r.rulesVisibility?.[filterType] : undefined;
-            const nodeVisibility = filterType ? r.node.options.rulesVisibility?.[filterType] : undefined;
-            const isOptional = entryVisibility === 'optional' || nodeVisibility === 'optional';
+            const isOptional = filterType !== undefined && isOptionalRulesEntry(r, filterType);
             const optionalCandidates = options?.optionalCandidates;
 
             /**
@@ -272,7 +260,7 @@ export abstract class Registry<
              * it wins.
              * Rules constructor sets defaults, so visibility should always be defined.
              */
-            const isPublic = entryVisibility === 'public' || nodeVisibility === 'public';
+            const isPublic = filterType !== undefined && isPublicRulesEntry(r, filterType);
             if (!findAll && isPublic) {
               if (options && newOpts.readonly) {
                 options.readonly = true;

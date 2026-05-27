@@ -260,6 +260,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       : rendered;
   }
 
+  private resolveLeafValue(value: AtRuleValue): AtRule {
+    const node = new AtRule(
+      {
+        name: value.name === this.value.name ? this.ownName(value.name) : value.name,
+        prelude: value.prelude && value.prelude === this.value.prelude ? this.ownNode(value.prelude) : value.prelude
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+    node.hoistToRoot = this.hoistToRoot;
+    node.frames = this.frames ? [...this.frames] : undefined;
+    return node;
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -845,7 +860,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!this.value.rules) {
       return pipe(
         () => this.evalLeafValue(context),
-        value => this.deriveAtRule(value, this.value)
+        value => this.resolveLeafValue(value)
       );
     }
     return this.deriveAtRule(this.value).eval(context);

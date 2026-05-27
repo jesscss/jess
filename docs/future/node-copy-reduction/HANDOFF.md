@@ -54,9 +54,17 @@ truth, the immediate pop queue, and verification.
   at-rule work must split those responsibilities before removing the surface.
 - At-rule prelude-only direct render is split for leaf at-rules: dynamic leaf
   names/preludes now evaluate into local render state for direct and buffer
-  render without invoking `AtRule.eval(...)`. `resolve(...)` still returns an
-  owned at-rule node, and body/root-hoist at-rules stay on the existing
-  isolation surface.
+  render without invoking `AtRule.eval(...)`. Dynamic leaf `resolve(...)` now
+  uses an explicit leaf-only owned result instead of the generic at-rule
+  derive surface. Body/root-hoist at-rules stay on the existing isolation
+  surface.
+- A `MixinOutputSlot` type now exists as an explicit compatibility record on
+  generated mixin-output `Rules` wrappers. Slot-aware helpers cover
+  `isMixinOutput` / visibility checks in `Rules`, `Reference`, serializer
+  gating, and registry child-search. Registry lookup keeps entry visibility,
+  node visibility, optional candidates, and targeted mixin-output access as
+  distinct helper concepts; do not collapse them back into one coalesced
+  visibility check.
 - The broad proof queue has been processed. Current conclusions:
   at-rule bodies/root-hoist still need explicit state before the full surface
   can be deleted; mixin output wrappers are the current output-slot stand-in;
@@ -100,8 +108,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 297`, `derive: 43`, `with-surface: 40`,
-`copy-leaves: 35`, `clone-leaves: 2`, module-context count `360`.
+Latest audit: `new-node: 298`, `derive: 42`, `with-surface: 40`,
+`copy-leaves: 35`, `clone-leaves: 2`, module-context count `361`.
 
 ## Completed Queue Pass
 
@@ -132,6 +140,18 @@ Latest audit: `new-node: 297`, `derive: 43`, `with-surface: 40`,
 - Leaf at-rule resolve proof is done. Dynamic leaf render is local; dynamic
   leaf `resolve(...)` still returns an owned `AtRule` node to preserve the
   public resolve contract without reparenting source name/prelude children.
+- Dynamic leaf at-rule resolve narrowing is done. The remaining at-rule derive
+  surface is body/root-hoist direct render and dynamic body resolve.
+- Initial mixin-output slot extraction is done. The helpers cover the simple
+  rules/reference/serializer gates and now include the separate registry
+  visibility concepts needed for child search.
+- Registry slot-aware lookup extraction is done. The registry path now uses
+  helpers that preserve entry-vs-node visibility, public-vs-optional
+  candidate handling, targeted mixin-output lookup, and compound-prefix
+  reference behavior.
+- Mixin-output wrappers now carry an explicit `mixinOutputSlot` record. The
+  wrapper remains the compatibility carrier, but read helpers prefer slot
+  state so the next work can move more facts off ad hoc node options.
 
 ## Immediate Queue
 
@@ -149,31 +169,7 @@ and move the broader theme to the backlog.
      ruleset, nested extend roots, direct/buffer parity, and source body
      parentage/eval-state.
 
-2. **Narrow dynamic leaf `AtRule.resolve(...)`.**
-
-   - Goal: replace `deriveAtRule(value, sourceValue)` for leaf resolve with a
-     tiny owned leaf output path while preserving the public `Node` result.
-   - Required proof: dynamic namespace/import leaves, source name/prelude
-     parentage, no source eval-state mutation, and static leaf identity.
-
-3. **Add a `MixinOutputSlot` record beside the current wrapper.**
-
-   - Goal: define the non-AST fields currently carried by generated mixin
-     `Rules` wrappers: source body, evaluated placement children, scope frame,
-     lookup visibility, mixin-output gate, reference/import flags, rule index,
-     and caller fallback.
-   - Required proof: repeated placement, leaky and non-leaky lookups, targeted
-     lookup, source body parentage, and no source root clone.
-
-4. **Route mixin-output lookup through slot-aware helpers.**
-
-   - Goal: move `isMixinOutput` / `rulesVisibility` reads out of scattered
-     node-option checks into a helper that can accept either current wrappers
-     or the future slot record.
-   - Required proof: `Rules.find(...)`, `Reference` lookup, and serializer
-     gating keep the current behavior.
-
-5. **Introduce `CallEvalState` for dynamic fallback calls.**
+2. **Introduce `CallEvalState` for dynamic fallback calls.**
 
    - Goal: replace `deriveResolveSurface().eval(context)` in render/resolve
      with a state record carrying evaluated/fallback name, args/content,
@@ -182,14 +178,14 @@ and move the broader theme to the backlog.
      rawArgs isolation, source name/args/content parentage, and rules-like
      variable calls.
 
-6. **Split rules-like variable call lookup from `Call` ownership.**
+3. **Split rules-like variable call lookup from `Call` ownership.**
 
    - Goal: move `preserveRulesLike` and caller fallback state into
      `CallEvalState` so a copied `Reference`/`Call` is not the lookup carrier.
    - Required proof: leaky/non-leaky detached ruleset calls, render/resolve
      parity, and source name eval-state.
 
-7. **Narrow direct unevaluated `Rules.render(...)`.**
+4. **Narrow direct unevaluated `Rules.render(...)`.**
 
    - Goal: decide whether the compatibility fragment path can prepare/evaluate
      into local output state rather than `derive().eval(context)`.
@@ -197,7 +193,7 @@ and move the broader theme to the backlog.
      registration-prepared roots, static resolve identity, and source child
      parentage.
 
-8. **Prototype generated pseudo placement state.**
+5. **Prototype generated pseudo placement state.**
 
    - Goal: choose generated `:is(...)` pseudo arguments as the first selector
      placement state record, carrying evaluated argument output, visibility,
@@ -206,13 +202,21 @@ and move the broader theme to the backlog.
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
-9. **Delete one hot-path mutation-helper use.**
+6. **Delete one hot-path mutation-helper use.**
 
    - Goal: pick a single `inherit(...)`, `set(...)`, or `derive*` site from
      the node-creation audit and replace it with local render/eval state or a
      proven owned result.
    - Required proof: source parentage/eval-state guard plus focused output
      coverage for that exact path.
+
+7. **Split `AtRuleBodyState` registration from render state.**
+
+   - Goal: after `AtRuleBodyState` exists, separate body registration/extend
+     root bookkeeping from final render placement so the state object does not
+     become a second at-rule AST.
+   - Required proof: nested extend roots, layer names, root-only frame
+     clearing, and direct/buffer render parity.
 
 ## Backlog
 
