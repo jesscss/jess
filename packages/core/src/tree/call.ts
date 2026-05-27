@@ -207,9 +207,46 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
         evaluatedName = await evaluatedName.eval(context);
       }
+      const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+      if (isExtendedFn(fn) && !fn._internal && !fn.options?.params) {
+        const originalCaller = context.caller;
+        context.caller = this;
+        try {
+          const result = this.value.args
+            ? await callWithContext(context, fn, ...this.value.args.value)
+            : await callWithContext(context, fn);
+          if (isNode(result)) {
+            return this.markCallOutput(await result.eval(context));
+          }
+          const castResult = cast(result);
+          if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+            return this.markCallOutput(castResult.value[0]!);
+          }
+          return this.markCallOutput(castResult);
+        } catch (error) {
+          const unitMode = context?.opts?.unitMode ?? 'loose';
+          if (unitMode === 'strict') {
+            throw error;
+          }
+          const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
+            ? String(this.value.name.value.key)
+            : stringifyValueOf(fn);
+          return this.markCallOutput(new Call(
+            {
+              ...this.value,
+              name: fallbackName,
+              args: await this.evalArgNodes(context, this.value.args, { preserveSourceParents: true })
+            },
+            this._options ? { ...this._options, silentFail: false } : { silentFail: false },
+            this.location,
+            this.treeContext
+          ));
+        } finally {
+          context.caller = originalCaller;
+        }
+      }
       if (
-        isExtendedFn(isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName)
-        || isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
+        isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
         || evaluatedName instanceof MixinCollection
         || Array.isArray(evaluatedName)
       ) {

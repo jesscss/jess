@@ -1184,6 +1184,35 @@ describe('Call', () => {
     }
   });
 
+  it('renders and resolves optional JS failure fallback without evaluating the source call surface', async () => {
+    const root = rules([]);
+    root.register('function', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const name = ref({ key: 'bad' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red 10px)');
+    expect(await rule.render(context, buffer)).toBe('bad(red 10px)');
+    const resolved = await rule.resolve(context);
+
+    expect(buffer.parts).toEqual(['bad(red 10px)']);
+    expect(isNode(resolved, N.Call)).toBe(true);
+    expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
+    expect(args.parent).toBe(rule);
+    expect(name.parent).toBe(rule);
+    expect(name.evaluated).toBe(false);
+    expect(rule.evaluated).toBe(false);
+  });
+
   it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

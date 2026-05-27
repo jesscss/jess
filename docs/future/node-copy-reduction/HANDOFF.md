@@ -327,6 +327,10 @@ current state, immediate queue, and verification commands.
   path instead of first deriving a copied source `Call` surface. It copies only
   the dynamic name for lookup, evaluates output args with source-parent
   preservation, and leaves the source call/name/args unevaluated and parented.
+- Optional non-metadata JS function failure fallback uses the same narrow
+  output path for render and resolve. Metadata/rawArgs functions still stay on
+  the owned raw-arg surface; the fallback fast path is limited to positional
+  JS functions without params metadata or internal list-arg calling.
 - Call fallback/content resolve-surface audit is current: the remaining full
   copied `Call` surface cannot be replaced by constructing a smaller `Call`
   that borrows source `args` or `contentNode`, because `Call` construction owns
@@ -448,26 +452,25 @@ backlog below.
    - Required proof: direct render, buffer render, source parentage,
      root-only/hoist behavior, and nested at-rule output guards.
 
-5. **Call optional JS failure fallback state slice.**
-   - Goal: extend the narrow fallback-output path to the optional JS-function
-     failure case, without weakening metadata/rawArgs or fallback-name behavior.
-   - Required proof: optional JS failure direct render, buffer render, resolve,
-     source call/name/arg parentage, source evaluated-state, and existing
-     metadata rawArgs guards.
-
-6. **At-rule dynamic body/prelude render-state split.**
+5. **At-rule dynamic body/prelude render-state split.**
    - Goal: isolate which part of direct dynamic unevaluated at-rule render still
      needs a derived surface: prelude mutation, body mutation, hoist/root frame
      state, or some combination.
    - Required proof: separate dynamic-prelude, dynamic-body, and root-only
      render/resolve guards before removing or narrowing the compatibility path.
 
-7. **Mixin output-slot first removable field.**
+6. **Mixin output-slot first removable field.**
    - Goal: choose one field currently carried by generated mixin `Rules`
      wrappers and prove whether it belongs in a future slot record or can be
      deleted outright.
    - Required proof: focused mixin output lookup/render tests plus source body
      parentage and caller-fallback guards.
+
+7. **Call content-node fallback state slice.**
+   - Goal: reduce the dynamic call path for calls with `contentNode` without
+     constructing a full copied source call before the callable result is known.
+   - Required proof: content-node render, resolve, source content parentage,
+     source evaluated-state, and metadata/rawArgs guard coverage.
 
 ## Backlog
 
