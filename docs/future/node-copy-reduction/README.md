@@ -10,10 +10,12 @@ Older per-file completion logs live in
 ## Direction
 
 - Keep one canonical source tree as the default model.
-- Treat complete single-pass eval/render and minimum node creation as the top
-  priority. A green output test is not enough if the path still builds a broad
-  output tree, clones routine subtrees, or creates wrapper surfaces that are not
-  required by scope, lookup, placement, or user-code mutation semantics.
+- Treat fastest practical tree evaluation/render for real-world Less
+  stylesheets as the project priority. Right now, the working strategy is
+  complete single-pass eval/render and minimum honest node creation. A green
+  output test is not enough if the path still builds a broad output tree,
+  clones routine subtrees, or creates wrapper surfaces that are not required by
+  scope, lookup, placement, or user-code mutation semantics.
 - Prefer lazy per-placement runtime state over routine copied or cloned trees.
 - Do not treat `copy()` / `clone()` as the future evaluation model.
 - Do not treat mutation helpers such as `inherit(...)`, `set(...)`, or derived
@@ -124,15 +126,17 @@ later serializer can walk it.
   node, then source-serialize the resolved value" bridges.
 - `SelectorCapture.render(...)` follows the same native resolved-payload rule
   for selector-valued payloads.
-- `AtRule.render(...)` still needs a derived evaluated at-rule surface, but it
-  writes that surface through the at-rule/ruleset serializer directly instead
-  of using the generic source-output render bridge.
+- `AtRule.render(...)` still needs a derived evaluated at-rule surface for
+  body/root-hoist compatibility, but final evaluated body output is no longer
+  carried by assigning `node.value.rules = finalRules`. At-rules expose their
+  active render body through `getRenderRules()`, and the rules-container
+  serializer uses that method when it needs the body.
 - The remaining direct unevaluated `AtRule.render(...)` derived surface is a
   compatibility/debug isolation surface. It currently protects dynamic
-  name/prelude evaluation, body registration/eval mutation, root-only frame
-  clearing, and nested extend-root registration from mutating the canonical
-  source at-rule. Do not delete it until those responsibilities are split into
-  explicit state or direct render paths.
+  name/prelude evaluation, body eval isolation, root-only frame clearing, and
+  nested extend-root registration from mutating the canonical source at-rule.
+  Do not delete it until those responsibilities are split into explicit state
+  or direct render paths.
 - Dynamic leaf at-rule render is the first split: direct and buffer render
   evaluate name/prelude into local render state without evaluating a derived
   at-rule surface. Leaf `resolve(...)` still returns an owned at-rule node;

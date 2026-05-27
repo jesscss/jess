@@ -70,6 +70,7 @@ type AtRuleBodyState = {
 };
 
 const atRuleBodyRegistrationState = new WeakMap<AtRule, AtRuleBodyRegistrationState>();
+const atRuleEvaluatedBody = new WeakMap<AtRule, Rules>();
 
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
@@ -213,6 +214,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     return serializeRulesContainer(this, printOptions);
+  }
+
+  getRenderRules(): Rules | undefined {
+    return atRuleEvaluatedBody.get(this) ?? this.value.rules;
+  }
+
+  private storeEvaluatedBody(node: AtRule, finalRules: Rules): void {
+    atRuleEvaluatedBody.set(node, finalRules);
   }
 
   private evalForRender(context: Context): MaybePromise<Node | AtRuleValue | AtRuleBodyState> {
@@ -603,7 +612,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
-    let { name, prelude, rules } = this.value;
+    let { name, prelude } = this.value;
+    const rules = this.getRenderRules();
 
     let idt = indent(options.depth);
     let out = idt;
@@ -812,7 +822,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   restoreRulesetFrames();
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-                  node.value.rules = finalRules;
+                  this.storeEvaluatedBody(node, finalRules);
                   this._registerEvaluatedNestableBody(node, context, {
                     bodyToEval,
                     finalRules,
@@ -861,7 +871,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-              node.value.rules = finalRules;
+              this.storeEvaluatedBody(node, finalRules);
               if (pushedExtendRoot && node.isNestable()) {
                 this._registerEvaluatedNestableBody(node, context, {
                   bodyToEval,
@@ -881,7 +891,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           const finalRules =
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
-          node.value.rules = finalRules;
+          this.storeEvaluatedBody(node, finalRules);
           if (pushedExtendRoot && node.isNestable()) {
             this._registerEvaluatedNestableBody(node, context, {
               bodyToEval,
@@ -895,7 +905,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       () => {
         // Pop the frame that was kept on the stack during rules evaluation so children could access it.
         context.frames.pop();
-        let rules = node.value.rules;
+        let rules = node.getRenderRules();
         if (rules && rules.visibleRules().length === 0) {
           node.removeFlag(F_VISIBLE);
         }

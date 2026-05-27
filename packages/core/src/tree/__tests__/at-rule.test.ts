@@ -491,6 +491,39 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('stores evaluated at-rule body output outside value.rules', async () => {
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const originalEval = originalRules.eval;
+    originalRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: originalRules
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBe(node);
+    expect(node.value.rules).toBe(originalRules);
+    expect(node.getRenderRules()).toBe(evaluatedRules);
+    expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        color: blue;
+      }
+    `);
+    expect(originalRules.parent).toBe(node);
+  });
+
   it('resolves at-rules without touching render state', async () => {
     const root = rules([
       vardecl({

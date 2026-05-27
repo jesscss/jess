@@ -106,6 +106,12 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
   return tokens.some(isBlockCommentTriviaToken);
 }
 
+function getContainerRules(node: AtRule | Ruleset): Rules | undefined {
+  return isNode(node, N.AtRule)
+    ? node.getRenderRules()
+    : node.value.rules;
+}
+
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
   let current: Node | undefined = node.parent;
   while (current) {
@@ -200,7 +206,7 @@ export function flattenVisibleRulesForRender(
       if (
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
-        && child.value.rules
+        && getContainerRules(child)
       ) {
         const ownSelector = (child.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
         if (
@@ -208,7 +214,7 @@ export function flattenVisibleRulesForRender(
           && isBareAmpersandSelectorForSerialize(ownSelector)
           && !isBareAmpersandSelectorForSerialize(child.value.selector)
         ) {
-          const visibleChildren = child.value.rules.value.filter(node => node.visible || node.fullRender);
+          const visibleChildren = getContainerRules(child)!.value.filter(node => node.visible || node.fullRender);
           const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
           if (!hasVisibleContainers) {
             for (const leaf of visibleChildren) {
@@ -222,9 +228,9 @@ export function flattenVisibleRulesForRender(
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
         && isBareAmpersandSelectorForSerialize(child.value.selector)
-        && child.value.rules
+        && getContainerRules(child)
       ) {
-        iterateRules(child.value.rules, true, true);
+        iterateRules(getContainerRules(child)!, true, true);
         continue;
       }
       if (child.visible || child.fullRender || hasPrintableTrivia(child, options)) {
@@ -468,7 +474,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;
     options.referenceRenderEnabled = renderEnabled;
-    const rules = node.value.rules;
+    const rules = getContainerRules(node);
     if (!rules) {
       if (inReferenceMode && !renderEnabled) {
         return '';
@@ -681,7 +687,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
 
-        const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
+        const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).getRenderRules();
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
           const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
           options.depth = options.depth + 1;
