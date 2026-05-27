@@ -147,219 +147,31 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 297`, `derive: 35`, `with-surface: 40`,
-`copy-leaves: 32`, `clone-leaves: 2`, module-context count `366`,
-eval-context count `37`, resolve-context count `1`. The module count includes
-module-level state records such as the at-rule body `WeakMap`s; use the
-eval-context count for hot-path movement.
-Current working audit after the latest queue pass: `new-node: 300`,
-`derive: 32`, `with-surface: 40`, `copy-leaves: 31`, `clone-leaves: 1`,
-module-context count `373`, eval-context count `29`, resolve-context count
-`0`. The resolve-context surface is gone; the remaining clone-leaves sighting
-is the explicit mixin-output child-copy seam in `Rules`.
+Latest audit: `new-node: 302`, `derive: 32`, `with-surface: 40`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `374`,
+eval-context count `29`, resolve-context count `0`. The clone-leaves frontier
+is zero; remaining work is reducing owned placement copies/state carriers, not
+hiding deep clone behind another helper.
 
 ## Completed Queue Pass
 
-- At-rule body/root-hoist proof is done. Focused coverage now includes direct
-  and buffer render for a dynamic body while proving the canonical prelude/body
-  remain parented to the source at-rule and unevaluated. Existing root-only
-  frame-clearing and nested extend-root tests remain the semantic blockers for
-  deleting the body/root-hoist surface.
-- Mixin output-slot proof is done. Existing tests cover repeated placement,
-  leaky/targeted lookup behavior, no source body reparenting, and no source
-  `Rules` root clone. The wrapper is still carrying real placement state, so
-  the next step is extracting an explicit slot record, not moving source body
-  children into another tree.
-- Dynamic call content/rules-like proof is done. Plain CSS content render is
-  already direct; metadata calls already use one owned raw-args surface; the
-  remaining fallback path now enters through `CallEvalState`, which still
-  carries a compatibility `Call` surface until fallback name/args/content and
-  rules-like lookup state are fully split.
-- Rules fragment proof is done. Direct unevaluated `Rules.render(...)` remains
-  a compatibility body-fragment path; public compiler output enters through an
-  evaluated root and flat buffer.
-- Selector pseudo proof is done. `:is(...)` and unknown pseudo args have source
-  serializer, parser-shape, direct render, buffer render, and extend matching
-  coverage. Generated pseudo placement still needs owned/stateful output.
-- Mutation-helper proof is done. The collapsed selector source-child bug
-  establishes the rule: never `inherit(...)` onto a canonical child. Each
-  remaining helper deletion needs focused parentage/eval-state output proof.
-- Leaf at-rule resolve proof is done. Dynamic leaf render is local; dynamic
-  leaf `resolve(...)` still returns an owned `AtRule` node to preserve the
-  public resolve contract without reparenting source name/prelude children.
-- Dynamic leaf at-rule resolve narrowing is done. The remaining at-rule derive
-  surface is body/root-hoist direct render and dynamic body resolve.
-- Initial mixin-output slot extraction is done. The helpers cover the simple
-  rules/reference/serializer gates and now include the separate registry
-  visibility concepts needed for child search.
-- Registry slot-aware lookup extraction is done. The registry path now uses
-  helpers that preserve entry-vs-node visibility, public-vs-optional
-  candidate handling, targeted mixin-output lookup, and compound-prefix
-  reference behavior.
-- Mixin-output wrappers now carry an explicit `mixinOutputSlot` record. The
-  wrapper remains the compatibility carrier, but read helpers prefer slot
-  state so the next work can move more facts off ad hoc node options.
-- Initial `AtRuleBodyState` is done. Direct at-rule body render now returns a
-  state record around the compatibility output surface, and final body output
-  has moved out of `value.rules` mutation. The remaining work is to split the
-  derived at-rule isolation surface itself.
-- Initial `CallEvalState` is done. Dynamic fallback render/resolve no longer
-  calls `deriveResolveSurface().eval(...)`, and state-owned variable names can
-  carry `preserveRulesLike` without a second reference derivation.
-- Initial `RulesRenderState` is done. Direct unevaluated rules render has an
-  explicit root/fragment state wrapper while preserving existing separator
-  behavior.
-- Generated pseudo placement-state prototype is done. The generated `:is(...)`
-  serializer special case now routes through a tiny placement state object
-  with no parallel selector tree.
-- Call finalized fallback syntax extraction is done. Optional JS failure
-  output, optional non-function fallback output, and generic non-function
-  dynamic call output now construct finalized CSS call syntax through one
-  `CallEvalState` boundary without eagerly copying args/content for state-only
-  paths.
-- Rules-like variable call lookup-state extraction is done. The ordinary
-  `Call.evalNode(...)` variable-call branch now evaluates the state-owned
-  preserve-rules-like name instead of deriving that reference inline.
-- Generated pseudo placement state now carries its first proven placement fact:
-  generated `:is(...)` can omit its wrapper when a selector-list argument
-  serializes to a single selector.
-- At-rule nestable-body registration finalization is deduplicated. The
-  register/take-layer/register-inner/push-pop sequence now has one helper,
-  which is the next seam for moving registration off the evaluated output
-  at-rule.
-- Dynamic at-rule body resolve is narrowed. It now routes through
-  `AtRuleBodyState` instead of directly calling
-  `this.deriveAtRule(this.value).eval(context)`, reducing the resolve-context
-  derive count.
-- Node `.set()` helper family reduction is done for the unblocked production
-  eval/render/registration surfaces in `Ruleset`, `Mixin`, `StyleImport`,
-  `Rules`, `Declaration`, `AtRule`, and selector extend replacement.
-  Remaining production hits are the base `Node.set(...)` API itself and
-  Maps/BitSets/`Reflect.set` index/parent internals; remaining direct
-  `Node.set(...)` calls are tests.
-- At-rule body state extraction is done for final body output. Nestable-body
-  registration has `AtRuleBodyRegistrationState` carrying `bodyToEval`,
-  `finalRules`, parent extend root, and layer name; `AtRuleBodyState` can
-  recover that registration state after eval. Final evaluated body output is
-  stored outside `value.rules`, and the serializer now calls
-  `AtRule.getRenderRules()` so source/body ownership stays stable. The
-  remaining at-rule surface is the derived isolation wrapper for prelude/body
-  eval, root-only frame clearing, and extend-root setup.
-- Declaration render/resolve state extraction is started. `Declaration.render`
-  and `Declaration.resolve` now share `DeclarationEvalState`, keeping
-  custom-property raw value serialization and merge/important behavior behind
-  one explicit seam. The state now carries output name/value/important/nil
-  facts, but the declaration still derives for registration/eval mutation.
-- Call fallback state extraction continued. `CallEvalState` now carries
-  name/args/content instead of making finalized fallback syntax read args from
-  `source.value`. The remaining `state.surface.eval(context)` path is still a
-  compatibility evaluator.
-- Call fallback queue item was audited. The remaining `CallEvalState.surface`
-  path is not a rename target: it protects dynamic fallback name/args/content
-  evaluation from mutating source containers. Removing it needs a direct
-  evaluator that takes state-owned name/args/content, not `this.value`.
-- Rules render-state queue item was audited. Routing `Rules.resolve(...)`
-  through `RulesRenderState` breaks static body-fragment render semantics, so
-  the next Rules work must split static identity resolve from direct
-  body-fragment serialization before deleting the compatibility surface.
-- Plain static direct `Rules.render(...)` narrowing is done. Plain declaration
-  leaf roots/fragments now render from the canonical source Rules without
-  deriving/evaling, and focused coverage proves root output, fragment string
-  trimming, buffer separator preservation, no derive/eval calls, loop-body
-  reuse without registration prep, source child parentage, and unchanged
-  static resolve behavior. Broader static Rules still eval when they may carry
-  nesting, hoists, controls, or declaration merges. Audit counts are unchanged
-  because this narrows a runtime branch rather than deleting the remaining
-  compatibility derive site.
-- Generated pseudo placement queue item was audited. The only proven fact is
-  still single-selector-list wrapper omission for generated `:is(...)`. No
-  visibility, extend metadata, or composed-header fact should be added until a
-  focused selector-shape test proves it belongs in placement state.
-- Generated pseudo placement metadata proof is done. Focused tests now cover
-  the current placement fact directly: generated `:is(...)` omits its wrapper
-  only when a selector-list argument renders as one selector, while authored
-  `:is(...)`, generated multi-selector output, source serializers, direct
-  render, buffer render, and extend matching stay on existing AST semantics.
-  The existing wrapper-omission fact is now retained when pseudo arg eval
-  collapses a single selector list to its one selector. No visibility, extend
-  metadata, or composed-header fact was added because those remain AST-owned by
-  current evidence. The audit gains one module-level `WeakMap`/state entry and
-  one `new-node` sighting in `selector-pseudo.ts`; eval-context count is
-  unchanged.
-- Import clone-leaves queue item was audited. The remaining first-use import
-  clone preserves direct comment children for repeated import placements;
-  `copyWithReusableLeaves(...)` intentionally nils comments, so this stays
-  until import placement/comment state exists.
-- `inherit(...)` helper-family audit was scoped. The largest cluster is
-  selector extend/placement code, where most uses construct owned generated
-  selector output. Do not count those as carrier-only without focused
-  parentage and output tests for a whole selector family.
-- Dynamic call fallback surface deletion is done. `Call.evalState(...)` now
-  evaluates the `CallEvalState` directly instead of deriving a copied `Call`
-  and invoking `.eval(context)` on it. The focused call suite proves optional
-  fallback output, metadata/rawArgs isolation, source args parentage,
-  referenced JS functions, strict-unit fallback behavior, and finalized call
-  render without source-call eval. The audit dropped `call.ts` from 24 to 18
-  static surfaces, `derive` from 36 to 35, `copy-leaves` from 35 to 32, and
-  eval-context surfaces from 45 to 37.
-- At-rule final body mutation deletion is done. `AtRule.evalNode(...)` now
-  stores evaluated `finalRules` in at-rule body render state instead of
-  assigning `node.value.rules = finalRules`; `getHeaderString(...)` and
-  `serializeRulesContainer(...)` read the active body via
-  `AtRule.getRenderRules()`. Focused coverage proves dynamic direct render,
-  segmented-buffer render, root-only frame clearing, layer/extend-root
-  behavior, import/reference at-rule interactions, and a structural invariant
-  that `value.rules` remains the owned source/eval body while rendered output
-  uses the evaluated body state. The audit gains one module-level `WeakMap`
-  entry but keeps eval-context surfaces unchanged.
-- Selector-list single-result collapse ownership is fixed. `SelectorList`
-  now uses the same owned-collapse rule as compound/complex selectors, so
-  resolving a single selector-list result under `:is(...)` no longer returns
-  or reparents the canonical source child.
-- Dynamic call broad name-copying is removed. Plain and metadata dynamic
-  function probes now use `CallEvalState.name`; only rules-like variable
-  references still get the narrow owned preserve-rules-like reference.
-- The import/comment clone-leaves site, declaration derive surface, at-rule
-  body/root-hoist surface, and non-static `Rules.render(...)` compatibility
-  surface were re-audited. Focused tests prove they still carry real behavior;
-  the next queue splits those responsibilities instead of deleting wrappers by
-  pattern.
-- Declaration eval mutation is now local state. `Declaration.evalNode(...)`
-  no longer derives a lazy mutation surface for value/important normalization;
-  it builds an owned declaration only when output actually changes and keeps
-  unchanged source name/value/important parented to the source declaration.
-- Import first-use placement now has an explicit `ImportPlacementState` seam.
-  The direct-comment clone-leaves site remains because repeated import
-  placements still need import-site-local parent chains and direct child
-  comments until that state can emit comments without child clones.
-- At-rule body/root-hoist responsibilities are split into named frame and
-  prelude helpers. The derived body wrapper remains, but frame clearing,
-  dynamic prelude evaluation, and body ownership now have separate seams.
-- Rules direct render and public resolve now use separate state records:
-  `direct-render` keeps fragment serializer semantics, while `public-resolve`
-  isolates the remaining non-static resolve wrapper.
-- Ampersand append output now enters through `AmpersandAppendPlacementState`,
-  with source selector, append value, output selector, and hoist placement
-  recorded at one boundary. The generated selector output is still semantic
-  until visibility/extend/composed-header facts can move to state.
-- Declaration render now serializes directly from evaluated declaration value
-  state instead of requiring an output `Declaration` node first. Public
-  eval/resolve still materialize a declaration node where that API returns one.
-- Import first-use placement no longer calls
-  `cloneChildrenWithReusableLeaves(...)`. Direct root comments are copied as
-  placement comments; other children use mutable placement copies that can
-  still evaluate against import-site scope. The remaining clone-leaves count
-  belongs to mixin-output `Rules` slots.
-- Public non-static `Rules.resolve(...)` no longer derives a wrapper tree; it
-  evaluates through the canonical Rules path. Direct unevaluated
-  `Rules.render(...)` was re-audited and still needs an owned compatibility
-  output until the body serializer can render/eval child state directly.
-- At-rule body wrapper deletion was re-audited. The state now names prelude,
-  body output, frame clearing, and registration facts, but the derived at-rule
-  remains the current carrier for mutating prelude/body/frame during body eval.
-- Ampersand append placement was re-audited. `AmpersandAppendPlacementState`
-  records source/output/append/hoist facts, but append/template output still
-  constructs semantic generated selectors for extend matching and parentage.
+- Deep copy/clone frontiers are clean. The latest pass removed the remaining
+  `cloneChildrenWithReusableLeaves(...)` site from callable mixin output; tests
+  still prove repeated comments, leaky/non-leaky lookup, reference gating, and
+  source body parentage.
+- Render/eval state seams now exist for `Rules`, `AtRule`, `Call`,
+  `Declaration`, generated pseudo placement, import placement, mixin output
+  slots, and ampersand append placement. These are transitional state carriers,
+  not a second AST.
+- Direct unevaluated `Rules.render(...)`, declaration registration prep, body
+  at-rule render/resolve, and generated ampersand selectors still carry real
+  ownership or public-result semantics. The queue below names the next splits;
+  do not delete those wrappers by pattern.
+- The old `preEval()` phase, the old `preEvaluated` flag, direct public
+  `Rules.resolve(...)` wrapper derivation, dynamic call fallback surface eval,
+  final at-rule body mutation, production `.set()` helper use, and broad
+  clone-leaves helpers are already done. Look in git history for details if
+  needed; do not re-expand this section with stale status prose.
 
 ## Immediate Queue
 
@@ -375,11 +187,12 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Make `Rules` body serialization render-aware.**
+1. **Split `Rules` body emission into source and render child walkers.**
 
-   - Goal: split `_emitRulesBody(...)` so direct render can ask children to
-     render/eval into the active buffer instead of first creating a compatible
-     output `Rules` tree for non-static bodies.
+   - Goal: keep `_emitRulesBody(...)` as canonical source serialization and
+     add a render-owned child walk that can ask each visible child to
+     eval/render into the active buffer without first creating a compatible
+     output `Rules` tree.
    - Required proof: declarations, controls, hoists, nested rulesets,
      root/fragment separators, source parentage, and unchanged `toString()`.
 
@@ -390,21 +203,23 @@ family can be audited and reduced.
    - Required proof: dynamic declarations, `$if`/`$for`/`$while`, charset/import
      root output, fragment render, buffer parity, and audit delta.
 
-3. **Split declaration registration prep into state.**
+3. **Move declaration registration normalization into state.**
 
-   - Goal: move assignment/name normalization out of the derived declaration
-     prep node so declaration eval/render can stay state-first from
-     registration through serialization.
+   - Goal: introduce a `DeclarationRegistrationState` for interpolated name
+     identity and assignment normalization, then materialize a declaration only
+     when public registration APIs need an owned node result.
    - Required proof: interpolated names, merge assignments, conditional
      assignments, important propagation, source parentage, and audit delta.
 
-4. **Replace mixin-output child clone with slot emission.**
+4. **Reduce callable mixin-output placement copies.**
 
-   - Goal: remove the remaining `cloneChildrenWithReusableLeaves(...)` site in
-     `Rules` by making `MixinOutputSlot` carry placement children/comments
-     without cloning the source body.
+   - Goal: now that `clone-leaves` is zero, inventory which callable body
+     children still need mutable placement copies and move direct comments or
+     lookup-only facts into `MixinOutputSlot` where tests prove they are
+     carrier-only.
    - Required proof: repeated mixin output comments, leaky/non-leaky lookup,
-     targeted lookup, reference gating, parentage, and `clone-leaves: 0`.
+     targeted lookup, reference gating, parentage, and no clone frontier
+     regression.
 
 5. **Render at-rule body state without materializing an output at-rule.**
 
@@ -420,14 +235,23 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-7. **Move ampersand append/template facts out of generated selector wrappers.**
+7. **Narrow ampersand append/template generated selector ownership.**
 
    - Goal: identify which append/template facts are placement facts versus
      selector semantics, then move only proven placement facts onto
-     `AmpersandAppendPlacementState`.
+     `AmpersandAppendPlacementState` without weakening extend matching or
+     generated selector parentage.
    - Required proof: appended ampersands, template replacements, selector
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
+
+8. **Audit mutation-helper families by ownership boundary.**
+
+   - Goal: review `.inherit(...)`, `.set(...)`, and `derive*` by node family
+     and delete a whole proven carrier-only family at once; do not create
+     one-call cleanup tasks unless the inventory proves a semantic blocker.
+   - Required proof: source parentage, output ownership, focused regression
+     tests for the affected node family, and audit delta.
 
 ## Backlog
 

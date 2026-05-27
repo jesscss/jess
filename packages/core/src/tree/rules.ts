@@ -45,8 +45,9 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt
 } from './util/serialize-helper.js';
-import { canReuseLeaf, cloneChildrenWithReusableLeaves, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
+import { Comment } from './comment.js';
 import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
@@ -220,6 +221,76 @@ function copyGuardForEval(guard: Node): Node {
     throw new TypeError(`Copied guard must remain ${guard.type}, got ${copied.type}`);
   }
   return copied;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function copyCallableRulesValue(value: unknown): unknown {
+  if (value instanceof Node) {
+    return copyCallableRulesNode(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => copyCallableRulesValue(item));
+  }
+  if (isRecordValue(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (Object.hasOwn(value, key)) {
+        out[key] = copyCallableRulesValue(item);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+function copyCallableAmpersand(node: Node): Node | undefined {
+  if (node.type !== 'Ampersand') {
+    return undefined;
+  }
+  const makeCopy: unknown = Reflect.get(node, 'derive');
+  if (typeof makeCopy !== 'function') {
+    return undefined;
+  }
+  const copied = makeCopy.call(node);
+  return copied instanceof Node ? copied : undefined;
+}
+
+function constructCallableRulesNode(node: Node, value: unknown): Node {
+  const copy = Reflect.construct(
+    node.constructor,
+    [
+      value,
+      node.options ? { ...node.options } : undefined,
+      node.location.length === 0 ? undefined : node.location,
+      node.treeContext
+    ]
+  );
+  if (!(copy instanceof Node)) {
+    throw new TypeError('Expected callable rules copy to remain a node');
+  }
+  return copy.inherit(node);
+}
+
+function copyCallableRulesNode(node: Node): Node {
+  if (isNode(node, N.Comment)) {
+    return new Comment(
+      node.value,
+      node.options ? { ...node.options } : undefined,
+      node.location.length === 0 ? undefined : node.location,
+      node.treeContext
+    ).inherit(node);
+  }
+  const copiedAmpersand = copyCallableAmpersand(node);
+  if (copiedAmpersand) {
+    return copiedAmpersand;
+  }
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  return constructCallableRulesNode(node, copyCallableRulesValue(node.value));
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
@@ -3832,7 +3903,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!deep) {
         return sourceRules.derive();
       }
-      return sourceRules.derive(cloneChildrenWithReusableLeaves(sourceRules.value));
+      return sourceRules.derive(sourceRules.value.map(node => copyCallableRulesNode(node)));
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
