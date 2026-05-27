@@ -60,7 +60,6 @@ export type CallOptions = {
 
 type CallEvalState = {
   source: Call;
-  surface?: Call;
   name: string | Node;
   args?: List<Node>;
   contentNode?: Node;
@@ -123,45 +122,18 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(this);
   }
 
-  private createEvalState(context: Context, options?: { withSurface?: boolean }): CallEvalState {
-    // This is still a compatibility ownership surface. The state object is the
-    // narrow place to move fallback name/args/content and rules-like lookup
-    // facts as they stop needing an owned Call node.
+  private createEvalState(context: Context): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.value.name, N.Reference) && this.value.name.options?.type === 'variable';
     const name = typeof this.value.name === 'string'
       ? this.value.name
       : preservesRulesLikeVariableTarget
         ? this.derivePreserveRulesLikeReference(this.value.name)
-        : copyWithReusableLeaves(this.value.name);
-    if (options?.withSurface === false) {
-      return {
-        source: this,
-        name,
-        args: this.value.args,
-        contentNode: this.value.contentNode,
-        caller: context.caller,
-        markImportant: this._options?.markImportant,
-        preservesRulesLikeVariableTarget
-      };
-    }
-    const args = this.value.args
-      ? copyWithReusableLeaves(this.value.args)
-      : undefined;
-    const contentNode = this.value.contentNode
-      ? copyWithReusableLeaves(this.value.contentNode)
-      : undefined;
-    if (args !== undefined && !isNode(args, N.List)) {
-      throw new TypeError('Copied call arguments must remain a List');
-    }
+        : this.value.name;
     return {
       source: this,
       name,
-      args,
-      contentNode,
-      surface: this.deriveCall(
-        { name, args, contentNode },
-        this._options ? { ...this._options } : undefined
-      ),
+      args: this.value.args,
+      contentNode: this.value.contentNode,
       caller: context.caller,
       markImportant: this._options?.markImportant,
       preservesRulesLikeVariableTarget
@@ -170,10 +142,13 @@ export class Call extends Node<CallValue, CallOptions> {
 
   private evalState(context: Context): Promise<Node> {
     const state = this.createEvalState(context);
-    if (!state.surface) {
-      throw new TypeError('CallEvalState requires a surface for fallback eval');
-    }
-    return Promise.resolve(state.surface.eval(context));
+    return this.evalFromState(context, state).then((node) => {
+      node.evaluated = true;
+      if (node !== this) {
+        node.inherit(this);
+      }
+      return node;
+    });
   }
 
   private createFinalizedCallOutput(state: CallEvalState, syntax: FinalizedCallSyntax): Call {
@@ -283,7 +258,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
 
-    const state = this.createEvalState(context, { withSurface: false });
+    const state = this.createEvalState(context);
     const name = state.name;
     if (typeof name === 'string') {
       return undefined;
@@ -300,8 +275,8 @@ export class Call extends Node<CallValue, CallOptions> {
         const originalCaller = context.caller;
         context.caller = this;
         try {
-          const result = this.value.args
-            ? await callWithContext(context, fn, ...this.value.args.value)
+          const result = state.args
+            ? await callWithContext(context, fn, ...state.args.value)
             : await callWithContext(context, fn);
           if (isNode(result)) {
             return this.markCallOutput(await result.eval(context));
@@ -706,26 +681,18 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let { name } = this.value;
-    let args = this.value.args;
-    let markImportant = this._options?.markImportant;
-    // Variable calls can return detached Rules/Collection values. Evaluate a
-    // tiny owned Reference with preserveRulesLike so lexical lookup stays on
-    // the detached body without stamping eval state onto the source call name.
-    const preservesRulesLikeVariableTarget = isNode(name, N.Reference) && name.options?.type === 'variable';
-    const state = preservesRulesLikeVariableTarget
-      ? this.createEvalState(context, { withSurface: false })
-      : undefined;
+    const state = this.createEvalState(context);
+    return this.evalFromState(context, state);
+  }
 
+  private async evalFromState(context: Context, state: CallEvalState): Promise<Node> {
+    const { name, args, markImportant } = state;
     context.callStack.push(this);
     context.parenFrames.push(false);
 
     let n: string | Node | MixinCollection | unknown;
     if (typeof name === 'string') {
       n = name;
-    } else if (preservesRulesLikeVariableTarget) {
-      const callableName = state?.name instanceof Node ? state.name : name;
-      n = await callableName.eval(context);
     } else {
       n = await name.eval(context);
     }
@@ -765,7 +732,7 @@ export class Call extends Node<CallValue, CallOptions> {
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
-      if (preservesRulesLikeVariableTarget) {
+      if (state.preservesRulesLikeVariableTarget) {
         const sourceParent = n.sourceNode?.parent;
         if (sourceParent) {
           Reflect.set(n, 'parent', sourceParent);
@@ -825,7 +792,7 @@ export class Call extends Node<CallValue, CallOptions> {
         const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : stringifyValueOf(n);
-        return this.markCallOutput(await this.evalFinalizedCallSyntax(context, this.createEvalState(context, { withSurface: false }), fallbackName));
+        return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
       }
     }
 
@@ -887,7 +854,7 @@ export class Call extends Node<CallValue, CallOptions> {
         const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
           ? String(name.value.key)
           : stringifyValueOf(n);
-        return this.markCallOutput(await this.evalFinalizedCallSyntax(context, this.createEvalState(context, { withSurface: false }), fallbackName));
+        return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
       } finally {
         context.caller = originalCaller;
         context.parenFrames.pop();
@@ -916,7 +883,7 @@ export class Call extends Node<CallValue, CallOptions> {
         }
       }
       const node = this.createFinalizedCallOutput(
-        this.createEvalState(context, { withSurface: false }),
+        state,
         {
           name: typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n),
           args: evaluatedArgs

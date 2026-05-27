@@ -167,18 +167,18 @@ later serializer can walk it.
   `calc(...)` render share the same evaluated argument normalization, including
   nested `calc(...)`; authored source syntax is still available through
   `toString()` / `toTrimmedString()`.
-- Dynamic non-string calls render by locally evaluating the call surface and
-  then using the evaluated result's native render path. Already-evaluated
-  fallback calls are finalized syntax, not another name-evaluation request.
-  Already-evaluated calls also resolve directly without re-entering eval.
-  Dynamic calls use the base `renderOutput(...)` primitive for the final
-  output delegation; keep remaining call-state work focused on
-  `deriveResolveSurface()`, not a new render helper. Do not replace the
-  derived surface with direct source-call eval unless the replacement preserves
-  source `evaluated` state and keeps metadata `rawArgs` mutation isolated.
-  Metadata functions evaluate params from their owned arg surface; dynamic
-  metadata render/resolve now skips the copied source-call surface and relies
-  on `callWithContext(...)` for the single owned `rawArgs` list.
+- Dynamic non-string calls render by evaluating `CallEvalState` locally and
+  then using the evaluated result's native render path. The old copied
+  fallback `Call` surface is gone. Already-evaluated fallback calls are
+  finalized syntax, not another name-evaluation request; direct state eval
+  marks that output before render so optional CSS fallback calls do not
+  recurse into name lookup. Dynamic calls use the base `renderOutput(...)`
+  primitive for final output delegation. Preserve-rules-like variable names
+  still get a small owned reference state; do not broaden dynamic-name copying
+  without focused proof, because broad copied-name state has already caused
+  runaway allocation. Metadata functions evaluate params from their owned arg
+  surface and rely on `callWithContext(...)` for the single owned `rawArgs`
+  list.
 - `packages/core/src/define-function.ts` is no longer blocked by unrelated
   focused lint debt. Function argument-surface work should keep metadata access
   typed and avoid rebuilding unused validation paths.

@@ -64,13 +64,12 @@ truth, the immediate pop queue, and verification.
   rather than loose local parameters, and that registration state is now
   recoverable through render/resolve body state. It still mutates the evaluated
   output at-rule.
-- Dynamic call fallback render/resolve now routes through `CallEvalState`.
-  The state carries name, args, content, caller, mark-important, and
-  rules-like variable lookup facts. Finalized fallback CSS call syntax is built
-  at one boundary using state-owned args, and rules-like variable
-  `evalNode(...)` lookup also uses the state-owned name. The remaining
-  compatibility surface is the broad fallback `Call` used when the whole call
-  still needs normal `Call.eval(...)`.
+- Dynamic call fallback render/resolve now evaluates through `CallEvalState`
+  without constructing a copied fallback `Call` surface. The state carries
+  name, args, content, caller, mark-important, and rules-like variable lookup
+  facts. Finalized fallback CSS call syntax is built at one boundary using
+  state args. Already-evaluated finalized call output is marked before native
+  render so optional fallback calls do not re-enter name evaluation.
 - Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
   before final string/buffer emission. It still evaluates an owned Rules
   surface for compatibility, but root/fragment separator behavior is now
@@ -141,10 +140,11 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 297`, `derive: 36`, `with-surface: 40`,
-`copy-leaves: 35`, `clone-leaves: 2`, module-context count `362`,
-resolve-context count `1`. The new audit entry is the module-level at-rule
-registration `WeakMap`, not a hot eval-node allocation.
+Latest audit: `new-node: 295`, `derive: 35`, `with-surface: 40`,
+`copy-leaves: 32`, `clone-leaves: 2`, module-context count `364`,
+eval-context count `37`, resolve-context count `1`. The module count includes
+module-level state records such as the at-rule registration `WeakMap`; use the
+eval-context count for hot-path movement.
 
 ## Completed Queue Pass
 
@@ -260,6 +260,14 @@ registration `WeakMap`, not a hot eval-node allocation.
   selector extend/placement code, where most uses construct owned generated
   selector output. Do not count those as carrier-only without focused
   parentage and output tests for a whole selector family.
+- Dynamic call fallback surface deletion is done. `Call.evalState(...)` now
+  evaluates the `CallEvalState` directly instead of deriving a copied `Call`
+  and invoking `.eval(context)` on it. The focused call suite proves optional
+  fallback output, metadata/rawArgs isolation, source args parentage,
+  referenced JS functions, strict-unit fallback behavior, and finalized call
+  render without source-call eval. The audit dropped `call.ts` from 24 to 18
+  static surfaces, `derive` from 36 to 35, `copy-leaves` from 35 to 32, and
+  eval-context surfaces from 45 to 37.
 
 ## Immediate Queue
 
@@ -284,16 +292,7 @@ family can be audited and reduced.
    - Required proof: nested extend roots, layer names, root-only frame
      clearing, direct/buffer render parity, and source body parentage.
 
-2. **Make `Call.evalState(...)` evaluate from state-owned values.**
-
-   - Goal: evaluate state-owned fallback name/args/content directly, replacing
-     the remaining `state.surface.eval(context)` path without evaluating
-     source containers.
-   - Required proof: content-node render/resolve, metadata rawArgs isolation,
-     source name/args/content parentage, referenced JS functions, optional
-     fallback output, and strict-unit fallback behavior.
-
-3. **Narrow direct unevaluated `Rules.render(...)` without changing static resolve.**
+2. **Narrow direct unevaluated `Rules.render(...)` without changing static resolve.**
 
    - Goal: make `RulesRenderState` able to narrow direct unevaluated render
      without changing `Rules.resolve(context)` identity for static nodes or
@@ -302,7 +301,7 @@ family can be audited and reduced.
      flat-buffer separators, registration-prepared roots, and source child
      parentage.
 
-4. **Prove or reject selector placement metadata for generated pseudo output.**
+3. **Prove or reject selector placement metadata for generated pseudo output.**
 
    - Goal: add a focused selector-shape test for one candidate fact
      (visibility, extend metadata, or composed-header cache) and only then move
@@ -311,7 +310,7 @@ family can be audited and reduced.
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
-5. **Reduce one selector-family `inherit(...)` cluster.**
+4. **Reduce one selector-family `inherit(...)` cluster.**
 
    - Goal: choose one selector family (`CompoundSelector`, `ComplexSelector`,
      `SelectorList`, or generated pseudo extend output), classify every
@@ -320,7 +319,7 @@ family can be audited and reduced.
      focused output coverage for each touched node family, and audit delta or
      explicit ownership-boundary blocker.
 
-6. **Use `DeclarationEvalState` to remove one declaration derive surface.**
+5. **Use `DeclarationEvalState` to remove one declaration derive surface.**
 
    - Goal: move either assignment normalization or value/important finalization
      onto `DeclarationEvalState` so one current declaration derive path can be
@@ -329,7 +328,7 @@ family can be audited and reduced.
      important flags, declaration-name interpolation, nil declaration output,
      and source parentage.
 
-7. **Add import placement/comment state and delete the clone-leaves site.**
+6. **Add import placement/comment state and delete the clone-leaves site.**
 
    - Goal: model first-use import-local placement state, including direct
      comment children, so the remaining `cloneChildrenWithReusableLeaves(...)`
@@ -337,6 +336,16 @@ family can be audited and reduced.
    - Required proof: import/reference/compose fixture coverage, repeated
      import direct comments, repeated import parentage, imported mixin/ruleset
      lookup, and `clone-leaves` audit delta.
+
+7. **Move dynamic call name copying into a narrower state-owned rule.**
+
+   - Goal: prove which dynamic call names truly need an owned eval node after
+     the copied fallback `Call` surface was deleted. Preserve-rules-like
+     variable names already use an owned reference; broad `copyWithReusableLeaves`
+     for every dynamic name caused runaway allocation in `call.test.ts`.
+   - Required proof: optional fallback output, referenced JS functions,
+     metadata functions, recursive/detached call names, source name parentage,
+     and no OOM/regression in the full call suite.
 
 ## Backlog
 
