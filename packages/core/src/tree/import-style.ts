@@ -14,7 +14,8 @@ import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
-import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
+import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
+import { Comment } from './comment.js';
 import {
   isRenderBuffer,
   type RenderBuffer
@@ -37,6 +38,72 @@ function isParseError(error: unknown): boolean {
   }
   return error.phase === 'parse'
     || (typeof error.code === 'string' && error.code.startsWith('parse/'));
+}
+
+function copyImportPlacementValue(value: unknown): unknown {
+  if (value instanceof Node) {
+    return copyImportPlacementNode(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => copyImportPlacementValue(item));
+  }
+  if (isObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const key in value) {
+      if (Object.hasOwn(value, key)) {
+        out[key] = copyImportPlacementValue(value[key]);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+function constructImportPlacementNode(node: Node, value: unknown): Node {
+  const copy = Reflect.construct(
+    node.constructor,
+    [
+      value,
+      node.options ? { ...node.options } : undefined,
+      node.location.length === 0 ? undefined : node.location,
+      node.treeContext
+    ]
+  );
+  if (!(copy instanceof Node)) {
+    throw new TypeError('Expected import placement copy to remain a node');
+  }
+  return copy.inherit(node);
+}
+
+function copyImportPlacementAmpersand(node: Node): Node | undefined {
+  if (node.type !== 'Ampersand') {
+    return undefined;
+  }
+  const derive: unknown = Reflect.get(node, 'derive');
+  if (typeof derive !== 'function') {
+    return undefined;
+  }
+  const derived = derive.call(node);
+  return derived instanceof Node ? derived : undefined;
+}
+
+function copyImportPlacementNode(node: Node): Node {
+  if (isNode(node, N.Comment)) {
+    return new Comment(
+      node.value,
+      node.options ? { ...node.options } : undefined,
+      node.location.length === 0 ? undefined : node.location,
+      node.treeContext
+    ).inherit(node);
+  }
+  const derivedAmpersand = copyImportPlacementAmpersand(node);
+  if (derivedAmpersand) {
+    return derivedAmpersand;
+  }
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
 }
 
 /**
@@ -219,13 +286,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
     return {
       source: sourceRules,
-      children: cloneChildrenWithReusableLeaves(sourceRules.value),
+      children: sourceRules.value.map(node => this.copyImportPlacementChild(node)),
       preservesDirectCommentChildren: true
     };
   }
 
   private materializeImportPlacementState(state: ImportPlacementState): Rules {
     return this.deriveRulesSurface(state.source, state.children);
+  }
+
+  private copyImportPlacementChild(node: Node): Node {
+    return copyImportPlacementNode(node);
   }
 
   private getPostludeNodes(postlude?: Node): Node[] {

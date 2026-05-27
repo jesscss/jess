@@ -100,7 +100,8 @@ type DeclarationEvalState = {
   nil: boolean;
 };
 
-type DeclarationValueState = {
+type DeclarationValueState<T extends Declaration = Declaration> = {
+  source: T;
   value: Node;
   important?: Any<'flag'>;
   changed: boolean;
@@ -275,13 +276,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return !isNode(this.value.value, N.Collection) && !isNode(this.value.value, N.Mixin);
+    return this.valueRequiresSemi(this.value.value);
+  }
+
+  private valueRequiresSemi(value: Node): boolean {
+    return !isNode(value, N.Collection) && !isNode(value, N.Mixin);
   }
 
   protected declTrimmedString(options?: PrintOptions) {
+    return this.declValueTrimmedString(this.value, options);
+  }
+
+  private declValueTrimmedString(valueParts: DeclarationValue, options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    const { name, value, important } = this.value;
+    const { name, value, important } = valueParts;
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -326,7 +335,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
       }
     }
-    if (this.requiredSemi) {
+    if (this.valueRequiresSemi(value)) {
       emitCommentTriviaAfterNode(important ?? value, options);
     }
     return w.getSince(mark);
@@ -357,7 +366,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         ? Node.prototype.render.call(node, context, bufferOrOptions, options)
         : Node.prototype.render.call(node, context, bufferOrOptions);
     }
-    if (!(node instanceof Declaration)) {
+    if (state.nil || !(node instanceof Declaration)) {
       return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);
@@ -366,7 +375,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = node.declTrimmedString(prepared);
+    const out = state.value
+      ? this.declValueTrimmedString({
+          name: state.name ?? state.output.value.name,
+          value: state.value,
+          important: state.important
+        }, prepared)
+      : state.output.declTrimmedString(prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -381,7 +396,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
     return pipe(
-      () => this.evalPrepared(context),
+      () => this.evalPreparedValueState(context),
+      valueState => valueState instanceof Nil
+        ? valueState
+        : this.materializeValueState(valueState),
       output => ({
         source: this,
         output,
@@ -393,10 +411,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     );
   }
 
-  private evalPrepared(context: Context): MaybePromise<Node> {
+  private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
     return pipe(
       () => this.prepareRegistration(context),
-      node => node.evalNode(context)
+      node => node.evalValueState(context)
     );
   }
 
@@ -532,15 +550,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  override evalNode(context: Context): MaybePromise<this | Nil> {
+  private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
     if (this.hasFlag(F_STATIC)) {
       this.evaluated = true;
-      return this;
+      return {
+        source: this,
+        value: this.value.value,
+        important: this.value.important,
+        changed: false
+      };
     }
     return pipe(
       () => {
         let node = this;
         const state: DeclarationValueState = {
+          source: node,
           value: node.value.value,
           important: node.value.important,
           changed: false
@@ -556,22 +580,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             state.important = important;
             state.changed = true;
           }
-        };
-        const outputDeclaration = (): this => {
-          if (!state.changed) {
-            return node;
-          }
-          const output = node.withParts({
-            name: this.copyNameForDerived(node.value.name),
-            value: state.value === node.value.value
-              ? this.copyValueForDerived(state.value)
-              : state.value,
-            important: state.important === node.value.important
-              ? this.copyImportantForDerived(state.important)
-              : state.important
-          });
-          output.registrationPrepared = node.registrationPrepared;
-          return output;
         };
         const normalizeMergedLeadingPlaceholder = () => {
           const normalizedAssign = node.options.normalizedFromAssign;
@@ -613,14 +621,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         };
         /** Registration prep already stabilized the name; eval handles the value. */
         if (node.type === 'VarDeclaration') {
-          return node;
+          return state;
         }
         const { name, value } = node.value;
         if (value instanceof Node) {
           const isCustomProperty = name.valueOf().startsWith('--');
           if (isCustomProperty) {
             if (!shouldResolveCustomPropertyValue(value)) {
-              return outputDeclaration();
+              return state;
             }
             context.inCustom = true;
           }
@@ -639,7 +647,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               if (context.hasImportantSource) {
                 context.popImportantSource();
               }
-              return outputDeclaration();
+              return state;
             });
           }
           context.inCustom = false;
@@ -658,8 +666,33 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             context.popImportantSource();
           }
         }
-        return outputDeclaration();
+        return state;
       }
+    );
+  }
+
+  private materializeValueState(state: DeclarationValueState<this>): this {
+    const node = state.source;
+    if (!state.changed) {
+      return node;
+    }
+    const output = node.withParts({
+      name: this.copyNameForDerived(node.value.name),
+      value: state.value === node.value.value
+        ? this.copyValueForDerived(state.value)
+        : state.value,
+      important: state.important === node.value.important
+        ? this.copyImportantForDerived(state.important)
+        : state.important
+    });
+    output.registrationPrepared = node.registrationPrepared;
+    return output;
+  }
+
+  override evalNode(context: Context): MaybePromise<this | Nil> {
+    return pipe(
+      () => this.evalValueState(context),
+      state => state instanceof Nil ? state : this.materializeValueState(state)
     ) as MaybePromise<this | Nil>;
   }
 

@@ -387,7 +387,7 @@ describe('Rules', () => {
     expect(root.registrationPrepared).toBe(false);
   });
 
-  it('derives rules resolve wrappers without shallow-cloning the source rules', async () => {
+  it('resolves unprepared rules without deriving a wrapper tree', async () => {
     const originalClone = Node.prototype.clone;
     let clonedRules = 0;
     Node.prototype.clone = function cloneForCounting(
@@ -405,12 +405,22 @@ describe('Rules', () => {
         vardecl({ name: any('tone'), value: any('red') }),
         decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
       ]);
+      const originalDerive = root.derive;
+      let deriveCalls = 0;
+      root.derive = function countDeriveCalls(
+        this: typeof root,
+        ...args: Parameters<typeof originalDerive>
+      ): ReturnType<typeof originalDerive> {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      };
 
       const resolved = await root.resolve(context);
 
       expect(resolved.toTrimmedString()).toContain('color: red;');
+      expect(deriveCalls).toBe(0);
       expect(clonedRules).toBe(0);
-      expect(root.evaluated).toBe(false);
+      expect(root.evaluated).toBe(true);
     } finally {
       Node.prototype.clone = originalClone;
     }

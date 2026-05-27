@@ -3513,7 +3513,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
-    const output = this.derive().eval(context);
+    const output = this.eval(context);
     const toState = (rules: Rules): RulesResolveState => createRulesResolveState(this, rules);
     const state = isThenable(output)
       ? output.then(toState)

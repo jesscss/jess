@@ -152,11 +152,11 @@ Latest audit: `new-node: 297`, `derive: 35`, `with-surface: 40`,
 eval-context count `37`, resolve-context count `1`. The module count includes
 module-level state records such as the at-rule body `WeakMap`s; use the
 eval-context count for hot-path movement.
-Current working audit after the latest eval-state pass: `new-node: 298`,
-`derive: 33`, `with-surface: 40`, `copy-leaves: 31`, `clone-leaves: 2`,
-module-context count `367`, eval-context count `34`, resolve-context count
-`1`. The derive/eval-context drops are from moving declaration eval mutation
-into state and splitting rules/at-rule/import/ampersand responsibility records.
+Current working audit after the latest queue pass: `new-node: 300`,
+`derive: 32`, `with-surface: 40`, `copy-leaves: 31`, `clone-leaves: 1`,
+module-context count `373`, eval-context count `29`, resolve-context count
+`0`. The resolve-context surface is gone; the remaining clone-leaves sighting
+is the explicit mixin-output child-copy seam in `Rules`.
 
 ## Completed Queue Pass
 
@@ -342,6 +342,24 @@ into state and splitting rules/at-rule/import/ampersand responsibility records.
   with source selector, append value, output selector, and hoist placement
   recorded at one boundary. The generated selector output is still semantic
   until visibility/extend/composed-header facts can move to state.
+- Declaration render now serializes directly from evaluated declaration value
+  state instead of requiring an output `Declaration` node first. Public
+  eval/resolve still materialize a declaration node where that API returns one.
+- Import first-use placement no longer calls
+  `cloneChildrenWithReusableLeaves(...)`. Direct root comments are copied as
+  placement comments; other children use mutable placement copies that can
+  still evaluate against import-site scope. The remaining clone-leaves count
+  belongs to mixin-output `Rules` slots.
+- Public non-static `Rules.resolve(...)` no longer derives a wrapper tree; it
+  evaluates through the canonical Rules path. Direct unevaluated
+  `Rules.render(...)` was re-audited and still needs an owned compatibility
+  output until the body serializer can render/eval child state directly.
+- At-rule body wrapper deletion was re-audited. The state now names prelude,
+  body output, frame clearing, and registration facts, but the derived at-rule
+  remains the current carrier for mutating prelude/body/frame during body eval.
+- Ampersand append placement was re-audited. `AmpersandAppendPlacementState`
+  records source/output/append/hoist facts, but append/template output still
+  constructs semantic generated selectors for extend matching and parentage.
 
 ## Immediate Queue
 
@@ -357,65 +375,59 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Render declarations directly from `DeclarationEvalState`.**
+1. **Make `Rules` body serialization render-aware.**
 
-   - Goal: let render-only declaration paths serialize evaluated value state
-     without constructing an output `Declaration`; keep node output only where
-     public resolve/eval still needs a node.
-   - Required proof: custom-property raw/no-space output, interpolation,
-     merge/important behavior, nil output, source parentage, direct render,
-     buffer render, and audit delta.
+   - Goal: split `_emitRulesBody(...)` so direct render can ask children to
+     render/eval into the active buffer instead of first creating a compatible
+     output `Rules` tree for non-static bodies.
+   - Required proof: declarations, controls, hoists, nested rulesets,
+     root/fragment separators, source parentage, and unchanged `toString()`.
 
-2. **Delete import first-use child clone with placement/comment emission.**
+2. **Delete the direct unevaluated `Rules.render(...)` derive.**
 
-   - Goal: teach `ImportPlacementState` to emit direct comments and placement
-     parent/root facts without `cloneChildrenWithReusableLeaves(...)`.
-   - Required proof: repeated direct comments, reference/multiple parent
-     chains, imported lookup, compose/reference parity, and `clone-leaves`
-     audit delta.
+   - Goal: once body serialization is render-aware, remove the remaining
+     direct-render compatibility `this.derive().eval(context)` branch.
+   - Required proof: dynamic declarations, `$if`/`$for`/`$while`, charset/import
+     root output, fragment render, buffer parity, and audit delta.
 
-3. **Narrow non-static `Rules.resolve(...)` wrapper ownership.**
+3. **Split declaration registration prep into state.**
 
-   - Goal: replace carrier-only public resolve wrappers with a prepared/evaled
-     resolve state while preserving identity for static resolve and fragment
-     semantics for direct render.
-   - Required proof: static identity resolve, dynamic declarations, nested
-     lookup, registration-prepared resolve, source parentage, and safeCompile
-     tree-surface parity.
+   - Goal: move assignment/name normalization out of the derived declaration
+     prep node so declaration eval/render can stay state-first from
+     registration through serialization.
+   - Required proof: interpolated names, merge assignments, conditional
+     assignments, important propagation, source parentage, and audit delta.
 
-4. **Narrow non-static `Rules.render(...)` compatibility wrapper.**
+4. **Replace mixin-output child clone with slot emission.**
 
-   - Goal: render from `RulesRenderState` after registration prep without
-     building a full output `Rules` tree for carrier-only direct-render cases.
-   - Required proof: controls, hoists, declaration merges, fragment/root
-     separators, buffer parity, source parentage, and unchanged public resolve.
+   - Goal: remove the remaining `cloneChildrenWithReusableLeaves(...)` site in
+     `Rules` by making `MixinOutputSlot` carry placement children/comments
+     without cloning the source body.
+   - Required proof: repeated mixin output comments, leaky/non-leaky lookup,
+     targeted lookup, reference gating, parentage, and `clone-leaves: 0`.
 
-5. **Split at-rule wrapper into prelude/body/placement output state.**
+5. **Render at-rule body state without materializing an output at-rule.**
 
-   - Goal: carry evaluated prelude, body output, root-hoist frame state, and
-     registration facts in side-state, constructing an owned `AtRule` only for
-     public resolve boundaries that truly need one.
+   - Goal: teach at-rule render to serialize from `AtRuleBodyState` fields
+     directly, leaving owned `AtRule` construction only for public resolve.
    - Required proof: dynamic preludes, root-only at-rules, nested media/mixins,
-     layers, extend chaining, source parentage, direct render, and buffer
-     render.
+     layers, extend chaining, source parentage, and buffer render.
 
-6. **Move at-rule registration/root-hoist finalization fully to state.**
+6. **Delete at-rule body resolve wrapper where state is sufficient.**
 
-   - Goal: make `AtRuleBodyRegistrationState` the owner of layer/extend/root
-     finalization so the derived at-rule wrapper stops carrying registration
-     facts.
-   - Required proof: layer names, extend-root registration, nested at-rules,
-     import/reference interactions, source body parentage, and Less fixture
-     parity.
+   - Goal: narrow `AtRule.resolve(...)` so body at-rules construct an output
+     node only when the public node result needs owned name/prelude/body fields.
+   - Required proof: static identity, dynamic prelude, body output, layer/root
+     registration, import/reference interactions, and source parentage.
 
-7. **Promote ampersand append placement state to the generated-selector owner.**
+7. **Move ampersand append/template facts out of generated selector wrappers.**
 
-   - Goal: move proven hoist/extend/composed-header facts for append/template
-     outputs into `AmpersandAppendPlacementState`, then delete carrier-only
-     selector wrapper construction if tests prove it is not semantic.
+   - Goal: identify which append/template facts are placement facts versus
+     selector semantics, then move only proven placement facts onto
+     `AmpersandAppendPlacementState`.
    - Required proof: appended ampersands, template replacements, selector
-     lists, generated `:is(...)`, extend matching, source parentage, direct
-     render, buffer render, and audit delta or explicit blocker.
+     lists, generated `:is(...)`, extend matching, direct/buffer render, and
+     source parentage.
 
 ## Backlog
 
