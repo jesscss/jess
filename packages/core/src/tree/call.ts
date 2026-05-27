@@ -314,6 +314,61 @@ export class Call extends Node<CallValue, CallOptions> {
     }
   }
 
+  private async finalizeFunctionResult(
+    result: unknown,
+    context: Context,
+    markImportant?: boolean
+  ): Promise<Node> {
+    if (isNode(result)) {
+      let evald = result.eval(context);
+      if (isThenable(evald)) {
+        evald = await evald;
+      }
+      if (markImportant && isNode(evald, N.Rules)) {
+        this.makeImportant(evald);
+      }
+      return this.markCallOutput(evald);
+    }
+    const castResult = cast(result);
+    if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+      return this.markCallOutput(castResult.value[0]!);
+    }
+    return this.markCallOutput(castResult);
+  }
+
+  private async evalMetadataDynamicFunction(context: Context): Promise<Node | undefined> {
+    if (
+      typeof this.value.name === 'string'
+      || this.value.contentNode
+    ) {
+      return undefined;
+    }
+    const name = this.copyNameForEval(this.value.name);
+    const evaluatedName = await name.eval(context);
+    const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
+    if (
+      !isExtendedFn(fn)
+      || (!fn._internal && !fn.options?.params)
+    ) {
+      return undefined;
+    }
+
+    context.callStack.push(this);
+    context.parenFrames.push(false);
+    const originalCaller = context.caller;
+    context.caller = this;
+    try {
+      const result = this.value.args
+        ? await callWithContext(context, fn, this.value.args)
+        : await callWithContext(context, fn);
+      return await this.finalizeFunctionResult(result, context, this._options?.markImportant);
+    } finally {
+      context.caller = originalCaller;
+      context.parenFrames.pop();
+      context.callStack.pop();
+    }
+  }
+
   private serializeRenderedArgs(
     args: List<Node> | undefined,
     context: Context,
@@ -492,8 +547,13 @@ export class Call extends Node<CallValue, CallOptions> {
                 fallback => fallback
                   ? this.renderOutput(context, fallback, bufferOrOptions, options)
                   : pipe(
-                      () => this.deriveResolveSurface().eval(context),
-                      output => this.renderOutput(context, output, bufferOrOptions, options)
+                      () => this.evalMetadataDynamicFunction(context),
+                      metadataOutput => metadataOutput
+                        ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
+                        : pipe(
+                            () => this.deriveResolveSurface().eval(context),
+                            output => this.renderOutput(context, output, bufferOrOptions, options)
+                          )
                     )
               )
         );
@@ -522,8 +582,13 @@ export class Call extends Node<CallValue, CallOptions> {
             fallback => fallback
               ? this.renderOutput(context, fallback, bufferOrOptions, options)
               : pipe(
-                  () => this.deriveResolveSurface().eval(context),
-                  output => this.renderOutput(context, output, bufferOrOptions, options)
+                  () => this.evalMetadataDynamicFunction(context),
+                  metadataOutput => metadataOutput
+                    ? this.renderOutput(context, metadataOutput, bufferOrOptions, options)
+                    : pipe(
+                        () => this.deriveResolveSurface().eval(context),
+                        output => this.renderOutput(context, output, bufferOrOptions, options)
+                      )
                 )
           )
     );
@@ -543,7 +608,10 @@ export class Call extends Node<CallValue, CallOptions> {
       () => this.evalPlainDynamicFunction(context),
       node => node ?? pipe(
         () => this.evalOptionalFallbackOutput(context),
-        fallback => fallback ?? this.deriveResolveSurface().eval(context)
+        fallback => fallback ?? pipe(
+          () => this.evalMetadataDynamicFunction(context),
+          metadataOutput => metadataOutput ?? this.deriveResolveSurface().eval(context)
+        )
       )
     );
   }

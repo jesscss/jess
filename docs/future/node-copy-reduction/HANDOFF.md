@@ -339,6 +339,13 @@ current state, immediate queue, and verification commands.
   on the owned `rawArgs` surface before errors rethrow, even when the call is
   marked `silentFail`. Do not route metadata functions through the positional
   optional fallback fast path.
+- Metadata-backed dynamic `Call.render(...)` / `resolve(...)` no longer create
+  a full copied source `Call` before invocation. They evaluate an owned name,
+  pass the source arg list into `callWithContext(...)`, and rely on
+  `callWithContext(...)` to create the single owned `rawArgs` list. Focused
+  coverage proves direct render, buffer render, and resolve keep source
+  parentage/eval state untouched while metadata `rawArgs` mutation remains
+  isolated.
 - Call fallback/content resolve-surface audit is current: the remaining full
   copied `Call` surface cannot be replaced by constructing a smaller `Call`
   that borrows source `args` or `contentNode`, because `Call` construction owns
@@ -393,7 +400,7 @@ to stay.
 | `AtRule.render(...)` | Reuses evaluated/prepared/static at-rule surfaces when available; direct dynamic unevaluated render still derives before eval through the named compatibility branch. | Split required body/prelude mutation from direct dynamic unevaluated compatibility rendering. |
 | `Ruleset.render(...)` | Reuses evaluated/prepared ruleset surfaces; unevaluated rulesets still prepare/eval an isolated surface, evaluated rulesets serialize directly, nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are only serializer carriers. |
 | `Declaration.render(...)` | Prepares/evals one isolated declaration surface for assignment/name prep and value/important mutation; true non-declaration outputs delegate to native render. | Keep source isolation unless a new state model replaces preparation mutation. |
-| Function/mixin argument metadata | Plain JS calls pass direct args; optional missing dynamic function fallback skips the copied source `Call` surface; metadata-backed calls keep one owned raw/callback argument surface for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
+| Function/mixin argument metadata | Plain JS calls pass direct args; optional missing dynamic function fallback skips the copied source `Call` surface; metadata-backed dynamic render/resolve now skip the copied source `Call` too and keep only the owned raw/callback argument surface created by `callWithContext(...)` for mutable `this.rawArgs`. | Keep guarding plain direct args and the single metadata-owned surface; do not add another pre-copy. |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, and ruleset headers still create owned placement surfaces in focused, tested cases. | Keep unless new parentage/visibility/output tests prove a specific placement is a carrier only. |
 
 ## Node-Creation Hotspots
@@ -432,54 +439,56 @@ queue full. If an item is too broad to complete in one checkpoint, replace it
 with the smallest honest next checkpoint and move the broader theme to the
 backlog below.
 
-1. **Call metadata state replacement slice.**
-   - Goal: replace the metadata path's full pre-call copied `Call` surface with
-     a smaller rawArgs owner only if the owned-list contract remains intact.
-   - Required proof: metadata rawArgs mutation isolation across eval/render/
-     resolve, metadata param evaluation from the owned arg surface, and source
-     call/arg parentage guards.
-
-2. **Generated selector state model follow-up.**
+1. **Generated selector state model follow-up.**
    - Goal: reduce remaining generated selector owned-placement surfaces only
      after proving the specific placement has no unique parentage, extend,
      visibility, or render-local metadata responsibility.
    - Required proof: source selector parentage, extend matching, pseudo arg,
      framed ampersand, and ruleset header guards for the selected placement.
 
-3. **At-rule dynamic direct render compatibility follow-up.**
+2. **At-rule dynamic direct render compatibility follow-up.**
    - Goal: narrow the remaining dynamic unevaluated `AtRule.render(...)`
      compatibility derive path, or document the exact name/prelude/body mutation
      surface that still requires it.
    - Required proof: direct render, buffer render, source parentage,
      root-only/hoist behavior, and nested at-rule output guards.
 
-4. **At-rule dynamic body/prelude render-state split.**
+3. **At-rule dynamic body/prelude render-state split.**
    - Goal: isolate which part of direct dynamic unevaluated at-rule render still
      needs a derived surface: prelude mutation, body mutation, hoist/root frame
      state, or some combination.
    - Required proof: separate dynamic-prelude, dynamic-body, and root-only
      render/resolve guards before removing or narrowing the compatibility path.
 
-5. **Mixin output-slot first removable field.**
+4. **Mixin output-slot first removable field.**
    - Goal: choose one field currently carried by generated mixin `Rules`
      wrappers and prove whether it belongs in a future slot record or can be
      deleted outright.
    - Required proof: focused mixin output lookup/render tests plus source body
      parentage and caller-fallback guards.
 
-6. **Call content-node fallback state slice.**
+5. **Call content-node fallback state slice.**
    - Goal: reduce the dynamic call path for calls with `contentNode` without
      constructing a full copied source call before the callable result is known.
    - Required proof: content-node render, resolve, source content parentage,
      source evaluated-state, and metadata/rawArgs guard coverage.
 
-7. **Rules-like variable call copied-call follow-up.**
+6. **Rules-like variable call copied-call follow-up.**
    - Goal: replace the remaining full copied `Call` surface used by dynamic
      render/resolve of rules-like variable calls with a narrower state record,
      now that the source-name preservation contract is pinned.
    - Required proof: non-leaky/leaky detached ruleset call tests, render,
      resolve, source name/content parentage, source evaluated-state, and caller
      fallback guards.
+
+7. **Rules direct unevaluated render compatibility follow-up.**
+   - Goal: keep the remaining `Rules.render(...)` direct unevaluated derive path
+     isolated, and narrow or document the exact fragment/newline/registration
+     reason it cannot yet stream from source state.
+   - Required proof: public compiler render still enters with evaluated roots,
+     direct node render preserves existing fragment separators, static
+     `Rules.resolve(...)` remains source-native, and source children keep
+     canonical parentage/eval state.
 
 ## Backlog
 
