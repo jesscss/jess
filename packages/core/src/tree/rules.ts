@@ -3261,7 +3261,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       return;
     }
     const remainder = afterNested.filter(n => !shouldMove(n));
-    rules.set(null, [...beforeNested, ...moved, ...remainder]);
+    rules.value = [...beforeNested, ...moved, ...remainder];
   }
 
   /**

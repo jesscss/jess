@@ -377,7 +377,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (!(key instanceof Any)) {
           throw new TypeError('Expected interpolated at-rule name to resolve to Any');
         }
-        node.set('name', key);
+        node.adopt(key);
+        node.value.name = key;
         return node;
       });
     }
@@ -385,7 +386,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (!(maybeKey instanceof Any)) {
       throw new TypeError('Expected interpolated at-rule name to resolve to Any');
     }
-    node.set('name', maybeKey);
+    node.adopt(maybeKey);
+    node.value.name = maybeKey;
     return node;
   }
 
@@ -891,7 +893,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         value => this.resolveLeafValue(value)
       );
     }
-    return this.deriveAtRule(this.value).eval(context);
+    return pipe(
+      () => this.evalBodyState(context),
+      state => state.output
+    );
   }
 
   /** @todo - move to visitors */

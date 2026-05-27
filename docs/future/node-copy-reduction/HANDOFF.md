@@ -58,9 +58,10 @@ truth, the immediate pop queue, and verification.
   uses an explicit leaf-only owned result instead of the generic at-rule
   derive surface. Body/root-hoist at-rules stay on the existing isolation
   surface, but direct render now routes through an `AtRuleBodyState` record so
-  registration/extend-root facts have a named place to split next. Nestable
-  body extend-root finalization is now one helper, not three duplicated
-  blocks, but it still mutates the evaluated output at-rule.
+  registration/extend-root facts have a named place to split next. Dynamic
+  body `resolve(context)` also routes through that state seam. Nestable body
+  extend-root finalization is now one helper, not three duplicated blocks, but
+  it still mutates the evaluated output at-rule.
 - Dynamic call fallback render/resolve now routes through `CallEvalState`.
   The state can now carry just the evaluated name/final syntax facts without
   eagerly owning args/content. Finalized fallback CSS call syntax is built at
@@ -89,10 +90,14 @@ truth, the immediate pop queue, and verification.
   direct unevaluated `Rules.render(...)` is a compatibility fragment path;
   generated selector ownership is semantic until a placement-state record
   carries visibility/extend/composed-header facts; mutation-helper cleanup
-  should attack one hot path at a time.
+  should attack one helper family or node surface at a time, not one call site.
 - Remaining broad typecheck red is separate typed-node structural debt. Do not
   let it displace runtime node-creation reduction unless it directly unlocks a
   copy/materialization deletion.
+- Queue items must stay surface-sized. A pass may choose a whole helper
+  family, node family, or eval/render surface; if only a tiny slice is safe,
+  document the broader inventory and the semantic blocker that prevented the
+  family-wide change.
 
 ## Remaining Node-Creation Surfaces
 
@@ -125,8 +130,9 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 296`, `derive: 37`, `with-surface: 40`,
-`copy-leaves: 35`, `clone-leaves: 2`, module-context count `361`.
+Latest audit: `new-node: 296`, `derive: 36`, `with-surface: 40`,
+`copy-leaves: 35`, `clone-leaves: 2`, module-context count `361`,
+resolve-context count `1`.
 
 ## Completed Queue Pass
 
@@ -197,6 +203,16 @@ Latest audit: `new-node: 296`, `derive: 37`, `with-surface: 40`,
   register/take-layer/register-inner/push-pop sequence now has one helper,
   which is the next seam for moving registration off the evaluated output
   at-rule.
+- Dynamic at-rule body resolve is narrowed. It now routes through
+  `AtRuleBodyState` instead of directly calling
+  `this.deriveAtRule(this.value).eval(context)`, reducing the resolve-context
+  derive count.
+- Node `.set()` helper family reduction is done for the unblocked production
+  eval/render/registration surfaces in `Ruleset`, `Mixin`, `StyleImport`,
+  `Rules`, `Declaration`, `AtRule`, and selector extend replacement.
+  Remaining production hits are the base `Node.set(...)` API itself and
+  Maps/BitSets/`Reflect.set` index/parent internals; remaining direct
+  `Node.set(...)` calls are tests.
 
 ## Immediate Queue
 
@@ -204,6 +220,13 @@ This is a pop queue. Keep at least seven concrete items here. When the top item
 is completed, remove it and add or promote enough work to keep the queue full.
 If an item is too broad, replace it with the smallest honest next checkpoint
 and move the broader theme to the backlog.
+
+Queue items must be surface-sized, not line-sized. Prefer a whole node family,
+helper family, or eval/render surface with inventory, implementation, focused
+proof, audit delta, and documented blockers. Only split smaller after the
+inventory proves a real semantic blocker; do not create timid items like
+"delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
+family can be audited and reduced.
 
 1. **Move at-rule body registration state off the output at-rule.**
 
@@ -240,13 +263,14 @@ and move the broader theme to the backlog.
    - Required proof: generated `:is(...)`, unknown pseudo args, extend
      matching, source serializers, and direct/buffer render parity.
 
-5. **Delete one hot-path mutation-helper use.**
+5. **Audit and reduce the next mutation-helper family across eval/render paths.**
 
-   - Goal: pick a single `inherit(...)`, `set(...)`, or `derive*` site from
-     the node-creation audit and replace it with local render/eval state or a
-     proven owned result.
-   - Required proof: source parentage/eval-state guard plus focused output
-     coverage for that exact path.
+   - Goal: choose the next helper family (`inherit(...)` or `derive*`),
+     inventory all eval/render/registration uses, remove every carrier-only
+     use in that family, and document any remaining ownership-boundary uses.
+   - Required proof: source parentage/eval-state guards for removed surfaces,
+     focused output coverage for each touched node family, and an audit delta
+     or explicit blocker note when counts cannot move.
 
 6. **Split declaration render preparation into explicit state.**
 
@@ -257,12 +281,19 @@ and move the broader theme to the backlog.
    - Required proof: custom property no-space value output, property merge,
      important flags, declaration-name interpolation, and source parentage.
 
-7. **Narrow dynamic at-rule body resolve.**
+7. **Reduce the import-style clone-leaves frontier.**
 
-   - Goal: route dynamic body `resolve(context)` through the at-rule body state
-     seam instead of directly calling `this.deriveAtRule(this.value).eval(...)`.
-   - Required proof: dynamic body resolve, nested media with mixin params,
-     root-only hoist, and source prelude/body parentage.
+   - Goal: replace the remaining `cloneChildrenWithReusableLeaves(...)`
+     import-style eval surface with explicit import placement state or a
+     narrower owned child list that proves which imported children truly need
+     ownership.
+   - Required proof: import/reference/compose fixture coverage, repeated
+     import parentage, imported mixin/ruleset lookup, and audit delta for
+     `clone-leaves`.
+   - Current blocker: the remaining clone preserves direct comment children in
+     first-use import-local `Rules` wrappers. `copyWithReusableLeaves(...)`
+     intentionally nils comments, so this is not a safe rename; the replacement
+     needs explicit import placement/comment state.
 
 ## Backlog
 

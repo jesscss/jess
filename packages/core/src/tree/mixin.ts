@@ -220,14 +220,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          node.set('name', key);
+          node.adopt(key);
+          node.value.name = key;
           return node;
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      node.set('name', maybeKey);
+      node.adopt(maybeKey);
+      node.value.name = maybeKey;
     }
     return node;
   }

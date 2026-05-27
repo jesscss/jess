@@ -197,7 +197,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       wrapped.sourceNode = anchorRules.sourceNode ?? anchorRules;
     }
     if (childNodes) {
-      wrapped.set(null, []);
       for (const childNode of childNodes) {
         wrapped.adopt(childNode);
         wrapped.value.push(childNode);
@@ -300,7 +299,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return importedRules;
     }
 
-    importedRules.set(null, []);
+    importedRules.value.length = 0;
     for (let index = 0; index < sourceRules.value.length; index++) {
       const originalNode = sourceRules.value[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;

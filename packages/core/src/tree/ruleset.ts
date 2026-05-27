@@ -500,11 +500,11 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       const rs = child as Ruleset;
       if (rs.value === sharedValue) {
-        (rs as Ruleset).set(null, {
+        rs.value = {
           selector: rs.value.selector,
           rules: rs.value.rules,
           ...(rs.value.guard !== undefined && { guard: rs.value.guard })
-        });
+        };
       }
       Ruleset.ensureDescendantRulesetsHaveOwnValue(rs, sharedValue);
     }
@@ -1085,15 +1085,20 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
   }
 
   private _setGuard(value: Condition | Nil | undefined): void {
-    this.set('guard', value);
+    if (value instanceof Node) {
+      this.adopt(value);
+    }
+    this.value.guard = value;
   }
 
   private _setSelector(value: Selector | Nil): void {
-    this.set('selector', value);
+    this.adopt(value);
+    this.value.selector = value;
   }
 
   private _setRules(value: Rules): void {
-    this.set('rules', value);
+    this.adopt(value);
+    this.value.rules = value;
   }
 
   private _prepareRulesVisibility(node: Ruleset, context: Context): void {

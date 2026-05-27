@@ -389,11 +389,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.set('name', key);
+          node.adopt(key);
+          node.value.name = key;
           return key;
         });
       }
-      node.set('name', maybeKey);
+      node.adopt(maybeKey);
+      node.value.name = maybeKey;
       return maybeKey;
     }
     return name;
@@ -407,7 +409,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private _normalizeAssignmentValue(node: this, key: Any<'property'>): void {
     let { value } = node.value;
     const setValue = (newValue: Node) => {
-      node.set('value', newValue);
+      node.adopt(newValue);
+      node.value.value = newValue;
       value = newValue;
     };
     /** Normalize assignment types */
@@ -514,12 +517,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         };
         const setVal = (newValue: Node) => {
           if (node.value.value !== newValue) {
-            ensureEvalSurface().set('value', newValue);
+            const surface = ensureEvalSurface();
+            surface.adopt(newValue);
+            surface.value.value = newValue;
           }
         };
         const setImportant = (important: Any<'flag'>) => {
           if (node.value.important !== important) {
-            ensureEvalSurface().set('important', important);
+            const surface = ensureEvalSurface();
+            surface.adopt(important);
+            surface.value.important = important;
           }
         };
         const normalizeMergedLeadingPlaceholder = () => {

@@ -3514,13 +3514,15 @@ function replaceNodeInParent(parent: SelectorContainerParent, oldNode: Node, new
   if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
     for (let i = 0; i < parent.value.length; i++) {
       if (parent.value[i] === oldNode) {
-        parent.set(i, newNode);
+        parent.adopt(newNode);
+        parent.value[i] = newNode;
         parent.invalidateCache?.();
         break;
       }
     }
   } else if (isNode(parent, N.PseudoSelector) && parent.value.arg === oldNode) {
-    parent.set(null, { ...parent.value, arg: newNode });
+    parent.adopt(newNode);
+    parent.value.arg = newNode;
     parent.invalidateCache?.();
   }
 }
