@@ -203,12 +203,6 @@ export class Call extends Node<CallValue, CallOptions> {
     ).inherit(name);
   }
 
-  private copyNameForEval(name: Node): Node {
-    return isNode(name, N.Reference) && name.options?.type === 'variable'
-      ? this.derivePreserveRulesLikeReference(name)
-      : copyWithReusableLeaves(name);
-  }
-
   private async evalArgNodes(
     context: Context,
     nodes?: List<Node>,
@@ -322,7 +316,11 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return undefined;
     }
-    const name = this.copyNameForEval(this.value.name);
+    const state = this.createEvalState(context);
+    const { name } = state;
+    if (typeof name === 'string') {
+      return undefined;
+    }
     const evaluatedName = await name.eval(context);
     const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
     if (
@@ -338,8 +336,8 @@ export class Call extends Node<CallValue, CallOptions> {
     const originalCaller = context.caller;
     context.caller = this;
     try {
-      const result = this.value.args
-        ? await callWithContext(context, fn, ...this.value.args.value)
+      const result = state.args
+        ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
       if (isNode(result)) {
         return this.markCallOutput(await result.eval(context));
@@ -385,7 +383,11 @@ export class Call extends Node<CallValue, CallOptions> {
     ) {
       return undefined;
     }
-    const name = this.copyNameForEval(this.value.name);
+    const state = this.createEvalState(context);
+    const { name } = state;
+    if (typeof name === 'string') {
+      return undefined;
+    }
     const evaluatedName = await name.eval(context);
     const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
     if (
@@ -400,8 +402,8 @@ export class Call extends Node<CallValue, CallOptions> {
     const originalCaller = context.caller;
     context.caller = this;
     try {
-      const result = this.value.args
-        ? await callWithContext(context, fn, this.value.args)
+      const result = state.args
+        ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
       return await this.finalizeFunctionResult(result, context, this._options?.markImportant);
     } finally {

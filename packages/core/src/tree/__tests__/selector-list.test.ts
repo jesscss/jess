@@ -1,4 +1,4 @@
-import { any, attr, co, compound, el, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -11,6 +11,14 @@ describe('Selector list', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  const setRoot = (node: unknown) => {
+    if (!(node instanceof RulesClass)) {
+      throw new TypeError('Expected evaluated rules root');
+    }
+    context.root = node;
+    context.rulesContext = node;
+  };
 
   describe('equality', () => {
     test('renders selector-list syntax through toTrimmedString()', () => {
@@ -64,8 +72,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
 
     const rendered = sellist([
       compound([
@@ -90,8 +97,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
     const buffer = createRenderBuffer('segmented');
 
     const selectorNode = sellist([
@@ -130,8 +136,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
 
     const selector = sellist([
       compound([
@@ -161,8 +166,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
 
     const selector = sellist([
       compound([
@@ -183,5 +187,19 @@ describe('Selector list', () => {
     expect(sourceFirst.parent).toBe(selector);
     expect(sourceSecond.parent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$attr-name],\n.bar');
+  });
+
+  test('owns single resolved selector-list output without reparenting the source child', async () => {
+    const inner = sellist([sel([el('.source'), co(' '), el('.child')])]);
+    const sourceChild = inner.value[0]!;
+    const selector = pseudo({ name: ':is', arg: inner });
+
+    const resolved = await selector.resolve(context);
+    const resolvedArg = resolved.value.arg;
+
+    expect(resolved.toTrimmedString()).toBe(':is(.source .child)');
+    expect(resolvedArg).not.toBe(sourceChild);
+    expect(sourceChild.parent).toBe(inner);
+    expect(inner.parent).toBe(selector);
   });
 });
