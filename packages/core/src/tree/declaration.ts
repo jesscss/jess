@@ -91,6 +91,11 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
   important?: Any<'flag'>;
 };
 
+type DeclarationEvalState = {
+  source: Declaration;
+  output: Node;
+};
+
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (isNode(node, N.Reference)) {
     return node.options?.type !== 'function';
@@ -325,17 +330,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     return pipe(
-      () => this.evalPrepared(context),
-      node => this.renderEvaluatedDeclaration(context, node, bufferOrOptions, options)
+      () => this.evalPreparedState(context),
+      state => this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options)
     );
   }
 
   private renderEvaluatedDeclaration(
     context: Context,
-    node: Node,
+    state: DeclarationEvalState,
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string | MaybePromise<string> {
+    const node = state.output;
     if (isNode(node, N.VarDeclaration)) {
       return isRenderBuffer(bufferOrOptions)
         ? Node.prototype.render.call(node, context, bufferOrOptions, options)
@@ -357,7 +363,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return this.evalPrepared(context);
+    return pipe(
+      () => this.evalPreparedState(context),
+      state => state.output
+    );
+  }
+
+  private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
+    return pipe(
+      () => this.evalPrepared(context),
+      output => ({ source: this, output })
+    );
   }
 
   private evalPrepared(context: Context): MaybePromise<Node> {

@@ -52,11 +52,19 @@ type AtRuleBodyRegistrationContext = {
   savedRulesetFrames: Context['rulesetFrames'] | undefined;
 };
 
+type AtRuleBodyRegistrationState = {
+  bodyToEval: Rules;
+  finalRules: Rules;
+  parentExtendRoot?: Rules;
+  layerName?: string;
+};
+
 type AtRuleBodyState = {
   source: AtRule;
   output: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
+  registration?: AtRuleBodyRegistrationState;
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
 };
@@ -569,21 +577,24 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   private _registerEvaluatedNestableBody(
     node: AtRule,
     context: Context,
-    bodyToEval: Rules,
-    finalRules: Rules,
-    parentExtendRoot?: Rules
-  ): void {
+    state: AtRuleBodyRegistrationState
+  ): AtRuleBodyRegistrationState {
     context.extendRoots.popExtendRoot();
     const layerName = context.extendRoots.takeLayerName(node);
-    const parent = parentExtendRoot ?? context.root ?? undefined;
-    context.extendRoots.registerRoot(bodyToEval, parent as Rules | undefined, { layerName });
-    registerInnerExtendRootIfHoisted(bodyToEval, context, layerName);
-    if (finalRules !== bodyToEval) {
-      context.extendRoots.registerRoot(finalRules, bodyToEval, { layerName });
-      registerInnerExtendRootIfHoisted(finalRules, context, layerName);
+    const registration: AtRuleBodyRegistrationState = {
+      ...state,
+      layerName
+    };
+    const parent = registration.parentExtendRoot ?? context.root ?? undefined;
+    context.extendRoots.registerRoot(registration.bodyToEval, parent as Rules | undefined, { layerName });
+    registerInnerExtendRootIfHoisted(registration.bodyToEval, context, layerName);
+    if (registration.finalRules !== registration.bodyToEval) {
+      context.extendRoots.registerRoot(registration.finalRules, registration.bodyToEval, { layerName });
+      registerInnerExtendRootIfHoisted(registration.finalRules, context, layerName);
     }
-    context.extendRoots.pushExtendRoot(bodyToEval);
+    context.extendRoots.pushExtendRoot(registration.bodyToEval);
     context.extendRoots.popExtendRoot();
+    return registration;
   }
 
   /** Render the opening of this at-rule (name and prelude) */
@@ -798,7 +809,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
                   node.value.rules = finalRules;
-                  this._registerEvaluatedNestableBody(node, context, bodyToEval, finalRules, parentExtendRoot);
+                  this._registerEvaluatedNestableBody(node, context, {
+                    bodyToEval,
+                    finalRules,
+                    parentExtendRoot
+                  });
                   return node;
                 };
                 if (isThenable(evalOut)) {
@@ -844,7 +859,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               node.value.rules = finalRules;
               if (pushedExtendRoot && node.isNestable()) {
-                this._registerEvaluatedNestableBody(node, context, bodyToEval, finalRules, parentExtendRoot);
+                this._registerEvaluatedNestableBody(node, context, {
+                  bodyToEval,
+                  finalRules,
+                  parentExtendRoot
+                });
               }
 
               return node;
@@ -860,7 +879,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
           node.value.rules = finalRules;
           if (pushedExtendRoot && node.isNestable()) {
-            this._registerEvaluatedNestableBody(node, context, bodyToEval, finalRules, parentExtendRoot);
+            this._registerEvaluatedNestableBody(node, context, {
+              bodyToEval,
+              finalRules,
+              parentExtendRoot
+            });
           }
         }
         return node;
