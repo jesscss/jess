@@ -31,6 +31,8 @@ type GeneratedPseudoPlacementState = {
   omitWrapperForSingleSelectorList: boolean;
 };
 
+const generatedPseudoOmitWrapper = new WeakMap<PseudoSelector, true>();
+
 function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
   const { name, arg } = source.value;
   if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
@@ -38,7 +40,7 @@ function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseu
       source,
       name,
       arg,
-      omitWrapperForSingleSelectorList: isNode(arg, N.SelectorList)
+      omitWrapperForSingleSelectorList: isNode(arg, N.SelectorList) || generatedPseudoOmitWrapper.has(source)
     };
   }
   return undefined;
@@ -215,6 +217,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           this.location.length ? this.location : undefined,
           this.treeContext
         ).inherit(this);
+        node.generated = this.generated;
+        if (this.generated && isNode(currentArg, N.SelectorList)) {
+          generatedPseudoOmitWrapper.set(node, true);
+        }
         attachSelectorBitLibrary(node, context.selectorBits);
         return node;
       }

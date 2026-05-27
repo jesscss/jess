@@ -6,6 +6,8 @@ import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as 
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -14,6 +16,15 @@ class CountingWriter extends OutputWriter {
     this.captures++;
     return super.capture(fn);
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
 }
 
 describe('PseudoSelector', () => {
@@ -55,6 +66,43 @@ describe('PseudoSelector', () => {
     expect(node.toTrimmedString({ trivia })).toBe(':is(.a .b)');
   });
 
+  it('omits generated :is() wrappers only for single-selector-list placement output', () => {
+    const generatedSingle = pseudo({
+      name: ':is',
+      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
+    });
+    generatedSingle.generated = true;
+    const generatedMulti = pseudo({
+      name: ':is',
+      arg: sellist([el('.a'), el('.b')])
+    });
+    generatedMulti.generated = true;
+    const authoredSingle = pseudo({
+      name: ':is',
+      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
+    });
+
+    expect(generatedSingle.toTrimmedString()).toBe('.a .b');
+    expect(generatedSingle.render(context)).toBe('.a .b');
+    expect(generatedMulti.toTrimmedString()).toBe(':is(.a, .b)');
+    expect(generatedMulti.render(context)).toBe(':is(.a, .b)');
+    expect(authoredSingle.toTrimmedString()).toBe(':is(.a .b)');
+    expect(authoredSingle.render(context)).toBe(':is(.a .b)');
+  });
+
+  it('keeps generated :is() placement output aligned between string and buffer render', () => {
+    const buffer = createRenderBuffer('segmented');
+    const node = pseudo({
+      name: ':is',
+      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
+    });
+    node.generated = true;
+
+    expect(node.render(context)).toBe('.a .b');
+    expect(node.render(context, buffer)).toBe('.a .b');
+    expect(buffer.segments).toEqual(['.a .b']);
+  });
+
   it('streams generated selector arguments without capture scaffolding', () => {
     const writer = new CountingWriter();
     const node = pseudo({
@@ -91,9 +139,7 @@ describe('PseudoSelector', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const pseudoNode = pseudo({
       name: ':is',
@@ -113,9 +159,7 @@ describe('PseudoSelector', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
     const buffer = createRenderBuffer('segmented');
 
     const pseudoNode = pseudo({
@@ -147,9 +191,7 @@ describe('PseudoSelector', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const pseudoNode = pseudo({
       name: ':is',
@@ -170,9 +212,7 @@ describe('PseudoSelector', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const pseudoNode = pseudo({
       name: ':is',

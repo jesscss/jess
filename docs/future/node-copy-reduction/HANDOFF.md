@@ -147,8 +147,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 296`, `derive: 35`, `with-surface: 40`,
-`copy-leaves: 32`, `clone-leaves: 2`, module-context count `365`,
+Latest audit: `new-node: 297`, `derive: 35`, `with-surface: 40`,
+`copy-leaves: 32`, `clone-leaves: 2`, module-context count `366`,
 eval-context count `37`, resolve-context count `1`. The module count includes
 module-level state records such as the at-rule body `WeakMap`s; use the
 eval-context count for hot-path movement.
@@ -270,6 +270,17 @@ eval-context count for hot-path movement.
   still single-selector-list wrapper omission for generated `:is(...)`. No
   visibility, extend metadata, or composed-header fact should be added until a
   focused selector-shape test proves it belongs in placement state.
+- Generated pseudo placement metadata proof is done. Focused tests now cover
+  the current placement fact directly: generated `:is(...)` omits its wrapper
+  only when a selector-list argument renders as one selector, while authored
+  `:is(...)`, generated multi-selector output, source serializers, direct
+  render, buffer render, and extend matching stay on existing AST semantics.
+  The existing wrapper-omission fact is now retained when pseudo arg eval
+  collapses a single selector list to its one selector. No visibility, extend
+  metadata, or composed-header fact was added because those remain AST-owned by
+  current evidence. The audit gains one module-level `WeakMap`/state entry and
+  one `new-node` sighting in `selector-pseudo.ts`; eval-context count is
+  unchanged.
 - Import clone-leaves queue item was audited. The remaining first-use import
   clone preserves direct comment children for repeated import placements;
   `copyWithReusableLeaves(...)` intentionally nils comments, so this stays
@@ -311,16 +322,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Prove or reject selector placement metadata for generated pseudo output.**
-
-   - Goal: add a focused selector-shape test for one candidate fact
-     (visibility, extend metadata, or composed-header cache) and only then move
-     that fact into `GeneratedPseudoPlacementState`; if the test shows the
-     fact is AST-owned, document that and leave the state small.
-   - Required proof: generated `:is(...)`, unknown pseudo args, extend
-     matching, source serializers, and direct/buffer render parity.
-
-2. **Reduce one selector-family `inherit(...)` cluster.**
+1. **Reduce one selector-family `inherit(...)` cluster.**
 
    - Goal: choose one selector family (`CompoundSelector`, `ComplexSelector`,
      `SelectorList`, or generated pseudo extend output), classify every
@@ -329,7 +331,7 @@ family can be audited and reduced.
      focused output coverage for each touched node family, and audit delta or
      explicit ownership-boundary blocker.
 
-3. **Use `DeclarationEvalState` to remove one declaration derive surface.**
+2. **Use `DeclarationEvalState` to remove one declaration derive surface.**
 
    - Goal: move either assignment normalization or value/important finalization
      onto `DeclarationEvalState` so one current declaration derive path can be
@@ -338,7 +340,7 @@ family can be audited and reduced.
      important flags, declaration-name interpolation, nil declaration output,
      and source parentage.
 
-4. **Add import placement/comment state and delete the clone-leaves site.**
+3. **Add import placement/comment state and delete the clone-leaves site.**
 
    - Goal: model first-use import-local placement state, including direct
      comment children, so the remaining `cloneChildrenWithReusableLeaves(...)`
@@ -347,7 +349,7 @@ family can be audited and reduced.
      import direct comments, repeated import parentage, imported mixin/ruleset
      lookup, and `clone-leaves` audit delta.
 
-5. **Move dynamic call name copying into a narrower state-owned rule.**
+4. **Move dynamic call name copying into a narrower state-owned rule.**
 
    - Goal: prove which dynamic call names truly need an owned eval node after
      the copied fallback `Call` surface was deleted. Preserve-rules-like
@@ -357,7 +359,7 @@ family can be audited and reduced.
      metadata functions, recursive/detached call names, source name parentage,
      and no OOM/regression in the full call suite.
 
-6. **Split the remaining at-rule isolation surface by responsibility.**
+5. **Split the remaining at-rule isolation surface by responsibility.**
 
    - Goal: after final body output moved to side-state, classify the remaining
      derived at-rule wrapper responsibilities into prelude evaluation, body
@@ -368,7 +370,7 @@ family can be audited and reduced.
      at-rules, source prelude/body parentage, and Less all-less media/import
      fixtures.
 
-7. **Split non-static direct `Rules.render(...)` from public `Rules.resolve(...)`.**
+6. **Split non-static direct `Rules.render(...)` from public `Rules.resolve(...)`.**
 
    - Goal: after static render narrowing, classify the remaining non-static
      direct-render derive surface into registration prep, body-fragment
@@ -378,6 +380,17 @@ family can be audited and reduced.
    - Required proof: dynamic declarations, control nodes, registration retry,
      direct root/fragment render, buffer render parity, source child parentage,
      and no change to public `safeCompile(...)` tree-surface behavior.
+
+7. **Audit generated selector output ownership across `:is(...)` and ampersand append surfaces.**
+
+   - Goal: classify whether generated selector wrappers from extend,
+     interpolation, and ampersand append are semantic output owners or
+     serializer carriers; delete only carrier-only wrappers that have
+     parentage/visibility proof.
+   - Required proof: generated `:is(...)`, appended ampersands, interpolated
+     selector replacements, extend matching, source selector parentage,
+     direct/buffer render parity, and audit delta or explicit ownership
+     blocker.
 
 ## Backlog
 
