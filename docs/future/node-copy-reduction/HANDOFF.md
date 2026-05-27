@@ -47,21 +47,26 @@ truth, the immediate pop queue, and verification.
 - Metadata-backed JS functions still keep exactly one owned raw/callback arg
   surface because `this.rawArgs` is mutable user-code API. Plain positional JS
   calls pass args directly.
+- At-rule direct unevaluated render compatibility is documented, not deleted:
+  the remaining derived at-rule surface isolates dynamic name/prelude
+  evaluation, body registration/eval mutation, root-only frame clearing, and
+  nested extend-root registration from the canonical source at-rule. The next
+  at-rule work must split those responsibilities before removing the surface.
 - Remaining broad typecheck red is separate typed-node structural debt. Do not
   let it displace runtime node-creation reduction unless it directly unlocks a
   copy/materialization deletion.
 
 ## Remaining Node-Creation Surfaces
 
-| Surface                             | Current shape                                                                                                                                          | Next proof                                                                                                                                |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `Rules.render(...)` source roots    | Public compile renders already evaluated roots. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests.  | Keep the compatibility path isolated; prove any narrowing preserves fragment separators, registration prep, and source parentage.         |
-| `AtRule.render(...)`                | Reuses evaluated/prepared/static at-rule surfaces when available. Direct dynamic unevaluated render still derives before eval.                         | Split required body/prelude mutation from compatibility rendering.                                                                        |
-| `Ruleset.render(...)`               | Reuses evaluated/prepared ruleset surfaces. Unevaluated rulesets still prepare/eval an isolated surface; nil-selector output delegates to body render. | Prove which generated selector/body surfaces are semantic and which are serializer carriers.                                              |
-| `Declaration.render(...)`           | Prepares/evals one isolated declaration surface for assignment/name/value/important mutation.                                                          | Keep source isolation unless a concrete side-state model replaces preparation mutation.                                                   |
-| Function/mixin args                 | Plain JS calls pass direct args. Metadata calls keep one owned `rawArgs` surface.                                                                      | Keep guarding the split; do not add another copied source-call surface.                                                                   |
-| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, selector collapse, and ruleset headers still create owned placement surfaces in focused cases.     | Keep unless new parentage/visibility/output tests prove a specific placement is carrier-only.                                             |
-| Mutation helpers                    | `inherit(...)`, `set(...)`, `derive*`, and shallow wrappers still exist as local ownership tools.                                                      | Remove or narrow helper use where a side-state record or direct render output can carry the same semantics without mutating source nodes. |
+| Surface                             | Current shape                                                                                                                                                                               | Next proof                                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Rules.render(...)` source roots    | Public compile renders already evaluated roots. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests.                                       | Keep the compatibility path isolated; prove any narrowing preserves fragment separators, registration prep, and source parentage.         |
+| `AtRule.render(...)`                | Reuses evaluated/prepared/static at-rule surfaces when available. Direct dynamic unevaluated render still derives before eval to isolate name/prelude/body/root-hoist/extend-root mutation. | Split that derived surface by responsibility before deleting it.                                                                          |
+| `Ruleset.render(...)`               | Reuses evaluated/prepared ruleset surfaces. Unevaluated rulesets still prepare/eval an isolated surface; nil-selector output delegates to body render.                                      | Prove which generated selector/body surfaces are semantic and which are serializer carriers.                                              |
+| `Declaration.render(...)`           | Prepares/evals one isolated declaration surface for assignment/name/value/important mutation.                                                                                               | Keep source isolation unless a concrete side-state model replaces preparation mutation.                                                   |
+| Function/mixin args                 | Plain JS calls pass direct args. Metadata calls keep one owned `rawArgs` surface.                                                                                                           | Keep guarding the split; do not add another copied source-call surface.                                                                   |
+| Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, selector collapse, and ruleset headers still create owned placement surfaces in focused cases.                                          | Keep unless new parentage/visibility/output tests prove a specific placement is carrier-only.                                             |
+| Mutation helpers                    | `inherit(...)`, `set(...)`, `derive*`, and shallow wrappers still exist as local ownership tools.                                                                                           | Remove or narrow helper use where a side-state record or direct render output can carry the same semantics without mutating source nodes. |
 
 ## Node-Creation Hotspots
 
@@ -82,8 +87,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 295`, `derive: 42`, `with-surface: 39`,
-`copy-leaves: 35`, `clone-leaves: 2`, module-context count `357`.
+Latest audit: `new-node: 296`, `derive: 42`, `with-surface: 39`,
+`copy-leaves: 35`, `clone-leaves: 2`, module-context count `358`.
 
 ## Immediate Queue
 
@@ -92,15 +97,7 @@ is completed, remove it and add or promote enough work to keep the queue full.
 If an item is too broad, replace it with the smallest honest next checkpoint
 and move the broader theme to the backlog.
 
-1. **At-rule dynamic direct render compatibility follow-up.**
-
-   - Goal: narrow the remaining dynamic unevaluated `AtRule.render(...)`
-     compatibility derive path, or document the exact name/prelude/body mutation
-     surface that still requires it.
-   - Required proof: direct render, buffer render, source parentage,
-     root-only/hoist behavior, and nested at-rule output guards.
-
-2. **At-rule dynamic body/prelude render-state split.**
+1. **At-rule dynamic body/prelude render-state split.**
 
    - Goal: isolate which part of direct dynamic unevaluated at-rule render still
      needs a derived surface: prelude mutation, body mutation, hoist/root frame
@@ -108,7 +105,7 @@ and move the broader theme to the backlog.
    - Required proof: separate dynamic-prelude, dynamic-body, and root-only
      render/resolve guards.
 
-3. **Mixin output-slot first removable field.**
+2. **Mixin output-slot first removable field.**
 
    - Goal: choose one field currently carried by generated mixin `Rules`
      wrappers and prove whether it belongs in a future slot record or can be
@@ -116,14 +113,14 @@ and move the broader theme to the backlog.
    - Required proof: focused mixin output lookup/render tests plus source body
      parentage and caller-fallback guards.
 
-4. **Call content-node fallback state slice.**
+3. **Call content-node fallback state slice.**
 
    - Goal: reduce the dynamic call path for calls with `contentNode` without
      constructing a full copied source call before the callable result is known.
    - Required proof: content-node render, resolve, source content parentage,
      source evaluated-state, and metadata/rawArgs guard coverage.
 
-5. **Rules-like variable call copied-call follow-up.**
+4. **Rules-like variable call copied-call follow-up.**
 
    - Goal: replace the remaining full copied `Call` surface used by dynamic
      render/resolve of rules-like variable calls with a narrower state record.
@@ -131,7 +128,7 @@ and move the broader theme to the backlog.
      resolve, source name/content parentage, source evaluated-state, and caller
      fallback guards.
 
-6. **Rules direct unevaluated render compatibility follow-up.**
+5. **Rules direct unevaluated render compatibility follow-up.**
 
    - Goal: keep the remaining `Rules.render(...)` direct unevaluated derive
      path isolated, and narrow or document the exact fragment/newline/
@@ -141,12 +138,20 @@ and move the broader theme to the backlog.
      `Rules.resolve(...)` remains source-native, and source children keep
      canonical parentage/eval state.
 
-7. **Selector generated-state next placement proof.**
+6. **Selector generated-state next placement proof.**
+
    - Goal: choose the next specific generated selector placement after collapse
      ownership and prove whether its owned surface is semantic or removable.
    - Required proof: source selector parentage plus whichever of extend
      matching, pseudo arg, framed ampersand, visibility, or ruleset-header
      behavior the selected placement owns.
+
+7. **Mutation-helper hot path audit.**
+   - Goal: pick one hot eval/render path using `inherit(...)`, `set(...)`, or a
+     derived wrapper and prove whether the helper use is an ownership boundary
+     or replaceable helper-driven mutation.
+   - Required proof: source parentage/eval-state guard plus focused output
+     coverage for the selected path.
 
 ## Backlog
 
