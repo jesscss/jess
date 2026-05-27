@@ -16,6 +16,11 @@ Older per-file completion logs live in
   required by scope, lookup, placement, or user-code mutation semantics.
 - Prefer lazy per-placement runtime state over routine copied or cloned trees.
 - Do not treat `copy()` / `clone()` as the future evaluation model.
+- Do not treat mutation helpers such as `inherit(...)`, `set(...)`, or derived
+  wrapper construction as the future evaluation model either. They are
+  transitional ownership tools. Keep them local, prove why each one is needed,
+  and prefer replacing broad helper-driven mutation with explicit side state or
+  direct render/eval output as the surrounding seam becomes clear.
 - Use shallow wrapper owners only when they carry real local scope, registry,
   import/reference, merge, generated selector placement, or output ownership.
 - Keep render state ownership explicit. Fresh render traversals reset
@@ -206,6 +211,10 @@ These are architectural seams, not a live ordered queue. Use
    `SelectorList` / `ComplexSelector` / `CompoundSelector` ownership copies
    that prevent generated selector output from reparenting canonical source
    selector leaves.
+   `inherit(...)` on a source child is specifically not an acceptable collapse
+   strategy: collapsed output must either be an owned result or a future
+   generated-selector state record that can render the canonical child without
+   rewriting parent/location/runtime flags.
 3. **Function/mixin argument surfaces**: metadata-backed functions still need
    one copied raw-argument ownership surface for `this.rawArgs`,
    `this.args()`, preprocessing, lazy params, validation, and
@@ -251,6 +260,11 @@ These are architectural seams, not a live ordered queue. Use
 
 - Base `Node.copy()` / `Node.clone()`, keyset copies, bitset copies, reusable
   leaf helpers, and test-only clones are infrastructure, not automatic wins.
+- `inherit(...)` is infrastructure too. It is acceptable when constructing an
+  owned output surface that needs source location/options/runtime metadata, but
+  it must not be called on a canonical source child just because eval/resolve
+  collapsed to that child. If the target object is still part of the source
+  tree, own it first or render it through side state.
 - `.value` is still the right shape for scalar and list/container nodes. Future
   direct-field cleanup is only for record-shaped nodes where named fields would
   reduce real indirection or ownership confusion; do not turn it into a broad
