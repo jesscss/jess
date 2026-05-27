@@ -574,6 +574,9 @@ export class Call extends Node<CallValue, CallOptions> {
     let { name } = this.value;
     let args = this.value.args;
     let markImportant = this._options?.markImportant;
+    // Variable calls can return detached Rules/Collection values. Evaluate a
+    // tiny owned Reference with preserveRulesLike so lexical lookup stays on
+    // the detached body without stamping eval state onto the source call name.
     const preservesRulesLikeVariableTarget = isNode(name, N.Reference) && name.options?.type === 'variable';
 
     context.callStack.push(this);

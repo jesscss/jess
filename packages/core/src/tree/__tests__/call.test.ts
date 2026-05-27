@@ -661,9 +661,37 @@ describe('Call', () => {
       expect(result.toTrimmedString()).toContain('color: blue');
       expect(clonedReferences).toBe(0);
       expect(name.parent).toBe(rule);
+      expect(name.evaluated).toBe(false);
+      expect(rule.evaluated).toBe(false);
     } finally {
       Reference.prototype.clone = originalClone;
     }
+  });
+
+  it('keeps rules-like variable call names canonical across render and resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      })
+    ]);
+    context.root = root;
+    const evaldRoot = await root.eval(context);
+    context.rulesContext = evaldRoot;
+    const name = ref('themeBlock', { type: 'variable' });
+    const rule = call({ name });
+
+    const rendered = await Promise.resolve(rule.render(context));
+    const resolved = await rule.resolve(context);
+
+    expect(rendered).toContain('color: blue');
+    expect(isNode(resolved, N.Rules)).toBe(true);
+    expect(resolved.toTrimmedString()).toContain('color: blue');
+    expect(name.parent).toBe(rule);
+    expect(name.evaluated).toBe(false);
+    expect(rule.evaluated).toBe(false);
   });
 
   it('marks declaration-only JS call output without call-site back-pointers', async () => {
