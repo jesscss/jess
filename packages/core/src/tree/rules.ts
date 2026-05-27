@@ -3742,6 +3742,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
       return createDerivedRulesSurface(sourceRules, { rulesOptions: options });
     }
     function createDerivedMixinOutputWrapper(sourceRules: Rules): Rules {
+      // This is the current stand-in for a future output-slot record. It owns
+      // only placement/runtime facts: source body identity, mixin-output lookup
+      // gates, reference-mode clearing, rule indexes, and scope-frame links.
+      // Do not add cloned body children here unless a focused lookup/render
+      // test proves the source body itself must become owned output.
       return createDerivedRulesSurface(sourceRules, { markMixinOutput: true });
     }
     function createEmptyDerivedRules(sourceRules: Rules): Rules {
