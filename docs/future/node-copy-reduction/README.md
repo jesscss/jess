@@ -133,6 +133,10 @@ later serializer can walk it.
   clearing, and nested extend-root registration from mutating the canonical
   source at-rule. Do not delete it until those responsibilities are split into
   explicit state or direct render paths.
+- Dynamic leaf at-rule render is the first split: direct and buffer render
+  evaluate name/prelude into local render state without evaluating a derived
+  at-rule surface. Leaf `resolve(...)` still returns an owned at-rule node;
+  body/root-hoist at-rules still use the compatibility isolation surface.
 - `AtRule.resolve(...)` returns static at-rules directly. Dynamic at-rules
   still derive before eval so prelude/body mutation does not touch the source.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated

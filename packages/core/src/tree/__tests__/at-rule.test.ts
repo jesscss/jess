@@ -412,6 +412,41 @@ describe('AtRule', () => {
     }
   });
 
+  it('renders dynamic leaf at-rule preludes without evaluating an at-rule surface', async () => {
+    const root = rules([
+      vardecl({
+        name: 'namespace',
+        value: any('svg')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const prelude = seq([ref({ key: 'namespace' }, { type: 'variable' })]);
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude
+    });
+    const originalEval = AtRule.prototype.eval;
+    AtRule.prototype.eval = () => {
+      throw new Error('leaf at-rule render should not evaluate an at-rule surface');
+    };
+
+    try {
+      expect(await Promise.resolve(node.render(context))).toBe('@namespace svg;');
+      const buffer = createRenderBuffer('flat');
+      expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
+      expect(buffer.parts).toEqual(['@namespace svg;']);
+      const resolved = await Promise.resolve(node.resolve(context));
+      expect(resolved.toTrimmedString()).toBe('@namespace svg;');
+      expect(prelude.parent).toBe(node);
+      expect(prelude.evaluated).toBe(false);
+      expect(node.evaluated).toBe(false);
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
   it('resolves at-rules without touching render state', async () => {
     const root = rules([
       vardecl({

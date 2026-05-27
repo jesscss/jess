@@ -97,6 +97,10 @@ function hasCommentChild(value: unknown): boolean {
   return false;
 }
 
+function isAtRuleValue(value: unknown): value is AtRuleValue {
+  return Boolean(value && typeof value === 'object' && 'name' in value);
+}
+
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
 export const ROOT_ONLY_AT_RULES = [
   '@charset',
@@ -188,7 +192,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return serializeRulesContainer(this, printOptions);
   }
 
-  private evalForRender(context: Context): MaybePromise<Node> {
+  private evalForRender(context: Context): MaybePromise<Node | AtRuleValue> {
     if (this.evaluated) {
       return this;
     }
@@ -198,9 +202,62 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
+    if (!this.value.rules) {
+      return this.evalLeafValue(context);
+    }
     // Direct render on an unevaluated AtRule is a compatibility/debug API.
     // Public compiler render enters through an evaluated root Rules container.
     return this.deriveAtRule(this.value).eval(context);
+  }
+
+  private evalLeafValue(context: Context): MaybePromise<AtRuleValue> {
+    return pipe(
+      () => {
+        const name = this.value.name;
+        return name instanceof Interpolated ? name.eval(context) : name;
+      },
+      (name) => {
+        if (!(name instanceof Any) && !(name instanceof Interpolated)) {
+          throw new TypeError('Expected at-rule name to resolve to Any or Interpolated');
+        }
+        const { prelude } = this.value;
+        if (!prelude) {
+          return { name };
+        }
+        const resolvedPrelude = withRulesContext(
+          context,
+          liftedAtRulePreludeRulesContext(context.rulesContext),
+          () => prelude.eval(context)
+        );
+        if (isThenable(resolvedPrelude)) {
+          return Promise.resolve(resolvedPrelude).then(resolved => ({ name, prelude: resolved }));
+        }
+        return {
+          name,
+          prelude: resolvedPrelude as Node
+        };
+      }
+    );
+  }
+
+  private renderLeafValue(
+    value: AtRuleValue,
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const printOptions = isRenderBuffer(bufferOrOptions)
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const renderNode = (node: Node): string => printOptions.writer.preview(() => node.toString(printOptions));
+    const nameOut = renderNode(value.name);
+    const preludeOut = value.prelude ? renderNode(value.prelude) : '';
+    const rendered = preludeOut.trim()
+      ? `${nameOut}${/\s$/.test(nameOut) || /^\s/.test(preludeOut) ? '' : ' '}${preludeOut.replace(/^\s+/, '')};`
+      : `${nameOut};`;
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderText(bufferOrOptions, rendered)
+      : rendered;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -223,6 +280,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
         if (node instanceof AtRule) {
           return renderEvaluatedAtRule(node);
+        }
+        if (isAtRuleValue(node)) {
+          return this.renderLeafValue(node, context, bufferOrOptions, options);
         }
         return isRenderBuffer(bufferOrOptions)
           ? node.render(context, bufferOrOptions, options)
@@ -781,6 +841,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     if (this.registrationPrepared) {
       return this.eval(context);
+    }
+    if (!this.value.rules) {
+      return pipe(
+        () => this.evalLeafValue(context),
+        value => this.deriveAtRule(value, this.value)
+      );
     }
     return this.deriveAtRule(this.value).eval(context);
   }
