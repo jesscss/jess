@@ -413,7 +413,7 @@ Current top files by static surface count:
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*`/`.derive(...)` surfaces, and `copyWithReusableLeaves(...)`. The old
 container, source-output, and resolved-output helper counts are now zero in
-production. The current audit shows `new-node: 291`, `derive: 42`,
+production. The current audit shows `new-node: 293`, `derive: 42`,
 `with-surface: 39`, `copy-leaves: 35`, and `clone-leaves: 2`; method-context
 hotspots are concentrated in `evalNode`, with the remaining render/resolve
 derive sites limited to `Call`, `AtRule`, and `Rules`. The audit ignores
