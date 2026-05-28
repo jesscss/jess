@@ -300,6 +300,17 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   `import-reference.less` median 42.54ms, `mixins-guards.less` median 34.63ms,
   `extend-chaining.less` median 20.28ms, and `media.less` median 8.58ms; do
   not treat this pass as a runtime speed win.
+- Latest queue pass moved body at-rule evaluated prelude lookup into side
+  state. Direct render/resolve preload the evaluated prelude on a WeakMap
+  instead of assigning it into the temporary derived eval frame before body eval;
+  public `eval()` and `resolve(...)` still materialize the owned at-rule prelude
+  at their public result boundaries. `getHeaderString(...)` and layer-name
+  extraction read the active evaluated prelude side state. Static audit is now
+  `new-node: 305`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`; the
+  one-count `new-node` increase is a module-level WeakMap state carrier, not a
+  runtime AST node. Hot-path timing: `functions.less` median 26.26ms,
+  `import-reference.less` median 29.81ms, `mixins-guards.less` median 32.33ms,
+  `extend-chaining.less` median 19.26ms, and `media.less` median 7.98ms.
 
 ## Immediate Queue
 
@@ -315,22 +326,21 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Move body at-rule evaluated prelude out of the owned eval frame.**
-
-   - Goal: `AtRuleBodyEvalResult` still uses the derived eval frame while body
-     eval runs. Split evaluated prelude into side state for render/resolve and
-     keep the eval frame as only the temporary body-eval owner.
-   - Required proof: direct/buffer dynamic body render, async prelude
-     evaluation, source parentage, unchanged public `resolve(...)`, and no
-     double prelude eval.
-
-2. **Move body at-rule hoist/frame output facts out of the owned eval frame.**
+1. **Move body at-rule hoist/frame output facts out of the owned eval frame.**
 
    - Goal: hoist/root frames are still read from the evaluated at-rule frame
      after body eval. Carry those facts in `AtRuleBodyEvalContextState` /
      result state so the frame owns less render output.
    - Required proof: root-only frame clearing, nested media/mixins, layer/root
      registration, source parentage, and unchanged collapse output.
+
+2. **Collapse at-rule prelude/body side-state after hoist/frame split.**
+
+   - Goal: once prelude, body, hoist, and frames are all side-state facts,
+     replace parallel WeakMaps with one small at-rule body eval-state record if
+     that reduces lookup plumbing without becoming AST v2.
+   - Required proof: dynamic body render, public `eval()`/`resolve(...)`,
+     layer/root registration, source parentage, and static audit context.
 
 3. **Replace mixin parameter container copies only with a real slot model.**
 
