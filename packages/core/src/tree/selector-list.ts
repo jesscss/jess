@@ -17,7 +17,7 @@ import {
   emitCommentTriviaBeforeDelimiter,
   emitTriviaTokens
 } from './util/trivia.js';
-import { canReuseLeaf, copyOwnedWithReusableLeaves, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
 function emitSelectorListItem(
   item: Selector,
@@ -58,13 +58,11 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
-    const owned = sourceValue.includes(item)
-      ? copyOwnedWithReusableLeaves(item)
-      : item;
+    const owned = ownCollapsedSourceChild(item, sourceValue, this);
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector result');
     }
-    return owned.inherit(this);
+    return owned;
   }
 
   private renderSelectorListSyntax(options?: PrintOptions): string {

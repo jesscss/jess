@@ -16,7 +16,7 @@ import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState }
 import { consumeTriviaBetween, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
-import { canReuseLeaf, copyOwnedWithReusableLeaves, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
 /** Components that may appear in a complex or relative selector. */
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -78,13 +78,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     component: Selector,
     sourceValue: readonly ComplexSelectorComponent[]
   ): Selector {
-    const owned = sourceValue.includes(component)
-      ? copyOwnedWithReusableLeaves(component)
-      : component;
+    const owned = ownCollapsedSourceChild(component, sourceValue, this);
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector result');
     }
-    return owned.inherit(this);
+    return owned;
   }
 
   private renderComplexSyntax(options?: PrintOptions): string {

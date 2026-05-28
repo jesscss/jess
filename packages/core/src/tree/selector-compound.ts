@@ -9,7 +9,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { canReuseLeaf, copyOwnedWithReusableLeaves, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
 /**
  * @example
@@ -68,14 +68,11 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
   }
 
   private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
-    if (!sourceValue.includes(item)) {
-      return item.inherit(this);
-    }
-    const owned = copyOwnedWithReusableLeaves(item);
+    const owned = ownCollapsedSourceChild(item, sourceValue, this);
     if (!(owned instanceof Selector)) {
       throw new TypeError('Expected selector copy');
     }
-    return owned.inherit(this);
+    return owned;
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {

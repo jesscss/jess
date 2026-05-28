@@ -55,6 +55,7 @@ type AtRuleBodyRegistrationContext = {
 type AtRuleBodyFrameState = {
   clearRulesetFrames: boolean;
   restoreRulesetFrames: () => void;
+  output?: AtRuleBodyOutputState;
 };
 
 type AtRuleBodyOutputState = {
@@ -137,16 +138,18 @@ function clearRulesetFramesForAtRuleBody(
 
 function createAtRuleBodyFrameState(node: AtRule, context: Context): AtRuleBodyFrameState {
   let clearRulesetFrames = false;
+  let output: AtRuleBodyOutputState | undefined;
   if (context.bubbleRootAtRules && node.isRootOnly()) {
     const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
     if (hasRulesetParent) {
-      setAtRuleBodyEvalOutput(node, { hoistToRoot: true });
+      output = { hoistToRoot: true };
       clearRulesetFrames = true;
     }
   }
   return {
     clearRulesetFrames,
-    restoreRulesetFrames: () => undefined
+    restoreRulesetFrames: () => undefined,
+    output
   };
 }
 
@@ -974,7 +977,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (bodyEvalContextState.writeOutputStateToNode) {
         node.frames = frames;
       }
-      setAtRuleBodyEvalOutput(node, { frames });
+      setAtRuleBodyEvalOutput(node, {
+        ...bodyEvalContextState.frameState.output,
+        frames
+      });
+    } else if (bodyEvalContextState.frameState.output) {
+      setAtRuleBodyEvalOutput(node, bodyEvalContextState.frameState.output);
     }
 
     return pipe(
