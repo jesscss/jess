@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -754,6 +754,41 @@ describe('Declaration', () => {
       expect(listPrinterCalls).toBe(0);
     } finally {
       List.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('renders assignment merges without evaluating temporary sequence containers', async () => {
+    const root = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+_:' })
+    ]);
+    await root.prepareRegistration(context);
+    const prior = root;
+    context.root = prior;
+    context.rulesContext = prior;
+    const node = decl({
+      name: any('background-color'),
+      value: any('blue')
+    }, { assign: '+_:' });
+    const originalSequenceEvalNode = Sequence.prototype.evalNode;
+    let sequenceEvalCalls = 0;
+    Sequence.prototype.evalNode = function evalNodeForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalSequenceEvalNode>
+    ): ReturnType<typeof originalSequenceEvalNode> {
+      if (this.value.some(item => item.valueOf() === 'blue')) {
+        sequenceEvalCalls++;
+      }
+      return originalSequenceEvalNode.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('background-color: red blue');
+      expect(sequenceEvalCalls).toBe(0);
+    } finally {
+      Sequence.prototype.evalNode = originalSequenceEvalNode;
     }
   });
 

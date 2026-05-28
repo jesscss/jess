@@ -72,6 +72,8 @@ type AtRuleBodyRuntimeState = {
 type AtRuleBodyEvalContextState = {
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
+  output?: AtRuleBodyOutputState;
   frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
@@ -216,12 +218,19 @@ function restoreAtRuleBodyEvalContextState(
 }
 
 function setAtRuleBodyEvalOutput(
-  node: AtRule,
+  state: AtRuleBodyEvalContextState,
   output: AtRuleBodyOutputState
 ): void {
-  updateAtRuleBodyRuntimeState(node, {
+  state.output = {
+    ...state.output,
+    ...output
+  };
+  if (!state.writeOutputStateToNode) {
+    return;
+  }
+  updateAtRuleBodyRuntimeState(state.evalFrame, {
     output: {
-      ...atRuleBodyRuntimeState.get(node)?.output,
+      ...atRuleBodyRuntimeState.get(state.evalFrame)?.output,
       ...output
     }
   });
@@ -271,7 +280,10 @@ function storeAtRuleBodyEvalRules(
   state: AtRuleBodyEvalContextState,
   finalRules: Rules
 ): void {
-  updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedBody: finalRules });
+  state.evaluatedBody = finalRules;
+  if (state.writeOutputStateToNode) {
+    updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedBody: finalRules });
+  }
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -310,8 +322,8 @@ function readAtRuleBodyEvalRecordResult(
     evaluatedPrelude: runtime?.evaluatedPrelude
       ?? record.contextState.evaluatedPrelude
       ?? record.evaluatedPrelude,
-    evaluatedBody: runtime?.evaluatedBody,
-    output: runtime?.output
+    evaluatedBody: runtime?.evaluatedBody ?? record.contextState.evaluatedBody,
+    output: runtime?.output ?? record.contextState.output
   };
 }
 
@@ -1063,12 +1075,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       if (bodyEvalContextState.writeOutputStateToNode) {
         node.frames = frames;
       }
-      setAtRuleBodyEvalOutput(node, {
+      setAtRuleBodyEvalOutput(bodyEvalContextState, {
         ...bodyEvalContextState.frameState.output,
         frames
       });
     } else if (bodyEvalContextState.frameState.output) {
-      setAtRuleBodyEvalOutput(node, bodyEvalContextState.frameState.output);
+      setAtRuleBodyEvalOutput(bodyEvalContextState, bodyEvalContextState.frameState.output);
     }
 
     return pipe(
@@ -1100,7 +1112,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             if (bodyEvalContextState.writeOutputStateToNode) {
               node.hoistToRoot = true;
             }
-            setAtRuleBodyEvalOutput(node, { hoistToRoot: true });
+            setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }
           let restoreRulesetFrames = () => undefined;
           const restoreBodyEvalContext = () => {

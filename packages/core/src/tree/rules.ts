@@ -63,6 +63,7 @@ import {
   attachMixinOutputSlot,
   canSearchMixinOutputRules,
   getMixinOutputChildSegments,
+  getMixinOutputSourceChild,
   isMixinOutputRules,
   isVisibleRulesEntry
 } from './util/mixin-output-slot.js';
@@ -4966,13 +4967,17 @@ export class MixinCollection extends Node<MixinEntry[]> {
        * Add rules but keep their original parents for further lazy lookups.
        * Ensure each rule has VarDeclaration: 'optional' before pushing (registerNode uses node's own rulesVisibility)
        */
-      let outputRuleIndex = 0;
       for (let i = 0; i < outputRules.length; i++) {
         let rule = outputRules[i]!;
         rule.frozen = true;
-        /** Set a sequential index for lookup sorting */
-        Reflect.set(rule, 'index', isIndexedRuleChild(rule) ? outputRuleIndex++ : undefined);
         output.push(rule);
+      }
+      attachMixinOutputSlot(output, emptyOutputSourceRules, restrictMixinOutputLookup);
+      let outputRuleIndex = 0;
+      for (const rule of output.value) {
+        const sourceChild = getMixinOutputSourceChild(output, rule) ?? rule;
+        /** Set a sequential index for lookup sorting from slot source order. */
+        Reflect.set(rule, 'index', isIndexedRuleChild(sourceChild) ? outputRuleIndex++ : undefined);
       }
     }
 

@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -387,13 +387,32 @@ describe('Rule', () => {
       selector,
       rules: body
     });
-
-    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
-      .foo {
-        color: blue;
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let ownedBodyPrepCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countDynamicBodyPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this === body) {
+        throw new Error('Dynamic ruleset direct render must not prepare the source body');
       }
-    `);
+      if (this.sourceNode === body) {
+        ownedBodyPrepCalls++;
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
 
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .foo {
+          color: blue;
+        }
+      `);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(ownedBodyPrepCalls).toBe(0);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(body.value[0]?.parent).toBe(body);

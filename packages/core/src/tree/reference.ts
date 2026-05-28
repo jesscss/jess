@@ -1360,14 +1360,20 @@ function evaluateFallbackValue(
 ): MaybePromise<Node> {
   if (canReuseFallbackValue(fallbackValue)) {
     if (options.textOnly === true && canReuseReferenceValue(fallbackValue)) {
+      context.popReference();
       return fallbackValue;
     }
+    context.popReference();
     return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
   }
   const out = copyReferenceValue(fallbackValue).eval(context);
   if (isThenable(out)) {
-    return Promise.resolve(out).then(node => node);
+    return Promise.resolve(out).then((node) => {
+      context.popReference();
+      return node;
+    });
   }
+  context.popReference();
   return out;
 }
 

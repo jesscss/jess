@@ -547,9 +547,24 @@ describe('reference', () => {
         expect(await Promise.resolve(refNode.render(context))).toBe('red');
         expect(inheritCalls).toBe(0);
         expect(fallback.parent).toBe(fallbackParent);
+        expect(context.referenceStack).toBe(0);
       } finally {
         fallback.inherit = originalInherit;
       }
+    });
+
+    it('restores reference stack after async fallback render', async () => {
+      const fallback = new AsyncNativeRenderAny('red');
+      const refNode = ref(
+        { key: 'missing' },
+        {
+          type: 'variable',
+          fallbackValue: fallback
+        }
+      );
+
+      await expect(Promise.resolve(refNode.render(context))).resolves.toBe('rendered-red');
+      expect(context.referenceStack).toBe(0);
     });
 
     it('does not clone childless source-free scalar leaves inside copied fallback containers', async () => {

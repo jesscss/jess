@@ -94,6 +94,7 @@ type AmpersandAppendPlacementState = {
   source: Ampersand;
   selector: Selector | Nil;
   appendValue?: string;
+  templateMerge: boolean;
   hoistToRoot: boolean;
   selectorBits: Context['selectorBits'];
 };
@@ -108,9 +109,37 @@ function createAmpersandAppendPlacementState(
     source,
     selector,
     appendValue,
+    templateMerge: appendValue?.includes('&') === true,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
     selectorBits: context.selectorBits
   };
+}
+
+function isIdentJoinChar(char: string | undefined): boolean {
+  return !!char && /[a-zA-Z0-9_-]/.test(char);
+}
+
+function assertValidAmpersandTemplateJoin(template: string, replacement: string): void {
+  if (!replacement) {
+    return;
+  }
+  let searchFrom = 0;
+  while (true) {
+    const idx = template.indexOf('&', searchFrom);
+    if (idx === -1) {
+      break;
+    }
+    const before = idx > 0 ? template[idx - 1] : undefined;
+    const after = idx < template.length - 1 ? template[idx + 1] : undefined;
+    const first = replacement[0];
+    const last = replacement[replacement.length - 1];
+    const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
+    const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
+    if (invalidHeadJoin || invalidTailJoin) {
+      throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
+    }
+    searchFrom = idx + 1;
+  }
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
@@ -427,34 +456,9 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!selector) {
         return new Nil();
       }
+      const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
-        const isTemplateMerge = appendValue.includes('&');
-        if (isTemplateMerge) {
-          const isIdentJoinChar = (char: string | undefined): boolean => {
-            return !!char && /[a-zA-Z0-9_-]/.test(char);
-          };
-          const assertValidTemplateJoin = (template: string, replacement: string): void => {
-            if (!replacement) {
-              return;
-            }
-            let searchFrom = 0;
-            while (true) {
-              const idx = template.indexOf('&', searchFrom);
-              if (idx === -1) {
-                break;
-              }
-              const before = idx > 0 ? template[idx - 1] : undefined;
-              const after = idx < template.length - 1 ? template[idx + 1] : undefined;
-              const first = replacement[0];
-              const last = replacement[replacement.length - 1];
-              const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
-              const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
-              if (invalidHeadJoin || invalidTailJoin) {
-                throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
-              }
-              searchFrom = idx + 1;
-            }
-          };
+        if (placement.templateMerge) {
           const mergeTemplate = (baseSelector: Selector): Selector => {
             const baseSelectors: Selector[] = [];
             if (
@@ -481,7 +485,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             }
             const merged = baseSelectors.map((item) => {
               const value = item.toTrimmedString();
-              assertValidTemplateJoin(appendValue, value);
+              assertValidAmpersandTemplateJoin(appendValue, value);
               return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
             });
             if (merged.length === 1) {
@@ -516,10 +520,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // the new top-level selector (marked hoistToRoot so composeSelector
       // won't re-prepend the parent). A SelectorList or ComplexSelector
       // result renders correctly on its own at the top level.
-      const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
-      const result: Selector | Nil = placement.appendValue !== undefined && !isNode(placement.selector, N.Nil)
-        ? markAppendedAmpersandHoist(placement.selector)
-        : placement.selector;
+      placement.selector = selector;
+      const result: Selector | Nil = placement.appendValue !== undefined && !isNode(selector, N.Nil)
+        ? markAppendedAmpersandHoist(selector)
+        : selector;
       if (placement.hoistToRoot) {
         result.hoistToRoot = true;
       }

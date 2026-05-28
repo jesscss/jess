@@ -103,6 +103,7 @@ type DeclarationRenderState = {
   name: DeclarationValue['name'];
   value: Node;
   listValue?: Node[];
+  spaceValue?: Node[];
   important?: Any<'flag'>;
   importantText?: string;
   normalizedFromAssign?: AssignmentType;
@@ -123,6 +124,10 @@ type DeclarationRegistrationState = {
   important?: Any<'flag'>;
   normalizedFromAssign?: AssignmentType;
   renderOnly?: boolean;
+  renderAssignment?: {
+    items: Node[];
+    sep: ',' | ' ';
+  };
   bindOutput?: (node: Declaration) => void;
 };
 
@@ -313,12 +318,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private declValueTrimmedString(
     valueParts: DeclarationValue,
     options?: PrintOptions,
-    renderState?: { listValue?: Node[]; importantText?: string; normalizedFromAssign?: AssignmentType }
+    renderState?: { listValue?: Node[]; spaceValue?: Node[]; importantText?: string; normalizedFromAssign?: AssignmentType }
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = valueParts;
-    const { listValue, importantText } = renderState ?? {};
+    const { listValue, spaceValue, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -355,6 +360,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const valueMark = w.mark();
       if (listValue) {
         renderListValueSyntax(listValue, options);
+      } else if (spaceValue) {
+        this.renderSpaceValueSyntax(spaceValue, options);
       } else {
         value.toTrimmedString(options);
       }
@@ -376,6 +383,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.valueRequiresSemi(value)) {
       emitCommentTriviaAfterNode(important ?? value, options);
     }
+    return w.getSince(mark);
+  }
+
+  private renderSpaceValueSyntax(value: Node[], options: PrintOptions): string {
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer!;
+    const mark = w.mark();
+    value.forEach((item, index) => {
+      if (index > 0) {
+        w.queueSpacer(' ');
+      }
+      item.toString(printOptions);
+    });
     return w.getSince(mark);
   }
 
@@ -453,6 +473,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       important: state.important
     }, prepared, {
       listValue: state.listValue,
+      spaceValue: state.spaceValue,
       importantText: state.importantText,
       normalizedFromAssign: state.normalizedFromAssign
     });
@@ -487,7 +508,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         nil: false
       };
     }
-    const evaluate = (): MaybePromise<Node | Nil> => {
+    const evaluateRenderAssignment = (): MaybePromise<Node[]> => {
+      const evaluated: Node[] = [];
+      let chain: Promise<void> | undefined;
+      const evaluateItem = (item: Node): MaybePromise<void> => {
+        const out = item.eval(context);
+        if (isThenable(out)) {
+          return Promise.resolve(out).then((node) => {
+            if (!(node instanceof Nil)) {
+              evaluated.push(node);
+            }
+          });
+        }
+        if (!(out instanceof Nil)) {
+          evaluated.push(out as Node);
+        }
+      };
+      for (const item of state.renderAssignment?.items ?? []) {
+        if (chain) {
+          chain = chain.then(() => evaluateItem(item));
+          continue;
+        }
+        const out = evaluateItem(item);
+        if (isThenable(out)) {
+          chain = Promise.resolve(out);
+        }
+      }
+      return chain ? chain.then(() => evaluated) : evaluated;
+    };
+    const evaluate = (): MaybePromise<Node | Nil | Node[]> => {
       const isCustomProperty = state.name.valueOf().startsWith('--');
       const previousInCustom = context.inCustom;
       if (isCustomProperty) {
@@ -496,9 +545,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         context.inCustom = true;
       }
-      let maybeValue: MaybePromise<Node | Nil>;
+      let maybeValue: MaybePromise<Node | Nil | Node[]>;
       try {
-        maybeValue = state.value.eval(context);
+        maybeValue = state.renderAssignment
+          ? evaluateRenderAssignment()
+          : state.value.eval(context);
       } finally {
         if (!isThenable(maybeValue!)) {
           context.inCustom = previousInCustom;
@@ -511,7 +562,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       return maybeValue;
     };
-    const finish = (newValue: Node | Nil): DeclarationRenderState => {
+    const finish = (newValue: Node | Nil | Node[]): DeclarationRenderState => {
+      if (Array.isArray(newValue)) {
+        const value = newValue[0] ?? state.value;
+        const isList = state.renderAssignment?.sep === ',';
+        let importantText: string | undefined;
+        if (context.hasImportantSource && !state.important) {
+          importantText = '!important';
+        }
+        if (context.hasImportantSource) {
+          context.popImportantSource();
+        }
+        return {
+          name: state.name,
+          value,
+          ...(isList ? { listValue: newValue } : { spaceValue: newValue }),
+          important: state.important,
+          importantText,
+          normalizedFromAssign: state.normalizedFromAssign,
+          nil: false
+        };
+      }
       if (newValue instanceof Nil) {
         return {
           name: state.name,
@@ -734,10 +805,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
            *         or a nested list.
            */
           const isMergeListAssign = assign === AssignmentType.MergeList;
-          value = isMergeListAssign
-            ? new List([ref, inputValue])
-            : spaced([ref, inputValue]);
-          setValue(value);
+          if (state.renderOnly) {
+            state.renderAssignment = {
+              items: [ref, inputValue],
+              sep: isMergeListAssign ? ',' : ' '
+            };
+            state.normalizedFromAssign = normalizedAssign;
+          } else {
+            value = isMergeListAssign
+              ? new List([ref, inputValue])
+              : spaced([ref, inputValue]);
+            setValue(value);
+          }
           break;
         }
         case AssignmentType.Add: {
@@ -745,15 +824,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             // Less property `+:` appends comma-separated items.
             // Use list composition (not generic `Operation +`) so scalar previous values
             // remain distinct list members rather than string-concatenating.
-            setValue(new List([
-              new Reference({ key: referenceKey }, {
-                type,
-                fallbackValue: new Nil(),
-                // Prevent self-referential reads while normalizing this node.
-                filter: n => n !== outputNode && n !== this
-              }),
-              inputValue
-            ]));
+            const ref = new Reference({ key: referenceKey }, {
+              type,
+              fallbackValue: new Nil(),
+              // Prevent self-referential reads while normalizing this node.
+              filter: n => n !== outputNode && n !== this
+            });
+            if (state.renderOnly) {
+              state.renderAssignment = {
+                items: [ref, inputValue],
+                sep: ','
+              };
+              state.normalizedFromAssign = normalizedAssign;
+            } else {
+              setValue(new List([ref, inputValue]));
+            }
           } else {
             setValue(
               new Operation([
