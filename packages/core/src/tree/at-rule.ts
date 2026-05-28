@@ -105,7 +105,6 @@ type AtRuleBodyEvalResult = {
 };
 
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
-const pendingAtRuleBodyEvalContextState = new WeakMap<AtRule, AtRuleBodyEvalContextState>();
 
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
@@ -416,25 +415,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           writeEvaluatedPrelude: options.writeEvaluatedPrelude,
           writeOutputStateToNode: options.writeOutputStateToNode
         });
-        const previousState = pendingAtRuleBodyEvalContextState.get(evalFrame);
-        pendingAtRuleBodyEvalContextState.set(evalFrame, state);
         let evaluated: MaybePromise<Node>;
         try {
-          evaluated = evalFrame.eval(context);
+          evaluated = evalFrame.evalBodyNode(context, state);
         } catch (error) {
-          if (previousState) {
-            pendingAtRuleBodyEvalContextState.set(evalFrame, previousState);
-          } else {
-            pendingAtRuleBodyEvalContextState.delete(evalFrame);
-          }
           throw error;
         }
         const finish = (node: Node): AtRuleBodyEvalResult => {
-          if (previousState) {
-            pendingAtRuleBodyEvalContextState.set(evalFrame, previousState);
-          } else {
-            pendingAtRuleBodyEvalContextState.delete(evalFrame);
-          }
           if (!(node instanceof AtRule) && !(node instanceof Nil)) {
             throw new TypeError('Expected at-rule body eval to return AtRule or Nil');
           }
@@ -445,14 +432,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           };
         };
         if (isThenable(evaluated)) {
-          return evaluated.then(finish, (error) => {
-            if (previousState) {
-              pendingAtRuleBodyEvalContextState.set(evalFrame, previousState);
-            } else {
-              pendingAtRuleBodyEvalContextState.delete(evalFrame);
-            }
-            throw error;
-          });
+          return evaluated.then(finish);
         }
         return finish(evaluated);
       }
@@ -973,17 +953,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    let node = this as AtRule;
+    return this.evalBodyNode(context, createAtRuleBodyEvalContextState(this, context));
+  }
 
+  private evalBodyNode(
+    context: Context,
+    bodyEvalContextState: AtRuleBodyEvalContextState
+  ): MaybePromise<AtRule | Nil> {
+    let node = this as AtRule;
     // @plugin is handled by the Less compatibility plugin during preparation.
     // If we reach eval and it's still visible, no plugin processed it.
     const atName = String(node.value?.name?.valueOf?.() ?? '');
     if (atName === '@plugin' && node.visible) {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
-
-    const bodyEvalContextState = pendingAtRuleBodyEvalContextState.get(node)
-      ?? createAtRuleBodyEvalContextState(node, context);
 
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {

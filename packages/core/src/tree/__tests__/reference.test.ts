@@ -507,6 +507,23 @@ describe('reference', () => {
       }
     });
 
+    it('reuses source-free static fallback lists as inert output containers', async () => {
+      const fallback = list([any('red')]);
+      const refNode = ref(
+        { key: 'missing' },
+        {
+          type: 'variable',
+          fallbackValue: fallback
+        }
+      );
+
+      const resolved = await refNode.resolve(context);
+
+      expect(resolved).toBe(fallback);
+      expect(resolved.toTrimmedString()).toBe('red');
+      expect(refNode.toTrimmedString()).toBe('$missing');
+    });
+
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: any('.fast-mixin'),

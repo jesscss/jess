@@ -1337,9 +1337,19 @@ function canReuseReferenceValue(node: Node): boolean {
   return canReuseLeaf(node);
 }
 
+function canReuseSourceFreeFallbackContainer(node: Node): boolean {
+  if (!isNode(node, N.List)) {
+    return false;
+  }
+  if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
+    return false;
+  }
+  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+}
+
 function canReuseFallbackValue(node: Node): boolean {
   return node.hasFlag(F_STATIC)
-    && canReuseReferenceValue(node);
+    && (canReuseReferenceValue(node) || canReuseSourceFreeFallbackContainer(node));
 }
 
 function evaluateFallbackValue(
