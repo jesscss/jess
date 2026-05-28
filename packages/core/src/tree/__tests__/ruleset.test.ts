@@ -265,6 +265,66 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('does not source-direct render static rulesets with root-only body at-rules when hoist is active', async () => {
+    context = new Context({ bubbleRootAtRules: true });
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.frames = [parentFrame];
+    const selector = sellist([sel([el('foo')])]);
+    const bodyAtRule = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Body') })
+      ])
+    });
+    const node = ruleset({
+      selector,
+      rules: rules([
+        bodyAtRule,
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      @font-face {
+        font-family: Body;
+      }
+      foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(bodyAtRule.parent).toBe(node.value.rules);
+  });
+
+  it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
+    context = new Context({ bubbleRootAtRules: true });
+    const bodyAtRule = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Body') })
+      ])
+    });
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') }),
+        bodyAtRule
+      ])
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+      @font-face {
+        font-family: Body;
+      }
+    `);
+    expect(bodyAtRule.parent).toBe(node.value.rules);
+  });
+
   it('keeps source selector and body parentage canonical during direct render', async () => {
     const root = rules([
       decl({ name: 'tone', value: any('red') })

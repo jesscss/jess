@@ -109,6 +109,8 @@ type AtRuleBodyEvalResult = {
   evalFrame: AtRule;
   node: AtRule | Nil;
   evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
+  output?: AtRuleBodyOutputState;
 };
 
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
@@ -434,10 +436,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (!(node instanceof AtRule) && !(node instanceof Nil)) {
             throw new TypeError('Expected at-rule body eval to return AtRule or Nil');
           }
+          const outputNode = node instanceof Nil ? evalFrame : node;
+          const runtime = atRuleBodyRuntimeState.get(outputNode);
           return {
             evalFrame,
             node,
-            evaluatedPrelude
+            evaluatedPrelude: runtime?.evaluatedPrelude ?? evaluatedPrelude,
+            evaluatedBody: runtime?.evaluatedBody,
+            output: runtime?.output
           };
         };
         if (isThenable(evaluated)) {
@@ -459,22 +465,20 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
-    const outputNode = result.node instanceof Nil ? result.evalFrame : result.node;
-    const runtime = atRuleBodyRuntimeState.get(outputNode);
     if (result.node instanceof Nil) {
       return {
         kind: 'body-render',
         source: this,
-        evaluatedPrelude: runtime?.evaluatedPrelude ?? result.evaluatedPrelude,
-        output: runtime?.output
+        evaluatedPrelude: result.evaluatedPrelude,
+        output: result.output
       };
     }
     return {
       kind: 'body-render',
       source: this,
-      evaluatedPrelude: runtime?.evaluatedPrelude ?? result.evaluatedPrelude,
-      evaluatedBody: runtime?.evaluatedBody ?? result.node.value.rules,
-      output: runtime?.output
+      evaluatedPrelude: result.evaluatedPrelude,
+      evaluatedBody: result.evaluatedBody ?? result.node.value.rules,
+      output: result.output
     };
   }
 
@@ -565,9 +569,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {
     const node = result.node instanceof Nil ? result.evalFrame : result.node;
-    const evaluatedPrelude = atRuleBodyRuntimeState.get(node)?.evaluatedPrelude ?? result.evaluatedPrelude;
-    if (evaluatedPrelude) {
-      node.value.prelude = evaluatedPrelude;
+    if (result.evaluatedPrelude) {
+      node.value.prelude = result.evaluatedPrelude;
     }
     return node;
   }

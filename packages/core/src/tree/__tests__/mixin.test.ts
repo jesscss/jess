@@ -936,6 +936,7 @@ describe('Mixin', () => {
         ]),
         rules: rules([
           decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
+          comment('/* source order */'),
           decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ])
@@ -1035,6 +1036,20 @@ describe('Mixin', () => {
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
       expect(css).toContain('sub-scope-only: inside;');
+
+      const secondMixinCall = call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) });
+      callerRules.adopt(secondMixinCall);
+      const secondResult = await secondMixinCall.eval(context);
+      expect(secondResult).toBeInstanceOf(RulesClass);
+      if (!(secondResult instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(secondResult).not.toBe(result);
+      expect(secondResult.value).not.toBe(result.value);
+      expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
+      expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
+        mixinBody.value.map(() => false)
+      );
     });
 
     it('does not shallow-clone mixin body children to create param guard wrappers', async () => {
