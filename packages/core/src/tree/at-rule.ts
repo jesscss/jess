@@ -73,6 +73,7 @@ type AtRuleBodyEvalContextState = {
   frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
+  writeEvaluatedPrelude: boolean;
 };
 
 type AtRuleBodyRegistrationState = {
@@ -103,6 +104,7 @@ type AtRuleBodyEvalResult = {
 };
 
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
+const pendingAtRuleBodyEvalContextState = new WeakMap<AtRule, AtRuleBodyEvalContextState>();
 
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
@@ -159,13 +161,15 @@ function activateAtRuleBodyFrameState(
 
 function createAtRuleBodyEvalContextState(
   node: AtRule,
-  context: Context
+  context: Context,
+  options: { writeEvaluatedPrelude?: boolean } = {}
 ): AtRuleBodyEvalContextState {
   return {
     evalFrame: node,
     frameState: createAtRuleBodyFrameState(node, context),
     frameCount: context.frames.length,
-    extendRootStackLength: context.extendRoots.extendRootStack.length
+    extendRootStackLength: context.extendRoots.extendRootStack.length,
+    writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true
   };
 }
 
@@ -234,7 +238,9 @@ function setAtRuleBodyEvalPrelude(
   prelude: Node
 ): void {
   updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedPrelude: prelude });
-  state.evalFrame.value.prelude = prelude;
+  if (state.writeEvaluatedPrelude) {
+    state.evalFrame.value.prelude = prelude;
+  }
 }
 
 function storeAtRuleBodyEvalRules(
@@ -388,7 +394,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return this.evalBodyState(context);
   }
 
-  private evalBodyResult(context: Context): MaybePromise<AtRuleBodyEvalResult> {
+  private evalBodyResult(
+    context: Context,
+    options: { writeEvaluatedPrelude?: boolean } = {}
+  ): MaybePromise<AtRuleBodyEvalResult> {
     return pipe(
       () => this.evalBodyPreludeState(context),
       (evaluatedPrelude) => {
@@ -396,22 +405,55 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (evaluatedPrelude) {
           updateAtRuleBodyRuntimeState(evalFrame, { evaluatedPrelude });
         }
-        const evaluated = evalFrame.eval(context);
-        const toResult = (node: AtRule | Nil): AtRuleBodyEvalResult => ({
-          evalFrame,
-          node,
-          evaluatedPrelude
+        const state = createAtRuleBodyEvalContextState(evalFrame, context, {
+          writeEvaluatedPrelude: options.writeEvaluatedPrelude
         });
-        return isThenable(evaluated)
-          ? evaluated.then(toResult)
-          : toResult(evaluated);
+        const previousState = pendingAtRuleBodyEvalContextState.get(evalFrame);
+        pendingAtRuleBodyEvalContextState.set(evalFrame, state);
+        let evaluated: MaybePromise<Node>;
+        try {
+          evaluated = evalFrame.eval(context);
+        } catch (error) {
+          if (previousState) {
+            pendingAtRuleBodyEvalContextState.set(evalFrame, previousState);
+          } else {
+            pendingAtRuleBodyEvalContextState.delete(evalFrame);
+          }
+          throw error;
+        }
+        const finish = (node: Node): AtRuleBodyEvalResult => {
+          if (previousState) {
+            pendingAtRuleBodyEvalContextState.set(evalFrame, previousState);
+          } else {
+            pendingAtRuleBodyEvalContextState.delete(evalFrame);
+          }
+          if (!(node instanceof AtRule) && !(node instanceof Nil)) {
+            throw new TypeError('Expected at-rule body eval to return AtRule or Nil');
+          }
+          return {
+            evalFrame,
+            node,
+            evaluatedPrelude
+          };
+        };
+        if (isThenable(evaluated)) {
+          return evaluated.then(finish, (error) => {
+            if (previousState) {
+              pendingAtRuleBodyEvalContextState.set(evalFrame, previousState);
+            } else {
+              pendingAtRuleBodyEvalContextState.delete(evalFrame);
+            }
+            throw error;
+          });
+        }
+        return finish(evaluated);
       }
     );
   }
 
   private evalBodyState(context: Context): MaybePromise<AtRuleBodyRenderState> {
     return pipe(
-      () => this.evalBodyResult(context),
+      () => this.evalBodyResult(context, { writeEvaluatedPrelude: false }),
       result => this.createBodyRenderState(result)
     );
   }
@@ -929,7 +971,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
 
-    const bodyEvalContextState = createAtRuleBodyEvalContextState(node, context);
+    const bodyEvalContextState = pendingAtRuleBodyEvalContextState.get(node)
+      ?? createAtRuleBodyEvalContextState(node, context);
 
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {

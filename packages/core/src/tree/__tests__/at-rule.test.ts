@@ -552,6 +552,7 @@ describe('AtRule', () => {
       }
     `);
     expect(preludeEvalCalls).toBe(1);
+    expect(node.value.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourcePrelude.evaluated).toBe(false);
     expect(node.evaluated).toBe(false);
