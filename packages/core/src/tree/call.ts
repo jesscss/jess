@@ -242,6 +242,41 @@ export class Call extends Node<CallValue, CallOptions> {
     return node;
   }
 
+  private async runInCallFrame<T>(
+    context: Context,
+    options: { caller?: boolean },
+    work: () => Promise<T>
+  ): Promise<T> {
+    context.callStack.push(this);
+    context.parenFrames.push(false);
+    const originalCaller = context.caller;
+    if (options.caller) {
+      context.caller = this;
+    }
+    try {
+      return await work();
+    } finally {
+      if (options.caller) {
+        context.caller = originalCaller;
+      }
+      context.parenFrames.pop();
+      context.callStack.pop();
+    }
+  }
+
+  private async runAsCaller<T>(
+    context: Context,
+    work: () => Promise<T>
+  ): Promise<T> {
+    const originalCaller = context.caller;
+    context.caller = this;
+    try {
+      return await work();
+    } finally {
+      context.caller = originalCaller;
+    }
+  }
+
   private async evalOptionalFallbackOutput(context: Context): Promise<Node | undefined> {
     if (
       typeof this.value.name === 'string'
@@ -257,41 +292,37 @@ export class Call extends Node<CallValue, CallOptions> {
     if (typeof name === 'string') {
       return undefined;
     }
-    context.callStack.push(this);
-    context.parenFrames.push(false);
-    try {
+    return this.runInCallFrame(context, {}, async () => {
       let evaluatedName: unknown = await name.eval(context);
       if (isNode(evaluatedName, N.Reference) && evaluatedName.options?.type === 'mixin-ruleset') {
         evaluatedName = await evaluatedName.eval(context);
       }
       const fn = isNode(evaluatedName, N.JsFunction) ? evaluatedName.value : evaluatedName;
       if (isExtendedFn(fn) && !fn._internal && !fn.options?.params) {
-        const originalCaller = context.caller;
-        context.caller = this;
-        try {
-          const result = state.args
-            ? await callWithContext(context, fn, ...state.args.value)
-            : await callWithContext(context, fn);
-          if (isNode(result)) {
-            return this.markCallOutput(await result.eval(context));
+        return this.runAsCaller(context, async () => {
+          try {
+            const result = state.args
+              ? await callWithContext(context, fn, ...state.args.value)
+              : await callWithContext(context, fn);
+            if (isNode(result)) {
+              return this.markCallOutput(await result.eval(context));
+            }
+            const castResult = cast(result);
+            if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+              return this.markCallOutput(castResult.value[0]!);
+            }
+            return this.markCallOutput(castResult);
+          } catch (error) {
+            const unitMode = context?.opts?.unitMode ?? 'loose';
+            if (unitMode === 'strict') {
+              throw error;
+            }
+            const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
+              ? String(this.value.name.value.key)
+              : stringifyValueOf(fn);
+            return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
           }
-          const castResult = cast(result);
-          if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-            return this.markCallOutput(castResult.value[0]!);
-          }
-          return this.markCallOutput(castResult);
-        } catch (error) {
-          const unitMode = context?.opts?.unitMode ?? 'loose';
-          if (unitMode === 'strict') {
-            throw error;
-          }
-          const fallbackName = isNode(this.value.name, N.Reference) && this.value.name.options.fallbackValue === true
-            ? String(this.value.name.value.key)
-            : stringifyValueOf(fn);
-          return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
-        } finally {
-          context.caller = originalCaller;
-        }
+        });
       }
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
@@ -301,10 +332,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return undefined;
       }
       return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, evaluatedName));
-    } finally {
-      context.parenFrames.pop();
-      context.callStack.pop();
-    }
+    });
   }
 
   private async evalPlainDynamicFunction(context: Context): Promise<Node | undefined> {
@@ -331,11 +359,7 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
 
-    context.callStack.push(this);
-    context.parenFrames.push(false);
-    const originalCaller = context.caller;
-    context.caller = this;
-    try {
+    return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
         ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
@@ -347,11 +371,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return this.markCallOutput(castResult.value[0]!);
       }
       return this.markCallOutput(castResult);
-    } finally {
-      context.caller = originalCaller;
-      context.parenFrames.pop();
-      context.callStack.pop();
-    }
+    });
   }
 
   private async finalizeFunctionResult(
@@ -397,20 +417,12 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
 
-    context.callStack.push(this);
-    context.parenFrames.push(false);
-    const originalCaller = context.caller;
-    context.caller = this;
-    try {
+    return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
         ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
       return await this.finalizeFunctionResult(result, context, this._options?.markImportant);
-    } finally {
-      context.caller = originalCaller;
-      context.parenFrames.pop();
-      context.callStack.pop();
-    }
+    });
   }
 
   private serializeRenderedArgs(

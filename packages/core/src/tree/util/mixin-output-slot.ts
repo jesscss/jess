@@ -27,7 +27,7 @@ export type MixinOutputChildSegment = {
   index: number;
 };
 
-function getMixinOutputChildSegments(sourceRules: Rules): MixinOutputChildSegment[] {
+export function getMixinOutputChildSegments(sourceRules: Rules): MixinOutputChildSegment[] {
   return sourceRules.value.map((source, index) => ({
     kind: 'source-child',
     source,

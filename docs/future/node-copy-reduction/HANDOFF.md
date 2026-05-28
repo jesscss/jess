@@ -388,6 +388,22 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   `mixins-guards.less` median 42.58ms, `extend-chaining.less` median 23.03ms,
   and `media.less` median 11.54ms; do not claim this pass as a runtime speed
   win.
+- Latest queue pass moved callable mixin output child copying onto the ordered
+  `MixinOutputSlot` segment helper, so one real construction path now reads
+  source-child order through the slot shape instead of directly walking
+  `sourceRules.value`. It also centralized dynamic JS function call-frame
+  setup/restoration for the plain, metadata, and optional-fallback paths while
+  preserving the owned metadata `rawArgs` surface. The callable child-family,
+  reference render, dynamic leaf at-rule, and prepare-only binding audits did
+  not find another safe deletion point: copied callable children still protect
+  repeated placement and selector-parent semantics, reference render still
+  shares public result ownership, leaf at-rule `resolve(...)` still owns public
+  result nodes, and empty rest bindings still preserve current Less behavior.
+  Static audit stayed `new-node: 303`, `derive: 30`, `with-surface: 41`,
+  `copy-leaves: 31`, module-context count `374`. Hot-path timing:
+  `functions.less` median 23.31ms, `import-reference.less` median 27.70ms,
+  `mixins-guards.less` median 31.88ms, `extend-chaining.less` median 18.57ms,
+  and `media.less` median 8.19ms.
 
 ## Immediate Queue
 
@@ -403,59 +419,58 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Use mixin-output child segments for one read-only query path.**
+1. **Use mixin-output segments for targeted lookup metadata.**
 
-   - Goal: pick a lookup or visibility query that can read
-     `MixinOutputSlot.childSegments` without adopting or copying the source
-     child, while leaving output child ownership untouched.
-   - Required proof: direct comments, declarations, nested rules, targeted
-     lookups, reference gates, and source parentage.
+   - Goal: move one targeted lookup/reference-gate query to read ordered
+     `MixinOutputSlot.childSegments` metadata while leaving emitted output
+     children owned.
+   - Required proof: targeted property/mixin lookup, direct comments, nested
+     rules, reference gates, source parentage, and no clone frontier regression.
 
-2. **Audit callable ruleset child ownership by child family.**
+2. **Split callable child copying by safe leaf family.**
 
-   - Goal: split `copyCallableRulesNode(...)` by comments, declarations,
-     selectors, at-rules, rulesets, and scalar leaves so the next deletion can
-     target a whole child family, not one call site.
-   - Required proof: repeated placement, complex parent ampersands, nested
-     array-path ruleset mixins, and no clone frontier regression.
+   - Goal: after the child-family audit, pick a whole safe family such as
+     childless source-free leaves or direct comments and route it through a
+     narrower helper than generic `copyCallableRulesNode(...)`.
+   - Required proof: repeated placement, comments/declarations, nested rules,
+     complex parent ampersands, and nested array-path ruleset mixins.
 
-3. **Narrow reference render ownership without changing `resolve()`.**
+3. **Prototype reference render-local metadata state.**
 
-   - Goal: find one reference render case where result metadata can stay
-     render-local while public `resolve(...)` still returns owned node results.
-   - Required proof: variable/declaration/fallback containers, async live
-     slots, rules-like references, and source-free scalar reuse.
+   - Goal: keep public `resolve(...)` ownership unchanged, but try a small
+     render-local result-state wrapper for one variable/declaration render path.
+   - Required proof: source containers stay canonical, async live slots restore
+     context, rules-like references preserve shallow ownership, and scalar
+     leaves stay reusable.
 
-4. **Split dynamic at-rule leaf result state from public node creation.**
+4. **Extract dynamic leaf at-rule render state.**
 
-   - Goal: dynamic leaf at-rules still build public `AtRule` results. Move any
-     direct render-only name/prelude facts to a tiny state path before touching
-     body/root-hoist at-rules again.
-   - Required proof: static leaf identity, dynamic leaf render/buffer/resolve,
-     comment trivia in preludes, and source prelude parentage.
+   - Goal: direct dynamic leaf render already avoids `AtRule.eval(...)`; give
+     name/prelude render facts an explicit state record while leaving
+     `resolve(...)` result-node creation intact.
+   - Required proof: dynamic leaf direct render, buffer render, public
+     resolve, comment trivia in preludes, and source prelude parentage.
 
-5. **Inventory remaining prepare-only live-slot placeholders.**
+5. **Delete one proven prepare-only placeholder family.**
 
-   - Goal: list every `BindingCell` producer and delete any placeholder value
-     that is no longer required after prepare-only cells; preserve empty-rest
-     Less behavior where tests prove it.
-   - Required proof: mixin params, rest, `@arguments`, `$for` / `$while`
-     counters, imported configured variables, named-arg caller scope, and
-     reference lookup.
+   - Goal: after the BindingCell producer inventory, remove a whole placeholder
+     family if tests show it is not semantic. Do not delete empty-rest Less
+     output unless behavior is explicitly changed.
+   - Required proof: params, rest, `@arguments`, loop counters, imported
+     configured variables, named-arg caller scope, and reference lookup.
 
-6. **Consolidate dynamic-call eval frame handling.**
+6. **Extend call-frame helper into the remaining dynamic-call path.**
 
-   - Goal: `CallEvalState` exists, but call-stack, paren-frame, and caller
-     restore logic is still repeated. Centralize that runtime frame handling
-     without touching metadata `rawArgs` ownership.
-   - Required proof: dynamic JS functions, metadata functions, optional
-     fallback calls, nested calls, strict unit mode, and error restore.
+   - Goal: `runInCallFrame(...)` covers direct dynamic JS helpers; inspect the
+     main `evalFromState(...)` dynamic/mixin path for a safe frame-state split
+     without changing recursion detection or `rawArgs` ownership.
+   - Required proof: mixin calls, nested calls, optional fallback, strict unit
+     mode, metadata functions, and error restore.
 
-7. **Re-measure hot paths after a deletion with expected runtime effect.**
+7. **Re-measure hot paths after the next deletion or frame-state split.**
 
-   - Goal: the latest slot/helper pass was not a speed win. The next timing
-     comparison should follow a real eval/render deletion, preferably in mixin
-     output, dynamic calls, or import-reference behavior.
+   - Goal: keep timing tied to a real eval/render simplification, preferably
+     in mixin output, dynamic calls, references, or import-reference behavior.
    - Required proof: `pnpm run measure:less:hotpath`, before/after numbers,
      chosen surface, and why it should affect real stylesheet eval/render.
 

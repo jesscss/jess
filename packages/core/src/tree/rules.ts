@@ -62,6 +62,7 @@ import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
   canSearchMixinOutputRules,
+  getMixinOutputChildSegments,
   isMixinOutputRules,
   isVisibleRulesEntry
 } from './util/mixin-output-slot.js';
@@ -4095,7 +4096,9 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!copyChildren) {
         return sourceRules.derive();
       }
-      return sourceRules.derive(sourceRules.value.map(node => copyCallableRulesNode(node)));
+      return sourceRules.derive(
+        getMixinOutputChildSegments(sourceRules).map(segment => copyCallableRulesNode(segment.source))
+      );
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
