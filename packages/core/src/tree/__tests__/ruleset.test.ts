@@ -144,6 +144,44 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders plain static rulesets from source without preparing an owned body surface', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset direct render should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset direct render should not evaluate a ruleset surface');
+    };
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(buffer.segments[0]).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('keeps source selector and body parentage canonical during direct render', async () => {
     const root = rules([
       decl({ name: 'tone', value: any('red') })

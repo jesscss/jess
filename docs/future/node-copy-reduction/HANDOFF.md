@@ -113,6 +113,11 @@ truth, the immediate pop queue, and verification.
   source-safety ownership boundary, not a speed win. Do not remove it until a
   side state can carry evaluated body output and frame/extend registration
   without reparenting source body rules.
+- Plain static non-nil rulesets with static declaration/comment bodies render
+  directly from the source tree. They do not prepare registration, evaluate a
+  ruleset surface, or own a body surface just to print authored CSS. Dynamic
+  rulesets, nil selectors, guards, nested rules, extends, and body output that
+  needs registration/eval still use the owned body path.
 - The broad proof queue has been processed. Current conclusions:
   at-rule bodies/root-hoist now carry final body output as side-state, but the
   full surface still needs prelude/body/root-hoist responsibilities split;
@@ -141,7 +146,7 @@ truth, the immediate pop queue, and verification.
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `Rules.render(...)` source roots    | Public compile renders already evaluated roots. Direct unevaluated root render evals the source root when no root context exists; direct fragments render from source with render-local context and no derived wrapper. | Keep reducing fragment/root state without losing charset/import ordering, controls, registration prep, separators, or source parentage.   |
 | `AtRule.render(...)`                | Reuses evaluated/prepared/static at-rule surfaces when available. Dynamic leaf render uses local name/prelude state; direct dynamic body/root-hoist render still derives before eval, but final body output is side-state rather than `value.rules` mutation. | Split the remaining prelude/body/root-hoist responsibilities before deleting the isolation surface.                                       |
-| `Ruleset.render(...)`               | Reuses evaluated/prepared ruleset surfaces. Unevaluated rulesets still prepare/eval an isolated surface; the body surface is owned when needed to keep the canonical source body parented to the source ruleset. | Replace the owned body surface only when side state can carry body output, frame/extend registration, nil-selector output, and source parentage. |
+| `Ruleset.render(...)`               | Reuses evaluated/prepared ruleset surfaces. Plain static non-nil declaration/comment bodies render from source without prep/eval. Other unevaluated rulesets still prepare/eval an isolated surface; the body surface is owned when needed to keep the canonical source body parented to the source ruleset. | Expand direct source render only for proven static body shapes, then replace the owned dynamic body surface only when side state can carry body output, frame/extend registration, nil-selector output, and source parentage. |
 | `Declaration.render(...)`           | Prepares/evals one isolated declaration surface for assignment/name/value/important mutation.                                                                                         | Keep source isolation unless a concrete side-state model replaces preparation mutation.                                                   |
 | Function/mixin args                 | Plain JS calls pass direct args. Metadata calls keep one owned `rawArgs` surface.                                                                                                     | Keep guarding the split; do not add another copied source-call surface.                                                                   |
 | Generated selector/output ownership | Extend, `:is(...)`, pseudo args, framed ampersands, selector collapse, and ruleset headers still create owned placement surfaces in focused cases.                                    | Keep unless new parentage/visibility/output tests prove a specific placement is carrier-only.                                             |
@@ -201,13 +206,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Ruleset body ownership / queue audit | Direct ruleset render/resolve now preserves source selector and body parentage by owning the eval body surface when needed. At-rule, reference, declaration, selector, and mixin-slot surfaces were rechecked; their remaining wrappers still carry real eval-frame, public-result, mutation, or lookup metadata. |
-| 2 | Render carrier trim / ruleset audit | At-rule body render state no longer carries registration facts; declaration render/eval states dropped unused source pointers; scalar reference render now has source-free leaf reuse proof; ruleset audit confirmed body output still needs an owned evaluated surface. |
-| 3 | Call frame / leaf at-rule state | `Call.evalFromState(...)` uses the shared call-frame helper; dynamic leaf at-rules render through `AtRuleLeafState`; callable child copying is split into named families. |
-| 4 | Mixin output slot child order | Callable mixin output child copying reads ordered `MixinOutputSlot` segments. Targeted lookup through source segments was rejected; owned output children still carry scope/frame semantics. |
-| 5 | Mixin output slot prototype | Added ordered source-child segments to `MixinOutputSlot`; output still needs owned placement children for selector parentage, lookup gates, and repeated placement. |
-| 6 | Binding slots and recursion signatures | Lazy params/rest/`@arguments`; string-backed recursion signatures removed temporary `List` / rest aggregate nodes used only for call-stack keys. |
-| 7 | At-rule body runtime state | Body prelude/body/hoist/frame facts moved into side state; direct render keeps source at-rule fields untouched. |
+| 1 | Static ruleset direct render / queue pass | Plain static non-nil rulesets now render source syntax without registration prep, ruleset eval, or owned body output. The at-rule, reference, declaration, selector, and mixin-slot queue items were rechecked and kept because their remaining wrappers carry eval-frame, public-result, mutation, collapse, or lookup semantics. |
+| 2 | Ruleset body ownership / queue audit | Direct ruleset render/resolve now preserves source selector and body parentage by owning the eval body surface when needed. At-rule, reference, declaration, selector, and mixin-slot surfaces were rechecked; their remaining wrappers still carry real eval-frame, public-result, mutation, or lookup metadata. |
+| 3 | Render carrier trim / ruleset audit | At-rule body render state no longer carries registration facts; declaration render/eval states dropped unused source pointers; scalar reference render now has source-free leaf reuse proof; ruleset audit confirmed body output still needs an owned evaluated surface. |
+| 4 | Call frame / leaf at-rule state | `Call.evalFromState(...)` uses the shared call-frame helper; dynamic leaf at-rules render through `AtRuleLeafState`; callable child copying is split into named families. |
+| 5 | Mixin output slot child order | Callable mixin output child copying reads ordered `MixinOutputSlot` segments. Targeted lookup through source segments was rejected; owned output children still carry scope/frame semantics. |
+| 6 | Mixin output slot prototype | Added ordered source-child segments to `MixinOutputSlot`; output still needs owned placement children for selector parentage, lookup gates, and repeated placement. |
+| 7 | Binding slots and recursion signatures | Lazy params/rest/`@arguments`; string-backed recursion signatures removed temporary `List` / rest aggregate nodes used only for call-stack keys. |
 
 ## Metrics Snapshot
 
@@ -225,13 +230,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Ruleset body ownership / queue audit | 20.08ms | 25.58ms | 30.81ms | 14.64ms | 6.75ms | fast sample, but source-safety added one owned body surface; no confirmed trend |
-| 2 | Render carrier trim / ruleset audit | 20.36ms | 26.68ms | 31.12ms | 15.73ms | 6.81ms | first sample only; full rerun was 24.89 / 36.23 / 34.85 / 16.92 / 8.48ms, so no confirmed speedup |
-| 3 | Call frame / leaf at-rule state | 24.65ms | 27.89ms | 33.76ms | 19.58ms | 8.13ms | previous |
-| 4 | Mixin output slot child order | 23.31ms | 27.70ms | 31.88ms | 18.57ms | 8.19ms | best recent import/functions sample |
-| 5 | Mixin output slot prototype | 29.36ms | 37.32ms | 42.58ms | 23.03ms | 11.54ms | noisy slow sample; do not treat as regression alone |
-| 6 | Binding slots and recursion signatures | 26.74ms | 32.63ms | 32.09ms | 19.45ms | 8.23ms | string-backed signatures |
-| 7 | At-rule body runtime state | 25.89ms | 30.14ms | 30.98ms | 18.58ms | 7.79ms | good media/extend sample |
+| 1 | Static ruleset direct render / queue pass | 20.13ms | 28.54ms | 31.48ms | 18.54ms | 7.80ms | static ruleset direct path; sample is mixed/noisy, no confirmed trend |
+| 2 | Ruleset body ownership / queue audit | 20.08ms | 25.58ms | 30.81ms | 14.64ms | 6.75ms | fast sample, but source-safety added one owned body surface; no confirmed trend |
+| 3 | Render carrier trim / ruleset audit | 20.36ms | 26.68ms | 31.12ms | 15.73ms | 6.81ms | first sample only; full rerun was 24.89 / 36.23 / 34.85 / 16.92 / 8.48ms, so no confirmed speedup |
+| 4 | Call frame / leaf at-rule state | 24.65ms | 27.89ms | 33.76ms | 19.58ms | 8.13ms | previous |
+| 5 | Mixin output slot child order | 23.31ms | 27.70ms | 31.88ms | 18.57ms | 8.19ms | best recent import/functions sample |
+| 6 | Mixin output slot prototype | 29.36ms | 37.32ms | 42.58ms | 23.03ms | 11.54ms | noisy slow sample; do not treat as regression alone |
+| 7 | Binding slots and recursion signatures | 26.74ms | 32.63ms | 32.09ms | 19.45ms | 8.23ms | string-backed signatures |
 
 Measurement commands:
 
@@ -274,57 +279,60 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Prototype ruleset body side state for one non-nil body case.**
+1. **Expand source-direct ruleset render to the next static body shape.**
 
-   - Goal: keep the source-safety body ownership fix, then prove whether one
-     simple non-nil body can carry evaluated body output beside the ruleset
-     rather than inside the derived ruleset surface.
-   - Required proof: source body parentage, nested rule parentage, nil-selector
-     output unchanged, buffer parity, and no guard/extend regression.
+   - Goal: keep the current plain declaration/comment proof and add the next
+     static non-nil body shape only if it does not require registration prep,
+     selector composition, nesting collapse, imports, extends, or declaration
+     merge behavior.
+   - Required proof: no registration/eval calls, source body parentage, buffer
+     parity, and Less fixture parity for the selected body shape.
 
-2. **Split at-rule body eval-frame state without touching leaf at-rules.**
+2. **Split one at-rule body eval-frame fact into side state.**
 
    - Goal: keep `AtRuleBodyRenderState` render-only and replace the remaining
-     direct-render derived body eval frame with smaller eval-frame state.
+     direct-render derived body eval frame one responsibility at a time.
    - Required proof: dynamic body render, public `resolve(...)`, root hoist,
      layer/extend registration, prelude comments, and source prelude/body
      parentage.
 
-3. **Prototype reference render-local container output for one value family.**
+3. **Split reference render ownership from public resolve for one container.**
 
-   - Goal: keep the proven scalar reuse path and find one non-scalar reference
-     container that can render without public-result ownership.
+   - Goal: find one non-scalar reference container whose render output can be
+     evaluated and emitted without producing the same owned node result required
+     by public `resolve(...)`.
    - Required proof: source containers canonical, async live slots restore
      context, rules-like refs preserve shallow ownership, scalar leaves reusable,
      and no public-result ownership regression.
 
-4. **Move one declaration mutation fact from eval surface to render state.**
+4. **Split declaration render state from public value materialization.**
 
-   - Goal: identify the next declaration mutation fact that can move from the
-     isolated declaration surface into `DeclarationRenderState`.
+   - Goal: move one remaining render-only name/value/important mutation fact
+     out of public `DeclarationEvalState` / materialized declaration output.
    - Required proof: custom property as-authored values, contextual
      `!important`, merged values, assignment behavior, source value parentage,
      and render-buffer parity.
 
-5. **Audit selector-family `inherit(...)` by collapse path, not call count.**
+5. **Reduce selector collapse helper mutation where ownership is proven.**
 
-   - Goal: work the selector/ruleset helper family as a family, not one call
-     site; keep semantic generated selector ownership where tests prove it.
+   - Goal: keep the existing owned-collapse rule, then remove or narrow helper
+     mutation only where the collapse path already owns the output child.
    - Required proof: source parentage before/after, selector-family tests, no
      `as any`, and no helper-count theater.
 
-6. **Design evaluated mixin-output slot segments before lookup changes.**
+6. **Prototype evaluated mixin-output slot segment metadata.**
 
-   - Goal: design the smallest slot metadata that preserves owned output child
-     scope/frame semantics before targeted lookup reads slot data.
+   - Goal: add the smallest evaluated-placement segment metadata that lets a
+     future lookup read slot data without confusing source children with owned
+     output children.
    - Required proof: targeted property/mixin lookup, nested mixin scopes, direct
      comments, reference gates, source body order, and repeated placement.
 
-7. **Record hot-path metrics after the next actual materialization reduction.**
+7. **Record hot-path metrics after the next source-direct/static expansion.**
 
    - Goal: keep timing tied to real stylesheet eval/render simplification,
-     preferably in at-rules, declarations, references, mixin output, or
-     import-reference behavior.
+     preferably in ruleset, at-rules, declarations, references, mixin output,
+     or import-reference behavior.
    - Required proof: `pnpm run measure:less:hotpath`, before/after numbers,
      chosen surface, and why it should affect real stylesheet eval/render.
 

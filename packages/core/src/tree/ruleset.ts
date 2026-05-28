@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { Nil } from './nil.js';
@@ -586,6 +586,20 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return serializeRulesContainer(this, opts);
   }
 
+  private canRenderSourceDirectly(): boolean {
+    if (this.evaluated || this.registrationPrepared || this.value.guard) {
+      return false;
+    }
+    const { selector, rules } = this.value;
+    if (selector instanceof Nil || !selector.hasFlag(F_STATIC) || !rules.hasFlag(F_STATIC)) {
+      return false;
+    }
+    return rules.value.every(rule => (
+      isNode(rule, N.Comment | N.Nil)
+      || (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC))
+    ));
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -611,6 +625,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     };
     const evalForRender = (): MaybePromise<Node> => {
       if (this.evaluated) {
+        return this;
+      }
+      if (this.canRenderSourceDirectly()) {
         return this;
       }
       return this.registrationPrepared
