@@ -1355,9 +1355,13 @@ function canReuseFallbackValue(node: Node): boolean {
 function evaluateFallbackValue(
   referenceNode: Reference,
   fallbackValue: Node,
-  context: Context
+  context: Context,
+  options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
   if (canReuseFallbackValue(fallbackValue)) {
+    if (options.textOnly === true && canReuseReferenceValue(fallbackValue)) {
+      return fallbackValue;
+    }
     return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
   }
   const out = copyReferenceValue(fallbackValue).eval(context);
@@ -1373,8 +1377,9 @@ function finalizeFallbackReferenceResult(args: {
   lookupType: LookupType;
   fallbackValue: ReferenceOptions['fallbackValue'];
   context: Context;
+  textOnly?: boolean;
 }): MaybePromise<Node> {
-  const { referenceNode, valueKey, lookupType, fallbackValue, context } = args;
+  const { referenceNode, valueKey, lookupType, fallbackValue, context, textOnly } = args;
   const valueKeyStr = getLookupKeyDisplay(valueKey);
 
   if (!fallbackValue) {
@@ -1391,18 +1396,19 @@ function finalizeFallbackReferenceResult(args: {
     any.options.role = referenceNode.options.role;
     return any;
   }
-  return evaluateFallbackValue(referenceNode, fallbackValue, context);
+  return evaluateFallbackValue(referenceNode, fallbackValue, context, { textOnly });
 }
 
 function finalizeDirectReferenceResult(
   referenceNode: Reference,
   returnVal: unknown,
-  context: Context
+  context: Context,
+  options: { textOnly?: boolean } = {}
 ): Node {
   if (isArray(returnVal)) {
     return createDirectCallableReferenceResult(referenceNode, returnVal);
   }
-  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context);
+  return finalizeDirectNodeReferenceResult(referenceNode, cast(returnVal), context, options);
 }
 
 function createDirectCallableReferenceResult(
@@ -1442,9 +1448,13 @@ function createDirectCallableReferenceResult(
 function finalizeDirectNodeReferenceResult(
   referenceNode: Reference,
   result: Node,
-  context: Context
+  context: Context,
+  options: { textOnly?: boolean } = {}
 ): Node {
   context.popReference();
+  if (options.textOnly === true && canReuseReferenceValue(result)) {
+    return result;
+  }
   if (
     referenceNode.options?.type === 'mixin-ruleset'
     && isNode(result, N.Rules | N.Collection | N.Mixin | N.Ruleset)
@@ -1461,7 +1471,8 @@ function finalizeDirectNodeReferenceResult(
 function finalizeRuntimeVarBindingResult(
   referenceNode: Reference,
   binding: RuntimeVarBinding,
-  context: Context
+  context: Context,
+  options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
   const bindingSource = binding.sourceNode;
   const finalizeRuntimeBinding = (evald: Node) => {
@@ -1473,6 +1484,9 @@ function finalizeRuntimeVarBindingResult(
       return evald;
     }
     if (canReuseReferenceValue(evald)) {
+      if (options.textOnly === true) {
+        return evald;
+      }
       evald.frozen = true;
       return evald;
     }
@@ -1557,8 +1571,12 @@ function isMergedAssignDeclaration(
 function finalizeEvaluatedDeclarationReference(
   referenceNode: Reference,
   evaluatedNode: Node,
-  isMergedAssign: boolean
+  isMergedAssign: boolean,
+  options: { textOnly?: boolean } = {}
 ): Node {
+  if (options.textOnly === true && !isMergedAssign && canReuseReferenceValue(evaluatedNode)) {
+    return evaluatedNode;
+  }
   const resultNode = isMergedAssign
     ? evaluatedNode
     : cloneReferenceResultNode(referenceNode, evaluatedNode);
@@ -1575,7 +1593,8 @@ function finalizeEvaluatedDeclarationReference(
 function finalizeDeclarationReferenceResult(
   referenceNode: Reference,
   declaration: Declaration | VarDeclaration,
-  context: Context
+  context: Context,
+  options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
   if (
     referenceNode.options?.preserveRulesLike === true
@@ -1593,7 +1612,8 @@ function finalizeDeclarationReferenceResult(
     evaluatedNode => finalizeEvaluatedDeclarationReference(
       referenceNode,
       evaluatedNode,
-      isMergedAssignDeclaration(declaration)
+      isMergedAssignDeclaration(declaration),
+      options
     )
   ));
 }
@@ -1782,8 +1802,9 @@ function finalizeReferenceLookupResult(args: {
   lookupType: LookupType;
   fallbackValue: ReferenceOptions['fallbackValue'];
   context: Context;
+  textOnly?: boolean;
 }): MaybePromise<Node> {
-  const { referenceNode, returnVal, valueKey, lookupType, fallbackValue, context } = args;
+  const { referenceNode, returnVal, valueKey, lookupType, fallbackValue, context, textOnly } = args;
 
   const resultKind = classifyReferenceLookupResult(returnVal);
   if (resultKind === 'fallback') {
@@ -1792,16 +1813,17 @@ function finalizeReferenceLookupResult(args: {
       valueKey,
       lookupType,
       fallbackValue,
-      context
+      context,
+      textOnly
     });
   }
   if (isRuntimeVarBinding(returnVal)) {
-    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context);
+    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context, { textOnly });
   }
   if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
-    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
+    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context, { textOnly });
   }
-  return finalizeDirectReferenceResult(referenceNode, returnVal, context);
+  return finalizeDirectReferenceResult(referenceNode, returnVal, context, { textOnly });
 }
 
 function evaluateReferenceNode(args: {
@@ -1812,6 +1834,7 @@ function evaluateReferenceNode(args: {
   fallbackValue: ReferenceOptions['fallbackValue'];
   originalFilter: ReferenceOptions['filter'] | undefined;
   context: Context;
+  textOnly?: boolean;
 }): MaybePromise<Node> {
   const {
     referenceNode,
@@ -1820,7 +1843,8 @@ function evaluateReferenceNode(args: {
     lookupType,
     fallbackValue,
     originalFilter,
-    context
+    context,
+    textOnly
   } = args;
   context.pushReference();
   return pipe(
@@ -1847,7 +1871,8 @@ function evaluateReferenceNode(args: {
       valueKey: valueKey as NormalizedLookupKey,
       lookupType,
       fallbackValue,
-      context
+      context,
+      textOnly
     })
   );
 }
@@ -1951,7 +1976,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
       : node.render(context, bufferOrOptions);
     return pipe(
-      () => this.evalNode(context),
+      () => evaluateReferenceNode({
+        referenceNode: this,
+        target: this.value.target,
+        key: this.value.key,
+        lookupType: (this.options.type ?? 'variable') as LookupType,
+        fallbackValue: this.options.fallbackValue,
+        originalFilter: this.options.filter,
+        context,
+        textOnly: true
+      }),
       renderResolved
     );
   }

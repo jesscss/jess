@@ -445,6 +445,36 @@ describe('reference', () => {
       }
     });
 
+    it('renders scalar fallback values as text without applying public result metadata', async () => {
+      const fallback = any('red');
+      const fallbackParent = fallback.parent;
+      const originalInherit = fallback.inherit;
+      let inheritCalls = 0;
+      fallback.inherit = function inheritForCounting(
+        this: typeof fallback,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        inheritCalls++;
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(inheritCalls).toBe(0);
+        expect(fallback.parent).toBe(fallbackParent);
+      } finally {
+        fallback.inherit = originalInherit;
+      }
+    });
+
     it('does not clone childless source-free scalar leaves inside copied fallback containers', async () => {
       const originalClone = Any.prototype.clone;
       let scalarClones = 0;

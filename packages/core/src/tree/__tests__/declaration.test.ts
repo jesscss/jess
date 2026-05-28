@@ -191,6 +191,39 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders assignment families without reparenting authored declaration values', async () => {
+    const makePrior = (assign: AssignmentType | '+:') => decl({
+      name: any('background-color'),
+      value: any('red')
+    }, {
+      assign: assign === AssignmentType.CondAssign ? undefined : assign
+    });
+    const cases: Array<[AssignmentType | '+:', string]> = [
+      ['+:', 'background-color: red, blue'],
+      [AssignmentType.MergeList, 'background-color: red, blue'],
+      [AssignmentType.MergeSequence, 'background-color: red blue'],
+      [AssignmentType.CondAssign, 'background-color: red']
+    ];
+
+    for (const [assign, expected] of cases) {
+      const prior = makePrior(assign);
+      const root = rules([prior]);
+      await root.prepareRegistration(context);
+      context.root = root;
+      context.rulesContext = root;
+
+      const value = any('blue');
+      const sourceDeclaration = decl({
+        name: any('background-color'),
+        value
+      }, { assign });
+
+      expect(await Promise.resolve(sourceDeclaration.render(context))).toBe(expected);
+      expect(value.parent).toBe(sourceDeclaration);
+      expect(sourceDeclaration.registrationPrepared).toBe(false);
+    }
+  });
+
   it('renders nil declaration eval results through native node render', () => {
     const originalRender = Nil.prototype.render;
     let renderCalls = 0;

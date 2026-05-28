@@ -105,6 +105,7 @@ type DeclarationRenderState = {
   listValue?: Node[];
   important?: Any<'flag'>;
   importantText?: string;
+  normalizedFromAssign?: AssignmentType;
   output?: Node;
   nil: boolean;
 };
@@ -121,6 +122,7 @@ type DeclarationRegistrationState = {
   value: Node;
   important?: Any<'flag'>;
   normalizedFromAssign?: AssignmentType;
+  renderOnly?: boolean;
   bindOutput?: (node: Declaration) => void;
 };
 
@@ -307,7 +309,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private declValueTrimmedString(
     valueParts: DeclarationValue,
     options?: PrintOptions,
-    renderState?: { listValue?: Node[]; importantText?: string }
+    renderState?: { listValue?: Node[]; importantText?: string; normalizedFromAssign?: AssignmentType }
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -316,7 +318,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
-    const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
+    const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
+      ? AssignmentType.Default
+      : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
@@ -445,7 +449,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       important: state.important
     }, prepared, {
       listValue: state.listValue,
-      importantText: state.importantText
+      importantText: state.importantText,
+      normalizedFromAssign: state.normalizedFromAssign
     });
     return buffer
       ? writeRenderText(buffer, out)
@@ -529,6 +534,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         listValue: normalized.listValue,
         important,
         importantText,
+        normalizedFromAssign: state.normalizedFromAssign,
         nil: false
       };
     };
@@ -620,7 +626,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return {
       name: this.value.name,
       value: this.value.value,
-      important: this.value.important
+      important: this.value.important,
+      renderOnly: true
     };
   }
 
@@ -685,6 +692,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     if (assign) {
       const normalizedAssign = assign;
+      const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
+      const inputValue = state.renderOnly ? this.copyValueForDerived(value) : value;
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'Declaration' ? 'declaration' : 'variable';
@@ -701,7 +710,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             || assignValue === '+,:'
             || assignValue === '+_:'
           );
-          const ref = new Reference({ key }, {
+          const ref = new Reference({ key: referenceKey }, {
             type,
             fallbackValue: new Nil(),
             // Assignment normalization clears `assign` to Default, so matching by
@@ -722,8 +731,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
            */
           const isMergeListAssign = assign === AssignmentType.MergeList;
           value = isMergeListAssign
-            ? new List([ref, value])
-            : spaced([ref, value]);
+            ? new List([ref, inputValue])
+            : spaced([ref, inputValue]);
           setValue(value);
           break;
         }
@@ -733,20 +742,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             // Use list composition (not generic `Operation +`) so scalar previous values
             // remain distinct list members rather than string-concatenating.
             setValue(new List([
-              new Reference({ key }, {
+              new Reference({ key: referenceKey }, {
                 type,
                 fallbackValue: new Nil(),
                 // Prevent self-referential reads while normalizing this node.
                 filter: n => n !== outputNode && n !== this
               }),
-              value
+              inputValue
             ]));
           } else {
             setValue(
               new Operation([
-                new Reference({ key }, { type }),
+                new Reference({ key: referenceKey }, { type }),
                 '+',
-                value
+                inputValue
               ])
             );
           }
@@ -754,9 +763,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         case AssignmentType.CondAssign: {
           setValue(
-            new Reference({ key }, {
+            new Reference({ key: referenceKey }, {
               type,
-              fallbackValue: value
+              fallbackValue: inputValue
             })
           );
           break;

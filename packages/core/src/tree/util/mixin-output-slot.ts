@@ -17,6 +17,7 @@ export type MixinOutputSlot = {
   sourceRules: Rules;
   outputRules: Rules;
   childSegments: readonly MixinOutputChildSegment[];
+  sourceByOutput: ReadonlyMap<Node, Node>;
   rulesVisibility: Rules['options']['rulesVisibility'];
   isMixinOutput: boolean;
 };
@@ -44,11 +45,7 @@ export function getMixinOutputSourceChild(
   outputRules: Rules,
   outputChild: Node
 ): Node | undefined {
-  const segments = outputRules.options.mixinOutputSlot?.childSegments;
-  if (!segments) {
-    return undefined;
-  }
-  return segments.find(segment => segment.output === outputChild)?.source;
+  return outputRules.options.mixinOutputSlot?.sourceByOutput.get(outputChild);
 }
 
 function validateMixinOutputSlot(slot: MixinOutputSlot): void {
@@ -132,10 +129,16 @@ export function attachMixinOutputSlot(
   sourceRules: Rules,
   isMixinOutput: boolean
 ): MixinOutputSlot {
+  const childSegments = getMixinOutputChildSegments(sourceRules, outputRules);
   const slot: MixinOutputSlot = {
     sourceRules,
     outputRules,
-    childSegments: getMixinOutputChildSegments(sourceRules, outputRules),
+    childSegments,
+    sourceByOutput: new Map(
+      childSegments
+        .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
+        .map(segment => [segment.output, segment.source])
+    ),
     rulesVisibility: outputRules.options.rulesVisibility,
     isMixinOutput
   };
