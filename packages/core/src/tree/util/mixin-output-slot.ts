@@ -40,6 +40,17 @@ export function getMixinOutputChildSegments(
   }));
 }
 
+export function getMixinOutputSourceChild(
+  outputRules: Rules,
+  outputChild: Node
+): Node | undefined {
+  const segments = outputRules.options.mixinOutputSlot?.childSegments;
+  if (!segments) {
+    return undefined;
+  }
+  return segments.find(segment => segment.output === outputChild)?.source;
+}
+
 export function getRulesEntryVisibility(
   entry: RulesEntryLike,
   type: LookupVisibility

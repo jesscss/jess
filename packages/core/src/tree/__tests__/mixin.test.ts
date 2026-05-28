@@ -3,6 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
+import { getMixinOutputSourceChild } from '../util/mixin-output-slot.js';
 
 let context: Context;
 
@@ -1027,6 +1028,7 @@ describe('Mixin', () => {
         output: result.value[index],
         index
       })));
+      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);

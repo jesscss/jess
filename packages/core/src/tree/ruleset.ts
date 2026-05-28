@@ -586,7 +586,26 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return serializeRulesContainer(this, opts);
   }
 
-  private canRenderSourceDirectly(): boolean {
+  private canSourceRenderStaticRule(rule: Node, context: Context): boolean {
+    if (isNode(rule, N.Comment | N.Nil)) {
+      return true;
+    }
+    if (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC)) {
+      return true;
+    }
+    if (!isNode(rule, N.AtRule) || !rule.hasFlag(F_STATIC)) {
+      return false;
+    }
+    const atRule = rule as AtRule;
+    if (!atRule.getRenderRules()) {
+      return true;
+    }
+    return !context.opts.collapseNesting
+      && !context.bubbleRootAtRules
+      && atRule.isRootOnly();
+  }
+
+  private canRenderSourceDirectly(context: Context): boolean {
     if (this.evaluated || this.registrationPrepared || this.value.guard) {
       return false;
     }
@@ -594,11 +613,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (selector instanceof Nil || !selector.hasFlag(F_STATIC) || !rules.hasFlag(F_STATIC)) {
       return false;
     }
-    return rules.value.every(rule => (
-      isNode(rule, N.Comment | N.Nil)
-      || (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC))
-      || (isNode(rule, N.AtRule) && rule.hasFlag(F_STATIC) && !(rule as AtRule).getRenderRules())
-    ));
+    return rules.value.every(rule => this.canSourceRenderStaticRule(rule, context));
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -628,7 +643,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       if (this.evaluated) {
         return this;
       }
-      if (this.canRenderSourceDirectly()) {
+      if (this.canRenderSourceDirectly(context)) {
         return this;
       }
       return this.registrationPrepared

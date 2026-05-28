@@ -226,6 +226,45 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('source-direct renders static rulesets with root-only body at-rules when hoist is inactive', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const bodyAtRule = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Body') })
+      ])
+    });
+    const node = ruleset({
+      selector,
+      rules: rules([
+        bodyAtRule,
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset with root-only body at-rule should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset with root-only body at-rule should not evaluate a ruleset surface');
+    };
+    bodyAtRule.eval = () => {
+      throw new Error('Static root-only body at-rule should not evaluate during source-direct ruleset render');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        @font-face {
+          font-family: Body;
+        }
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('keeps source selector and body parentage canonical during direct render', async () => {
     const root = rules([
       decl({ name: 'tone', value: any('red') })

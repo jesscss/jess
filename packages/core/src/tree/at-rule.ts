@@ -85,6 +85,12 @@ type AtRuleBodyRegistrationState = {
   layerName?: string;
 };
 
+type AtRuleBodyEvalPrepState = {
+  bodyToEval: Rules;
+  parentExtendRoot?: Rules;
+  pushedExtendRoot: boolean;
+};
+
 type AtRuleBodyRenderState = {
   kind: 'body-render';
   source: AtRule;
@@ -858,6 +864,46 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return registration;
   }
 
+  private _prepareNestableBodyForEval(
+    node: AtRule,
+    rules: Rules,
+    context: Context,
+    restoreBodyEvalContext: () => void
+  ): MaybePromise<AtRuleBodyEvalPrepState> {
+    if (!node.isNestable()) {
+      return {
+        bodyToEval: rules,
+        pushedExtendRoot: false
+      };
+    }
+    const parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
+    let preparedRules: MaybePromise<Node>;
+    try {
+      preparedRules = rules.prepareRegistration(context);
+    } catch (error) {
+      restoreBodyEvalContext();
+      throw error;
+    }
+    const finish = (resolved: Node): AtRuleBodyEvalPrepState => {
+      if (!(resolved instanceof Rules)) {
+        restoreBodyEvalContext();
+        throw new TypeError('Expected at-rule body registration prep to return Rules');
+      }
+      context.extendRoots.pushExtendRoot(resolved);
+      return {
+        bodyToEval: resolved,
+        parentExtendRoot,
+        pushedExtendRoot: true
+      };
+    };
+    return isThenable(preparedRules)
+      ? preparedRules.then(finish, (error) => {
+          restoreBodyEvalContext();
+          throw error;
+        })
+      : finish(preparedRules);
+  }
+
   /** Render the opening of this at-rule (name and prelude) */
   getHeaderString(options: FinalPrintOptions, withoutComments?: boolean): string {
     let { name } = this.value;
@@ -1030,92 +1076,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           // This ensures parent layers are already on the stack when we look for them
           this._extractAndStoreLayerName(node, context);
 
-          // Register extend root for nestable at-rules (including @layer).
-          // Prepare first so we push and later register the Rules that is actually evaluated
-          // (clone or original). Otherwise we push the original but eval runs on a clone, so the
-          // registered root has no rulesets and extend-chaining / nested at-rule extends fail.
-          let pushedExtendRoot = false;
-          let parentExtendRoot: Rules | undefined;
-          let bodyToEval: Rules = rules;
-          if (node.isNestable()) {
-            parentExtendRoot = context.extendRoots.getCurrentExtendRoot();
-            let preparedRules: MaybePromise<Node>;
+          const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
+            const { bodyToEval, parentExtendRoot, pushedExtendRoot } = prepState;
+            const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
+            restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
+            let evalOut: MaybePromise<Rules>;
             try {
-              preparedRules = rules.prepareRegistration(context);
+              evalOut = bodyToEval.eval(context);
             } catch (error) {
               restoreBodyEvalContext();
               throw error;
             }
-            if (isThenable(preparedRules)) {
-              return preparedRules.then((resolved) => {
-                if (!(resolved instanceof Rules)) {
-                  restoreBodyEvalContext();
-                  throw new TypeError('Expected at-rule body registration prep to return Rules');
-                }
-                bodyToEval = resolved;
-                context.extendRoots.pushExtendRoot(bodyToEval);
-                pushedExtendRoot = true;
-                restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
-                const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
-                let evalOut: MaybePromise<Rules>;
-                try {
-                  evalOut = bodyToEval.eval(context);
-                } catch (error) {
-                  restoreBodyEvalContext();
-                  throw error;
-                }
-                const doRegister = (r: Rules) => {
-                  restoreRulesetFrames();
-                  const finalRules =
-                    onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-                  storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
-                  this._registerEvaluatedNestableBody(node, context, {
-                    bodyToEval,
-                    finalRules,
-                    parentExtendRoot
-                  });
-                  return node;
-                };
-                if (isThenable(evalOut)) {
-                  return (evalOut as Promise<Rules>).then(doRegister, (error) => {
-                    restoreBodyEvalContext();
-                    throw error;
-                  });
-                }
-                return doRegister(evalOut as Rules);
-              }, (error) => {
-                restoreBodyEvalContext();
-                throw error;
-              });
-            }
-            if (!(preparedRules instanceof Rules)) {
-              restoreBodyEvalContext();
-              throw new TypeError('Expected at-rule body registration prep to return Rules');
-            }
-            bodyToEval = preparedRules;
-            context.extendRoots.pushExtendRoot(bodyToEval);
-            pushedExtendRoot = true;
-          }
-
-          let onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
-
-          // For root-only at-rules that are hoisted, clear rulesetFrames
-          // so internal rulesets don't inherit parent selectors
-          restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
-
-          let out: MaybePromise<Rules>;
-          try {
-            out = bodyToEval.eval(context);
-          } catch (error) {
-            restoreBodyEvalContext();
-            throw error;
-          }
-          if (isThenable(out)) {
-            return (out as Promise<Rules>).then((r) => {
-              // Restore rulesetFrames
+            const finishEval = (r: Rules): AtRule => {
               restoreRulesetFrames();
-              // If the only rule was a ruleset, and it evaluated to Rules,
-              // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
               if (pushedExtendRoot && node.isNestable()) {
@@ -1125,26 +1098,25 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   parentExtendRoot
                 });
               }
-
               return node;
-            }, (error) => {
+            };
+            if (isThenable(evalOut)) {
+              return (evalOut as Promise<Rules>).then(finishEval, (error) => {
+                restoreBodyEvalContext();
+                throw error;
+              });
+            }
+            return finishEval(evalOut as Rules);
+          };
+
+          const preparedBody = this._prepareNestableBodyForEval(node, rules, context, restoreBodyEvalContext);
+          if (isThenable(preparedBody)) {
+            return preparedBody.then(finishPreparedBody, (error) => {
               restoreBodyEvalContext();
               throw error;
             });
           }
-          // Restore rulesetFrames (sync path)
-          restoreRulesetFrames();
-
-          const finalRules =
-            onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
-          storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
-          if (pushedExtendRoot && node.isNestable()) {
-            this._registerEvaluatedNestableBody(node, context, {
-              bodyToEval,
-              finalRules,
-              parentExtendRoot
-            });
-          }
+          return finishPreparedBody(preparedBody);
         }
         return node;
       },
