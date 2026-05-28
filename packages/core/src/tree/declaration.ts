@@ -461,7 +461,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
     return pipe(
-      () => this._prepareDeclarationRegistrationState(context),
+      () => this._prepareDeclarationRegistrationState(context, { ownParts: false }),
       state => this.evalRegistrationRenderState(context, state)
     );
   }
@@ -616,8 +616,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
   }
 
-  private _prepareDeclarationRegistrationState(context: Context): MaybePromise<DeclarationRegistrationState> {
-    const state = this.createRegistrationState();
+  private createRenderRegistrationState(): DeclarationRegistrationState {
+    return {
+      name: this.value.name,
+      value: this.value.value,
+      important: this.value.important
+    };
+  }
+
+  private _prepareDeclarationRegistrationState(
+    context: Context,
+    options: { ownParts?: boolean } = {}
+  ): MaybePromise<DeclarationRegistrationState> {
+    const state = options.ownParts === false
+      ? this.createRenderRegistrationState()
+      : this.createRegistrationState();
     const preparedName = this._prepareDeclarationNameIdentity(state, context);
     if (isThenable(preparedName)) {
       return preparedName.then(key => this._finishDeclarationRegistrationPrep(state, key));

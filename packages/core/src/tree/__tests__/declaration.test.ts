@@ -148,6 +148,49 @@ describe('Declaration', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders declaration output without copying source-backed registration parts', async () => {
+    const root = rules([
+      vardecl({ name: any('brand'), value: any('red') })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const sourceName = any('color');
+    const sourceValue = ref({ key: 'brand' }, { type: 'variable' });
+    const node = decl({
+      name: sourceName,
+      value: sourceValue
+    });
+    const originalNameCopy = sourceName.copy;
+    const originalValueCopy = sourceValue.copy;
+    let sourcePartCopies = 0;
+    sourceName.copy = function copyNameForCounting(
+      this: typeof sourceName,
+      ...args: Parameters<typeof originalNameCopy>
+    ): ReturnType<typeof originalNameCopy> {
+      sourcePartCopies++;
+      return originalNameCopy.apply(this, args);
+    };
+    sourceValue.copy = function copyValueForCounting(
+      this: typeof sourceValue,
+      ...args: Parameters<typeof originalValueCopy>
+    ): ReturnType<typeof originalValueCopy> {
+      sourcePartCopies++;
+      return originalValueCopy.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red');
+      expect(sourcePartCopies).toBe(0);
+      expect(sourceName.parent).toBe(node);
+      expect(sourceValue.parent).toBe(node);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      sourceName.copy = originalNameCopy;
+      sourceValue.copy = originalValueCopy;
+    }
+  });
+
   it('renders nil declaration eval results through native node render', () => {
     const originalRender = Nil.prototype.render;
     let renderCalls = 0;

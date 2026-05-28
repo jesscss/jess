@@ -51,6 +51,17 @@ export function getMixinOutputSourceChild(
   return segments.find(segment => segment.output === outputChild)?.source;
 }
 
+function validateMixinOutputSlot(slot: MixinOutputSlot): void {
+  for (const segment of slot.childSegments) {
+    if (slot.sourceRules.value[segment.index] !== segment.source) {
+      throw new TypeError('Mixin output slot source segment order mismatch');
+    }
+    if (segment.output && !slot.outputRules.value.includes(segment.output)) {
+      throw new TypeError('Mixin output slot references an output child outside its output Rules');
+    }
+  }
+}
+
 export function getRulesEntryVisibility(
   entry: RulesEntryLike,
   type: LookupVisibility
@@ -128,6 +139,7 @@ export function attachMixinOutputSlot(
     rulesVisibility: outputRules.options.rulesVisibility,
     isMixinOutput
   };
+  validateMixinOutputSlot(slot);
   outputRules.options.mixinOutputSlot = slot;
   outputRules.options.isMixinOutput = isMixinOutput;
   return slot;
