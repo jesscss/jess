@@ -288,6 +288,18 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   median 24.79ms, `import-reference.less` median 32.81ms,
   `mixins-guards.less` median 31.88ms, `extend-chaining.less` median 19.43ms,
   and `media.less` median 8.27ms.
+- Latest queue pass split body at-rule render state from public resolve
+  materialization. `AtRuleBodyState` is now render-only and no longer carries
+  the private `evalFrame`; public `resolve(...)` consumes `AtRuleBodyEvalResult`
+  directly and returns the owned evaluated at-rule only at that boundary.
+  Focused `Reference` ownership tests re-confirmed that source-free scalar
+  leaves are reusable but value containers must still be copied before eval to
+  keep source values canonical. Static audit stayed `new-node: 304`,
+  `derive: 30`, `with-surface: 41`, `copy-leaves: 31`. Hot-path timing was
+  noisy/slower than the previous sample: `functions.less` median 26.86ms,
+  `import-reference.less` median 42.54ms, `mixins-guards.less` median 34.63ms,
+  `extend-chaining.less` median 20.28ms, and `media.less` median 8.58ms; do
+  not treat this pass as a runtime speed win.
 
 ## Immediate Queue
 
@@ -303,23 +315,22 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Narrow body at-rule `resolve(...)` materialization after frame-state split.**
+1. **Move body at-rule evaluated prelude out of the owned eval frame.**
 
-   - Goal: construct an output at-rule in `resolve(...)` only when the public
-     node result needs owned name/prelude/body fields; keep render-only state
-     out of public resolve.
-   - Required proof: static identity, dynamic prelude, body output, layer/root
-     registration, import/reference interactions, and source parentage.
-
-2. **Split body at-rule eval-frame responsibilities by state field.**
-
-   - Goal: `AtRuleBodyEvalContextState` now names the frame mutation boundary,
-     but the owned `evalFrame` still carries dynamic prelude/body/hoist facts.
-     Split one complete responsibility into side state before deleting another
-     at-rule surface.
+   - Goal: `AtRuleBodyEvalResult` still uses the derived eval frame while body
+     eval runs. Split evaluated prelude into side state for render/resolve and
+     keep the eval frame as only the temporary body-eval owner.
    - Required proof: direct/buffer dynamic body render, async prelude
-     evaluation, root-only frame clearing, nested media/mixins, source
-     parentage, and unchanged public `resolve(...)`.
+     evaluation, source parentage, unchanged public `resolve(...)`, and no
+     double prelude eval.
+
+2. **Move body at-rule hoist/frame output facts out of the owned eval frame.**
+
+   - Goal: hoist/root frames are still read from the evaluated at-rule frame
+     after body eval. Carry those facts in `AtRuleBodyEvalContextState` /
+     result state so the frame owns less render output.
+   - Required proof: root-only frame clearing, nested media/mixins, layer/root
+     registration, source parentage, and unchanged collapse output.
 
 3. **Replace mixin parameter container copies only with a real slot model.**
 
@@ -343,13 +354,15 @@ family can be audited and reduced.
      reference gates, targeted lookup, source parentage, focused perf rerun,
      and no clone frontier regression.
 
-5. **Audit `Reference` result ownership copies by runtime surface.**
+5. **Design a narrow `ReferenceResultState` before deleting container copies.**
 
-   - Goal: `Reference` still copies selected result values before applying
-     reference metadata. Prove which results need owned parent/location state
-     and whether scalar/generated values can use state metadata instead.
-   - Required proof: focused parentage/visibility tests for the chosen surface,
-     `audit:node-creation` before/after, and no clone/copy frontier regression.
+   - Goal: focused tests prove current reference container copies protect source
+     values during eval. Do not delete them by pattern; first design a result
+     state that can carry reference metadata without reparenting the canonical
+     value container.
+   - Required proof: variable/declaration/fallback containers stay canonical,
+     source-free scalar leaves remain uncopied, rules-like references preserve
+     shallow owned surfaces, and no clone/copy frontier regression.
 
 6. **Audit at-rule public-result ownership copies.**
 

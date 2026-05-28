@@ -72,13 +72,19 @@ type AtRuleBodyRegistrationState = {
 };
 
 type AtRuleBodyState = {
+  kind: 'body-render';
   source: AtRule;
-  evalFrame: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   registration?: AtRuleBodyRegistrationState;
   hoistToRoot?: boolean;
   frames?: AtRule['frames'];
+};
+
+type AtRuleBodyEvalResult = {
+  evalFrame: AtRule;
+  node: AtRule | Nil;
+  evaluatedPrelude?: Node;
 };
 
 const atRuleBodyRegistrationState = new WeakMap<AtRule, AtRuleBodyRegistrationState>();
@@ -201,7 +207,7 @@ function isAtRuleValue(value: unknown): value is AtRuleValue {
 }
 
 function isAtRuleBodyState(value: unknown): value is AtRuleBodyState {
-  return Boolean(value && typeof value === 'object' && 'source' in value && 'evalFrame' in value);
+  return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'body-render');
 }
 
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
@@ -317,7 +323,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return this.evalBodyState(context);
   }
 
-  private evalBodyState(context: Context): MaybePromise<AtRuleBodyState> {
+  private evalBodyResult(context: Context): MaybePromise<AtRuleBodyEvalResult> {
     return pipe(
       () => this.evalBodyPreludeState(context),
       (evaluatedPrelude) => {
@@ -326,31 +332,44 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           prelude: evaluatedPrelude ?? this.value.prelude
         });
         const evaluated = evalFrame.eval(context);
-        const toState = (node: AtRule | Nil): AtRuleBodyState => {
-          if (node instanceof Nil) {
-            return {
-              source: this,
-              evalFrame,
-              evaluatedPrelude,
-              hoistToRoot: evalFrame.hoistToRoot,
-              frames: evalFrame.frames
-            };
-          }
-          return {
-            source: this,
-            evalFrame: node,
-            evaluatedPrelude: node.value.prelude,
-            evaluatedBody: node.value.rules,
-            registration: atRuleBodyRegistrationState.get(node),
-            hoistToRoot: node.hoistToRoot,
-            frames: node.frames
-          };
-        };
+        const toResult = (node: AtRule | Nil): AtRuleBodyEvalResult => ({
+          evalFrame,
+          node,
+          evaluatedPrelude
+        });
         return isThenable(evaluated)
-          ? evaluated.then(toState)
-          : toState(evaluated);
+          ? evaluated.then(toResult)
+          : toResult(evaluated);
       }
     );
+  }
+
+  private evalBodyState(context: Context): MaybePromise<AtRuleBodyState> {
+    return pipe(
+      () => this.evalBodyResult(context),
+      result => this.createBodyRenderState(result)
+    );
+  }
+
+  private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyState {
+    if (result.node instanceof Nil) {
+      return {
+        kind: 'body-render',
+        source: this,
+        evaluatedPrelude: result.evaluatedPrelude,
+        hoistToRoot: result.evalFrame.hoistToRoot,
+        frames: result.evalFrame.frames
+      };
+    }
+    return {
+      kind: 'body-render',
+      source: this,
+      evaluatedPrelude: result.node.value.prelude,
+      evaluatedBody: result.node.value.rules,
+      registration: atRuleBodyRegistrationState.get(result.node),
+      hoistToRoot: result.node.hoistToRoot,
+      frames: result.node.frames
+    };
   }
 
   private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
@@ -430,8 +449,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return node;
   }
 
-  private resolveBodyState(state: AtRuleBodyState): AtRule {
-    return state.evalFrame;
+  private resolveBodyResult(result: AtRuleBodyEvalResult): AtRule {
+    return result.node instanceof Nil ? result.evalFrame : result.node;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -1036,8 +1055,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       );
     }
     return pipe(
-      () => this.evalBodyState(context),
-      state => this.resolveBodyState(state)
+      () => this.evalBodyResult(context),
+      result => this.resolveBodyResult(result)
     );
   }
 
