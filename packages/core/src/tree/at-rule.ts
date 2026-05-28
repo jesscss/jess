@@ -175,6 +175,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;
+  private evaluatedPreludeForBody: Node | undefined;
 
   protected _valueOf: string | undefined;
 
@@ -271,30 +272,50 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   private evalBodyState(context: Context): MaybePromise<AtRuleBodyState> {
-    const output = this.deriveAtRule(this.value);
-    const evaluated = output.eval(context);
-    const toState = (node: AtRule | Nil): AtRuleBodyState => {
-      if (node instanceof Nil) {
-        return {
-          source: this,
-          output,
-          hoistToRoot: output.hoistToRoot,
-          frames: output.frames
+    return pipe(
+      () => this.evalBodyPreludeState(context),
+      (evaluatedPrelude) => {
+        const output = this.deriveAtRule({
+          ...this.value,
+          prelude: evaluatedPrelude ?? this.value.prelude
+        });
+        if (evaluatedPrelude) {
+          output.evaluatedPreludeForBody = evaluatedPrelude;
+        }
+        const evaluated = output.eval(context);
+        const toState = (node: AtRule | Nil): AtRuleBodyState => {
+          if (node instanceof Nil) {
+            return {
+              source: this,
+              output,
+              evaluatedPrelude,
+              hoistToRoot: output.hoistToRoot,
+              frames: output.frames
+            };
+          }
+          return {
+            source: this,
+            output: node,
+            evaluatedPrelude: node.value.prelude,
+            evaluatedBody: node.value.rules,
+            registration: atRuleBodyRegistrationState.get(node),
+            hoistToRoot: node.hoistToRoot,
+            frames: node.frames
+          };
         };
+        return isThenable(evaluated)
+          ? evaluated.then(toState)
+          : toState(evaluated);
       }
-      return {
-        source: this,
-        output: node,
-        evaluatedPrelude: node.value.prelude,
-        evaluatedBody: node.value.rules,
-        registration: atRuleBodyRegistrationState.get(node),
-        hoistToRoot: node.hoistToRoot,
-        frames: node.frames
-      };
-    };
-    return isThenable(evaluated)
-      ? evaluated.then(toState)
-      : toState(evaluated);
+    );
+  }
+
+  private evalBodyPreludeState(context: Context): MaybePromise<Node | undefined> {
+    const { prelude } = this.value;
+    if (!prelude) {
+      return undefined;
+    }
+    return this.evalPreludeValue(prelude, context);
   }
 
   private evalLeafValue(context: Context): MaybePromise<AtRuleValue> {
@@ -760,6 +781,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         // Evaluate prelude in the correct scope (mixin params, vars, etc.).
         let { prelude } = node.value;
         if (prelude) {
+          const evaluatedPrelude = node.evaluatedPreludeForBody;
+          if (evaluatedPrelude) {
+            node.value.prelude = evaluatedPrelude;
+            return undefined;
+          }
           // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
           // This matches Less behavior for mixin parameters referenced from nested @media preludes.
           const out = this.evalPreludeValue(prelude, context);

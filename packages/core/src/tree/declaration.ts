@@ -106,6 +106,7 @@ type DeclarationRenderState = {
   value: Node;
   listValue?: Node[];
   important?: Any<'flag'>;
+  importantText?: string;
   output?: Node;
   nil: boolean;
 };
@@ -305,10 +306,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declValueTrimmedString(this.value, options);
   }
 
-  private declValueTrimmedString(valueParts: DeclarationValue, options?: PrintOptions, listValue?: Node[]) {
+  private declValueTrimmedString(
+    valueParts: DeclarationValue,
+    options?: PrintOptions,
+    renderState?: { listValue?: Node[]; importantText?: string }
+  ) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = valueParts;
+    const { listValue, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
     const mark = w.mark();
     // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
@@ -348,12 +354,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       }
       w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
-        if (important) {
+        if (important || importantText) {
           w.add(' ');
-          const importantMark = w.mark();
-          important.toString(options);
-          w.trimStartSince(importantMark);
-          w.trimEndSince(importantMark);
+          if (important) {
+            const importantMark = w.mark();
+            important.toString(options);
+            w.trimStartSince(importantMark);
+            w.trimEndSince(importantMark);
+          } else {
+            w.add(importantText!, value);
+          }
         }
       }
     }
@@ -435,7 +445,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       name: state.name,
       value: state.value,
       important: state.important
-    }, prepared, state.listValue);
+    }, prepared, {
+      listValue: state.listValue,
+      importantText: state.importantText
+    });
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -459,7 +472,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     context: Context,
     state: DeclarationRegistrationState
   ): MaybePromise<DeclarationRenderState> {
-    if (this.hasFlag(F_STATIC) && !state.normalizedFromAssign) {
+    if (this.hasFlag(F_STATIC) && !state.normalizedFromAssign && !context.hasImportantSource) {
       return {
         source: this,
         name: state.name,
@@ -507,8 +520,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const normalized = this.normalizeMergedLeadingPlaceholderForRender(state, value);
       value = normalized.value;
       let important = state.important;
+      let importantText: string | undefined;
       if (context.hasImportantSource && !important) {
-        important = any('!important', { role: 'flag' });
+        importantText = '!important';
       }
       if (context.hasImportantSource) {
         context.popImportantSource();
@@ -519,6 +533,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         value,
         listValue: normalized.listValue,
         important,
+        importantText,
         nil: false
       };
     };

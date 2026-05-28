@@ -491,6 +491,45 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('carries direct body-render prelude evaluation through body state once', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const originalEval = sourcePrelude.eval;
+    let preludeEvalCalls = 0;
+    sourcePrelude.eval = function evalPreludeForCounting(
+      this: typeof sourcePrelude,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      preludeEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(preludeEvalCalls).toBe(1);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourcePrelude.evaluated).toBe(false);
+    expect(node.evaluated).toBe(false);
+  });
+
   it('stores evaluated at-rule body output outside value.rules', async () => {
     const originalRules = rules([
       decl({ name: 'color', value: any('red') })

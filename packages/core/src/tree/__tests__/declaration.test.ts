@@ -665,6 +665,18 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders contextual important flags without materializing a flag node', () => {
+    const node = decl({
+      name: any('color'),
+      value: any('red')
+    });
+    context.pushImportantSource();
+
+    expect(node.render(context)).toBe('color: red !important');
+    expect(context.hasImportantSource).toBe(false);
+    expect(node.value.important).toBeUndefined();
+  });
+
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {
     const node = rules([
       decl({

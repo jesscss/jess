@@ -144,6 +144,29 @@ describe('OutputWriter', () => {
       expect(previewed).toBe('returned');
       expect(w.toString()).toBe('');
     });
+
+    it('previews async content without committing it', async () => {
+      const w = new OutputWriter();
+
+      w.add('start');
+      const previewed = await w.previewAsync(async () => {
+        await Promise.resolve();
+        w.add('middle');
+      });
+      w.add('end');
+
+      expect(previewed).toBe('middle');
+      expect(w.toString()).toBe('startend');
+    });
+
+    it('uses async callback return values when the callback writes elsewhere', async () => {
+      const w = new OutputWriter();
+
+      const previewed = await w.previewAsync(async () => 'returned');
+
+      expect(previewed).toBe('returned');
+      expect(w.toString()).toBe('');
+    });
   });
 
   describe('mark and restore', () => {

@@ -193,6 +193,12 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   temporary `List`. `List` owns the shared syntax helper, so this is not a
   second list serializer. The raw audit is now `new-node: 302` /
   module-context `375`.
+- Latest pass: `OutputWriter.previewAsync(...)` now exists as the required
+  primitive for an async/native Rules render walker. Direct body at-rule render
+  evaluates prelude into body state before evaluating the output surface, so it
+  does not re-evaluate or mutate the source prelude. Declaration render carries
+  contextual `!important` as render text instead of materializing a synthetic
+  flag node. The raw audit remains `new-node: 302` / module-context `375`.
 
 ## Immediate Queue
 
@@ -214,6 +220,9 @@ family can be audited and reduced.
      serializer so render body emission can await native child `render(...)`
      calls for declarations, controls, nested rulesets, and at-rules without
      first creating a compatible output `Rules` tree.
+   - Current blocker/proof seam: `OutputWriter.previewAsync(...)` is now
+     available; the next pass should use it where child Rules preview/capture
+     currently depends on synchronous `toTrimmedString(...)` snapshots.
    - Required proof: dynamic declarations, `$if`/`$for`/`$while`, nested
      rulesets/at-rules, root/fragment separators, source parentage, and
      unchanged `toString()`.
@@ -237,15 +246,7 @@ family can be audited and reduced.
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-4. **Move at-rule body prelude evaluation into `AtRuleBodyState`.**
-
-   - Goal: split the prelude part of body at-rule eval into state first,
-     leaving body/root-hoist mutation on the existing output at-rule until the
-     next checkpoint proves the frame/body split.
-   - Required proof: dynamic preludes, root-only frame clearing, nested
-     media/mixins, layers, extend chaining, source parentage, and buffer render.
-
-5. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
+4. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
 
    - Goal: after prelude state is split, carry hoist/root-frame facts and final
      evaluated body output as state fields so direct render no longer depends
@@ -253,7 +254,7 @@ family can be audited and reduced.
    - Required proof: dynamic body render, root-only at-rules, import/reference
      interactions, nested extend roots, and source parentage.
 
-6. **Narrow body at-rule `resolve(...)` materialization.**
+5. **Narrow body at-rule `resolve(...)` materialization.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -261,7 +262,7 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-7. **Promote one proven ampersand append/template fact into placement state.**
+6. **Promote one proven ampersand append/template fact into placement state.**
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
@@ -273,15 +274,15 @@ family can be audited and reduced.
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-8. **Audit declaration render-only `important` flag allocation.**
+7. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
 
-   - Goal: the remaining render-only declaration allocation is synthesized
-     `!important` when a surrounding important source is active. Keep it only if
-     a real flag node is needed for trivia/comment emission; otherwise carry
-     the important text as render state.
-   - Required proof: mixins-important Less fixture subset, direct/buffer
-     declaration render, comment trivia before semicolon, source parentage, and
-     audit delta.
+   - Goal: the prelude split currently parks the evaluated prelude on the owned
+     output at-rule so `evalNode(...)` can consume it once. Replace that bridge
+     only when body render can serialize directly from `AtRuleBodyState`
+     without relying on the materialized output at-rule.
+   - Required proof: direct/buffer dynamic body render, async prelude
+     evaluation, root-only frame clearing, nested media/mixins, source
+     parentage, and unchanged public `resolve(...)`.
 
 ## Backlog
 

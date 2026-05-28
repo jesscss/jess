@@ -94,6 +94,7 @@ export interface OutputWriter {
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
   preview(fn: () => string | void, preserveSegments?: boolean): string;
+  previewAsync(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -445,6 +446,19 @@ export class OutputWriter implements OutputWriter {
     const mark = this.mark();
     const segmentsBefore = this._segments.length;
     const out = fn();
+    const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
+    const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
+    this.restore(mark);
+    if (preserveSegments) {
+      this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+    }
+    return text;
+  }
+
+  async previewAsync(fn: () => Promise<string | void>, preserveSegments = false): Promise<string> {
+    const mark = this.mark();
+    const segmentsBefore = this._segments.length;
+    const out = await fn();
     const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
     const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
     this.restore(mark);
