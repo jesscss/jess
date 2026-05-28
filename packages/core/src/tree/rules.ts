@@ -352,6 +352,19 @@ function copyCallableAmpersand(node: Node): Node | undefined {
   return copied instanceof Node ? copied : undefined;
 }
 
+function copyCallableCommentNode(node: Comment): Node {
+  return new Comment(
+    node.value,
+    node.options ? { ...node.options } : undefined,
+    node.location.length === 0 ? undefined : node.location,
+    node.treeContext
+  ).inherit(node);
+}
+
+function copyCallableReusableLeaf(node: Node): Node | undefined {
+  return canReuseLeaf(node) ? reuseLeaf(node) : undefined;
+}
+
 function constructCallableRulesNode(node: Node, value: unknown): Node {
   const copy = Reflect.construct(
     node.constructor,
@@ -370,21 +383,21 @@ function constructCallableRulesNode(node: Node, value: unknown): Node {
 
 function copyCallableRulesNode(node: Node): Node {
   if (isNode(node, N.Comment)) {
-    return new Comment(
-      node.value,
-      node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.treeContext
-    ).inherit(node);
+    return copyCallableCommentNode(node);
   }
   const copiedAmpersand = copyCallableAmpersand(node);
   if (copiedAmpersand) {
     return copiedAmpersand;
   }
-  if (canReuseLeaf(node)) {
-    return reuseLeaf(node);
+  const reusableLeaf = copyCallableReusableLeaf(node);
+  if (reusableLeaf) {
+    return reusableLeaf;
   }
   return constructCallableRulesNode(node, copyCallableRulesValue(node.value));
+}
+
+function copyCallableRulesSegment(segment: { source: Node }): Node {
+  return copyCallableRulesNode(segment.source);
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
@@ -4097,7 +4110,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         return sourceRules.derive();
       }
       return sourceRules.derive(
-        getMixinOutputChildSegments(sourceRules).map(segment => copyCallableRulesNode(segment.source))
+        getMixinOutputChildSegments(sourceRules).map(copyCallableRulesSegment)
       );
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {

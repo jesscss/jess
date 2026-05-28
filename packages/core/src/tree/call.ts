@@ -700,9 +700,11 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   private async evalFromState(context: Context, state: CallEvalState): Promise<Node> {
+    return this.runInCallFrame(context, {}, () => this.evalFromStateInFrame(context, state));
+  }
+
+  private async evalFromStateInFrame(context: Context, state: CallEvalState): Promise<Node> {
     const { name, args, markImportant } = state;
-    context.callStack.push(this);
-    context.parenFrames.push(false);
 
     let n: string | Node | MixinCollection | unknown;
     if (typeof name === 'string') {
@@ -726,9 +728,6 @@ export class Call extends Node<CallValue, CallOptions> {
       if (markImportant && isNode(result, N.Rules)) {
         this.makeImportant(result);
       }
-      // Always pop the outer call's stack entries
-      context.callStack.pop();
-      context.parenFrames.pop();
       return result;
     } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
       n = new MixinCollection(Array.isArray(n) ? n : [n]);
@@ -738,8 +737,6 @@ export class Call extends Node<CallValue, CallOptions> {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
-      context.callStack.pop();
-      context.parenFrames.pop();
       return result;
     } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
       // PreserveRulesLike variable calls intentionally evaluate from the
@@ -755,8 +752,6 @@ export class Call extends Node<CallValue, CallOptions> {
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
       if (args && args.value.length > 0) {
-        context.callStack.pop();
-        context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       n = new MixinCollection([
@@ -769,124 +764,107 @@ export class Call extends Node<CallValue, CallOptions> {
     }
 
     if (n instanceof MixinCollection) {
-      const originalCaller = context.caller;
-      context.caller = this;
-      try {
-        const result = await n.evalCall(context, args);
-        context.caller = originalCaller;
-        context.callStack.pop();
-        context.parenFrames.pop();
-        if (isNode(result)) {
-          let evald = result.eval(context);
-          if (isThenable(evald)) {
-            evald = await evald;
-          }
-          if (markImportant && isNode(evald, N.Rules)) {
-            this.makeImportant(evald);
-          }
-          return this.markCallOutput(evald);
-        }
-        return this.markCallOutput(cast(result));
-      } catch (e) {
-        context.caller = originalCaller;
-        context.callStack.pop();
-        context.parenFrames.pop();
-        if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (this.parent?.type === 'SelectorCapture') {
-            return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
-          }
-          if (isNode(name, N.Reference)) {
-            throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
-          }
-          throw e;
-        }
-        if (!this._options?.silentFail) {
-          throw e;
-        }
-        const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
-          ? String(name.value.key)
-          : stringifyValueOf(n);
-        return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
-      }
-    }
-
-    let fn = isNode(n, N.JsFunction) ? n.value : n;
-    if (isExtendedFn(fn)) {
-      const callable = fn;
-      const originalCaller = context.caller;
-      context.caller = this;
-      let didPopCallStack = false;
-      try {
-        const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
-        let callArgs = args;
-        const result = await (
-          callArgs
-            ? (
-                shouldPassListArgs
-                  ? callWithContext(context, callable, callArgs)
-                  : callWithContext(context, callable, ...callArgs.value)
-              )
-            : callWithContext(context, callable)
-        );
-        context.caller = originalCaller;
-        context.callStack.pop();
-        didPopCallStack = true;
-        if (isNode(result)) {
-          let evald = result.eval(context);
-          if (isThenable(evald)) {
-            evald = await evald;
+      return this.runAsCaller(context, async () => {
+        try {
+          const result = await n.evalCall(context, args);
+          if (isNode(result)) {
+            let evald = result.eval(context);
+            if (isThenable(evald)) {
+              evald = await evald;
+            }
             if (markImportant && isNode(evald, N.Rules)) {
               this.makeImportant(evald);
             }
             return this.markCallOutput(evald);
           }
-          if (markImportant && isNode(evald, N.Rules)) {
-            this.makeImportant(evald);
+          return this.markCallOutput(cast(result));
+        } catch (e) {
+          if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+            if (this.parent?.type === 'SelectorCapture') {
+              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+            }
+            if (isNode(name, N.Reference)) {
+              throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+            }
+            throw e;
           }
-          return this.markCallOutput(evald);
-        }
-        let castResult = cast(result);
-        if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
-          return this.markCallOutput(castResult.value[0]!);
-        }
-        return this.markCallOutput(castResult);
-      } catch (e) {
-        const unitMode = context?.opts?.unitMode ?? 'loose';
-        const shouldRethrowForMode = unitMode === 'strict';
-        if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (this.parent?.type === 'SelectorCapture') {
-            return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+          if (!this._options?.silentFail) {
+            throw e;
           }
-          if (isNode(name, N.Reference)) {
-            throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+          const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
+            ? String(name.value.key)
+            : stringifyValueOf(n);
+          return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
+        }
+      });
+    }
+
+    let fn = isNode(n, N.JsFunction) ? n.value : n;
+    if (isExtendedFn(fn)) {
+      const callable = fn;
+      return this.runAsCaller(context, async () => {
+        try {
+          const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
+          let callArgs = args;
+          const result = await (
+            callArgs
+              ? (
+                  shouldPassListArgs
+                    ? callWithContext(context, callable, callArgs)
+                    : callWithContext(context, callable, ...callArgs.value)
+                )
+              : callWithContext(context, callable)
+          );
+          if (isNode(result)) {
+            let evald = result.eval(context);
+            if (isThenable(evald)) {
+              evald = await evald;
+              if (markImportant && isNode(evald, N.Rules)) {
+                this.makeImportant(evald);
+              }
+              return this.markCallOutput(evald);
+            }
+            if (markImportant && isNode(evald, N.Rules)) {
+              this.makeImportant(evald);
+            }
+            return this.markCallOutput(evald);
           }
-          throw e;
+          let castResult = cast(result);
+          if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+            return this.markCallOutput(castResult.value[0]!);
+          }
+          return this.markCallOutput(castResult);
+        } catch (e) {
+          const unitMode = context?.opts?.unitMode ?? 'loose';
+          const shouldRethrowForMode = unitMode === 'strict';
+          if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
+            if (this.parent?.type === 'SelectorCapture') {
+              return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }).inherit(this));
+            }
+            if (isNode(name, N.Reference)) {
+              throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+            }
+            throw e;
+          }
+          if (!this._options?.silentFail || shouldRethrowForMode) {
+            throw e;
+          }
+          const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
+            ? String(name.value.key)
+            : stringifyValueOf(n);
+          return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
         }
-        if (!this._options?.silentFail || shouldRethrowForMode) {
-          throw e;
-        }
-        const fallbackName = isNode(name, N.Reference) && name.options.fallbackValue === true
-          ? String(name.value.key)
-          : stringifyValueOf(n);
-        return this.markCallOutput(await this.evalFinalizedCallSyntax(context, state, fallbackName));
-      } finally {
-        context.caller = originalCaller;
-        context.parenFrames.pop();
-        if (!didPopCallStack) {
-          context.callStack.pop();
-        }
-      }
+      });
     } else {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      const evaluatedArgs = await this.evalArgNodes(context, args, { preserveSourceParents: true });
-
-      if (n === 'calc') {
-        context.calcFrames--;
-      }
-      context.parenFrames.pop();
-      context.callStack.pop();
+      const evaluatedArgs = await this.evalArgNodes(context, args, { preserveSourceParents: true })
+        .finally(() => {
+          if (n === 'calc') {
+            context.calcFrames--;
+          }
+        });
       if (
         n === 'calc' && evaluatedArgs
       ) {

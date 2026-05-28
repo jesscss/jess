@@ -92,6 +92,12 @@ type AtRuleBodyState = {
   output?: AtRuleBodyOutputState;
 };
 
+type AtRuleLeafState = {
+  kind: 'leaf-render';
+  source: AtRule;
+  value: AtRuleValue;
+};
+
 type AtRuleBodyEvalResult = {
   evalFrame: AtRule;
   node: AtRule | Nil;
@@ -256,12 +262,12 @@ function hasCommentChild(value: unknown): boolean {
   return false;
 }
 
-function isAtRuleValue(value: unknown): value is AtRuleValue {
-  return Boolean(value && typeof value === 'object' && 'name' in value);
-}
-
 function isAtRuleBodyState(value: unknown): value is AtRuleBodyState {
   return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'body-render');
+}
+
+function isAtRuleLeafState(value: unknown): value is AtRuleLeafState {
+  return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'leaf-render');
 }
 
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
@@ -363,7 +369,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return atRuleBodyRuntimeState.get(this)?.evaluatedBody ?? this.value.rules;
   }
 
-  private evalForRender(context: Context): MaybePromise<Node | AtRuleValue | AtRuleBodyState> {
+  private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyState> {
     if (this.evaluated) {
       return this;
     }
@@ -374,7 +380,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       return this.eval(context);
     }
     if (!this.value.rules) {
-      return this.evalLeafValue(context);
+      return pipe(
+        () => this.evalLeafValue(context),
+        value => this.createLeafRenderState(value)
+      );
     }
     // Direct render on an unevaluated AtRule is a compatibility/debug API.
     // Public compiler render enters through an evaluated root Rules container.
@@ -472,6 +481,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     );
   }
 
+  private createLeafRenderState(value: AtRuleValue): AtRuleLeafState {
+    return {
+      kind: 'leaf-render',
+      source: this,
+      value
+    };
+  }
+
   private renderLeafValue(
     value: AtRuleValue,
     context: Context,
@@ -561,8 +578,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (isAtRuleBodyState(node)) {
           return renderBodyState(node);
         }
-        if (isAtRuleValue(node)) {
-          return this.renderLeafValue(node, context, bufferOrOptions, options);
+        if (isAtRuleLeafState(node)) {
+          return node.source.renderLeafValue(node.value, context, bufferOrOptions, options);
         }
         return isRenderBuffer(bufferOrOptions)
           ? node.render(context, bufferOrOptions, options)

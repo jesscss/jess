@@ -54,29 +54,22 @@ truth, the immediate pop queue, and verification.
   nested extend-root registration from the canonical source at-rule. The next
   at-rule work must split those responsibilities before removing the surface.
 - At-rule prelude-only direct render is split for leaf at-rules: dynamic leaf
-  names/preludes now evaluate into local render state for direct and buffer
-  render without invoking `AtRule.eval(...)`. Dynamic leaf `resolve(...)` now
-  uses an explicit leaf-only owned result instead of the generic at-rule
-  derive surface. Body/root-hoist at-rules stay on the existing isolation
-  surface, but direct render now routes through an `AtRuleBodyState` record so
-  registration/extend-root facts have a named place to split next. Dynamic
-  body `resolve(context)` also routes through that state seam. Nestable body
-  extend-root finalization now passes through `AtRuleBodyRegistrationState`
-  rather than loose local parameters, and that registration state is now
-  recoverable through render/resolve body state. Final evaluated body output is
-  stored as render state and serialized through `AtRule.getRenderRules()`
-  instead of assigning `node.value.rules = finalRules`. Direct render now
-  serializes body at-rule output from `AtRuleBodyState` fields rather than the
-  materialized output at-rule shape, then restores source prelude/body/hoist
-  state immediately after printing. The old `evaluatedPreludeForBody` bridge
-  is gone; body render relies on the evaluated prelude already carried in
-  `AtRuleBodyState` / derived body-eval input.
+  names/preludes now evaluate into `AtRuleLeafState` for direct and buffer
+  render without invoking `AtRule.eval(...)`. Dynamic leaf `resolve(...)` still
+  owns public result-node creation. Body/root-hoist at-rules stay on the
+  existing isolation surface, but direct render routes through
+  `AtRuleBodyState` and body runtime facts live in `AtRuleBodyRuntimeState`
+  instead of source value mutation. The next at-rule work should split body
+  eval-frame mutation itself, not revisit leaf at-rules.
 - Dynamic call fallback render/resolve now evaluates through `CallEvalState`
   without constructing a copied fallback `Call` surface. The state carries
   name, args, content, caller, mark-important, and rules-like variable lookup
   facts. Finalized fallback CSS call syntax is built at one boundary using
   state args. Already-evaluated finalized call output is marked before native
   render so optional fallback calls do not re-enter name evaluation.
+  `evalFromState(...)` now runs inside the shared call-frame helper, so stack
+  and caller restoration are centralized for ordinary dynamic calls, mixin
+  collection calls, stylesheet functions, JS functions, and fallback paths.
 - Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
   before final string/buffer emission. True root renders with no established
   `context.root` evaluate the source root directly, not a derived wrapper,
@@ -104,9 +97,12 @@ truth, the immediate pop queue, and verification.
 - The next `MixinOutputSlot` boundary was audited. Direct comment children
   cannot move into the slot as a loose side list because mixin output must
   preserve source order among comments, declarations, nested rules, and lookup
-  visibility gates. The current owned output child surface is still the
-  smallest honest model until a slot can carry ordered child segments plus rule
-  index, scope frame, reference gates, and targeted lookup behavior.
+  visibility gates. Targeted callable lookup also cannot read source-child
+  segments as the actual search surface yet: nested mixin scope tests prove the
+  owned output children carry scope/frame semantics that source children do not.
+  The current owned output child surface remains the smallest honest model
+  until the slot can carry ordered child segments, evaluated placement children,
+  rule index, scope frame, reference gates, and targeted lookup behavior.
 - The broad proof queue has been processed. Current conclusions:
   at-rule bodies/root-hoist now carry final body output as side-state, but the
   full surface still needs prelude/body/root-hoist responsibilities split;
@@ -404,6 +400,22 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   `functions.less` median 23.31ms, `import-reference.less` median 27.70ms,
   `mixins-guards.less` median 31.88ms, `extend-chaining.less` median 18.57ms,
   and `media.less` median 8.19ms.
+- Latest queue pass completed the next seven-item pass. It split callable
+  child copying into named comment, reusable-leaf, ampersand, and generic
+  construction paths; dynamic leaf at-rule render now returns explicit
+  `AtRuleLeafState`; and main `Call.evalFromState(...)` now runs inside the
+  shared call-frame helper instead of manually popping call stacks in each
+  branch. A targeted lookup experiment that searched mixin-output source
+  segments was rejected by focused nested-mixin tests: source segments preserve
+  order, but the owned output children still carry scope/frame semantics.
+  Reference render and prepare-only placeholder audits found no safe deletion
+  point: reference render still shares public result ownership, and empty rest /
+  `@arguments` placeholders preserve current Less behavior. Static audit stayed
+  `new-node: 303`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`,
+  module-context count `374`. Hot-path timing: `functions.less` median
+  24.65ms, `import-reference.less` median 27.89ms, `mixins-guards.less` median
+  33.76ms, `extend-chaining.less` median 19.58ms, and `media.less` median
+  8.13ms.
 
 ## Immediate Queue
 
@@ -419,58 +431,56 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Use mixin-output segments for targeted lookup metadata.**
+1. **Split body at-rule eval-frame mutation from render state.**
 
-   - Goal: move one targeted lookup/reference-gate query to read ordered
-     `MixinOutputSlot.childSegments` metadata while leaving emitted output
-     children owned.
-   - Required proof: targeted property/mixin lookup, direct comments, nested
-     rules, reference gates, source parentage, and no clone frontier regression.
+   - Goal: keep `AtRuleBodyState` render-only and move the remaining derived
+     body eval-frame mutation behind a smaller state boundary.
+   - Required proof: dynamic body render, public `resolve(...)`, root hoist,
+     layer/extend registration, prelude comments, and source prelude/body
+     parentage.
 
-2. **Split callable child copying by safe leaf family.**
+2. **Prototype reference render-local result state only where ownership proves safe.**
 
-   - Goal: after the child-family audit, pick a whole safe family such as
-     childless source-free leaves or direct comments and route it through a
-     narrower helper than generic `copyCallableRulesNode(...)`.
-   - Required proof: repeated placement, comments/declarations, nested rules,
-     complex parent ampersands, and nested array-path ruleset mixins.
+   - Goal: try a render-only wrapper for one scalar/declaration reference path
+     while public `resolve(...)` still returns owned results.
+   - Required proof: source containers canonical, async live slots restore
+     context, rules-like refs preserve shallow ownership, scalar leaves reusable,
+     and no public-result ownership regression.
 
-3. **Prototype reference render-local metadata state.**
+3. **Reduce declaration render isolation with an explicit state split.**
 
-   - Goal: keep public `resolve(...)` ownership unchanged, but try a small
-     render-local result-state wrapper for one variable/declaration render path.
-   - Required proof: source containers stay canonical, async live slots restore
-     context, rules-like references preserve shallow ownership, and scalar
-     leaves stay reusable.
+   - Goal: identify the next declaration mutation fact that can move from the
+     isolated declaration surface into `DeclarationRenderState`.
+   - Required proof: custom property as-authored values, contextual
+     `!important`, merged values, assignment behavior, source value parentage,
+     and render-buffer parity.
 
-4. **Extract dynamic leaf at-rule render state.**
+4. **Audit ruleset render materialization as a whole surface.**
 
-   - Goal: direct dynamic leaf render already avoids `AtRule.eval(...)`; give
-     name/prelude render facts an explicit state record while leaving
-     `resolve(...)` result-node creation intact.
-   - Required proof: dynamic leaf direct render, buffer render, public
-     resolve, comment trivia in preludes, and source prelude parentage.
+   - Goal: separate semantic generated selector/body ownership from serializer
+     carrier state before deleting any ruleset wrapper.
+   - Required proof: guards, nil selectors, nested rules, selector collapse,
+     ampersand parentage, imports/extends, and source body parentage.
 
-5. **Delete one proven prepare-only placeholder family.**
+5. **Inventory and narrow `inherit(...)` by helper family, not call site.**
 
-   - Goal: after the BindingCell producer inventory, remove a whole placeholder
-     family if tests show it is not semantic. Do not delete empty-rest Less
-     output unless behavior is explicitly changed.
-   - Required proof: params, rest, `@arguments`, loop counters, imported
-     configured variables, named-arg caller scope, and reference lookup.
+   - Goal: pick a coherent helper family where source mutation risk is real,
+     then replace it with explicit ownership/state construction.
+   - Required proof: source parentage before/after, focused node-family tests,
+     no `as any`, and no helper-count theater.
 
-6. **Extend call-frame helper into the remaining dynamic-call path.**
+6. **Revisit mixin-output slot lookup only with evaluated child metadata.**
 
-   - Goal: `runInCallFrame(...)` covers direct dynamic JS helpers; inspect the
-     main `evalFromState(...)` dynamic/mixin path for a safe frame-state split
-     without changing recursion detection or `rawArgs` ownership.
-   - Required proof: mixin calls, nested calls, optional fallback, strict unit
-     mode, metadata functions, and error restore.
+   - Goal: design the smallest slot metadata that preserves owned output child
+     scope/frame semantics before targeted lookup reads slot data.
+   - Required proof: targeted property/mixin lookup, nested mixin scopes, direct
+     comments, reference gates, source body order, and repeated placement.
 
-7. **Re-measure hot paths after the next deletion or frame-state split.**
+7. **Re-measure hot paths after the next actual materialization reduction.**
 
-   - Goal: keep timing tied to a real eval/render simplification, preferably
-     in mixin output, dynamic calls, references, or import-reference behavior.
+   - Goal: keep timing tied to real stylesheet eval/render simplification,
+     preferably in at-rules, declarations, references, mixin output, or
+     import-reference behavior.
    - Required proof: `pnpm run measure:less:hotpath`, before/after numbers,
      chosen surface, and why it should affect real stylesheet eval/render.
 
