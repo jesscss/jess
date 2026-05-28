@@ -71,10 +71,19 @@ const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@conta
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type StyleImportRegistrationNode = Node<{ path: unknown }>;
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
+type RulesRenderContextSnapshot = {
+  rulesContext: Context['rulesContext'];
+  treeContext: Context['treeContext'];
+  treeRoot: Context['treeRoot'];
+  root: Context['root'];
+  extendRootStackLength: number;
+};
 type RulesRenderState = {
   source: Rules;
   output: Rules;
   sourceWasRoot: boolean;
+  directSourceContext?: RulesRenderContextSnapshot;
+  restoreContext?: RulesRenderContextSnapshot;
   kind: 'direct-render';
 };
 type RulesResolveState = {
@@ -122,13 +131,15 @@ function renderRulesToString(
   node: Node,
   context: Context,
   options: PrintOptions | undefined,
-  sourceWasRoot: boolean
+  sourceWasRoot: boolean,
+  directSourceRender: boolean
 ): MaybePromise<string> {
   const rendered = renderRulesToPreparedString(
     source,
     node,
     context,
-    prepareRenderPrintState(context, options)
+    prepareRenderPrintState(context, options),
+    directSourceRender
   );
   const finish = (out: string): string => {
   // Root Rules serialize as a CSS document and own the final newline. Nested
@@ -149,14 +160,30 @@ function renderRulesStateToString(
   context: Context,
   options: PrintOptions | undefined
 ): MaybePromise<string> {
-  return renderRulesToString(state.source, state.output, context, options, state.sourceWasRoot);
+  const rendered = renderRulesToString(
+    state.source,
+    state.output,
+    context,
+    options,
+    state.sourceWasRoot,
+    Boolean(state.directSourceContext)
+  );
+  return finishRulesRenderState(rendered, state, context);
 }
 
-function createRulesRenderState(source: Rules, output: Rules, sourceWasRoot: boolean): RulesRenderState {
+function createRulesRenderState(
+  source: Rules,
+  output: Rules,
+  sourceWasRoot: boolean,
+  directSourceContext?: RulesRenderContextSnapshot,
+  restoreContext?: RulesRenderContextSnapshot
+): RulesRenderState {
   return {
     source,
     output,
     sourceWasRoot,
+    directSourceContext,
+    restoreContext,
     kind: 'direct-render'
   };
 }
@@ -174,12 +201,13 @@ function writeRulesRenderOutput(
   source: Rules,
   node: Node,
   context: Context,
-  options: PrintOptions | undefined
+  options: PrintOptions | undefined,
+  directSourceRender: boolean
 ): MaybePromise<string> {
   const prepared = prepareBufferPrintState(context, options);
-  const text = node.type === 'Rules'
+  const text = node.type === 'Rules' && !directSourceRender
     ? node.toString(prepared)
-    : renderRulesToPreparedString(source, node, context, prepared);
+    : renderRulesToPreparedString(source, node, context, prepared, directSourceRender);
   return isThenable(text)
     ? text.then(resolved => writeRenderText(buffer, resolved))
     : writeRenderText(buffer, text);
@@ -191,15 +219,37 @@ function writeRulesStateRenderOutput(
   context: Context,
   options: PrintOptions | undefined
 ): MaybePromise<string> {
-  return writeRulesRenderOutput(buffer, state.source, state.output, context, options);
+  const rendered = writeRulesRenderOutput(
+    buffer,
+    state.source,
+    state.output,
+    context,
+    options,
+    Boolean(state.directSourceContext)
+  );
+  return finishRulesRenderState(rendered, state, context);
 }
 
 function renderRulesToPreparedString(
   source: Rules,
   node: Node,
   context: Context,
-  prepared: FinalPrintOptions
+  prepared: FinalPrintOptions,
+  directSourceRender: boolean
 ): MaybePromise<string> {
+  if (directSourceRender && node.type === 'Rules') {
+    if (
+      (node === context.root || source === context.root)
+      && (context.currentCharset || context.topImports?.length)
+    ) {
+      return node.toString(prepared);
+    }
+    const rendered = node.toRenderString(prepared);
+    const finish = (text: string): string => text === '' || text.endsWith('\n') ? text : `${text}\n`;
+    return isThenable(rendered)
+      ? rendered.then(finish)
+      : finish(rendered);
+  }
   if (
     node.type === 'Rules'
     && (node === context.root || source === context.root)
@@ -209,6 +259,41 @@ function renderRulesToPreparedString(
   return node.type === 'Rules'
     ? node.toRenderString(prepared)
     : node.toTrimmedString(prepared);
+}
+
+function restoreRulesRenderContext(context: Context, saved: RulesRenderContextSnapshot): void {
+  context.rulesContext = saved.rulesContext;
+  context.treeContext = saved.treeContext;
+  context.treeRoot = saved.treeRoot;
+  context.root = saved.root;
+  while (context.extendRoots.extendRootStack.length > saved.extendRootStackLength) {
+    context.extendRoots.popExtendRoot();
+  }
+}
+
+function finishRulesRenderState<T extends string>(
+  rendered: MaybePromise<T>,
+  state: RulesRenderState,
+  context: Context
+): MaybePromise<T> {
+  const saved = state.directSourceContext ?? state.restoreContext;
+  if (!saved) {
+    return rendered;
+  }
+  if (isThenable(rendered)) {
+    return rendered.then(
+      (value) => {
+        restoreRulesRenderContext(context, saved);
+        return value;
+      },
+      (error) => {
+        restoreRulesRenderContext(context, saved);
+        throw error;
+      }
+    );
+  }
+  restoreRulesRenderContext(context, saved);
+  return rendered;
 }
 
 function childRulesOf(node: Node): Rules | undefined {
@@ -1922,7 +2007,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.referenceMode = true;
     }
     const emitNode = (n: Node): MaybePromise<void> => {
-      const isEvaluatedDefinitionNode = this.evaluated && isNode(n, N.Mixin | N.VarDeclaration);
+      const isEvaluatedDefinitionNode = (this.evaluated || mode === 'render') && isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
         && !hasPrintableTriviaAt(n, 'before', options)
@@ -2066,10 +2151,13 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         : n.toTrimmedString(options);
       return pipe(
         () => output,
-        () => {
+        (resolvedOutput) => {
           restorePrintState(options, leafSaved);
           if (!w.hasContentSince(leafMark)) {
             w.restore(leafMark);
+            if (resolvedOutput) {
+              emitCaptured(resolvedOutput, n, prefix);
+            }
             return;
           }
           if (n.requiredSemi && n.options.semi !== false) {
@@ -2135,19 +2223,34 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         ? output.then(toState)
         : toState(output);
     }
+    if (sourceWasRoot && (context.currentCharset || context.topImports?.length)) {
+      return createRulesRenderState(this, this, sourceWasRoot);
+    }
+    if (sourceWasRoot) {
+      const saved = this._snapshotContext(context);
+      const output = this.eval(context);
+      const toState = (rules: Rules): RulesRenderState => createRulesRenderState(
+        this,
+        rules,
+        sourceWasRoot,
+        undefined,
+        saved
+      );
+      return isThenable(output)
+        ? output.then(toState)
+        : toState(output);
+    }
     // Direct render on an unevaluated Rules node is a compatibility/debug API.
     // Public compiler render APIs evaluate the root before serialization.
-    const output = this.derive().eval(context);
-    const toState = (rules: Rules): RulesRenderState => createRulesRenderState(this, rules, sourceWasRoot);
-    return isThenable(output)
-      ? output.then(toState)
-      : toState(output);
+    const saved = this._snapshotContext(context);
+    this._setupContextForRules(context, this);
+    return createRulesRenderState(this, this, sourceWasRoot, saved);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const sourceWasRoot = this === context.root;
+    const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
     const value = this.evalForRender(context, sourceWasRoot);
     if (isRenderBuffer(bufferOrOptions)) {
       return isThenable(value)

@@ -144,6 +144,10 @@ function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rul
   return iterationRules;
 }
 
+function hasIterationStateMutation(rules: Rules): boolean {
+  return rules.value.some(node => isNode(node, N.VarDeclaration));
+}
+
 async function syncWhileState(
   stateRules: Rules,
   iterationRules: Rules,
@@ -685,6 +689,16 @@ export class While extends Node<WhileValue> {
           throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
         }
         const iterationRules = createWhileIterationSurface(originalRules, stateRules);
+        if (hasIterationStateMutation(originalRules)) {
+          const preparedIterationRules = await iterationRules.prepareRegistration(context);
+          if (!(preparedIterationRules instanceof Rules)) {
+            throw new TypeError('Expected $while iteration registration prep to return Rules');
+          }
+          await syncWhileState(stateRules, preparedIterationRules, context);
+          output += await preparedIterationRules.render(context, buffer, options);
+          await syncWhileState(stateRules, preparedIterationRules, context);
+          continue;
+        }
         output += await iterationRules.render(context, buffer, options);
         await syncWhileState(stateRules, iterationRules, context);
       }

@@ -338,6 +338,43 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders unprepared dynamic rules without deriving a wrapper tree', async () => {
+    const sourceVar = vardecl({ name: 'brand', value: any('red') });
+    const sourceDecl = decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) });
+    const node = rules([sourceVar, sourceDecl]);
+    context.root = rules([]);
+    context.rulesContext = undefined;
+    const originalDerive = node.derive;
+    let deriveCalls = 0;
+    node.derive = function countDeriveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(deriveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(sourceVar.parent).toBe(node);
+    expect(sourceDecl.parent).toBe(node);
+    expect(context.rulesContext).toBeUndefined();
+  });
+
+  it('restores an empty root context after unprepared root render', async () => {
+    const node = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+    expect(context.root).toBeUndefined();
+    expect(context.rulesContext).toBeUndefined();
+    expect(context.treeRoot).toBeUndefined();
+  });
+
   it('awaits native render children while preserving the source rules surface', async () => {
     const child = decl({ name: 'color', value: any('red') });
     const node = rules([child]);

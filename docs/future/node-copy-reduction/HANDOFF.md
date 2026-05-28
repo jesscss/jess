@@ -76,12 +76,14 @@ truth, the immediate pop queue, and verification.
   state args. Already-evaluated finalized call output is marked before native
   render so optional fallback calls do not re-enter name evaluation.
 - Direct unevaluated `Rules.render(...)` now routes through `RulesRenderState`
-  before final string/buffer emission. Plain static rule-leaf bodies now
-  serialize the canonical source rules without deriving/evaling, matching the
-  identity side of static `Rules.resolve(context)` while preserving
-  root/fragment separator behavior. Broader static Rules can still need
-  rules-level eval for nesting, hoists, controls, and declaration merges, so
-  they stay on the compatibility surface. Do not blindly route static
+  before final string/buffer emission. True root renders with no established
+  `context.root` evaluate the source root directly, not a derived wrapper,
+  because document-level output still needs root ordering, hoists, controls,
+  and extends. Fragment renders set up render-local context on the canonical
+  source rules and restore it after emission. Plain static rule-leaf bodies
+  still serialize the canonical source rules without deriving/evaling,
+  matching the identity side of static `Rules.resolve(context)` while
+  preserving root/fragment separator behavior. Do not blindly route static
   `Rules.resolve(...)` through that state: static resolve is
   identity-preserving, while static direct render still has body-fragment
   serializer semantics.
@@ -103,7 +105,7 @@ truth, the immediate pop queue, and verification.
   mixin output wrappers are the current output-slot stand-in; dynamic-call
   fallback no longer uses a copied `Call` surface, but dynamic-name ownership
   still needs a narrower rule;
-  direct unevaluated `Rules.render(...)` is a compatibility fragment path;
+  direct unevaluated `Rules.render(...)` no longer derives a wrapper tree;
   generated selector ownership is semantic until a placement-state record
   carries visibility/extend/composed-header facts; mutation-helper cleanup
   should attack one helper family or node surface at a time, not one call site.
@@ -123,7 +125,7 @@ truth, the immediate pop queue, and verification.
 
 | Surface                             | Current shape                                                                                                                                                                         | Next proof                                                                                                                                |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `Rules.render(...)` source roots    | Public compile renders already evaluated roots. Direct unevaluated `Rules.render(...)` still derives before eval for compatibility/direct node tests.                                 | Keep the compatibility path isolated; prove any narrowing preserves fragment separators, registration prep, and source parentage.         |
+| `Rules.render(...)` source roots    | Public compile renders already evaluated roots. Direct unevaluated root render evals the source root when no root context exists; direct fragments render from source with render-local context and no derived wrapper. | Keep reducing fragment/root state without losing charset/import ordering, controls, registration prep, separators, or source parentage.   |
 | `AtRule.render(...)`                | Reuses evaluated/prepared/static at-rule surfaces when available. Dynamic leaf render uses local name/prelude state; direct dynamic body/root-hoist render still derives before eval, but final body output is side-state rather than `value.rules` mutation. | Split the remaining prelude/body/root-hoist responsibilities before deleting the isolation surface.                                       |
 | `Ruleset.render(...)`               | Reuses evaluated/prepared ruleset surfaces. Unevaluated rulesets still prepare/eval an isolated surface; nil-selector output delegates to body render.                                | Prove which generated selector/body surfaces are semantic and which are serializer carriers.                                              |
 | `Declaration.render(...)`           | Prepares/evals one isolated declaration surface for assignment/name/value/important mutation.                                                                                         | Keep source isolation unless a concrete side-state model replaces preparation mutation.                                                   |
@@ -139,20 +141,20 @@ checkpoint. The script ranks likely runtime surfaces; it is not a gate.
 Current top files by static surface count:
 
 1. `packages/core/src/tree/rules.ts`
-2. `packages/core/src/tree/call.ts`
-3. `packages/core/src/tree/declaration.ts`
+2. `packages/core/src/tree/declaration.ts`
+3. `packages/core/src/tree/import-style.ts`
 4. `packages/core/src/tree/dimension.ts`
-5. `packages/core/src/tree/import-style.ts`
-6. `packages/core/src/tree/at-rule.ts`
-7. `packages/core/src/tree/reference.ts`
-8. `packages/core/src/tree/ampersand.ts`
+5. `packages/core/src/tree/at-rule.ts`
+6. `packages/core/src/tree/reference.ts`
+7. `packages/core/src/tree/ampersand.ts`
+8. `packages/core/src/tree/call.ts`
 9. `packages/core/src/tree/ruleset.ts`
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 302`, `derive: 31`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `375`,
-eval-context count `29`, prepare-registration count `1`, resolve-context count
+Latest audit: `new-node: 303`, `derive: 30`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `374`,
+eval-context count `29`, prepare-registration count `2`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
 
@@ -166,8 +168,8 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   `Declaration`, generated pseudo placement, import placement, mixin output
   slots, and ampersand append placement. These are transitional state carriers,
   not a second AST.
-- Direct unevaluated `Rules.render(...)`, declaration registration prep, body
-  at-rule render/resolve, and generated ampersand selectors still carry real
+- Declaration registration prep, body at-rule render/resolve, generated
+  ampersand selectors, and state-mutating loop iteration prep still carry real
   ownership or public-result semantics. The queue below names the next splits;
   do not delete those wrappers by pattern.
 - The old `preEval()` phase, the old `preEvaluated` flag, direct public
@@ -175,28 +177,28 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   final at-rule body mutation, production `.set()` helper use, and broad
   clone-leaves helpers are already done. Look in git history for details if
   needed; do not re-expand this section with stale status prose.
-- Latest pass: `Rules` now has separate source/render body emission entrypoints,
+- Earlier pass: `Rules` now has separate source/render body emission entrypoints,
   declaration registration normalization runs through
   `DeclarationRegistrationState` instead of prep-time `.derive()`, and callable
   mixin output helpers now describe owned placement surfaces rather than clones.
   Body at-rule and ampersand generated-selector wrappers were re-audited and
   still need the state splits below before deletion.
-- Latest pass: direct `Declaration.render(...)` now evaluates through
+- Earlier pass: direct `Declaration.render(...)` now evaluates through
   `DeclarationRenderState` instead of materializing a prepared declaration
   surface. Public `resolve(...)` still materializes a node result. The audit's
   raw `new-node` count rose because this adds explicit state/fallback render
   helpers; the hot-path `derive`, `copy-leaves`, `clone-leaves`,
   `eval-context`, and `resolve-context` counts did not regress.
-- Latest pass: declaration render-only empty merge fallback now reuses the
+- Earlier pass: declaration render-only empty merge fallback now reuses the
   existing empty placeholder node instead of allocating a fresh `Nil`. This
   drops the raw audit to `new-node: 303` / module-context `376`; no hot
   eval/resolve/copy/clone count regressed.
-- Latest pass: declaration render-only multi-item merge fallback now emits
+- Earlier pass: declaration render-only multi-item merge fallback now emits
   list syntax from the existing merged items instead of constructing a
   temporary `List`. `List` owns the shared syntax helper, so this is not a
   second list serializer. The raw audit is now `new-node: 302` /
   module-context `375`.
-- Latest pass: `OutputWriter.preview(...)` is now the required awaitable
+- Earlier pass: `OutputWriter.preview(...)` is now the required awaitable
   primitive for a native Rules render walker. The name stays simple; overloads
   preserve sync return paths and only return a Promise when the callback does.
   Direct body at-rule render evaluates prelude into body state before
@@ -204,7 +206,7 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   source prelude. Declaration render carries contextual `!important` as render
   text instead of materializing a synthetic flag node. The raw audit remains
   `new-node: 302` / module-context `375`.
-- Latest pass: `_emitRenderRulesBody(...)` is now split from source body
+- Earlier pass: `_emitRenderRulesBody(...)` is now split from source body
   serialization and walks children through native `render(...)` in render
   mode. The walker remains sync when children are sync and becomes awaitable
   only when a child render does. Source `toString()` / `toTrimmedString()`
@@ -212,13 +214,23 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   ruleset tests cover dynamic declarations, controls, nested containers,
   fragment behavior, source parentage, and unchanged source serialization. The
   raw audit remains `new-node: 302` / module-context `375`.
-- Latest pass: direct body at-rule render now prints from `AtRuleBodyState`
+- Earlier pass: direct body at-rule render now prints from `AtRuleBodyState`
   fields (`evaluatedPrelude`, `evaluatedBody`, `hoistToRoot`, and `frames`)
   instead of serializing the evaluated output at-rule object. Public
   `resolve(...)` still returns the owned output at-rule. Focused at-rule/rules
   tests cover dynamic body render, buffer render, source parentage, source
   render-state restoration, and root/hoist behavior. The raw audit remains
   `new-node: 302` / module-context `375`.
+- Latest pass: direct unevaluated `Rules.render(...)` no longer calls
+  `this.derive().eval(context)`. Document/root renders still eval the source
+  root when no root context exists, then restore the incoming render context
+  after serialization; fragments render from canonical source rules with
+  render-local context and restore that context afterward. The render walker
+  now captures returned native child strings when a child does not write into
+  the active writer, and `$while` state-mutating iteration render syncs live
+  slots before emitting the body. Focused rules/control/at-rule/ruleset/
+  reference/render-buffer tests are green. Latest audit: `new-node: 303`,
+  `derive: 30`, `with-surface: 41`, `copy-leaves: 31`.
 
 ## Immediate Queue
 
@@ -234,15 +246,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Delete the direct unevaluated `Rules.render(...)` derive.**
-
-   - Goal: once the render body walker owns dynamic child evaluation, remove
-     the remaining direct-render compatibility `this.derive().eval(context)`
-     branch.
-   - Required proof: charset/import root output, fragment render, buffer parity,
-     registration prep, source parentage, and audit delta.
-
-2. **Design the next honest `MixinOutputSlot` child/state boundary.**
+1. **Design the next honest `MixinOutputSlot` child/state boundary.**
 
    - Goal: direct comments cannot simply be moved into the slot as a loose list:
      their order relative to evaluated declarations/rules matters. Inventory
@@ -253,7 +257,7 @@ family can be audited and reduced.
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-3. **Narrow body at-rule `resolve(...)` materialization.**
+2. **Narrow body at-rule `resolve(...)` materialization.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -261,7 +265,7 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-4. **Promote one proven ampersand append/template fact into placement state.**
+3. **Promote one proven ampersand append/template fact into placement state.**
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
@@ -273,7 +277,7 @@ family can be audited and reduced.
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-5. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
+4. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
 
    - Goal: the prelude split currently parks the evaluated prelude on the owned
      output at-rule so `evalNode(...)` can consume it once. Replace that bridge
@@ -283,7 +287,7 @@ family can be audited and reduced.
      evaluation, root-only frame clearing, nested media/mixins, source
      parentage, and unchanged public `resolve(...)`.
 
-6. **Audit the hot mutation-helper family by surface, not call site.**
+5. **Audit the hot mutation-helper family by surface, not call site.**
 
    - Goal: choose one complete helper family surface (`inherit(...)`,
      `derive*`, shallow wrappers, or reusable-leaf copies) in the current top
@@ -292,14 +296,22 @@ family can be audited and reduced.
    - Required proof: focused parentage/visibility tests for the chosen surface,
      `audit:node-creation` before/after, and no clone/copy frontier regression.
 
-7. **Design render-only registration/output-order state for `Rules.render(...)`.**
+6. **Narrow state-mutating `$while` iteration prep.**
 
-   - Goal: replace the remaining direct-render `this.derive().eval(context)`
-     isolation with state that can register lookup identities and root
-     charset/import output order without mutating the canonical source `Rules`.
-   - Required proof: variable lookup in direct root/body render,
-     charset/import root output, fragment render, buffer parity, registration
-     prep, source parentage, and audit delta.
+   - Goal: dynamic `$while` bodies now prepare per-iteration state so live
+     slots are available before direct body render. Split this further so
+     state-mutating declarations can register/update live slots without
+     materializing broader iteration prep.
+   - Required proof: false loops, static loops, dynamic state mutation,
+     condition advancement, source parentage, and control/render-buffer parity.
+
+7. **Measure one real Less compile hot path before choosing the next broad deletion.**
+
+   - Goal: run a representative Less fixture/corpus timing or allocation pass
+     and use the evidence to pick the next eval/render surface, instead of
+     optimizing whichever helper name is most visible.
+   - Required proof: command, baseline numbers, chosen surface, and why the
+     next code change should improve real stylesheet eval/render.
 
 ## Backlog
 
