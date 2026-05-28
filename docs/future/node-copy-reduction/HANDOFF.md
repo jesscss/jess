@@ -65,7 +65,10 @@ truth, the immediate pop queue, and verification.
   rather than loose local parameters, and that registration state is now
   recoverable through render/resolve body state. Final evaluated body output is
   stored as render state and serialized through `AtRule.getRenderRules()`
-  instead of assigning `node.value.rules = finalRules`.
+  instead of assigning `node.value.rules = finalRules`. Direct render now
+  serializes body at-rule output from `AtRuleBodyState` fields rather than the
+  materialized output at-rule shape, then restores source prelude/body/hoist
+  state immediately after printing.
 - Dynamic call fallback render/resolve now evaluates through `CallEvalState`
   without constructing a copied fallback `Call` surface. The state carries
   name, args, content, caller, mark-important, and rules-like variable lookup
@@ -209,6 +212,13 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   ruleset tests cover dynamic declarations, controls, nested containers,
   fragment behavior, source parentage, and unchanged source serialization. The
   raw audit remains `new-node: 302` / module-context `375`.
+- Latest pass: direct body at-rule render now prints from `AtRuleBodyState`
+  fields (`evaluatedPrelude`, `evaluatedBody`, `hoistToRoot`, and `frames`)
+  instead of serializing the evaluated output at-rule object. Public
+  `resolve(...)` still returns the owned output at-rule. Focused at-rule/rules
+  tests cover dynamic body render, buffer render, source parentage, source
+  render-state restoration, and root/hoist behavior. The raw audit remains
+  `new-node: 302` / module-context `375`.
 
 ## Immediate Queue
 
@@ -243,15 +253,7 @@ family can be audited and reduced.
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-3. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
-
-   - Goal: after prelude state is split, carry hoist/root-frame facts and final
-     evaluated body output as state fields so direct render no longer depends
-     on materialized output at-rule shape.
-   - Required proof: dynamic body render, root-only at-rules, import/reference
-     interactions, nested extend roots, and source parentage.
-
-4. **Narrow body at-rule `resolve(...)` materialization.**
+3. **Narrow body at-rule `resolve(...)` materialization.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -259,7 +261,7 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-5. **Promote one proven ampersand append/template fact into placement state.**
+4. **Promote one proven ampersand append/template fact into placement state.**
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
@@ -271,7 +273,7 @@ family can be audited and reduced.
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-6. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
+5. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
 
    - Goal: the prelude split currently parks the evaluated prelude on the owned
      output at-rule so `evalNode(...)` can consume it once. Replace that bridge
@@ -281,7 +283,7 @@ family can be audited and reduced.
      evaluation, root-only frame clearing, nested media/mixins, source
      parentage, and unchanged public `resolve(...)`.
 
-7. **Audit the hot mutation-helper family by surface, not call site.**
+6. **Audit the hot mutation-helper family by surface, not call site.**
 
    - Goal: choose one complete helper family surface (`inherit(...)`,
      `derive*`, shallow wrappers, or reusable-leaf copies) in the current top
@@ -289,6 +291,15 @@ family can be audited and reduced.
      ownership boundary that keeps them semantic.
    - Required proof: focused parentage/visibility tests for the chosen surface,
      `audit:node-creation` before/after, and no clone/copy frontier regression.
+
+7. **Design render-only registration/output-order state for `Rules.render(...)`.**
+
+   - Goal: replace the remaining direct-render `this.derive().eval(context)`
+     isolation with state that can register lookup identities and root
+     charset/import output order without mutating the canonical source `Rules`.
+   - Required proof: variable lookup in direct root/body render,
+     charset/import root output, fragment render, buffer parity, registration
+     prep, source parentage, and audit delta.
 
 ## Backlog
 

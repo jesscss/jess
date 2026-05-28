@@ -399,6 +399,33 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
     };
+    const renderBodyState = (state: AtRuleBodyState): string => {
+      const node = state.source;
+      const priorPrelude = node.value.prelude;
+      const priorBody = atRuleEvaluatedBody.get(node);
+      const priorHoistToRoot = node.hoistToRoot;
+      const priorFrames = node.frames;
+      try {
+        if (state.evaluatedPrelude) {
+          node.value.prelude = state.evaluatedPrelude;
+        }
+        if (state.evaluatedBody) {
+          atRuleEvaluatedBody.set(node, state.evaluatedBody);
+        }
+        node.hoistToRoot = state.hoistToRoot;
+        node.frames = state.frames;
+        return renderEvaluatedAtRule(node);
+      } finally {
+        node.value.prelude = priorPrelude;
+        if (priorBody) {
+          atRuleEvaluatedBody.set(node, priorBody);
+        } else {
+          atRuleEvaluatedBody.delete(node);
+        }
+        node.hoistToRoot = priorHoistToRoot;
+        node.frames = priorFrames;
+      }
+    };
     return pipe(
       () => this.evalForRender(context),
       (node) => {
@@ -409,7 +436,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           return renderEvaluatedAtRule(node);
         }
         if (isAtRuleBodyState(node)) {
-          return renderEvaluatedAtRule(node.output);
+          return renderBodyState(node);
         }
         if (isAtRuleValue(node)) {
           return this.renderLeafValue(node, context, bufferOrOptions, options);

@@ -487,6 +487,7 @@ describe('AtRule', () => {
     expect(sourcePrelude.evaluated).toBe(false);
     expect(sourceRules.parent).toBe(node);
     expect(sourceRules.evaluated).toBe(false);
+    expect(node.getRenderRules()).toBe(sourceRules);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
