@@ -1019,10 +1019,12 @@ describe('Mixin', () => {
       expect(result.options.mixinOutputSlot?.childSegments.map(segment => ({
         kind: segment.kind,
         source: segment.source,
+        output: segment.output,
         index: segment.index
       }))).toEqual(mixinBody.value.map((source, index) => ({
         kind: 'source-child',
         source,
+        output: result.value[index],
         index
       })));
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);

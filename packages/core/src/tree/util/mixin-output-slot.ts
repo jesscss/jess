@@ -24,13 +24,18 @@ export type MixinOutputSlot = {
 export type MixinOutputChildSegment = {
   kind: 'source-child';
   source: Node;
+  output?: Node;
   index: number;
 };
 
-export function getMixinOutputChildSegments(sourceRules: Rules): MixinOutputChildSegment[] {
+export function getMixinOutputChildSegments(
+  sourceRules: Rules,
+  outputRules?: Rules
+): MixinOutputChildSegment[] {
   return sourceRules.value.map((source, index) => ({
     kind: 'source-child',
     source,
+    ...(outputRules?.value[index] && { output: outputRules.value[index] }),
     index
   }));
 }
@@ -108,7 +113,7 @@ export function attachMixinOutputSlot(
   const slot: MixinOutputSlot = {
     sourceRules,
     outputRules,
-    childSegments: getMixinOutputChildSegments(sourceRules),
+    childSegments: getMixinOutputChildSegments(sourceRules, outputRules),
     rulesVisibility: outputRules.options.rulesVisibility,
     isMixinOutput
   };

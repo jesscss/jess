@@ -597,6 +597,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return rules.value.every(rule => (
       isNode(rule, N.Comment | N.Nil)
       || (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC))
+      || (isNode(rule, N.AtRule) && rule.hasFlag(F_STATIC) && !(rule as AtRule).getRenderRules())
     ));
   }
 
