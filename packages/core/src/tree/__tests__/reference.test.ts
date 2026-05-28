@@ -172,7 +172,7 @@ describe('reference', () => {
           value: sourceValue
         })
       ]);
-      const evald = setRulesContext(await node.eval(context));
+      setRulesContext(await node.eval(context));
       const buffer = createRenderBuffer('flat');
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
 
@@ -190,7 +190,7 @@ describe('reference', () => {
           value: sourceValue
         })
       ]);
-      const evald = setRulesContext(await node.eval(context));
+      setRulesContext(await node.eval(context));
       const buffer = createRenderBuffer('flat');
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       refNode.resolve = () => {
@@ -245,6 +245,76 @@ describe('reference', () => {
       expect(refNode.evaluated).toBe(false);
       expect(refNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('renders source-free scalar variable references without copying the scalar leaf', async () => {
+      const sourceValue = any('red');
+      const node = rules([
+        vardecl({
+          name: any('foo'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(scalarCopies).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('renders source-free scalar declaration references without copying the scalar leaf', async () => {
+      const sourceValue = any('red');
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(scalarCopies).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
     });
 
     it('keeps referenced source value containers canonical after resolve(context)', async () => {

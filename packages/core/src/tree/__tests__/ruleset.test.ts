@@ -144,6 +144,36 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps source selector canonical during direct render', async () => {
+    const root = rules([
+      decl({ name: 'tone', value: any('red') })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const selector = sellist([sel([el('.foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [any('blue')]
+      }) })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      .foo {
+        color: blue;
+      }
+    `);
+
+    expect(selector.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('renders already evaluated rulesets without re-entering eval', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),

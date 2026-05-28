@@ -63,7 +63,6 @@ type AtRuleBodyOutputState = {
 };
 
 type AtRuleBodyRuntimeState = {
-  registration?: AtRuleBodyRegistrationState;
   evaluatedBody?: Rules;
   evaluatedPrelude?: Node;
   output?: AtRuleBodyOutputState;
@@ -83,12 +82,11 @@ type AtRuleBodyRegistrationState = {
   layerName?: string;
 };
 
-type AtRuleBodyState = {
+type AtRuleBodyRenderState = {
   kind: 'body-render';
   source: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
-  registration?: AtRuleBodyRegistrationState;
   output?: AtRuleBodyOutputState;
 };
 
@@ -262,7 +260,7 @@ function hasCommentChild(value: unknown): boolean {
   return false;
 }
 
-function isAtRuleBodyState(value: unknown): value is AtRuleBodyState {
+function isAtRuleBodyRenderState(value: unknown): value is AtRuleBodyRenderState {
   return Boolean(value && typeof value === 'object' && Reflect.get(value, 'kind') === 'body-render');
 }
 
@@ -369,7 +367,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return atRuleBodyRuntimeState.get(this)?.evaluatedBody ?? this.value.rules;
   }
 
-  private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyState> {
+  private evalForRender(context: Context): MaybePromise<Node | AtRuleLeafState | AtRuleBodyRenderState> {
     if (this.evaluated) {
       return this;
     }
@@ -411,14 +409,14 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     );
   }
 
-  private evalBodyState(context: Context): MaybePromise<AtRuleBodyState> {
+  private evalBodyState(context: Context): MaybePromise<AtRuleBodyRenderState> {
     return pipe(
       () => this.evalBodyResult(context),
       result => this.createBodyRenderState(result)
     );
   }
 
-  private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyState {
+  private createBodyRenderState(result: AtRuleBodyEvalResult): AtRuleBodyRenderState {
     const outputNode = result.node instanceof Nil ? result.evalFrame : result.node;
     const runtime = atRuleBodyRuntimeState.get(outputNode);
     if (result.node instanceof Nil) {
@@ -434,7 +432,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       source: this,
       evaluatedPrelude: runtime?.evaluatedPrelude ?? result.evaluatedPrelude,
       evaluatedBody: runtime?.evaluatedBody ?? result.node.value.rules,
-      registration: runtime?.registration,
       output: runtime?.output
     };
   }
@@ -545,26 +542,21 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       }
       return serializeRulesContainer(node, prepareRenderPrintState(context, bufferOrOptions));
     };
-    const renderBodyState = (state: AtRuleBodyState): string => {
+    const renderBodyState = (state: AtRuleBodyRenderState): string => {
       const node = state.source;
-      const priorPrelude = node.value.prelude;
-      try {
-        const runtimeUpdate: AtRuleBodyRuntimeState = {};
-        if (state.evaluatedPrelude) {
-          runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
-        }
-        if (state.evaluatedBody) {
-          runtimeUpdate.evaluatedBody = state.evaluatedBody;
-        }
-        if (state.output) {
-          runtimeUpdate.output = state.output;
-        }
-        return Object.keys(runtimeUpdate).length > 0
-          ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
-          : renderEvaluatedAtRule(node);
-      } finally {
-        node.value.prelude = priorPrelude;
+      const runtimeUpdate: AtRuleBodyRuntimeState = {};
+      if (state.evaluatedPrelude) {
+        runtimeUpdate.evaluatedPrelude = state.evaluatedPrelude;
       }
+      if (state.evaluatedBody) {
+        runtimeUpdate.evaluatedBody = state.evaluatedBody;
+      }
+      if (state.output) {
+        runtimeUpdate.output = state.output;
+      }
+      return Object.keys(runtimeUpdate).length > 0
+        ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
+        : renderEvaluatedAtRule(node);
     };
     return pipe(
       () => this.evalForRender(context),
@@ -575,7 +567,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (node instanceof AtRule) {
           return renderEvaluatedAtRule(node);
         }
-        if (isAtRuleBodyState(node)) {
+        if (isAtRuleBodyRenderState(node)) {
           return renderBodyState(node);
         }
         if (isAtRuleLeafState(node)) {
@@ -827,7 +819,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     context.extendRoots.pushExtendRoot(registration.bodyToEval);
     context.extendRoots.popExtendRoot();
-    updateAtRuleBodyRuntimeState(node, { registration });
     return registration;
   }
 

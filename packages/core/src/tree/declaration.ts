@@ -92,7 +92,6 @@ export type DeclarationValue<T extends AnyRole = 'property'> = {
 };
 
 type DeclarationEvalState = {
-  source: Declaration;
   output: Node;
   name?: DeclarationValue['name'];
   value?: Node;
@@ -101,7 +100,6 @@ type DeclarationEvalState = {
 };
 
 type DeclarationRenderState = {
-  source: Declaration;
   name: DeclarationValue['name'];
   value: Node;
   listValue?: Node[];
@@ -474,7 +472,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ): MaybePromise<DeclarationRenderState> {
     if (this.hasFlag(F_STATIC) && !state.normalizedFromAssign && !context.hasImportantSource) {
       return {
-        source: this,
         name: state.name,
         value: state.value,
         important: state.important,
@@ -508,7 +505,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const finish = (newValue: Node | Nil): DeclarationRenderState => {
       if (newValue instanceof Nil) {
         return {
-          source: this,
           name: state.name,
           value: newValue,
           important: state.important,
@@ -528,7 +524,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         context.popImportantSource();
       }
       return {
-        source: this,
         name: state.name,
         value,
         listValue: normalized.listValue,
@@ -590,7 +585,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         ? valueState
         : this.materializeValueState(valueState),
       output => ({
-        source: this,
         output,
         name: output instanceof Declaration ? output.value.name : undefined,
         value: output instanceof Declaration ? output.value.value : undefined,
