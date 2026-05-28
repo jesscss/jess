@@ -57,6 +57,13 @@ type AtRuleBodyFrameState = {
   restoreRulesetFrames: () => void;
 };
 
+type AtRuleBodyEvalContextState = {
+  evalFrame: AtRule;
+  frameState: AtRuleBodyFrameState;
+  frameCount: number;
+  extendRootStackLength: number;
+};
+
 type AtRuleBodyRegistrationState = {
   bodyToEval: Rules;
   finalRules: Rules;
@@ -127,6 +134,50 @@ function activateAtRuleBodyFrameState(
 ): () => void {
   state.restoreRulesetFrames = clearRulesetFramesForAtRuleBody(context, state.clearRulesetFrames);
   return state.restoreRulesetFrames;
+}
+
+function createAtRuleBodyEvalContextState(
+  node: AtRule,
+  context: Context
+): AtRuleBodyEvalContextState {
+  return {
+    evalFrame: node,
+    frameState: createAtRuleBodyFrameState(node, context),
+    frameCount: context.frames.length,
+    extendRootStackLength: context.extendRoots.extendRootStack.length
+  };
+}
+
+function activateAtRuleBodyEvalContextState(
+  state: AtRuleBodyEvalContextState,
+  context: Context
+): () => void {
+  return activateAtRuleBodyFrameState(state.frameState, context);
+}
+
+function restoreAtRuleBodyEvalContextState(
+  state: AtRuleBodyEvalContextState,
+  context: Context
+): void {
+  context.frames.length = state.frameCount;
+  state.frameState.restoreRulesetFrames();
+  while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
+    context.extendRoots.popExtendRoot();
+  }
+}
+
+function setAtRuleBodyEvalPrelude(
+  state: AtRuleBodyEvalContextState,
+  prelude: Node
+): void {
+  state.evalFrame.value.prelude = prelude;
+}
+
+function storeAtRuleBodyEvalRules(
+  state: AtRuleBodyEvalContextState,
+  finalRules: Rules
+): void {
+  atRuleEvaluatedBody.set(state.evalFrame, finalRules);
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -246,10 +297,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   getRenderRules(): Rules | undefined {
     return atRuleEvaluatedBody.get(this) ?? this.value.rules;
-  }
-
-  private storeEvaluatedBody(node: AtRule, finalRules: Rules): void {
-    atRuleEvaluatedBody.set(node, finalRules);
   }
 
   private evalForRender(context: Context): MaybePromise<Node | AtRuleValue | AtRuleBodyState> {
@@ -796,7 +843,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
     }
 
-    const bodyFrameState = createAtRuleBodyFrameState(node, context);
+    const bodyEvalContextState = createAtRuleBodyEvalContextState(node, context);
 
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
@@ -814,12 +861,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (isThenable(out)) {
             return Promise.resolve(out).then(
               (n) => {
-                node.value.prelude = n;
+                setAtRuleBodyEvalPrelude(bodyEvalContextState, n);
                 return undefined;
               }
             );
           }
-          node.value.prelude = out;
+          setAtRuleBodyEvalPrelude(bodyEvalContextState, out);
         }
       },
       () => {
@@ -828,15 +875,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (context.opts.collapseNesting && node.isNestable()) {
             node.hoistToRoot = true;
           }
-          const frameCount = context.frames.length;
-          const extendRootStackLength = context.extendRoots.extendRootStack.length;
           let restoreRulesetFrames = () => undefined;
           const restoreBodyEvalContext = () => {
-            context.frames.length = frameCount;
-            restoreRulesetFrames();
-            while (context.extendRoots.extendRootStack.length > extendRootStackLength) {
-              context.extendRoots.popExtendRoot();
-            }
+            restoreAtRuleBodyEvalContextState(bodyEvalContextState, context);
           };
           // Push to frames before evaluating rules so we can use context.frames to find parent layers
           // This allows nested layers to find their parent layer names
@@ -873,7 +914,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 bodyToEval = resolved;
                 context.extendRoots.pushExtendRoot(bodyToEval);
                 pushedExtendRoot = true;
-                restoreRulesetFrames = activateAtRuleBodyFrameState(bodyFrameState, context);
+                restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
                 const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
                 let evalOut: MaybePromise<Rules>;
                 try {
@@ -886,7 +927,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                   restoreRulesetFrames();
                   const finalRules =
                     onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-                  this.storeEvaluatedBody(node, finalRules);
+                  storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
                   this._registerEvaluatedNestableBody(node, context, {
                     bodyToEval,
                     finalRules,
@@ -919,7 +960,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // For root-only at-rules that are hoisted, clear rulesetFrames
           // so internal rulesets don't inherit parent selectors
-          restoreRulesetFrames = activateAtRuleBodyFrameState(bodyFrameState, context);
+          restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
 
           let out: MaybePromise<Rules>;
           try {
@@ -935,7 +976,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               // If the only rule was a ruleset, and it evaluated to Rules,
               // discard the extra rules wrapper
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-              this.storeEvaluatedBody(node, finalRules);
+              storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
               if (pushedExtendRoot && node.isNestable()) {
                 this._registerEvaluatedNestableBody(node, context, {
                   bodyToEval,
@@ -955,7 +996,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           const finalRules =
             onlyRuleSetChild && isNode(out.value[0], N.Rules) ? out.value[0] : out;
-          this.storeEvaluatedBody(node, finalRules);
+          storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
           if (pushedExtendRoot && node.isNestable()) {
             this._registerEvaluatedNestableBody(node, context, {
               bodyToEval,

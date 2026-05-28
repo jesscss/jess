@@ -90,13 +90,6 @@ type AppendSelectorResult<T extends Selector = Selector> = {
   appended: boolean;
 };
 
-type AmpersandAppendPlacementState = {
-  source: Selector | Nil;
-  appendValue: string;
-  output: Selector;
-  hoistToRoot: true;
-};
-
 function ownSelectorForAppend(selector: Selector): Selector {
   const owned = copyOwnedWithReusableLeaves(selector);
   if (!(owned instanceof Selector)) {
@@ -218,24 +211,9 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   return { selector, appended: false };
 }
 
-function createAmpersandAppendPlacementState(
-  source: Selector | Nil,
-  appendValue: string,
-  output: Selector
-): AmpersandAppendPlacementState {
-  return {
-    source,
-    appendValue,
-    output,
-    hoistToRoot: true
-  };
-}
-
-function materializeAmpersandAppendPlacement(state: AmpersandAppendPlacementState): Selector {
-  void state.source;
-  void state.appendValue;
-  state.output.hoistToRoot = state.hoistToRoot;
-  return state.output;
+function markAppendedAmpersandHoist(output: Selector): Selector {
+  output.hoistToRoot = true;
+  return output;
 }
 
 /**
@@ -426,7 +404,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!selector) {
         return new Nil();
       }
-      const placementSource = selector;
       if (appendValue && !isNode(selector, N.Nil)) {
         const isTemplateMerge = appendValue.includes('&');
         if (isTemplateMerge) {
@@ -517,9 +494,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // won't re-prepend the parent). A SelectorList or ComplexSelector
       // result renders correctly on its own at the top level.
       const result: Selector | Nil = appendValue !== undefined && !isNode(selector, N.Nil)
-        ? materializeAmpersandAppendPlacement(
-            createAmpersandAppendPlacementState(placementSource, appendValue, selector)
-          )
+        ? markAppendedAmpersandHoist(selector)
         : selector;
       if (appendValue !== undefined || this.hoistToRoot) {
         result.hoistToRoot = true;

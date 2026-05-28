@@ -173,9 +173,8 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   still prove repeated comments, leaky/non-leaky lookup, reference gating, and
   source body parentage.
 - Render/eval state seams now exist for `Rules`, `AtRule`, `Call`,
-  `Declaration`, generated pseudo placement, import placement, mixin output
-  slots, and ampersand append placement. These are transitional state carriers,
-  not a second AST.
+  `Declaration`, generated pseudo placement, import placement, and mixin output
+  slots. These are transitional state carriers, not a second AST.
 - Declaration registration prep, body at-rule render/resolve, generated
   ampersand selectors, and state-mutating loop iteration prep still carry real
   ownership or public-result semantics. The queue below names the next splits;
@@ -278,6 +277,17 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   timing after this pass: `functions.less` median 26.07ms,
   `import-reference.less` median 31.08ms, `mixins-guards.less` median 31.69ms,
   `extend-chaining.less` median 19.75ms, and `media.less` median 8.56ms.
+- Latest queue pass retired `AmpersandAppendPlacementState`; append/hoist output
+  now marks the selector directly because no second state fact was proven. Body
+  at-rule eval now routes prelude writes, evaluated body storage, and frame
+  restore through `AtRuleBodyEvalContextState`, leaving one named seam for the
+  next materialization split. Focused mixin tests re-confirmed parameter
+  containers and ruleset-as-mixin child copies are still semantic without a new
+  placement/slot model. Static audit stayed `new-node: 304`, `derive: 30`,
+  `with-surface: 41`, `copy-leaves: 31`. Hot-path timing: `functions.less`
+  median 24.79ms, `import-reference.less` median 32.81ms,
+  `mixins-guards.less` median 31.88ms, `extend-chaining.less` median 19.43ms,
+  and `media.less` median 8.27ms.
 
 ## Immediate Queue
 
@@ -293,17 +303,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Replace body at-rule eval-frame node mutation with a frame-state helper.**
-
-   - Goal: the direct-render side now calls the owned body surface an
-     `evalFrame`, but `evalNode(...)` still mutates that frame's prelude/body
-     fields while evaluating. Move those mutations into a named frame-state
-     helper before attempting another node deletion.
-   - Required proof: direct/buffer dynamic body render, async prelude
-     evaluation, root-only frame clearing, nested media/mixins, source
-     parentage, and unchanged public `resolve(...)`.
-
-2. **Narrow body at-rule `resolve(...)` materialization after frame-state split.**
+1. **Narrow body at-rule `resolve(...)` materialization after frame-state split.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -311,44 +311,54 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-3. **Target remaining mixin parameter binding copies by value shape.**
+2. **Split body at-rule eval-frame responsibilities by state field.**
+
+   - Goal: `AtRuleBodyEvalContextState` now names the frame mutation boundary,
+     but the owned `evalFrame` still carries dynamic prelude/body/hoist facts.
+     Split one complete responsibility into side state before deleting another
+     at-rule surface.
+   - Required proof: direct/buffer dynamic body render, async prelude
+     evaluation, root-only frame clearing, nested media/mixins, source
+     parentage, and unchanged public `resolve(...)`.
+
+3. **Replace mixin parameter container copies only with a real slot model.**
 
    - Goal: recursion signatures are now lazy. Continue through
-     `cloneBoundValue(...)` by proving which non-scalar containers can be reused
-     because they are already evaluated/frozen and source-free, and which must
-     stay owned for repeated calls.
+     `cloneBoundValue(...)` only if a binding slot can preserve repeated-call
+     isolation without owning the container. Focused tests already prove
+     pseudo args, calc operands, interpolated names, selector containers,
+     parens, quoted values, sequences, declarations, rest params, and at-rule
+     preludes must stay isolated across repeated calls.
    - Required proof: guard scope, named args, default params, rest params,
      repeated mixin calls, leaky/non-leaky lookup, source parentage, focused
      perf rerun, and frontier scans.
 
-4. **Split ruleset-as-mixin child ownership by selector-parent requirement.**
+4. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
 
    - Goal: a blind static-body reuse breaks complex parent ampersands and
-     nested array-path ruleset mixin calls. Inventory which ruleset-as-mixin
-     bodies actually need selector-parent ownership and whether declaration-only
-     or selector-free bodies can safely avoid child copies.
+     nested array-path ruleset mixin calls. Do not retry raw child reuse; design
+     the smallest ordered placement state that can carry selector-parent context
+     before testing declaration-only or selector-free body reuse.
    - Required proof: repeated mixin comments, nested rules, variable lookup,
      reference gates, targeted lookup, source parentage, focused perf rerun,
      and no clone frontier regression.
 
-5. **Audit `copyWithReusableLeaves(...)` helper family by runtime surface.**
+5. **Audit `Reference` result ownership copies by runtime surface.**
 
-   - Goal: this pass narrowed one parameter-signature allocation but did not
-     reduce the static `copy-leaves` count. Pick the next complete
-     `copyWithReusableLeaves(...)` surface in `rules.ts`, `at-rule.ts`, or
-     `reference.ts` and either remove carrier-only copies or document the
-     ownership boundary that keeps them semantic.
+   - Goal: `Reference` still copies selected result values before applying
+     reference metadata. Prove which results need owned parent/location state
+     and whether scalar/generated values can use state metadata instead.
    - Required proof: focused parentage/visibility tests for the chosen surface,
      `audit:node-creation` before/after, and no clone/copy frontier regression.
 
-6. **Retire or replace `AmpersandAppendPlacementState`.**
+6. **Audit at-rule public-result ownership copies.**
 
-   - Goal: repeated audits have found no second carrier-only fact beyond
-     `hoistToRoot`. Either remove the state as unnecessary wrapper bookkeeping
-     or replace it with a smaller name that only describes root-hoist placement.
-   - Required proof: appended ampersands, template replacements, selector
-     lists, generated `:is(...)`, extend matching, direct/buffer render, and
-     source parentage.
+   - Goal: `ownName(...)`, `ownNode(...)`, and `ownRules(...)` still protect
+     public `resolve(...)` materialization. Audit them as a family and remove
+     only copies that are render-only or scalar-result carrier copies.
+   - Required proof: static leaf identity, dynamic prelude/body resolve,
+     nested at-rule parentage, root-hoist/layer registration, and
+     `audit:node-creation`.
 
 7. **Compare Less hot-path timing after the next real deletion.**
 
