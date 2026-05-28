@@ -483,6 +483,7 @@ describe('AtRule', () => {
         color: red;
       }
     `);
+    expect(node.value.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourcePrelude.evaluated).toBe(false);
     expect(sourceRules.parent).toBe(node);

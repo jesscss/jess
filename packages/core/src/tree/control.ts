@@ -11,7 +11,7 @@ import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
-import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
+import { buildScopeFrame, getBindingCellValue, type BindingCell, type ScopeFrame } from './scope-frame.js';
 import {
   createRenderBuffer,
   isRenderBuffer,
@@ -178,7 +178,7 @@ async function syncWhileState(
     if (!last) {
       continue;
     }
-    const value = await last.cell.value.eval(context);
+    const value = await getBindingCellValue(last.cell).eval(context);
     stateFrame.liveSlotsByName.set(name, {
       value,
       sourceNode: last.sourceNode,

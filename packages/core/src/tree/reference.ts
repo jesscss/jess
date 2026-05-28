@@ -23,7 +23,7 @@ import { JsObject } from './js-object.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
-import type { BindingEntry, ScopeFrame } from './scope-frame.js';
+import { getBindingCellValue, type BindingEntry, type ScopeFrame } from './scope-frame.js';
 import type { VarDeclaration } from './declaration-var.js';
 import { getOrderedSelectorKeys, isNonClassicImportBoundary } from './util/registry-utils.js';
 import {
@@ -747,10 +747,11 @@ function lookupRuntimeVarBinding(
       const live = f.liveSlotsByName.get(key);
       if (live) {
         const src = live.sourceNode as Node | undefined;
+        const value = getBindingCellValue(live);
         if (!src || !context.searchScope.has(src)) {
           return {
             kind: 'runtime-var-binding',
-            value: live.value,
+            value,
             readonly: live.readonly,
             sourceNode: src
           } satisfies RuntimeVarBinding;

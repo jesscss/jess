@@ -324,6 +324,21 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   25.89ms, `import-reference.less` median 30.14ms, `mixins-guards.less` median
   30.98ms, `extend-chaining.less` median 18.58ms, and `media.less` median
   7.79ms.
+- Latest queue pass added the first real mixin binding-slot slice:
+  `BindingCell` can now prepare a value lazily, and mixin param bindings carry
+  `prepareValue: cloneBoundValue` instead of eagerly copying every positional,
+  named, or default value during candidate matching. A regression proves an
+  unused container argument is not detached/copied before lookup. Conservative
+  ownership remains for default values used in recursion signatures and for
+  `@arguments` aggregate construction. Ruleset-as-mixin child copies were
+  re-audited against the complex parent-ampersand / nested array-path fixture;
+  do not raw-delete `copyCallableRulesNode(...)` until a placement-state record
+  can carry selector parent context. Direct at-rule body render now also has a
+  regression proving evaluated preludes stay off the source value. Static audit
+  stayed `new-node: 303`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`.
+  Hot-path timing: `functions.less` median 24.55ms,
+  `import-reference.less` median 29.33ms, `mixins-guards.less` median 29.61ms,
+  `extend-chaining.less` median 18.97ms, and `media.less` median 8.76ms.
 
 ## Immediate Queue
 
@@ -339,17 +354,15 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Replace mixin parameter container copies only with a real slot model.**
+1. **Extend lazy mixin binding slots through rest / `@arguments` aggregates.**
 
-   - Goal: recursion signatures are now lazy. Continue through
-     `cloneBoundValue(...)` only if a binding slot can preserve repeated-call
-     isolation without owning the container. Focused tests already prove
-     pseudo args, calc operands, interpolated names, selector containers,
-     parens, quoted values, sequences, declarations, rest params, and at-rule
-     preludes must stay isolated across repeated calls.
-   - Required proof: guard scope, named args, default params, rest params,
-     repeated mixin calls, leaky/non-leaky lookup, source parentage, focused
-     perf rerun, and frontier scans.
+   - Goal: positional/named/default params now have a lazy prepare hook. Rest
+     params and `@arguments` still build aggregate `Sequence` containers
+     eagerly when needed. Replace those only with a slot model that preserves
+     repeated-call isolation and source parentage.
+   - Required proof: rest params, `@arguments`, repeated mixin calls,
+     leaky/non-leaky lookup, source parentage, focused perf rerun, and frontier
+     scans.
 
 2. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
 

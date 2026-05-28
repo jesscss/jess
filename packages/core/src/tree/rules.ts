@@ -48,7 +48,7 @@ import {
 import { canReuseLeaf, copyWithReusableLeaves, hasNodeChild, reuseLeaf } from './util/cloning.js';
 import type { AtRule } from './at-rule.js';
 import { Comment } from './comment.js';
-import { type ScopeFrame, type BindingCell, buildScopeFrame } from './scope-frame.js';
+import { type ScopeFrame, type BindingCell, buildScopeFrame, getBindingCellValue } from './scope-frame.js';
 import { consumeTriviaText } from './util/trivia.js';
 import {
   isRenderBuffer,
@@ -445,6 +445,7 @@ export interface RuntimeVarBinding {
 type RuntimeVarBindingRecord = {
   name: string;
   value: Node;
+  prepareValue?: (value: Node) => Node;
   readonly?: boolean;
   sourceNode?: Node;
 };
@@ -4162,22 +4163,22 @@ export class MixinCollection extends Node<MixinEntry[]> {
             break;
           }
           if (isNode(param, N.VarDeclaration)) {
-            const boundValue = cloneBoundValue(argValue);
             bindingRecordsByIndex.set(paramIndex, {
               name: param.value.name.valueOf(),
-              value: boundValue,
+              value: argValue,
+              prepareValue: cloneBoundValue,
               readonly: param.options.readonly,
               sourceNode: param
             });
-            signatureNodes[paramIndex] = boundValue;
+            signatureNodes[paramIndex] = argValue;
           } else if (isNode(param, N.Any) && param.options.role === 'property') {
-            const boundValue = cloneBoundValue(argValue);
             bindingRecordsByIndex.set(paramIndex, {
               name: param.valueOf(),
-              value: boundValue,
+              value: argValue,
+              prepareValue: cloneBoundValue,
               sourceNode: param
             });
-            signatureNodes[paramIndex] = boundValue;
+            signatureNodes[paramIndex] = argValue;
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
             const rest = nodeArgs.slice(argPos).map(restArg => cloneBoundValue(restArg));
@@ -4222,14 +4223,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
               continue;
             }
             if (isNode(param, N.VarDeclaration)) {
-              const defaultValue = cloneBoundValue(param.value.value);
+              const signatureValue = cloneBoundValue(param.value.value);
               bindingRecordsByIndex.set(i, {
                 name: param.value.name.valueOf(),
-                value: defaultValue,
+                value: param.value.value,
+                prepareValue: cloneBoundValue,
                 readonly: param.options.readonly,
                 sourceNode: param
               });
-              signatureNodes[i] = defaultValue;
+              signatureNodes[i] = signatureValue;
             } else if (param.type === 'Rest') {
               const restName = param.value ? `${param.value}` : `rest${i}`;
               const restValue = thisContext.treeContext?.file
@@ -4676,6 +4678,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           }
           liveSlots.set(binding.name, {
             value: binding.value,
+            prepareValue: binding.prepareValue,
             sourceNode: binding.sourceNode as Node | undefined,
             readonly: binding.readonly
           });
@@ -4713,7 +4716,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Populate @arguments after the frame is wired (the Sequence holds a
         // reference to argumentsArgs, so pushes here are visible through the frame).
         if (shouldDefineArguments && argumentsArgs) {
-          const paramValues = paramBindings.map(binding => binding.value);
+          const paramValues = paramBindings.map((binding) => {
+            const liveSlot = liveSlots.get(binding.name);
+            return liveSlot ? getBindingCellValue(liveSlot) : binding.value;
+          });
           const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
           for (const argNode of argumentNodes) {
             // If a Rest param collected args into a Sequence, spread its items

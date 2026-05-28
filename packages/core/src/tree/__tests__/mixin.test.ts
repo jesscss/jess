@@ -2456,6 +2456,51 @@ describe('Mixin', () => {
       expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
+    it('does not prepare unused mixin parameter containers before lookup', async () => {
+      const originalDetachTrivia = Node.prototype.detachTrivia;
+      let detachedArgContainers = 0;
+      Node.prototype.detachTrivia = function detachTriviaForCounting(
+        this: Node,
+        ...args: Parameters<typeof originalDetachTrivia>
+      ): ReturnType<typeof originalDetachTrivia> {
+        if (this.type === 'Sequence' && this.valueOf() === 'red 10px') {
+          detachedArgContainers++;
+        }
+        return originalDetachTrivia.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.unused'),
+            params: list([
+              any('space', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.unused' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: blue;');
+        expect(detachedArgContainers).toBe(0);
+      } finally {
+        Node.prototype.detachTrivia = originalDetachTrivia;
+      }
+    });
+
     it('frame live slots resolve mixin params via frame chain after runtimeVarBindings removal', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
