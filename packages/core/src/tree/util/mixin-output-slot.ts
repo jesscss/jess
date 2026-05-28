@@ -48,6 +48,16 @@ export function getMixinOutputSourceChild(
   return outputRules.options.mixinOutputSlot?.sourceByOutput.get(outputChild);
 }
 
+export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undefined {
+  const slot = outputRules.options.mixinOutputSlot;
+  if (!slot) {
+    return undefined;
+  }
+  return outputRules.value
+    .map(outputChild => slot.sourceByOutput.get(outputChild))
+    .filter((source): source is Node => source !== undefined);
+}
+
 function validateMixinOutputSlot(slot: MixinOutputSlot): void {
   for (const segment of slot.childSegments) {
     if (slot.sourceRules.value[segment.index] !== segment.source) {

@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -222,6 +222,50 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
     expect(leaf.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('source-direct renders static rulesets with invisible variable declarations from source', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const variable = vardecl({ name: 'brand', value: any('red') });
+    const body = rules([
+      variable,
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset with invisible variable should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset with invisible variable should not evaluate a ruleset surface');
+    };
+    variable.eval = () => {
+      throw new Error('Static invisible variable should not evaluate during source-direct ruleset render');
+    };
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(buffer.segments[0]).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(variable.parent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });

@@ -1596,23 +1596,34 @@ function finalizeDeclarationReferenceResult(
   context: Context,
   options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
+  const declarationValue = declaration.value.value;
+  const isMergedAssign = isMergedAssignDeclaration(declaration);
+  if (
+    options.textOnly === true
+    && !hasImportantDeclarationValue(declaration)
+    && !isMergedAssign
+    && canReuseReferenceValue(declarationValue)
+  ) {
+    context.popReference();
+    return declarationValue;
+  }
   if (
     referenceNode.options?.preserveRulesLike === true
-    && isNode(declaration.value.value, N.Rules | N.Collection)
+    && isNode(declarationValue, N.Rules | N.Collection)
   ) {
-    const preservedValue = preserveRulesLikeValue(declaration.value.value);
+    const preservedValue = preserveRulesLikeValue(declarationValue);
     return preservedValue;
   }
   return withReferenceSearchScope(context, declaration, () => pipe(
     () => evaluateDeclarationReferenceValue({
-      declValue: declaration.value.value,
+      declValue: declarationValue,
       hasImportant: hasImportantDeclarationValue(declaration),
       context
     }),
     evaluatedNode => finalizeEvaluatedDeclarationReference(
       referenceNode,
       evaluatedNode,
-      isMergedAssignDeclaration(declaration),
+      isMergedAssign,
       options
     )
   ));

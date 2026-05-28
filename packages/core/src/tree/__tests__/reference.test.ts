@@ -260,7 +260,9 @@ describe('reference', () => {
       const refNode = ref({ key: 'foo' }, { type: 'variable' });
       const buffer = createRenderBuffer('segmented');
       const originalCopy = Any.prototype.copy;
+      const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
+      let sourceValueInherits = 0;
       Any.prototype.copy = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
@@ -270,15 +272,24 @@ describe('reference', () => {
         }
         return originalCopy.apply(this, args);
       };
+      sourceValue.inherit = function inheritForCounting(
+        this: typeof sourceValue,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        sourceValueInherits++;
+        return originalInherit.apply(this, args);
+      };
 
       try {
         expect(await Promise.resolve(refNode.render(context))).toBe('red');
         expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
         expect(buffer.segments).toEqual(['red']);
         expect(scalarCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
         expect(sourceValue.parent).toBe(sourceParent);
       } finally {
         Any.prototype.copy = originalCopy;
+        sourceValue.inherit = originalInherit;
       }
     });
 
@@ -295,7 +306,9 @@ describe('reference', () => {
       const refNode = ref({ key: 'src' }, { type: 'declaration' });
       const buffer = createRenderBuffer('segmented');
       const originalCopy = Any.prototype.copy;
+      const originalInherit = sourceValue.inherit;
       let scalarCopies = 0;
+      let sourceValueInherits = 0;
       Any.prototype.copy = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
@@ -305,15 +318,24 @@ describe('reference', () => {
         }
         return originalCopy.apply(this, args);
       };
+      sourceValue.inherit = function inheritForCounting(
+        this: typeof sourceValue,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        sourceValueInherits++;
+        return originalInherit.apply(this, args);
+      };
 
       try {
         expect(await Promise.resolve(refNode.render(context))).toBe('red');
         expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
         expect(buffer.segments).toEqual(['red']);
         expect(scalarCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
         expect(sourceValue.parent).toBe(sourceParent);
       } finally {
         Any.prototype.copy = originalCopy;
+        sourceValue.inherit = originalInherit;
       }
     });
 

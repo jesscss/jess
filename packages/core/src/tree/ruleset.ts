@@ -593,6 +593,9 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC)) {
       return true;
     }
+    if (isNode(rule, N.VarDeclaration) && rule.hasFlag(F_STATIC) && !rule.visible) {
+      return true;
+    }
     if (!isNode(rule, N.AtRule) || !rule.hasFlag(F_STATIC)) {
       return false;
     }

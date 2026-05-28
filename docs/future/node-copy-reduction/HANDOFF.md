@@ -96,6 +96,11 @@ truth, the immediate pop queue, and verification.
   hoist/root output facts. Render may consume that into
   `AtRuleBodyRenderState`; public resolve may consume it into an owned at-rule
   result. The record must not become AST v2 or store generic child output.
+- At-rule body eval now has an explicit `AtRuleBodyEvalRecord` around the
+  remaining derived eval frame. This is a staging surface only: it centralizes
+  source, eval frame, evaluated prelude, and eval context state so the next
+  deletion can move one responsibility out of the frame instead of reworking
+  render/resolve at the same time.
 - Dynamic call fallback render/resolve now evaluates through `CallEvalState`
   without constructing a copied fallback `Call` surface. The state carries
   name, args, content, caller, mark-important, and rules-like variable lookup
@@ -112,14 +117,16 @@ truth, the immediate pop queue, and verification.
 - Reference render still uses `evalNode(context)` and then native rendering of
   the resolved node for containers, declaration/runtime-binding values, and
   rules-like values. Scalar source-free fallback render now has a text-only
-  finalization path that avoids public result metadata; extend that only where
-  the value is a reusable scalar leaf and public `resolve(...)` ownership stays
-  unchanged.
+  finalization path that avoids public result metadata; declaration and
+  variable lookup scalar leaves now use that same text-only path during render.
+  Runtime-binding scalars still need their own proof.
 - Mixin output slot metadata can map placement output children back to their
-  source body child with `getMixinOutputSourceChild(...)`. Lookup still searches
-  owned output children; the source map is for diagnostics/order/visibility
-  proof, not a replacement search surface. Slot attachment validates source
-  order/output ownership and indexes output-child-to-source lookup directly.
+  source body child with `getMixinOutputSourceChild(...)`, and can collect
+  mapped source children in output order with `getMixinOutputSourceChildren(...)`.
+  Lookup still searches owned output children; the source map is for
+  diagnostics/order/visibility proof, not a replacement search surface. Slot
+  attachment validates source order/output ownership and indexes
+  output-child-to-source lookup directly.
   Focused tests cover source child order, direct comment source segments, and
   repeated placements mapping back to the same source body without sharing
   owned output children.
@@ -175,6 +182,9 @@ truth, the immediate pop queue, and verification.
 - That source-direct ruleset path also covers static leaf at-rule children.
   Body at-rules with nested rules are still excluded because they can carry
   registration, nesting, hoist, layer, and extend semantics.
+- That source-direct ruleset path also covers static invisible `VarDeclaration`
+  children, which serialize as no output and do not require registration/eval
+  work when the surrounding static body is only being rendered.
 - When Less fixture expectations intentionally diverge from Less 4 output,
   preserve the old Less expectation under the matching `legacy/` expectation
   path before changing the active Jess expectation.
@@ -273,13 +283,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Assignment render prep / scalar reference text / slot lookup | Declaration assignment render keeps authored values parented while normalizing `+:`, `&,:`, `&_:`, and `?:` for render. Scalar fallback reference render avoids public result metadata. Mixin output slots now index output-child-to-source lookup. At-rule body-state design, ampersand append/template ownership, fixture policy, and metrics were refreshed. |
-| 2 | Declaration render prep / mixin slot guard / queue audit | Declaration render prep now uses read-only source-backed registration state instead of copying name/value/important parts. Mixin output slot attachment validates source segment order and output child ownership. At-rule body isolation, reference render-only finalization, ampersand append/template ownership, and fixture-divergence policy were audited and kept constrained. |
-| 3 | At-rule result state / hoist-order proof / mixin mapping guard | At-rule body eval results now carry evaluated body/output facts explicitly into render/resolve state. Hoist-active static body at-rules are proven to bypass source-direct ruleset render while preserving in-place sibling order. Mixin output mapping now proves repeated placements keep separate owned children while mapping to ordered source segments. Reference, declaration, and ampersand were audited and kept constrained. |
-| 4 | Static root-only at-rule source render / mixin source mapping | Nestable at-rule body registration prep now flows through `AtRuleBodyEvalPrepState`; static root-only body at-rules can source-render in static rulesets when hoist/collapse is inactive. `getMixinOutputSourceChild(...)` proves child-segment metadata without changing lookup. Reference, declaration, and ampersand surfaces were audited and kept constrained. |
-| 5 | At-rule frame-state split / selector collapse helper | Root-hoist frame-clearing output now lives on explicit body eval state until consumed; selector collapse family shares `ownCollapsedSourceChild(...)`. Body-at-rule source-direct render, reference container reuse, declaration state, and mixin-output lookup were audited and kept constrained. |
-| 6 | At-rule explicit body runner / fallback list reuse | Removed the pending at-rule eval-frame `WeakMap`; direct body render now passes explicit eval state into the body runner. Source-free static fallback `List` values now reuse the inert list container. Static ruleset bodies, declaration state, selector collapse, and mixin-output lookup were audited; no broader deletion was proven. |
-| 7 | At-rule direct-render hoist/frame side state / queue pass | Direct body-render hoist/frame facts now stay in runtime side state instead of writing onto the render eval-frame. Static ruleset bodies, source-free reference containers, declaration render state, selector collapse, and mixin-output lookup were audited; their remaining wrappers still need stronger fixture or ownership proof before deletion. |
+| 1 | At-rule eval record / scalar declaration text / static var body | Added the first explicit at-rule body eval record around the remaining derived frame. Reference render now text-only finalizes reusable declaration/variable scalar leaves. Mixin slot source-child collection uses the direct source map. Static rulesets source-render invisible variable children without prep/eval. |
+| 2 | Assignment render prep / scalar reference text / slot lookup | Declaration assignment render keeps authored values parented while normalizing `+:`, `&,:`, `&_:`, and `?:` for render. Scalar fallback reference render avoids public result metadata. Mixin output slots now index output-child-to-source lookup. |
+| 3 | Declaration render prep / mixin slot guard / queue audit | Declaration render prep now uses read-only source-backed registration state instead of copying name/value/important parts. Mixin output slot attachment validates source segment order and output child ownership. |
+| 4 | At-rule result state / hoist-order proof / mixin mapping guard | At-rule body eval results now carry evaluated body/output facts explicitly into render/resolve state. Hoist-active static body at-rules are proven to bypass source-direct ruleset render while preserving in-place sibling order. |
+| 5 | Static root-only at-rule source render / mixin source mapping | Nestable at-rule body registration prep now flows through `AtRuleBodyEvalPrepState`; static root-only body at-rules can source-render in static rulesets when hoist/collapse is inactive. |
+| 6 | At-rule frame-state split / selector collapse helper | Root-hoist frame-clearing output now lives on explicit body eval state until consumed; selector collapse family shares `ownCollapsedSourceChild(...)`. |
+| 7 | At-rule explicit body runner / fallback list reuse | Removed the pending at-rule eval-frame `WeakMap`; direct body render now passes explicit eval state into the body runner. Source-free static fallback `List` values now reuse the inert list container. |
 
 ## Metrics Snapshot
 
@@ -297,13 +307,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Assignment render prep / scalar reference text / slot lookup | 19.62ms | 25.52ms | 29.38ms | 15.18ms | 6.98ms | faster sample but high noise on several fixtures; structural wins are narrower assignment/reference/slot surfaces |
-| 2 | Declaration render prep / mixin slot guard / queue audit | 22.01ms | 28.75ms | 34.57ms | 16.28ms | 8.05ms | source-backed declaration render copies removed; mixed/noisy timing, no broad speedup claim |
-| 3 | At-rule result state / hoist-order proof / mixin mapping guard | 21.81ms | 29.61ms | 34.87ms | 18.41ms | 9.65ms | proof/state split pass; noisy sample, no speedup claim |
-| 4 | Static root-only at-rule source render / mixin source mapping | 21.05ms | 26.87ms | 31.45ms | 15.49ms | 7.89ms | one static audit count removed; timing is within adjacent noisy band, no broad speedup claim |
-| 5 | At-rule frame-state split / selector collapse helper | 21.20ms | 28.46ms | 31.84ms | 16.76ms | 7.71ms | structural cleanup; no confirmed speedup |
-| 6 | At-rule explicit body runner / fallback list reuse | 20.32ms | 26.58ms | 30.74ms | 15.67ms | 8.13ms | similar to adjacent samples; structural win is one fewer eval-context surface, not a proven hot-path speedup |
-| 7 | At-rule direct-render hoist/frame side state / queue pass | 20.36ms | 26.69ms | 30.84ms | 14.90ms | 6.98ms | faster sample than prior run but still noisy; direct-render side-state split is narrow and should not be claimed as a broad speedup |
+| 1 | At-rule eval record / scalar declaration text / static var body | 22.44ms | 29.12ms | 31.99ms | 15.73ms | 7.68ms | structural pass; slower than prior sample for several fixtures and still noisy, no speedup claim |
+| 2 | Assignment render prep / scalar reference text / slot lookup | 19.62ms | 25.52ms | 29.38ms | 15.18ms | 6.98ms | faster sample but high noise on several fixtures; structural wins are narrower assignment/reference/slot surfaces |
+| 3 | Declaration render prep / mixin slot guard / queue audit | 22.01ms | 28.75ms | 34.57ms | 16.28ms | 8.05ms | source-backed declaration render copies removed; mixed/noisy timing, no broad speedup claim |
+| 4 | At-rule result state / hoist-order proof / mixin mapping guard | 21.81ms | 29.61ms | 34.87ms | 18.41ms | 9.65ms | proof/state split pass; noisy sample, no speedup claim |
+| 5 | Static root-only at-rule source render / mixin source mapping | 21.05ms | 26.87ms | 31.45ms | 15.49ms | 7.89ms | one static audit count removed; timing is within adjacent noisy band, no broad speedup claim |
+| 6 | At-rule frame-state split / selector collapse helper | 21.20ms | 28.46ms | 31.84ms | 16.76ms | 7.71ms | structural cleanup; no confirmed speedup |
+| 7 | At-rule explicit body runner / fallback list reuse | 20.32ms | 26.58ms | 30.74ms | 15.67ms | 8.13ms | similar to adjacent samples; structural win is one fewer eval-context surface, not a proven hot-path speedup |
 
 Measurement commands:
 
@@ -331,9 +341,10 @@ Measurement commands:
   declaration/runtime-binding scalar references need separate proof before they
   can skip public result metadata.
 - Ampersand append/template output remains generated selector output, not just
-  carrier metadata. Its `BasicSelector` / `SelectorList` construction preserves
-  actual top-level selector text, source parentage, hoist marking, and template
-  validation; reduce only after a placement-state record can prove those facts.
+  carrier metadata. A future placement state must carry the source ampersand,
+  source parent selector, append/template string, validated replacement text or
+  selector-list items, hoist/root placement facts, selector-bit/library facts,
+  and final selector text. It must not grow into a parallel selector AST.
 - Empty rest / `@arguments` binding placeholders preserve current Less
   behavior. Do not delete them unless the behavior is explicitly changed.
 
@@ -351,25 +362,27 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Implement one at-rule body eval-record slice.**
+1. **Move one at-rule body eval responsibility out of the derived frame.**
 
-   - Goal: replace the derived eval frame for the narrowest body-at-rule case
-     whose body registration, frame stack, layer/extend state, and public result
-     ownership can be carried by the documented invocation-local record.
+   - Goal: use `AtRuleBodyEvalRecord` to carry one concrete body eval fact that
+     currently lives on the derived eval frame. Do not delete the frame until
+     body registration, frame stack, layer/extend state, and public result
+     ownership are all accounted for.
    - Required proof: dynamic body render, public `resolve(...)`, source
      prelude/body parentage, thrown/rejected cleanup, and no runtime-map side
      effects.
 
-2. **Extend reference text-only finalization beyond fallback scalars.**
+2. **Extend reference text-only finalization to runtime-binding scalars.**
 
-   - Goal: try declaration or runtime-binding scalar leaves next. Keep
-     containers/rules-like values owned and keep public `resolve(...)`
+   - Goal: declaration/variable lookup scalar leaves now skip public result
+     metadata during render. Try the same only for runtime-binding scalar leaves.
+     Keep containers/rules-like values owned and keep public `resolve(...)`
      unchanged.
    - Required proof: source containers canonical, async live slots restore
      context, scalar leaf parentage unchanged, and rules-like refs still own
      shallow public results.
 
-3. **Reduce declaration assignment render copies only where parent-safe.**
+3. **Shrink declaration assignment temporary expression ownership.**
 
    - Goal: the current assignment render path owns temporary expression inputs
      to preserve source parentage. Reuse source-free scalar inputs directly only
@@ -378,33 +391,34 @@ family can be audited and reduced.
    - Required proof: `+:`, `&,:`, `&_:`, `?:`, custom values, contextual
      `!important`, source value parentage, and render-buffer parity.
 
-4. **Use `sourceByOutput` to remove one mixin-output diagnostic scan.**
+4. **Add one mixin-output slot fact without changing lookup ownership.**
 
-   - Goal: the source lookup map is now direct. Find the next output-child
-     diagnostic/order/visibility helper that still scans segment arrays and
-     switch it to the map without changing lookup search surfaces.
+   - Goal: `sourceByOutput` now supports direct child and source-child-list
+     diagnostics. Add the next slot fact only if it removes a real scan or
+     duplicated visibility/order proof, while lookup still searches owned output
+     children.
    - Required proof: targeted property/mixin lookup, nested mixin scopes, direct
      comments, reference gates, source body order, and repeated placement.
 
-5. **Design the ampersand append/template placement state.**
+5. **Prototype ampersand append/template placement state if tests prove it.**
 
-   - Goal: the audit found append/template output is still real generated
-     selector output. Define the smallest placement record that could carry
-     top-level selector text, validation facts, hoist/root markers, and source
-     parentage without selector wrapper copies.
+   - Goal: the design shape is documented. Build a tiny record only if existing
+     append/template tests prove a selector wrapper copy can be replaced without
+     losing top-level selector text, validation facts, hoist/root markers, or
+     source parentage.
    - Required proof: complex parent ampersands, nested selector lists, append
      versus hoist behavior, template validation, and generated output
      ownership.
 
-6. **Expand source-direct ruleset body render by one proven static shape.**
+6. **Expand source-direct ruleset render only with another static no-effect body shape.**
 
-   - Goal: static declaration/comment/leaf-at-rule bodies already source-render.
-     Add exactly one more static body shape only if it has no registration,
-     extend, hoist, nil-selector, or frame effects.
+   - Goal: static declaration/comment/leaf-at-rule/invisible-var bodies already
+     source-render. Add exactly one more static body shape only if it has no
+     registration, extend, hoist, nil-selector, or frame effects.
    - Required proof: source body parentage, nested output parity, fixture subset,
      and no source-direct render for dynamic/hoisted bodies.
 
-7. **Measure and record after the next materialization reduction.**
+7. **Measure and record after the next materialization or lookup reduction.**
 
    - Goal: use `measure:less:hotpath:record` after the next real deletion or
      lookup reduction so trend history captures the checkpoint, not just a

@@ -206,6 +206,8 @@ describe('Declaration', () => {
     ];
 
     for (const [assign, expected] of cases) {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
       const prior = makePrior(assign);
       const root = rules([prior]);
       await root.prepareRegistration(context);
@@ -217,10 +219,24 @@ describe('Declaration', () => {
         name: any('background-color'),
         value
       }, { assign });
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'blue') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
 
-      expect(await Promise.resolve(sourceDeclaration.render(context))).toBe(expected);
-      expect(value.parent).toBe(sourceDeclaration);
-      expect(sourceDeclaration.registrationPrepared).toBe(false);
+      try {
+        expect(await Promise.resolve(sourceDeclaration.render(context))).toBe(expected);
+        expect(scalarCopies).toBe(0);
+        expect(value.parent).toBe(sourceDeclaration);
+        expect(sourceDeclaration.registrationPrepared).toBe(false);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
     }
   });
 
