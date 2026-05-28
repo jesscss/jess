@@ -147,8 +147,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 304`, `derive: 31`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `377`,
+Latest audit: `new-node: 303`, `derive: 31`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `376`,
 eval-context count `29`, prepare-registration count `1`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
@@ -184,6 +184,10 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   raw `new-node` count rose because this adds explicit state/fallback render
   helpers; the hot-path `derive`, `copy-leaves`, `clone-leaves`,
   `eval-context`, and `resolve-context` counts did not regress.
+- Latest pass: declaration render-only empty merge fallback now reuses the
+  existing empty placeholder node instead of allocating a fresh `Nil`. This
+  drops the raw audit to `new-node: 303` / module-context `376`; no hot
+  eval/resolve/copy/clone count regressed.
 
 ## Immediate Queue
 
@@ -217,16 +221,7 @@ family can be audited and reduced.
    - Required proof: charset/import root output, fragment render, buffer parity,
      registration prep, source parentage, and audit delta.
 
-3. **Delete declaration render-only fallback node creation where safe.**
-
-   - Goal: direct declaration render no longer materializes a prepared
-     declaration surface; now audit the remaining `new Nil()` / `new List()`
-     fallback render-only cases and delete or justify them without weakening
-     native `Nil.render(...)` behavior.
-   - Required proof: nil fallback render, merge assignments, custom
-     properties, important propagation, source parentage, and audit delta.
-
-4. **Design the next honest `MixinOutputSlot` child/state boundary.**
+3. **Design the next honest `MixinOutputSlot` child/state boundary.**
 
    - Goal: direct comments cannot simply be moved into the slot as a loose list:
      their order relative to evaluated declarations/rules matters. Inventory
@@ -237,7 +232,7 @@ family can be audited and reduced.
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-5. **Move at-rule body prelude evaluation into `AtRuleBodyState`.**
+4. **Move at-rule body prelude evaluation into `AtRuleBodyState`.**
 
    - Goal: split the prelude part of body at-rule eval into state first,
      leaving body/root-hoist mutation on the existing output at-rule until the
@@ -245,7 +240,7 @@ family can be audited and reduced.
    - Required proof: dynamic preludes, root-only frame clearing, nested
      media/mixins, layers, extend chaining, source parentage, and buffer render.
 
-6. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
+5. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
 
    - Goal: after prelude state is split, carry hoist/root-frame facts and final
      evaluated body output as state fields so direct render no longer depends
@@ -253,7 +248,7 @@ family can be audited and reduced.
    - Required proof: dynamic body render, root-only at-rules, import/reference
      interactions, nested extend roots, and source parentage.
 
-7. **Narrow body at-rule `resolve(...)` materialization.**
+6. **Narrow body at-rule `resolve(...)` materialization.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -261,7 +256,7 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-8. **Promote one proven ampersand append/template fact into placement state.**
+7. **Promote one proven ampersand append/template fact into placement state.**
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
@@ -272,6 +267,17 @@ family can be audited and reduced.
    - Required proof: appended ampersands, template replacements, selector
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
+
+8. **Replace one declaration render-only list allocation with direct emission.**
+
+   - Goal: the remaining direct declaration render allocation is the
+     multi-item merge fallback `new List(mergedItems)`. Replace it with direct
+     list-value emission only if the printer can preserve Less merge spacing,
+     custom-property rules, and native `Nil.render(...)` behavior without
+     creating a second serializer.
+   - Required proof: merge-list and merge-sequence declarations, empty
+     placeholders, custom properties, important propagation, source parentage,
+     and audit delta.
 
 ## Backlog
 

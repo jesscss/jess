@@ -533,6 +533,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return value;
     }
     const mergedItems: Node[] = [];
+    let emptyPlaceholder: Node | undefined;
     const collect = (child: Node): void => {
       if (isNode(child, N.List)) {
         for (const item of child.value) {
@@ -546,11 +547,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       );
       if (!isEmptyPlaceholder) {
         mergedItems.push(child);
+      } else {
+        emptyPlaceholder ??= child;
       }
     };
     collect(value);
     if (mergedItems.length === 0) {
-      return new Nil();
+      return emptyPlaceholder ?? value;
     }
     if (mergedItems.length === 1) {
       return mergedItems[0]!;
