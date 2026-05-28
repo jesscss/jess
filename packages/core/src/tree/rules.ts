@@ -201,7 +201,9 @@ function renderRulesToPreparedString(
   ) {
     return node.toString(prepared);
   }
-  return node.toTrimmedString(prepared);
+  return node.type === 'Rules'
+    ? node.toRenderString(prepared)
+    : node.toTrimmedString(prepared);
 }
 
 function childRulesOf(node: Node): Rules | undefined {
@@ -522,8 +524,8 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
    * Rules clones still need to preserve function registry state so visitor/plugin
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const newRules = super.clone(deep, cloneFn);
+  override clone(copyChildren?: boolean, cloneFn?: (n: Node) => Node): this {
+    const newRules = super.clone(copyChildren, cloneFn);
     newRules.resetDerivedState(this);
 
     return newRules;
@@ -1779,7 +1781,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     w.add('\n');
     const saved = savePrintState(opts, ['depth']);
     opts.depth = depth + 1;
-    this._emitRulesBody(opts);
+    this._emitSourceRulesBody(opts);
     restorePrintState(opts, saved);
     // ensure closing brace is on its own properly indented line
     w.add('\n');
@@ -1793,7 +1795,15 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return w.getSince(mark);
   }
 
-  private _emitRulesBody(options: PrintOptions) {
+  private _emitSourceRulesBody(options: PrintOptions): void {
+    this._emitRulesBody(options);
+  }
+
+  private _emitRenderRulesBody(options: PrintOptions): void {
+    this._emitRulesBody(options);
+  }
+
+  private _emitRulesBody(options: PrintOptions): void {
     const w = options.writer!;
     const depth = options.depth ?? 0;
     const space = indent(depth);
@@ -2050,7 +2060,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this._emitRulesBody(options);
+    this._emitSourceRulesBody(options);
+    return w.getSince(mark);
+  }
+
+  toRenderString(options?: PrintOptions) {
+    if (!this.visible && !this.fullRender) {
+      return '';
+    }
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this._emitRenderRulesBody(options);
     return w.getSince(mark);
   }
 
@@ -3889,7 +3910,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       // This is the current stand-in for a future output-slot record. It owns
       // only placement/runtime facts: source body identity, mixin-output lookup
       // gates, reference-mode clearing, rule indexes, and scope-frame links.
-      // Do not add cloned body children here unless a focused lookup/render
+      // Do not add owned placement children here unless a focused lookup/render
       // test proves the source body itself must become owned output.
       return createDerivedRulesSurface(sourceRules, { markMixinOutput: true });
     }
@@ -3899,8 +3920,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
     function markMixinOutputSource(output: Rules, sourceRules: Rules): void {
       output.sourceNode = sourceRules.sourceNode ?? sourceRules;
     }
-    function cloneCallableRules(sourceRules: Rules, deep: boolean): Rules {
-      if (!deep) {
+    function createCallableRulesSurface(sourceRules: Rules, copyChildren: boolean): Rules {
+      if (!copyChildren) {
         return sourceRules.derive();
       }
       return sourceRules.derive(sourceRules.value.map(node => copyCallableRulesNode(node)));
@@ -4362,7 +4383,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const candidateRules = getMixinEntryRules(candidate);
         const sourceRules = getRootSourceRules(candidateRules);
         emptyOutputSourceRules ??= sourceRules;
-        let rules = cloneCallableRules(sourceRules, true);
+        let rules = createCallableRulesSurface(sourceRules, true);
         const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
         /** Adopt for lookup, then adopt for sorting */
         callParent.adopt(rules);
@@ -4391,7 +4412,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
         const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
         emptyOutputSourceRules ??= sourceRules;
-        let unlocked = cloneCallableRules(sourceRules, false);
+        let unlocked = createCallableRulesSurface(sourceRules, false);
         const callSiteRules = caller?.rulesParent ?? caller?.sourceRulesParent ?? thisContext.rulesContext;
         const parentFrame = isNode(callSiteRules, N.Rules)
           ? (callSiteRules as Rules).getScopeFrame()
@@ -4423,7 +4444,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let rules = candidateRules;
       emptyOutputSourceRules ??= getRootSourceRules(rules);
       /** Create new rules, and add the candidate rules, to add to scope */
-      rules = cloneCallableRules(rules, !rules.hasFlag(F_STATIC));
+      rules = createCallableRulesSurface(rules, !rules.hasFlag(F_STATIC));
       if (isNode(candidate, N.Mixin)) {
         Reflect.set(rules, 'parent', candidateRules.parent);
       }

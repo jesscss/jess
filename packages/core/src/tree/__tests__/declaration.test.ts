@@ -241,6 +241,28 @@ describe('Declaration', () => {
     expect(value.registrationPrepared).toBe(false);
   });
 
+  it('normalizes assignment registration without deriving a declaration surface', async () => {
+    const node = decl({
+      name: any('src'),
+      value: any('one')
+    }, { assign: AssignmentType.MergeSequence });
+    const originalDerive = Reflect.get(node, 'derive');
+    if (typeof originalDerive !== 'function') {
+      throw new TypeError('Expected declaration derive method');
+    }
+    let deriveCalls = 0;
+    Reflect.set(node, 'derive', function countDerive(this: unknown, ...args: unknown[]) {
+      deriveCalls++;
+      return Reflect.apply(originalDerive, this, args);
+    });
+
+    const prepared = await Promise.resolve(node.prepareRegistration(context));
+
+    expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
+    expect(deriveCalls).toBe(0);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('reuses source-free scalar leaves when deriving interpolated declaration names', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })

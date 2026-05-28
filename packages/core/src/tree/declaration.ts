@@ -39,7 +39,7 @@ export const enum AssignmentType {
   // Subtract = '-:',      // math subtraction, like -= in JS
   // Multiply = '*:',      // math multiplication, like *= in JS
   // Divide = '/:',        // math division, like /= in JS
-  CondAssign = '?:',       // similar to ??= in JS or !default in Sass
+  CondAssign = '?:',       // assign only when no value is already defined
   // CondAdd = '?+:',      // add if defined, otherwise assign
   // CondSubtract = '?-:', // subtract if defined, otherwise assign
   // CondMultiply = '?*:', // multiply if defined, otherwise assign
@@ -105,6 +105,14 @@ type DeclarationValueState<T extends Declaration = Declaration> = {
   value: Node;
   important?: Any<'flag'>;
   changed: boolean;
+};
+
+type DeclarationRegistrationState = {
+  name: DeclarationValue['name'];
+  value: Node;
+  important?: Any<'flag'>;
+  normalizedFromAssign?: AssignmentType;
+  bindOutput?: (node: Declaration) => void;
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
@@ -419,53 +427,64 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override prepareRegistration(context: Context): MaybePromise<this> {
-    /** We need a derived declaration, because registration prep mutates name/value/options. */
-    let node = this.derive();
-    node.registrationPrepared = true;
-    // Index should already be assigned by parent Rules
-    return this._prepareDeclarationRegistration(node, context);
+    return pipe(
+      () => this._prepareDeclarationRegistrationState(context),
+      state => this.materializeRegistrationState(state)
+    );
   }
 
-  private _prepareDeclarationRegistration(node: this, context: Context): MaybePromise<this> {
-    const preparedName = this._prepareDeclarationNameIdentity(node, context);
+  private createRegistrationState(): DeclarationRegistrationState {
+    return {
+      name: this.copyNameForDerived(this.value.name),
+      value: this.copyValueForDerived(this.value.value),
+      important: this.copyImportantForDerived(this.value.important)
+    };
+  }
+
+  private _prepareDeclarationRegistrationState(context: Context): MaybePromise<DeclarationRegistrationState> {
+    const state = this.createRegistrationState();
+    const preparedName = this._prepareDeclarationNameIdentity(state, context);
     if (isThenable(preparedName)) {
-      return preparedName.then(key => this._finishDeclarationRegistrationPrep(node, key, context));
+      return preparedName.then(key => this._finishDeclarationRegistrationPrep(state, key));
     }
-    return this._finishDeclarationRegistrationPrep(node, preparedName, context);
+    return this._finishDeclarationRegistrationPrep(state, preparedName);
   }
 
-  private _prepareDeclarationNameIdentity(node: this, context: Context): MaybePromise<Any<'property'>> {
-    const { name } = node.value;
+  private _prepareDeclarationNameIdentity(
+    state: DeclarationRegistrationState,
+    context: Context
+  ): MaybePromise<Any<'property'>> {
+    const { name } = state;
     if (name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          node.adopt(key);
-          node.value.name = key;
+          state.name = key;
           return key;
         });
       }
-      node.adopt(maybeKey);
-      node.value.name = maybeKey;
+      state.name = maybeKey;
       return maybeKey;
     }
     return name;
   }
 
-  private _finishDeclarationRegistrationPrep(node: this, name: Any<'property'>, _context: Context): MaybePromise<this> {
-    this._normalizeAssignmentValue(node, name);
-    return node;
+  private _finishDeclarationRegistrationPrep(
+    state: DeclarationRegistrationState,
+    name: Any<'property'>
+  ): DeclarationRegistrationState {
+    this._normalizeAssignmentValue(state, name);
+    return state;
   }
 
-  private _normalizeAssignmentValue(node: this, key: Any<'property'>): void {
-    let { value } = node.value;
+  private _normalizeAssignmentValue(state: DeclarationRegistrationState, key: Any<'property'>): void {
+    let { value } = state;
     const setValue = (newValue: Node) => {
-      node.adopt(newValue);
-      node.value.value = newValue;
+      state.value = newValue;
       value = newValue;
     };
     /** Normalize assignment types */
-    let assign = node.options?.assign;
+    let assign = this.options?.assign;
     const rawAssign = assign as string | undefined;
     if (rawAssign === '+,:') {
       assign = AssignmentType.MergeList;
@@ -476,7 +495,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const normalizedAssign = assign;
       /** Reference type */
       let type: 'declaration' | 'variable' =
-        node.type === 'Declaration' ? 'declaration' : 'variable';
+        this.type === 'Declaration' ? 'declaration' : 'variable';
+      let outputNode: Declaration | undefined;
+      state.bindOutput = (node: Declaration) => {
+        outputNode = node;
+      };
       switch (assign) {
         case AssignmentType.MergeList:
         case AssignmentType.MergeSequence: {
@@ -495,7 +518,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             // but plain declarations do not.
             // Exclude only the current node to avoid self-reference.
             filter: n => (
-              n !== node
+              n !== outputNode
               && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
             )
           });
@@ -512,7 +535,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           break;
         }
         case AssignmentType.Add: {
-          if (node.type === 'Declaration') {
+          if (this.type === 'Declaration') {
             // Less property `+:` appends comma-separated items.
             // Use list composition (not generic `Operation +`) so scalar previous values
             // remain distinct list members rather than string-concatenating.
@@ -521,7 +544,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 type,
                 fallbackValue: new Nil(),
                 // Prevent self-referential reads while normalizing this node.
-                filter: n => n !== node
+                filter: n => n !== outputNode
               }),
               value
             ]));
@@ -546,8 +569,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           break;
         }
       }
-      node.options.normalizedFromAssign = normalizedAssign;
+      state.normalizedFromAssign = normalizedAssign;
     }
+  }
+
+  private materializeRegistrationState(state: DeclarationRegistrationState): this {
+    const node = this.withParts({
+      name: state.name,
+      value: state.value,
+      important: state.important
+    });
+    if (state.normalizedFromAssign) {
+      node.options.normalizedFromAssign = state.normalizedFromAssign;
+    }
+    state.bindOutput?.(node);
+    node.registrationPrepared = true;
+    return node;
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {

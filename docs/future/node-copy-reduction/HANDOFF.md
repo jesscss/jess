@@ -147,11 +147,11 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 302`, `derive: 32`, `with-surface: 40`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `374`,
-eval-context count `29`, resolve-context count `0`. The clone-leaves frontier
-is zero; remaining work is reducing owned placement copies/state carriers, not
-hiding deep clone behind another helper.
+Latest audit: `new-node: 302`, `derive: 31`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `375`,
+eval-context count `29`, prepare-registration count `1`, resolve-context count
+`0`. The clone-leaves frontier is zero; remaining work is reducing owned
+placement copies/state carriers, not hiding deep clone behind another helper.
 
 ## Completed Queue Pass
 
@@ -172,6 +172,12 @@ hiding deep clone behind another helper.
   final at-rule body mutation, production `.set()` helper use, and broad
   clone-leaves helpers are already done. Look in git history for details if
   needed; do not re-expand this section with stale status prose.
+- Latest pass: `Rules` now has separate source/render body emission entrypoints,
+  declaration registration normalization runs through
+  `DeclarationRegistrationState` instead of prep-time `.derive()`, and callable
+  mixin output helpers now describe owned placement surfaces rather than clones.
+  Body at-rule and ampersand generated-selector wrappers were re-audited and
+  still need the state splits below before deletion.
 
 ## Immediate Queue
 
@@ -187,71 +193,72 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Split `Rules` body emission into source and render child walkers.**
+1. **Make the render Rules body walker evaluate dynamic children directly.**
 
-   - Goal: keep `_emitRulesBody(...)` as canonical source serialization and
-     add a render-owned child walk that can ask each visible child to
-     eval/render into the active buffer without first creating a compatible
-     output `Rules` tree.
-   - Required proof: declarations, controls, hoists, nested rulesets,
-     root/fragment separators, source parentage, and unchanged `toString()`.
+   - Goal: teach the render body entrypoint to stream declarations, controls,
+     nested rulesets, and at-rules through native child `render(...)` calls
+     without first creating a compatible output `Rules` tree.
+   - Required proof: dynamic declarations, `$if`/`$for`/`$while`, nested
+     rulesets/at-rules, root/fragment separators, source parentage, and
+     unchanged `toString()`.
 
 2. **Delete the direct unevaluated `Rules.render(...)` derive.**
 
-   - Goal: once body serialization is render-aware, remove the remaining
-     direct-render compatibility `this.derive().eval(context)` branch.
-   - Required proof: dynamic declarations, `$if`/`$for`/`$while`, charset/import
-     root output, fragment render, buffer parity, and audit delta.
+   - Goal: once the render body walker owns dynamic child evaluation, remove
+     the remaining direct-render compatibility `this.derive().eval(context)`
+     branch.
+   - Required proof: charset/import root output, fragment render, buffer parity,
+     registration prep, source parentage, and audit delta.
 
-3. **Move declaration registration normalization into state.**
+3. **Stop materializing declarations for direct render after registration state.**
 
-   - Goal: introduce a `DeclarationRegistrationState` for interpolated name
-     identity and assignment normalization, then materialize a declaration only
-     when public registration APIs need an owned node result.
+   - Goal: use `DeclarationRegistrationState` plus value state to render
+     declaration output without first building a prepared declaration node when
+     no public node result is required.
    - Required proof: interpolated names, merge assignments, conditional
-     assignments, important propagation, source parentage, and audit delta.
+     assignments, custom properties, important propagation, source parentage,
+     and audit delta.
 
-4. **Reduce callable mixin-output placement copies.**
+4. **Move direct mixin-output comments into `MixinOutputSlot` emission.**
 
-   - Goal: now that `clone-leaves` is zero, inventory which callable body
-     children still need mutable placement copies and move direct comments or
-     lookup-only facts into `MixinOutputSlot` where tests prove they are
-     carrier-only.
+   - Goal: reduce callable mixin-output placement copies by proving direct
+     comment children can be emitted from slot state instead of owned child
+     copies for each placement.
    - Required proof: repeated mixin output comments, leaky/non-leaky lookup,
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-5. **Render at-rule body state without materializing an output at-rule.**
+5. **Move at-rule body prelude/frame mutation into `AtRuleBodyState`.**
 
-   - Goal: teach at-rule render to serialize from `AtRuleBodyState` fields
-     directly, leaving owned `AtRule` construction only for public resolve.
-   - Required proof: dynamic preludes, root-only at-rules, nested media/mixins,
-     layers, extend chaining, source parentage, and buffer render.
+   - Goal: make body at-rule eval write evaluated prelude, hoist/frame facts,
+     and final body output into state first, leaving the output at-rule as a
+     public-result carrier only.
+   - Required proof: dynamic preludes, root-only frame clearing, nested
+     media/mixins, layers, extend chaining, source parentage, and buffer render.
 
-6. **Delete at-rule body resolve wrapper where state is sufficient.**
+6. **Render `AtRuleBodyState` from fields instead of `state.output`.**
 
-   - Goal: narrow `AtRule.resolve(...)` so body at-rules construct an output
-     node only when the public node result needs owned name/prelude/body fields.
+   - Goal: teach at-rule render to serialize the state fields directly so direct
+     render no longer depends on materialized output at-rule shape.
+   - Required proof: dynamic body render, root-only at-rules, import/reference
+     interactions, nested extend roots, and source parentage.
+
+7. **Narrow body at-rule `resolve(...)` materialization.**
+
+   - Goal: construct an output at-rule in `resolve(...)` only when the public
+     node result needs owned name/prelude/body fields; keep render-only state
+     out of public resolve.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-7. **Narrow ampersand append/template generated selector ownership.**
+8. **Promote one proven ampersand append/template fact into placement state.**
 
-   - Goal: identify which append/template facts are placement facts versus
-     selector semantics, then move only proven placement facts onto
-     `AmpersandAppendPlacementState` without weakening extend matching or
-     generated selector parentage.
+   - Goal: move only a tested carrier-only fact from generated append/template
+     selector wrappers onto `AmpersandAppendPlacementState` without weakening
+     extend matching or generated selector parentage.
    - Required proof: appended ampersands, template replacements, selector
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
-
-8. **Audit mutation-helper families by ownership boundary.**
-
-   - Goal: review `.inherit(...)`, `.set(...)`, and `derive*` by node family
-     and delete a whole proven carrier-only family at once; do not create
-     one-call cleanup tasks unless the inventory proves a semantic blocker.
-   - Required proof: source parentage, output ownership, focused regression
-     tests for the affected node family, and audit delta.
 
 ## Backlog
 
