@@ -160,8 +160,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 305`, `derive: 30`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `376`,
+Latest audit: `new-node: 303`, `derive: 30`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `374`,
 eval-context count `29`, prepare-registration count `2`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
@@ -357,6 +357,20 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   25.37ms, `import-reference.less` median 29.82ms,
   `mixins-guards.less` median 32.04ms, `extend-chaining.less` median 18.89ms,
   and `media.less` median 8.16ms.
+- Latest queue pass made mixin recursion signatures string-backed instead of
+  materializing `List` / rest aggregate nodes only for call-stack comparison.
+  `BindingCell` also supports prepare-only slots, so rest params and
+  `@arguments` do not need placeholder `Sequence` nodes before lookup. Focused
+  recursion, mixin, reference, control, at-rule, and ruleset tests stayed
+  green. The ruleset-as-mixin, reference result, and at-rule ownership audits
+  still found semantic ownership boundaries rather than safe deletion points:
+  selector-parent placement, source value canonicality, public `resolve()`
+  node results, and at-rule render-state restore remain real requirements.
+  Static audit is back to `new-node: 303`, `derive: 30`, `with-surface: 41`,
+  `copy-leaves: 31`, with module-context count `374`. Hot-path timing:
+  `functions.less` median 26.74ms, `import-reference.less` median 32.63ms,
+  `mixins-guards.less` median 32.09ms, `extend-chaining.less` median 19.45ms,
+  and `media.less` median 8.23ms.
 
 ## Immediate Queue
 
@@ -372,70 +386,67 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
+1. **Prototype ordered mixin-output child segments.**
 
-   - Goal: a blind static-body reuse breaks complex parent ampersands and
-     nested array-path ruleset mixin calls. Do not retry raw child reuse; design
-     the smallest ordered placement state that can carry selector-parent context
-     before testing declaration-only or selector-free body reuse.
-   - Required proof: repeated mixin comments, nested rules, variable lookup,
-     reference gates, targeted lookup, source parentage, focused perf rerun,
-     and no clone frontier regression.
+   - Goal: `copyCallableRulesNode(...)` remains semantic because mixin output
+     must preserve ordered comments, declarations, nested rules, lookup gates,
+     and selector-parent placement. Design a small ordered segment record
+     before trying to reuse body children.
+   - Required proof: repeated comments/declarations, nested rules, variable
+     lookup, targeted lookup, reference gates, complex parent ampersands,
+     source parentage, and no clone frontier regression.
 
-2. **Design a narrow `ReferenceResultState` before deleting container copies.**
+2. **Prototype `ReferenceResultState` for render-only metadata.**
 
-   - Goal: focused tests prove current reference container copies protect source
-     values during eval. Do not delete them by pattern; first design a result
-     state that can carry reference metadata without reparenting the canonical
-     value container.
+   - Goal: current reference container copies protect source values during
+     eval/public `resolve()`. Find whether render-only reference metadata can
+     move to side state without changing public node-result ownership.
    - Required proof: variable/declaration/fallback containers stay canonical,
      source-free scalar leaves remain uncopied, rules-like references preserve
      shallow owned surfaces, and no clone/copy frontier regression.
 
-3. **Audit at-rule public-result ownership copies.**
+3. **Split at-rule public-result ownership from render-only state.**
 
    - Goal: `ownName(...)`, `ownNode(...)`, and `ownRules(...)` still protect
-     public `resolve(...)` materialization. Audit them as a family and remove
-     only copies that are render-only or scalar-result carrier copies.
+     public `resolve(...)` materialization. Move only render-only copies to
+     state; keep public node-result copies until a result-state API replaces
+     them.
    - Required proof: static leaf identity, dynamic prelude/body resolve,
      nested at-rule parentage, root-hoist/layer registration, and
      `audit:node-creation`.
 
-4. **Audit at-rule render-local prelude materialization.**
+4. **Consolidate at-rule body runtime-state helpers.**
 
-   - Goal: direct body render now uses runtime state for evaluated preludes, but
-     `setAtRuleBodyEvalPrelude(...)` still writes public `eval()` output into
-     the node value. Confirm whether render/resolve can share a cleaner public
-     materialization boundary without breaking direct `eval()` semantics.
-   - Required proof: async prelude eval, direct render, public `eval()`,
-     public `resolve(...)`, layer-name lookup, and source prelude parentage.
+   - Goal: `AtRuleBodyRuntimeState` is still intentionally small. Tighten the
+     helper API so evaluated prelude/body/output facts are installed/restored
+     through one obvious render/eval boundary, not scattered WeakMap writes.
+   - Required proof: async prelude eval, direct render, public `eval()` /
+     `resolve(...)`, layer-name lookup, hoist/frame restore, and source
+     prelude/body parentage.
 
-5. **Audit at-rule body runtime-state lifetime.**
+5. **Reduce prepare-only binding slot fallback surfaces.**
 
-   - Goal: `AtRuleBodyRuntimeState` is intentionally small. Check that entries
-     are only used for evaluated/rendering at-rule bodies and do not become a
-     general AST-v2 storage bin.
-   - Required proof: inventory of writers/readers, no stale render-local facts
-     after direct render, unchanged collapse output, and updated queue/backlog
-     if another state fact is proposed.
+   - Goal: `BindingCell.value` is now optional for prepare-only live slots.
+     Audit remaining fallback placeholders and replace any that are only there
+     to satisfy old eager lookup assumptions.
+   - Required proof: mixin params, rest, `@arguments`, loop counters,
+     import-configured variables, named-arg caller scope, and reference lookup.
 
-6. **Narrow mixin recursion signature aggregate materialization.**
+6. **Audit dynamic-call state after string-backed recursion signatures.**
 
-   - Goal: rest/default parameter binding is now lazy, but recursion signatures
-     still materialize aggregate nodes to build stable call-stack keys. Audit
-     whether signature keys can use source/value text without owning param
-     containers.
-   - Required proof: recursive mixins, default params, rest params,
-     named/positional args, repeated calls, and no source parentage mutation.
+   - Goal: dynamic calls now have `CallEvalState`, and mixin recursion keys no
+     longer need node containers. Re-check dynamic-name/content/fallback call
+     ownership for copied surfaces that are now only metadata carriers.
+   - Required proof: dynamic JS functions, optional fallback calls,
+     rules-like variable call names, metadata rawArgs ownership, and no
+     runaway allocation.
 
-7. **Audit lazy binding aggregate constructor count.**
+7. **Re-run Less hot-path timing after the next real deletion.**
 
-   - Goal: the static audit rose to `new-node: 305` after lazy rest /
-     `@arguments` builders landed. Decide whether that is acceptable helper
-     surface or whether a non-node aggregate descriptor can keep lookup lazy
-     while lowering the raw constructor count.
-   - Required proof: `audit:node-creation`, focused mixin tests, and no
-     broad state object that acts like a second AST.
+   - Goal: after the next deletion or surface split, compare the same five
+     fixtures against the latest numbers before claiming runtime progress.
+   - Required proof: `pnpm run measure:less:hotpath`, before/after numbers,
+     chosen surface, and why it should affect real stylesheet eval/render.
 
 ## Backlog
 

@@ -66,6 +66,7 @@ import {
   isVisibleRulesEntry
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
+import type { CallSignature } from './util/recursion-helper.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
@@ -444,8 +445,8 @@ export interface RuntimeVarBinding {
 
 type RuntimeVarBindingRecord = {
   name: string;
-  value: Node;
-  prepareValue?: (value: Node) => Node;
+  value?: Node;
+  prepareValue?: (value: Node | undefined) => Node;
   readonly?: boolean;
   sourceNode?: Node;
 };
@@ -4018,6 +4019,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
       value.value.push(...args);
       return value;
     }
+    function getNodeSignature(value: Node): string {
+      return String(value.valueOf());
+    }
+    function getRestSignature(args: Node[], restName: string): string {
+      if (args.length === 0 && !thisContext.treeContext?.file) {
+        return restName;
+      }
+      return args.map(getNodeSignature).join(' ');
+    }
     function createDerivedRulesSurface(
       sourceRules: Rules,
       options?: {
@@ -4089,7 +4099,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
-      signatureNodes: Node[] | undefined;
+      signatureKey: string | undefined;
     }>();
     let emptyOutputSourceRules: Rules | undefined;
     for (let i = 0; i < mixinLength; i++) {
@@ -4111,7 +4121,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           continue;
         }
         const bindingRecordsByIndex = new Map<number, RuntimeVarBindingRecord>();
-        const signatureNodes: Array<Node | undefined> = new Array(originalParams.length);
+        const signatureParts: Array<string | undefined> = new Array(originalParams.length);
         const hasRestParamOriginal = originalParams.value.some(p => p.type === 'Rest');
         const maxPositionalArgs = hasRestParamOriginal ? Number.POSITIVE_INFINITY : originalParams.length;
         let positions = originalParams.length;
@@ -4178,7 +4188,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               readonly: param.options.readonly,
               sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
             });
-            signatureNodes[paramIndex] = argValue;
+            signatureParts[paramIndex] = getNodeSignature(argValue);
           } else if (isNode(param, N.Any) && param.options.role === 'property') {
             bindingRecordsByIndex.set(paramIndex, {
               name: param.valueOf(),
@@ -4186,21 +4196,19 @@ export class MixinCollection extends Node<MixinEntry[]> {
               prepareValue: cloneBoundValue,
               sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
             });
-            signatureNodes[paramIndex] = argValue;
+            signatureParts[paramIndex] = getNodeSignature(argValue);
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
             const rest = nodeArgs.slice(argPos);
-            const signatureValue = createRestBindingValue(rest);
             const restName = param.value ? `${param.value}` : `rest${i}`;
             bindingRecordsByIndex.set(paramIndex, {
               name: restName,
-              value: signatureValue,
               prepareValue: () => createRestBindingValue(rest)
             });
-            signatureNodes[paramIndex] = signatureValue;
+            signatureParts[paramIndex] = getRestSignature(rest, restName);
             /** Check a pattern-matching node */
           } else {
-            signatureNodes[paramIndex] = argValue;
+            signatureParts[paramIndex] = getNodeSignature(argValue);
             if (param.compare(argValue) !== 0) {
               /** This mixin is not a match */
               match = false;
@@ -4228,11 +4236,10 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (match) {
           for (let i = 0; i < positions; i++) {
             const param = originalParams.value[i]!;
-            if (signatureNodes[i]) {
+            if (signatureParts[i] !== undefined) {
               continue;
             }
             if (isNode(param, N.VarDeclaration)) {
-              const signatureValue = cloneBoundValue(param.value.value);
               bindingRecordsByIndex.set(i, {
                 name: param.value.name.valueOf(),
                 value: param.value.value,
@@ -4240,27 +4247,24 @@ export class MixinCollection extends Node<MixinEntry[]> {
                 readonly: param.options.readonly,
                 sourceNode: param
               });
-              signatureNodes[i] = signatureValue;
+              signatureParts[i] = getNodeSignature(param.value.value);
             } else if (param.type === 'Rest') {
               const restName = param.value ? `${param.value}` : `rest${i}`;
-              const signatureValue = thisContext.treeContext?.file
-                ? new Sequence([])
-                : new Any(restName, { role: 'property' });
               bindingRecordsByIndex.set(i, {
                 name: restName,
-                value: signatureValue,
                 prepareValue: thisContext.treeContext?.file
                   ? () => new Sequence([])
-                  : undefined
+                  : () => new Any(restName, { role: 'property' })
               });
-              signatureNodes[i] = signatureValue;
+              signatureParts[i] = thisContext.treeContext?.file ? '' : restName;
             }
           }
+          const signatureValues = signatureParts.filter((part): part is string => part !== undefined);
           resolvedParamBindings.set(mixin, {
             bindings: [...bindingRecordsByIndex.entries()]
               .sort((a, b) => a[0] - b[0])
               .map(([, binding]) => binding),
-            signatureNodes: signatureNodes.filter((node): node is Node => Boolean(node))
+            signatureKey: signatureValues.length > 0 ? signatureValues.join(';') : undefined
           });
           mixinCandidates.push(mixin);
         }
@@ -4487,7 +4491,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const evaluateCandidateOutput = async (
       candidate: CallableEntry,
       rules: Rules,
-      getParamsSignature: () => List<Node> | undefined
+      getParamsSignature: () => CallSignature
     ): Promise<void> => {
       const currentCall = thisContext.callStack.at(-1);
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
@@ -4641,14 +4645,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
       const resolvedBindingInfo = !isNode(candidate, N.Ruleset)
         ? resolvedParamBindings.get(candidate as CallableEntry)
         : undefined;
-      let params: List<Node> | undefined;
-      const getParamsSignature = (): List<Node> | undefined => {
-        const signatureNodes = resolvedBindingInfo?.signatureNodes;
-        if (!signatureNodes) {
-          return undefined;
-        }
-        return (params ??= new List(signatureNodes, { sep: ';' }));
-      };
+      const getParamsSignature = (): CallSignature => resolvedBindingInfo?.signatureKey;
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
       const callSiteRules = thisContext.rulesContext;
       const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
@@ -4700,12 +4697,16 @@ export class MixinCollection extends Node<MixinEntry[]> {
         const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
         if (shouldDefineArguments) {
           liveSlots.set('arguments', {
-            value: new Sequence([]),
             prepareValue: () => {
-              const paramValues = paramBindings.map((binding) => {
+              const paramValues: Node[] = [];
+              for (const binding of paramBindings) {
                 const liveSlot = liveSlots.get(binding.name);
-                return liveSlot ? getBindingCellValue(liveSlot) : binding.value;
-              });
+                if (liveSlot) {
+                  paramValues.push(getBindingCellValue(liveSlot));
+                } else if (binding.value) {
+                  paramValues.push(binding.value);
+                }
+              }
               const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
               const args: Node[] = [];
               for (const argNode of argumentNodes) {

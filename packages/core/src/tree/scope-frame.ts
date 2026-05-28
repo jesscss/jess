@@ -24,8 +24,8 @@ import type { VarDeclaration } from './declaration-var.js';
  * mixin params — no copy, no fork.
  */
 export interface BindingCell {
-  value: Node;
-  prepareValue?: (value: Node) => Node;
+  value?: Node;
+  prepareValue?: (value: Node | undefined) => Node;
   /** Back-pointer to the canonical AST node, used for recursion detection. */
   sourceNode?: Node;
   readonly?: boolean;
@@ -33,6 +33,9 @@ export interface BindingCell {
 
 export function getBindingCellValue(cell: BindingCell): Node {
   if (!cell.prepareValue) {
+    if (!cell.value) {
+      throw new Error('Binding cell has no value');
+    }
     return cell.value;
   }
   const value = cell.prepareValue(cell.value);
