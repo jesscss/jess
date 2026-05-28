@@ -311,6 +311,19 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   runtime AST node. Hot-path timing: `functions.less` median 26.26ms,
   `import-reference.less` median 29.81ms, `mixins-guards.less` median 32.33ms,
   `extend-chaining.less` median 19.26ms, and `media.less` median 7.98ms.
+- Latest queue pass moved body at-rule hoist/frame output facts into side
+  state and then collapsed the parallel at-rule body WeakMaps into one small
+  `AtRuleBodyRuntimeState`. Direct body render now installs evaluated prelude,
+  evaluated body, and hoist/frame facts on render-local side state instead of
+  mutating the source at-rule's `hoistToRoot` / `frames`; public `eval()` still
+  materializes the public result fields where the API expects them. Added a
+  regression proving direct body render leaves source hoist/frame fields
+  untouched. Static audit is now `new-node: 303`, `derive: 30`,
+  `with-surface: 41`, `copy-leaves: 31`; the module-level state carrier count
+  dropped back after map collapse. Hot-path timing: `functions.less` median
+  25.89ms, `import-reference.less` median 30.14ms, `mixins-guards.less` median
+  30.98ms, `extend-chaining.less` median 18.58ms, and `media.less` median
+  7.79ms.
 
 ## Immediate Queue
 
@@ -326,23 +339,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Move body at-rule hoist/frame output facts out of the owned eval frame.**
-
-   - Goal: hoist/root frames are still read from the evaluated at-rule frame
-     after body eval. Carry those facts in `AtRuleBodyEvalContextState` /
-     result state so the frame owns less render output.
-   - Required proof: root-only frame clearing, nested media/mixins, layer/root
-     registration, source parentage, and unchanged collapse output.
-
-2. **Collapse at-rule prelude/body side-state after hoist/frame split.**
-
-   - Goal: once prelude, body, hoist, and frames are all side-state facts,
-     replace parallel WeakMaps with one small at-rule body eval-state record if
-     that reduces lookup plumbing without becoming AST v2.
-   - Required proof: dynamic body render, public `eval()`/`resolve(...)`,
-     layer/root registration, source parentage, and static audit context.
-
-3. **Replace mixin parameter container copies only with a real slot model.**
+1. **Replace mixin parameter container copies only with a real slot model.**
 
    - Goal: recursion signatures are now lazy. Continue through
      `cloneBoundValue(...)` only if a binding slot can preserve repeated-call
@@ -354,7 +351,7 @@ family can be audited and reduced.
      repeated mixin calls, leaky/non-leaky lookup, source parentage, focused
      perf rerun, and frontier scans.
 
-4. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
+2. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
 
    - Goal: a blind static-body reuse breaks complex parent ampersands and
      nested array-path ruleset mixin calls. Do not retry raw child reuse; design
@@ -364,7 +361,7 @@ family can be audited and reduced.
      reference gates, targeted lookup, source parentage, focused perf rerun,
      and no clone frontier regression.
 
-5. **Design a narrow `ReferenceResultState` before deleting container copies.**
+3. **Design a narrow `ReferenceResultState` before deleting container copies.**
 
    - Goal: focused tests prove current reference container copies protect source
      values during eval. Do not delete them by pattern; first design a result
@@ -374,7 +371,7 @@ family can be audited and reduced.
      source-free scalar leaves remain uncopied, rules-like references preserve
      shallow owned surfaces, and no clone/copy frontier regression.
 
-6. **Audit at-rule public-result ownership copies.**
+4. **Audit at-rule public-result ownership copies.**
 
    - Goal: `ownName(...)`, `ownNode(...)`, and `ownRules(...)` still protect
      public `resolve(...)` materialization. Audit them as a family and remove
@@ -383,13 +380,31 @@ family can be audited and reduced.
      nested at-rule parentage, root-hoist/layer registration, and
      `audit:node-creation`.
 
-7. **Compare Less hot-path timing after the next real deletion.**
+5. **Compare Less hot-path timing after the next real deletion.**
 
    - Goal: run `pnpm run measure:less:hotpath` after the next real deletion and
      compare the same five fixtures against the latest numbers above before
      claiming runtime progress.
    - Required proof: command output, before/after numbers, chosen surface, and
      why the change should affect real stylesheet eval/render.
+
+6. **Audit at-rule render-local prelude materialization.**
+
+   - Goal: direct body render now uses runtime state for evaluated preludes, but
+     `setAtRuleBodyEvalPrelude(...)` still writes public `eval()` output into
+     the node value. Confirm whether render/resolve can share a cleaner public
+     materialization boundary without breaking direct `eval()` semantics.
+   - Required proof: async prelude eval, direct render, public `eval()`,
+     public `resolve(...)`, layer-name lookup, and source prelude parentage.
+
+7. **Audit at-rule body runtime-state lifetime.**
+
+   - Goal: `AtRuleBodyRuntimeState` is intentionally small. Check that entries
+     are only used for evaluated/rendering at-rule bodies and do not become a
+     general AST-v2 storage bin.
+   - Required proof: inventory of writers/readers, no stale render-local facts
+     after direct render, unchanged collapse output, and updated queue/backlog
+     if another state fact is proposed.
 
 ## Backlog
 

@@ -492,6 +492,31 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps direct body-render hoist facts off the source at-rule', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ collapseNesting: true });
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media screen {
+        color: red;
+      }
+    `);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    expect(node.evaluated).toBe(false);
+  });
+
   it('carries direct body-render prelude evaluation through body state once', async () => {
     const root = rules([
       vardecl({

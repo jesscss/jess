@@ -339,7 +339,7 @@ function getHoistedParent(
   if (!atRule.isNestable() || atRule.isRootOnly() || !atRule.isHoisted(options)) {
     return undefined;
   }
-  const rulesetFrames = (atRule.frames ?? []).filter(frame => isNode(frame, N.Ruleset));
+  const rulesetFrames = (atRule.getRenderFrames() ?? []).filter(frame => isNode(frame, N.Ruleset));
   if (rulesetFrames.length === 0) {
     return undefined;
   }
