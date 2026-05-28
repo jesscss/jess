@@ -201,6 +201,14 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   source prelude. Declaration render carries contextual `!important` as render
   text instead of materializing a synthetic flag node. The raw audit remains
   `new-node: 302` / module-context `375`.
+- Latest pass: `_emitRenderRulesBody(...)` is now split from source body
+  serialization and walks children through native `render(...)` in render
+  mode. The walker remains sync when children are sync and becomes awaitable
+  only when a child render does. Source `toString()` / `toTrimmedString()`
+  still use the synchronous source serializer. Focused Rules/control/at-rule/
+  ruleset tests cover dynamic declarations, controls, nested containers,
+  fragment behavior, source parentage, and unchanged source serialization. The
+  raw audit remains `new-node: 302` / module-context `375`.
 
 ## Immediate Queue
 
@@ -216,22 +224,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Make the render Rules body walker awaitable/native.**
-
-   - Goal: split `_emitRenderRulesBody(...)` from the synchronous source
-     serializer so render body emission can call native child `render(...)`
-     paths for declarations, controls, nested rulesets, and at-rules without
-     first creating a compatible output `Rules` tree. Preserve synchronous
-     returns whenever child render/eval stays synchronous; do not force
-     Promise allocation just because the walker can await.
-   - Current blocker/proof seam: `OutputWriter.preview(...)` is now
-     available; the next pass should use it where child Rules preview/capture
-     currently depends on synchronous `toTrimmedString(...)` snapshots.
-   - Required proof: dynamic declarations, `$if`/`$for`/`$while`, nested
-     rulesets/at-rules, root/fragment separators, source parentage, and
-     unchanged `toString()`.
-
-2. **Delete the direct unevaluated `Rules.render(...)` derive.**
+1. **Delete the direct unevaluated `Rules.render(...)` derive.**
 
    - Goal: once the render body walker owns dynamic child evaluation, remove
      the remaining direct-render compatibility `this.derive().eval(context)`
@@ -239,7 +232,7 @@ family can be audited and reduced.
    - Required proof: charset/import root output, fragment render, buffer parity,
      registration prep, source parentage, and audit delta.
 
-3. **Design the next honest `MixinOutputSlot` child/state boundary.**
+2. **Design the next honest `MixinOutputSlot` child/state boundary.**
 
    - Goal: direct comments cannot simply be moved into the slot as a loose list:
      their order relative to evaluated declarations/rules matters. Inventory
@@ -250,7 +243,7 @@ family can be audited and reduced.
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-4. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
+3. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
 
    - Goal: after prelude state is split, carry hoist/root-frame facts and final
      evaluated body output as state fields so direct render no longer depends
@@ -258,7 +251,7 @@ family can be audited and reduced.
    - Required proof: dynamic body render, root-only at-rules, import/reference
      interactions, nested extend roots, and source parentage.
 
-5. **Narrow body at-rule `resolve(...)` materialization.**
+4. **Narrow body at-rule `resolve(...)` materialization.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -266,7 +259,7 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-6. **Promote one proven ampersand append/template fact into placement state.**
+5. **Promote one proven ampersand append/template fact into placement state.**
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
@@ -278,7 +271,7 @@ family can be audited and reduced.
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-7. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
+6. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
 
    - Goal: the prelude split currently parks the evaluated prelude on the owned
      output at-rule so `evalNode(...)` can consume it once. Replace that bridge
@@ -287,6 +280,15 @@ family can be audited and reduced.
    - Required proof: direct/buffer dynamic body render, async prelude
      evaluation, root-only frame clearing, nested media/mixins, source
      parentage, and unchanged public `resolve(...)`.
+
+7. **Audit the hot mutation-helper family by surface, not call site.**
+
+   - Goal: choose one complete helper family surface (`inherit(...)`,
+     `derive*`, shallow wrappers, or reusable-leaf copies) in the current top
+     hotspot files and either remove the carrier-only cases or document the
+     ownership boundary that keeps them semantic.
+   - Required proof: focused parentage/visibility tests for the chosen surface,
+     `audit:node-creation` before/after, and no clone/copy frontier regression.
 
 ## Backlog
 

@@ -338,6 +338,26 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('awaits native render children while preserving the source rules surface', async () => {
+    const child = decl({ name: 'color', value: any('red') });
+    const node = rules([child]);
+    context.root = rules([]);
+    const originalRender = child.render;
+    child.render = function countAsyncChildRender(
+      this: typeof child,
+      childContext: Context,
+      bufferOrOptions?: Parameters<typeof originalRender>[1],
+      options?: Parameters<typeof originalRender>[2]
+    ): ReturnType<typeof originalRender> {
+      return Promise.resolve().then(() => originalRender.call(this, childContext, bufferOrOptions, options));
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(child.evaluated).toBe(false);
+  });
+
   it('writes root-owned charset and imports into render buffers', async () => {
     const root = rules([]);
     const buffer = createRenderBuffer('segmented');

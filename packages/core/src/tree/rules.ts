@@ -123,27 +123,32 @@ function renderRulesToString(
   context: Context,
   options: PrintOptions | undefined,
   sourceWasRoot: boolean
-): string {
+): MaybePromise<string> {
   const rendered = renderRulesToPreparedString(
     source,
     node,
     context,
     prepareRenderPrintState(context, options)
   );
+  const finish = (out: string): string => {
   // Root Rules serialize as a CSS document and own the final newline. Nested
   // direct string render returns a body fragment, so trim only that single
   // trailing rule separator; buffer render preserves the full fragment text.
-  if (sourceWasRoot || !rendered.endsWith('\n')) {
-    return rendered;
-  }
-  return rendered.slice(0, -1);
+    if (sourceWasRoot || !out.endsWith('\n')) {
+      return out;
+    }
+    return out.slice(0, -1);
+  };
+  return isThenable(rendered)
+    ? rendered.then(finish)
+    : finish(rendered);
 }
 
 function renderRulesStateToString(
   state: RulesRenderState,
   context: Context,
   options: PrintOptions | undefined
-): string {
+): MaybePromise<string> {
   return renderRulesToString(state.source, state.output, context, options, state.sourceWasRoot);
 }
 
@@ -170,14 +175,14 @@ function writeRulesRenderOutput(
   node: Node,
   context: Context,
   options: PrintOptions | undefined
-): string {
+): MaybePromise<string> {
   const prepared = prepareBufferPrintState(context, options);
-  return writeRenderText(
-    buffer,
-    node.type === 'Rules'
-      ? node.toString(prepared)
-      : renderRulesToPreparedString(source, node, context, prepared)
-  );
+  const text = node.type === 'Rules'
+    ? node.toString(prepared)
+    : renderRulesToPreparedString(source, node, context, prepared);
+  return isThenable(text)
+    ? text.then(resolved => writeRenderText(buffer, resolved))
+    : writeRenderText(buffer, text);
 }
 
 function writeRulesStateRenderOutput(
@@ -185,7 +190,7 @@ function writeRulesStateRenderOutput(
   state: RulesRenderState,
   context: Context,
   options: PrintOptions | undefined
-): string {
+): MaybePromise<string> {
   return writeRulesRenderOutput(buffer, state.source, state.output, context, options);
 }
 
@@ -194,7 +199,7 @@ function renderRulesToPreparedString(
   node: Node,
   context: Context,
   prepared: FinalPrintOptions
-): string {
+): MaybePromise<string> {
   if (
     node.type === 'Rules'
     && (node === context.root || source === context.root)
@@ -1702,7 +1707,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       }
     }
 
-    this._emitRulesBody(options);
+    this._emitRulesBody(options, 'source');
     if (depth === 0) {
       const eofTrivia = consumeEofTrivia(this, options);
       if (eofTrivia.trim()) {
@@ -1796,15 +1801,18 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
   }
 
   private _emitSourceRulesBody(options: PrintOptions): void {
-    this._emitRulesBody(options);
+    this._emitRulesBody(options, 'source');
   }
 
-  private _emitRenderRulesBody(options: PrintOptions): void {
-    this._emitRulesBody(options);
+  private _emitRenderRulesBody(options: PrintOptions): MaybePromise<void> {
+    return this._emitRulesBody(options, 'render');
   }
 
-  private _emitRulesBody(options: PrintOptions): void {
+  private _emitRulesBody(options: PrintOptions, mode: 'source'): void;
+  private _emitRulesBody(options: PrintOptions, mode: 'render'): MaybePromise<void>;
+  private _emitRulesBody(options: PrintOptions, mode: 'source' | 'render'): MaybePromise<void> {
     const w = options.writer!;
+    const context = options.context;
     const depth = options.depth ?? 0;
     const space = indent(depth);
     const { value } = this;
@@ -1869,7 +1877,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
     };
-    const renderText = (fn: () => void): string => {
+    const renderText = (fn: () => MaybePromise<string | void>): MaybePromise<string> => {
       return w.preview(fn);
     };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
@@ -1913,25 +1921,25 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     ) {
       options.referenceMode = true;
     }
-    for (const n of value) {
+    const emitNode = (n: Node): MaybePromise<void> => {
       const isEvaluatedDefinitionNode = this.evaluated && isNode(n, N.Mixin | N.VarDeclaration);
       if (
         isEvaluatedDefinitionNode
         && !hasPrintableTriviaAt(n, 'before', options)
         && !hasPrintableTriviaAt(n, 'after', options)
       ) {
-        continue;
+        return;
       }
       if (!n.visible && !n.fullRender) {
         emitLeadingBlockCommentForNode(n);
-        continue;
+        return;
       }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
         emitLeadingBlockCommentForNode(n);
       }
       if (referenceMode && !referenceRenderEnabled && !isContainer) {
-        continue;
+        return;
       }
       const isChildRules = isNode(n, N.Rules);
       const isRulesetOrAtRule = isBlockContainer(n);
@@ -1952,7 +1960,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
           && !hasPrintableTriviaAt(n, 'before', options)
           && !hasPrintableTriviaAt(n, 'after', options)
         ) {
-          continue;
+          return;
         }
         const ownReferenceMode = n.options.referenceMode === true;
         const childReferenceMode = referenceMode || ownReferenceMode;
@@ -1970,37 +1978,51 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.depth = depth;
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const previewOut = renderText(() => n.toTrimmedString(getPrintOptions(options)));
-        restoreSetState(options.emittedTrivia, previewEmittedTrivia);
-        options.inFrames!.length = previewInFramesLength;
-        options.treeFrames!.length = previewTreeFramesLength;
-        options.lastRenderedFrames!.length = previewLastRenderedFramesLength;
-        options.frameHeaders!.length = previewFrameHeadersLength;
-        if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
-          options.composedSelectorStack.length = previewComposedSelectorStackLength;
-        }
-        restorePrintState(options, previewSaved);
-        let childRule: string | undefined;
-        if (previewOut) {
-          closeRenderedFramesToBaseline();
-          const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-          const childEmittedTrivia = options.emittedTrivia;
-          options.depth = depth;
-          options.referenceMode = childReferenceMode;
-          options.referenceRenderEnabled = childReferenceRenderEnabled;
-          childRule = w.preview(() => n.toTrimmedString(options), true);
-          options.emittedTrivia = childEmittedTrivia;
-          restorePrintState(options, childSaved);
-        }
-        if (!childRule && (n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules')) {
-          continue;
-        }
-        if (!childRule) {
-          continue;
-        }
-        const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
-        emitCaptured(childRule, n, prefix);
-        continue;
+        const previewOut = renderText(() => (
+          mode === 'render' && context
+            ? n.render(context, getPrintOptions(options))
+            : n.toTrimmedString(getPrintOptions(options))
+        ));
+        return pipe(
+          () => previewOut,
+          (resolvedPreviewOut) => {
+            restoreSetState(options.emittedTrivia, previewEmittedTrivia);
+            options.inFrames!.length = previewInFramesLength;
+            options.treeFrames!.length = previewTreeFramesLength;
+            options.lastRenderedFrames!.length = previewLastRenderedFramesLength;
+            options.frameHeaders!.length = previewFrameHeadersLength;
+            if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
+              options.composedSelectorStack.length = previewComposedSelectorStackLength;
+            }
+            restorePrintState(options, previewSaved);
+            if (!resolvedPreviewOut) {
+              return;
+            }
+            closeRenderedFramesToBaseline();
+            const childSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+            const childEmittedTrivia = options.emittedTrivia;
+            options.depth = depth;
+            options.referenceMode = childReferenceMode;
+            options.referenceRenderEnabled = childReferenceRenderEnabled;
+            const childRule = w.preview(() => (
+              mode === 'render' && context
+                ? n.render(context, options)
+                : n.toTrimmedString(options)
+            ), true);
+            return pipe(
+              () => childRule,
+              (resolvedChildRule) => {
+                options.emittedTrivia = childEmittedTrivia;
+                restorePrintState(options, childSaved);
+                if (!resolvedChildRule) {
+                  return;
+                }
+                const prefix = !isRulesetOrAtRule && depth !== 0 ? space : undefined;
+                emitCaptured(resolvedChildRule, n, prefix);
+              }
+            );
+          }
+        );
       }
       if (isRulesetOrAtRule) {
         emitLeadingBlockCommentForNode(n);
@@ -2010,16 +2032,22 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         options.depth = depth;
         options.referenceMode = referenceMode;
         options.referenceRenderEnabled = referenceRenderEnabled;
-        const rule = serializeRulesContainerInline(n, getPrintOptions(options));
-        if (!w.hasContentSince(mark) && rule) {
-          w.add(rule, n);
-        }
-        restorePrintState(options, containerSaved);
-        if (!w.hasContentSince(mark)) {
-          continue;
-        }
-        markEmitted(n);
-        continue;
+        const rule = mode === 'render' && context
+          ? n.render(context, getPrintOptions(options))
+          : serializeRulesContainerInline(n, getPrintOptions(options));
+        return pipe(
+          () => rule,
+          (resolvedRule) => {
+            if (!w.hasContentSince(mark) && resolvedRule) {
+              w.add(resolvedRule, n);
+            }
+            restorePrintState(options, containerSaved);
+            if (!w.hasContentSince(mark)) {
+              return;
+            }
+            markEmitted(n);
+          }
+        );
       }
       closeRenderedFramesToBaseline();
       const leafSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
@@ -2033,24 +2061,43 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
       options.referenceMode = referenceMode;
       options.referenceRenderEnabled = referenceRenderEnabled;
       w.markSource(n);
-      n.toTrimmedString(options);
-      restorePrintState(options, leafSaved);
-      if (!w.hasContentSince(leafMark)) {
-        w.restore(leafMark);
-        continue;
+      const output = mode === 'render' && context
+        ? n.render(context, options)
+        : n.toTrimmedString(options);
+      return pipe(
+        () => output,
+        () => {
+          restorePrintState(options, leafSaved);
+          if (!w.hasContentSince(leafMark)) {
+            w.restore(leafMark);
+            return;
+          }
+          if (n.requiredSemi && n.options.semi !== false) {
+            w.add(';', n);
+          }
+          markEmitted(n);
+        }
+      );
+    };
+    const finish = (): void => {
+      while (lastRenderedFrames.length > renderedFrameBaseline) {
+        const depthToClose = lastRenderedFrames.length - 1;
+        w.add(indent(depthToClose) + '}\n');
+        lastRenderedFrames.pop();
+        frameHeaders.pop();
       }
-      if (n.requiredSemi && n.options.semi !== false) {
-        w.add(';', n);
-      }
-      markEmitted(n);
+      restorePrintState(options, saved);
+    };
+    if (mode === 'render') {
+      const result = serialForEach(value, emitNode);
+      return isThenable(result)
+        ? result.then(finish)
+        : finish();
     }
-    while (lastRenderedFrames.length > renderedFrameBaseline) {
-      const depthToClose = lastRenderedFrames.length - 1;
-      w.add(indent(depthToClose) + '}\n');
-      lastRenderedFrames.pop();
-      frameHeaders.pop();
+    for (const n of value) {
+      void emitNode(n);
     }
-    restorePrintState(options, saved);
+    finish();
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -2064,15 +2111,17 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     return w.getSince(mark);
   }
 
-  toRenderString(options?: PrintOptions) {
+  toRenderString(options?: PrintOptions): MaybePromise<string> {
     if (!this.visible && !this.fullRender) {
       return '';
     }
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    this._emitRenderRulesBody(options);
-    return w.getSince(mark);
+    const rendered = this._emitRenderRulesBody(options);
+    return isThenable(rendered)
+      ? rendered.then(() => w.getSince(mark))
+      : w.getSince(mark);
   }
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
