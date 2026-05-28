@@ -31,6 +31,48 @@ function emitListItem<T extends Node>(
   }
 }
 
+export function renderListValueSyntax<T extends Node>(
+  value: T[],
+  options: PrintOptions,
+  sep: ListOptions['sep'] = ','
+): string {
+  const printOptions = getPrintOptions(options);
+  const w = printOptions.writer;
+  let length = value.length;
+  const mark = w.mark();
+  if (value.length === 0) {
+    return '';
+  }
+  let item = value[0]!;
+  emitListItem(item, printOptions);
+  for (let i = 1; i < length; i++) {
+    const prev = item;
+    item = value[i]!;
+    emitCommentTriviaBetweenNodes(prev, item, printOptions);
+    const leadingTrivia = printOptions.trivia
+      ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
+      : undefined;
+    const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+      ? leadingTrivia[0].image
+      : '';
+    const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+    if (sep === '/') {
+      w.add(preserveLeadingWhitespace ? ' /' : ' / ');
+    } else {
+      w.add(preserveLeadingWhitespace ? sep : `${sep} `);
+    }
+    if (leadingTrivia) {
+      emitTriviaTokens(
+        leadingTrivia,
+        printOptions,
+        { skipLeadingWhitespace: !preserveLeadingWhitespace }
+      );
+    }
+    emitListItem(item, printOptions, true);
+  }
+  return w.getSince(mark);
+}
+
 export type ListOptions = {
   /**
    * Lists can be separated by comma, semi-colon,
@@ -70,42 +112,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private renderListSyntax(value = this.value, options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    const sep = this._options?.sep ?? ',';
-    let length = value.length;
-    const mark = w.mark();
-    if (value.length === 0) {
-      return '';
-    }
-    let item = value[0]!;
-    emitListItem(item, printOptions);
-    for (let i = 1; i < length; i++) {
-      const prev = item;
-      item = value[i]!;
-      emitCommentTriviaBetweenNodes(prev, item, printOptions);
-      const leadingTrivia = printOptions.trivia
-        ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
-        : undefined;
-      const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-        ? leadingTrivia[0].image
-        : '';
-      const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
-      if (sep === '/') {
-        w.add(preserveLeadingWhitespace ? ' /' : ' / ');
-      } else {
-        w.add(preserveLeadingWhitespace ? sep : `${sep} `);
-      }
-      if (leadingTrivia) {
-        emitTriviaTokens(
-          leadingTrivia,
-          printOptions,
-          { skipLeadingWhitespace: !preserveLeadingWhitespace }
-        );
-      }
-      emitListItem(item, printOptions, true);
-    }
-    return w.getSince(mark);
+    return renderListValueSyntax(value, getPrintOptions(options), this._options?.sep ?? ',');
   }
 
   private resolveItems(context: Context): MaybePromise<Node[]> {

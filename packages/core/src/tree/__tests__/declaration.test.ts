@@ -638,6 +638,52 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders merged declaration lists without a temporary list surface', () => {
+    const node = decl({
+      name: any('background-color'),
+      value: new List([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.Add });
+    const originalToTrimmedString = List.prototype.toTrimmedString;
+    let listPrinterCalls = 0;
+    List.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: List,
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      listPrinterCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+
+    try {
+      expect(node.render(context)).toBe('background-color: red, foo');
+      expect(listPrinterCalls).toBe(0);
+    } finally {
+      List.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {
+    const node = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background-color'),
+        value: any('foo')
+      }, { assign: '+:' })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      background-color: red, foo;
+    `);
+  });
+
   it('resolves merged declaration lookups without duplicating or keeping empty placeholders', async () => {
     const node = rules([
       decl({

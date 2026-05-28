@@ -147,8 +147,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 303`, `derive: 31`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `376`,
+Latest audit: `new-node: 302`, `derive: 31`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `375`,
 eval-context count `29`, prepare-registration count `1`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
@@ -188,6 +188,11 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   existing empty placeholder node instead of allocating a fresh `Nil`. This
   drops the raw audit to `new-node: 303` / module-context `376`; no hot
   eval/resolve/copy/clone count regressed.
+- Latest pass: declaration render-only multi-item merge fallback now emits
+  list syntax from the existing merged items instead of constructing a
+  temporary `List`. `List` owns the shared syntax helper, so this is not a
+  second list serializer. The raw audit is now `new-node: 302` /
+  module-context `375`.
 
 ## Immediate Queue
 
@@ -268,16 +273,15 @@ family can be audited and reduced.
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-8. **Replace one declaration render-only list allocation with direct emission.**
+8. **Audit declaration render-only `important` flag allocation.**
 
-   - Goal: the remaining direct declaration render allocation is the
-     multi-item merge fallback `new List(mergedItems)`. Replace it with direct
-     list-value emission only if the printer can preserve Less merge spacing,
-     custom-property rules, and native `Nil.render(...)` behavior without
-     creating a second serializer.
-   - Required proof: merge-list and merge-sequence declarations, empty
-     placeholders, custom properties, important propagation, source parentage,
-     and audit delta.
+   - Goal: the remaining render-only declaration allocation is synthesized
+     `!important` when a surrounding important source is active. Keep it only if
+     a real flag node is needed for trivia/comment emission; otherwise carry
+     the important text as render state.
+   - Required proof: mixins-important Less fixture subset, direct/buffer
+     declaration render, comment trivia before semicolon, source parentage, and
+     audit delta.
 
 ## Backlog
 

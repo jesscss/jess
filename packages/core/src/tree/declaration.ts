@@ -10,7 +10,7 @@ import type { Context, TreeContext } from '../context.js';
 import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
-import { List } from './list.js';
+import { List, renderListValueSyntax } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
@@ -104,6 +104,7 @@ type DeclarationRenderState = {
   source: Declaration;
   name: DeclarationValue['name'];
   value: Node;
+  listValue?: Node[];
   important?: Any<'flag'>;
   output?: Node;
   nil: boolean;
@@ -304,7 +305,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declValueTrimmedString(this.value, options);
   }
 
-  private declValueTrimmedString(valueParts: DeclarationValue, options?: PrintOptions) {
+  private declValueTrimmedString(valueParts: DeclarationValue, options?: PrintOptions, listValue?: Node[]) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const { name, value, important } = valueParts;
@@ -340,7 +341,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       restorePrintState(options, saved);
     } else {
       const valueMark = w.mark();
-      value.toTrimmedString(options);
+      if (listValue) {
+        renderListValueSyntax(listValue, options);
+      } else {
+        value.toTrimmedString(options);
+      }
       w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important) {
@@ -430,7 +435,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       name: state.name,
       value: state.value,
       important: state.important
-    }, prepared);
+    }, prepared, state.listValue);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -454,7 +459,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     context: Context,
     state: DeclarationRegistrationState
   ): MaybePromise<DeclarationRenderState> {
-    if (this.hasFlag(F_STATIC)) {
+    if (this.hasFlag(F_STATIC) && !state.normalizedFromAssign) {
       return {
         source: this,
         name: state.name,
@@ -499,7 +504,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         };
       }
       let value = newValue instanceof Node ? newValue : state.value;
-      value = this.normalizeMergedLeadingPlaceholderForRender(state, value);
+      const normalized = this.normalizeMergedLeadingPlaceholderForRender(state, value);
+      value = normalized.value;
       let important = state.important;
       if (context.hasImportantSource && !important) {
         important = any('!important', { role: 'flag' });
@@ -511,6 +517,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         source: this,
         name: state.name,
         value,
+        listValue: normalized.listValue,
         important,
         nil: false
       };
@@ -524,13 +531,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private normalizeMergedLeadingPlaceholderForRender(
     state: DeclarationRegistrationState,
     value: Node
-  ): Node {
+  ): { value: Node; listValue?: Node[] } {
     const normalizedAssign = state.normalizedFromAssign;
     const isListMergedAssign =
       normalizedAssign === AssignmentType.Add
       || normalizedAssign === AssignmentType.MergeList;
     if (!isListMergedAssign || !isNode(value, N.List)) {
-      return value;
+      return { value };
     }
     const mergedItems: Node[] = [];
     let emptyPlaceholder: Node | undefined;
@@ -553,12 +560,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     };
     collect(value);
     if (mergedItems.length === 0) {
-      return emptyPlaceholder ?? value;
+      return { value: emptyPlaceholder ?? value };
     }
     if (mergedItems.length === 1) {
-      return mergedItems[0]!;
+      return { value: mergedItems[0]! };
     }
-    return new List(mergedItems);
+    return { value, listValue: mergedItems };
   }
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
@@ -649,6 +656,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       assign = AssignmentType.MergeList;
     } else if (rawAssign === '+_:') {
       assign = AssignmentType.MergeSequence;
+    }
+    if (!assign && this.options?.normalizedFromAssign) {
+      state.normalizedFromAssign = this.options.normalizedFromAssign;
+      return;
     }
     if (assign) {
       const normalizedAssign = assign;
