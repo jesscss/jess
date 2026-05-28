@@ -193,12 +193,14 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   temporary `List`. `List` owns the shared syntax helper, so this is not a
   second list serializer. The raw audit is now `new-node: 302` /
   module-context `375`.
-- Latest pass: `OutputWriter.previewAsync(...)` now exists as the required
-  primitive for an async/native Rules render walker. Direct body at-rule render
-  evaluates prelude into body state before evaluating the output surface, so it
-  does not re-evaluate or mutate the source prelude. Declaration render carries
-  contextual `!important` as render text instead of materializing a synthetic
-  flag node. The raw audit remains `new-node: 302` / module-context `375`.
+- Latest pass: `OutputWriter.previewMaybe(...)` now exists as the required
+  awaitable primitive for a native Rules render walker. It preserves sync
+  return paths and only returns a Promise when the callback does. Direct body
+  at-rule render evaluates prelude into body state before evaluating the output
+  surface, so it does not re-evaluate or mutate the source prelude. Declaration
+  render carries contextual `!important` as render text instead of
+  materializing a synthetic flag node. The raw audit remains `new-node: 302` /
+  module-context `375`.
 
 ## Immediate Queue
 
@@ -214,13 +216,15 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Make the render Rules body walker async/native.**
+1. **Make the render Rules body walker awaitable/native.**
 
    - Goal: split `_emitRenderRulesBody(...)` from the synchronous source
-     serializer so render body emission can await native child `render(...)`
-     calls for declarations, controls, nested rulesets, and at-rules without
-     first creating a compatible output `Rules` tree.
-   - Current blocker/proof seam: `OutputWriter.previewAsync(...)` is now
+     serializer so render body emission can call native child `render(...)`
+     paths for declarations, controls, nested rulesets, and at-rules without
+     first creating a compatible output `Rules` tree. Preserve synchronous
+     returns whenever child render/eval stays synchronous; do not force
+     Promise allocation just because the walker can await.
+   - Current blocker/proof seam: `OutputWriter.previewMaybe(...)` is now
      available; the next pass should use it where child Rules preview/capture
      currently depends on synchronous `toTrimmedString(...)` snapshots.
    - Required proof: dynamic declarations, `$if`/`$for`/`$while`, nested

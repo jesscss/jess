@@ -4,6 +4,7 @@ import type { TriviaMap } from '../../types/index.js';
 import type { AtRule } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -94,7 +95,7 @@ export interface OutputWriter {
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
   preview(fn: () => string | void, preserveSegments?: boolean): string;
-  previewAsync(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  previewMaybe(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string>;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -455,17 +456,22 @@ export class OutputWriter implements OutputWriter {
     return text;
   }
 
-  async previewAsync(fn: () => Promise<string | void>, preserveSegments = false): Promise<string> {
+  previewMaybe(fn: () => MaybePromise<string | void>, preserveSegments = false): MaybePromise<string> {
     const mark = this.mark();
     const segmentsBefore = this._segments.length;
-    const out = await fn();
-    const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
-    const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
-    this.restore(mark);
-    if (preserveSegments) {
-      this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
-    }
-    return text;
+    const finish = (out: string | void): string => {
+      const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
+      const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
+      this.restore(mark);
+      if (preserveSegments) {
+        this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+      }
+      return text;
+    };
+    const out = fn();
+    return isThenable(out)
+      ? out.then(finish)
+      : finish(out);
   }
 
   endsWith(suffix: string): boolean {

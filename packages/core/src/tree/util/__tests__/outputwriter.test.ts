@@ -145,11 +145,11 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('');
     });
 
-    it('previews async content without committing it', async () => {
+    it('previews maybe-async content without committing it', async () => {
       const w = new OutputWriter();
 
       w.add('start');
-      const previewed = await w.previewAsync(async () => {
+      const previewed = await w.previewMaybe(async () => {
         await Promise.resolve();
         w.add('middle');
       });
@@ -159,10 +159,23 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('startend');
     });
 
-    it('uses async callback return values when the callback writes elsewhere', async () => {
+    it('keeps sync preview paths synchronous', () => {
       const w = new OutputWriter();
 
-      const previewed = await w.previewAsync(async () => 'returned');
+      w.add('start');
+      const previewed = w.previewMaybe(() => {
+        w.add('middle');
+      });
+      w.add('end');
+
+      expect(previewed).toBe('middle');
+      expect(w.toString()).toBe('startend');
+    });
+
+    it('uses maybe-async callback return values when the callback writes elsewhere', async () => {
+      const w = new OutputWriter();
+
+      const previewed = await w.previewMaybe(async () => 'returned');
 
       expect(previewed).toBe('returned');
       expect(w.toString()).toBe('');
