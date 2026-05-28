@@ -175,7 +175,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   override allowRoot = true;
 
   frames: (Ruleset | AtRule)[] | undefined;
-  private evaluatedPreludeForBody: Node | undefined;
 
   protected _valueOf: string | undefined;
 
@@ -279,9 +278,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           ...this.value,
           prelude: evaluatedPrelude ?? this.value.prelude
         });
-        if (evaluatedPrelude) {
-          output.evaluatedPreludeForBody = evaluatedPrelude;
-        }
         const evaluated = output.eval(context);
         const toState = (node: AtRule | Nil): AtRuleBodyState => {
           if (node instanceof Nil) {
@@ -808,11 +804,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         // Evaluate prelude in the correct scope (mixin params, vars, etc.).
         let { prelude } = node.value;
         if (prelude) {
-          const evaluatedPrelude = node.evaluatedPreludeForBody;
-          if (evaluatedPrelude) {
-            node.value.prelude = evaluatedPrelude;
-            return undefined;
-          }
           // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
           // This matches Less behavior for mixin parameters referenced from nested @media preludes.
           const out = this.evalPreludeValue(prelude, context);

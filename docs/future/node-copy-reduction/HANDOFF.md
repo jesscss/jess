@@ -68,7 +68,9 @@ truth, the immediate pop queue, and verification.
   instead of assigning `node.value.rules = finalRules`. Direct render now
   serializes body at-rule output from `AtRuleBodyState` fields rather than the
   materialized output at-rule shape, then restores source prelude/body/hoist
-  state immediately after printing.
+  state immediately after printing. The old `evaluatedPreludeForBody` bridge
+  is gone; body render relies on the evaluated prelude already carried in
+  `AtRuleBodyState` / derived body-eval input.
 - Dynamic call fallback render/resolve now evaluates through `CallEvalState`
   without constructing a copied fallback `Call` surface. The state carries
   name, args, content, caller, mark-important, and rules-like variable lookup
@@ -99,6 +101,12 @@ truth, the immediate pop queue, and verification.
   node visibility, optional candidates, and targeted mixin-output access as
   distinct helper concepts; do not collapse them back into one coalesced
   visibility check.
+- The next `MixinOutputSlot` boundary was audited. Direct comment children
+  cannot move into the slot as a loose side list because mixin output must
+  preserve source order among comments, declarations, nested rules, and lookup
+  visibility gates. The current owned output child surface is still the
+  smallest honest model until a slot can carry ordered child segments plus rule
+  index, scope frame, reference gates, and targeted lookup behavior.
 - The broad proof queue has been processed. Current conclusions:
   at-rule bodies/root-hoist now carry final body output as side-state, but the
   full surface still needs prelude/body/root-hoist responsibilities split;
@@ -231,6 +239,33 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   slots before emitting the body. Focused rules/control/at-rule/ruleset/
   reference/render-buffer tests are green. Latest audit: `new-node: 303`,
   `derive: 30`, `with-surface: 41`, `copy-leaves: 31`.
+- Latest pass: `$while` render no longer prepares the whole iteration surface
+  for ordinary static-name variable mutations. It updates the loop
+  `ScopeFrame` live slots directly before body render, then streams the body
+  through `Rules.render(...)`. The focused control suite is green and the
+  render-buffer frontier remains at two native control iteration render sites.
+- Latest measurement pass used built JS artifacts after `@jesscss/plugin-js`
+  was rebuilt, with 10 warm iterations per fixture:
+  `functions.less` median 25.46ms, `import-reference.less` median 30.19ms,
+  `mixins-guards.less` median 31.00ms, `extend-chaining.less` median 20.12ms,
+  and `media.less` median 8.54ms. The next broad deletion should prefer mixin
+  guard/output or import-reference behavior over media formatting unless a
+  regression points elsewhere.
+- Latest queue pass added `pnpm run measure:less:hotpath` so real Less fixture
+  timing is repeatable. Its first checked run reported `functions.less`
+  median 25.72ms, `import-reference.less` median 30.76ms,
+  `mixins-guards.less` median 31.61ms, `extend-chaining.less` median 19.79ms,
+  and `media.less` median 8.90ms.
+- Latest queue pass narrowed `$while` mutation prep again: ordinary dynamic
+  variable names now update loop live slots directly once the name evaluates to
+  `Any`. Assignments with declaration semantics (`assign`, `setDefined`,
+  `throwIfDefined`) still fall back to registration prep.
+- Latest queue pass audited the at-rule and ampersand queue items. Body
+  at-rule render cannot simply eval the source at-rule without an owned body
+  surface because body registration prep can mutate the body `Rules` surface
+  and extend/layer registration keys. Ampersand append/template state still has
+  no second proven carrier-only fact beyond `hoistToRoot`; selector wrappers
+  currently carry real selector semantics.
 
 ## Immediate Queue
 
@@ -246,18 +281,18 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Design the next honest `MixinOutputSlot` child/state boundary.**
+1. **Split body at-rule eval frame identity from output ownership.**
 
-   - Goal: direct comments cannot simply be moved into the slot as a loose list:
-     their order relative to evaluated declarations/rules matters. Inventory
-     source-order requirements and either move comments plus position metadata
-     into slot emission or document why the current owned child surface is still
-     the smallest model.
-   - Required proof: repeated mixin output comments, leaky/non-leaky lookup,
-     targeted lookup, reference gating, parentage, and no clone frontier
-     regression.
+   - Goal: body at-rule direct render still needs a frame node for
+     layer/extend/root-hoist registration, but that should not require a full
+     output at-rule shape when public `resolve(...)` is not asking for a node.
+     Find the smallest owned frame/body surface that avoids mutating source
+     `Rules` during body registration prep.
+   - Required proof: direct/buffer dynamic body render, async prelude
+     evaluation, root-only frame clearing, nested media/mixins, source
+     parentage, and unchanged public `resolve(...)`.
 
-2. **Narrow body at-rule `resolve(...)` materialization.**
+2. **Narrow body at-rule `resolve(...)` materialization after the frame split.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -265,7 +300,36 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-3. **Promote one proven ampersand append/template fact into placement state.**
+3. **Target mixin parameter binding copies from the measured hot path.**
+
+   - Goal: `mixins-guards.less` is the hottest measured fixture in the current
+     sample. Audit `cloneBoundValue(...)` and callable param signature
+     construction, then remove copying only where frozen/source-free values or
+     immutable evaluated args make ownership unnecessary.
+   - Required proof: guard scope, named args, default params, rest params,
+     repeated mixin calls, leaky/non-leaky lookup, source parentage, focused
+     perf rerun, and frontier scans.
+
+4. **Target mixin output wrapper child ownership from the measured hot path.**
+
+   - Goal: audit `createCallableRulesSurface(..., true)` for ruleset/mixin
+     calls and prove which child copies are semantic output ownership versus
+     carrier-only placement. Do not move direct comments into slots unless
+     ordered child segments are explicit.
+   - Required proof: repeated mixin comments, nested rules, variable lookup,
+     reference gates, targeted lookup, source parentage, focused perf rerun,
+     and no clone frontier regression.
+
+5. **Audit the hot mutation-helper family by surface, not call site.**
+
+   - Goal: choose one complete helper family surface (`inherit(...)`,
+     `derive*`, shallow wrappers, or reusable-leaf copies) in the current top
+     hotspot files and either remove the carrier-only cases or document the
+     ownership boundary that keeps them semantic.
+   - Required proof: focused parentage/visibility tests for the chosen surface,
+     `audit:node-creation` before/after, and no clone/copy frontier regression.
+
+6. **Prove or retire the next ampersand append/template placement fact.**
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
@@ -277,41 +341,13 @@ family can be audited and reduced.
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-4. **Replace render-only at-rule evaluated-prelude bridge with pure state.**
+7. **Compare Less hot-path timing after the next mixin/at-rule deletion.**
 
-   - Goal: the prelude split currently parks the evaluated prelude on the owned
-     output at-rule so `evalNode(...)` can consume it once. Replace that bridge
-     only when body render can serialize directly from `AtRuleBodyState`
-     without relying on the materialized output at-rule.
-   - Required proof: direct/buffer dynamic body render, async prelude
-     evaluation, root-only frame clearing, nested media/mixins, source
-     parentage, and unchanged public `resolve(...)`.
-
-5. **Audit the hot mutation-helper family by surface, not call site.**
-
-   - Goal: choose one complete helper family surface (`inherit(...)`,
-     `derive*`, shallow wrappers, or reusable-leaf copies) in the current top
-     hotspot files and either remove the carrier-only cases or document the
-     ownership boundary that keeps them semantic.
-   - Required proof: focused parentage/visibility tests for the chosen surface,
-     `audit:node-creation` before/after, and no clone/copy frontier regression.
-
-6. **Narrow state-mutating `$while` iteration prep.**
-
-   - Goal: dynamic `$while` bodies now prepare per-iteration state so live
-     slots are available before direct body render. Split this further so
-     state-mutating declarations can register/update live slots without
-     materializing broader iteration prep.
-   - Required proof: false loops, static loops, dynamic state mutation,
-     condition advancement, source parentage, and control/render-buffer parity.
-
-7. **Measure one real Less compile hot path before choosing the next broad deletion.**
-
-   - Goal: run a representative Less fixture/corpus timing or allocation pass
-     and use the evidence to pick the next eval/render surface, instead of
-     optimizing whichever helper name is most visible.
-   - Required proof: command, baseline numbers, chosen surface, and why the
-     next code change should improve real stylesheet eval/render.
+   - Goal: run `pnpm run measure:less:hotpath` after the next real deletion and
+     compare the same five fixtures against the latest numbers above before
+     claiming runtime progress.
+   - Required proof: command output, before/after numbers, chosen surface, and
+     why the change should affect real stylesheet eval/render.
 
 ## Backlog
 
@@ -342,6 +378,7 @@ pnpm run verify:node-copy-frontier
 pnpm run verify:render-buffer-frontier
 pnpm run verify:materialization-frontier
 pnpm run verify:package-exports
+pnpm run measure:less:hotpath
 pnpm run verify:baseline -- --changed
 ```
 

@@ -148,6 +148,24 @@ function hasIterationStateMutation(rules: Rules): boolean {
   return rules.value.some(node => isNode(node, N.VarDeclaration));
 }
 
+function getDirectIterationStateMutations(rules: Rules): VarDeclaration[] | undefined {
+  const mutations: VarDeclaration[] = [];
+  for (const node of rules.value) {
+    if (!isNode(node, N.VarDeclaration)) {
+      continue;
+    }
+    if (
+      node.options?.assign
+      || node.options?.setDefined
+      || node.options?.throwIfDefined
+    ) {
+      return undefined;
+    }
+    mutations.push(node);
+  }
+  return mutations.length > 0 ? mutations : undefined;
+}
+
 async function syncWhileState(
   stateRules: Rules,
   iterationRules: Rules,
@@ -165,6 +183,27 @@ async function syncWhileState(
       value,
       sourceNode: last.sourceNode,
       readonly: last.cell.readonly
+    });
+  }
+}
+
+async function syncDirectWhileStateMutations(
+  stateRules: Rules,
+  mutations: VarDeclaration[],
+  context: Context
+): Promise<void> {
+  const stateFrame = stateRules.getScopeFrame();
+  for (const mutation of mutations) {
+    const name = mutation.value.name instanceof Any
+      ? mutation.value.name
+      : await mutation.value.name.eval(context);
+    if (!(name instanceof Any)) {
+      throw new TypeError('Expected $while mutation name to resolve to Any');
+    }
+    stateFrame.liveSlotsByName.set(name.valueOf(), {
+      value: await mutation.value.value.eval(context),
+      sourceNode: mutation,
+      readonly: mutation.options?.readonly
     });
   }
 }
@@ -676,6 +715,7 @@ export class While extends Node<WhileValue> {
   ): Promise<string> {
     const originalRules = this.value.rules;
     const stateRules = createWhileStateSurface(originalRules, context);
+    const directMutations = getDirectIterationStateMutations(originalRules);
     let iterations = 0;
     let output = '';
     await runWithRulesContext(context, stateRules, async () => {
@@ -688,16 +728,16 @@ export class While extends Node<WhileValue> {
         if (iterations > MAX_WHILE_ITERATIONS) {
           throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
         }
-        const iterationRules = createWhileIterationSurface(originalRules, stateRules);
-        if (hasIterationStateMutation(originalRules)) {
+        let iterationRules = createWhileIterationSurface(originalRules, stateRules);
+        if (directMutations) {
+          await syncDirectWhileStateMutations(stateRules, directMutations, context);
+        } else if (hasIterationStateMutation(originalRules)) {
           const preparedIterationRules = await iterationRules.prepareRegistration(context);
           if (!(preparedIterationRules instanceof Rules)) {
             throw new TypeError('Expected $while iteration registration prep to return Rules');
           }
           await syncWhileState(stateRules, preparedIterationRules, context);
-          output += await preparedIterationRules.render(context, buffer, options);
-          await syncWhileState(stateRules, preparedIterationRules, context);
-          continue;
+          iterationRules = preparedIterationRules;
         }
         output += await iterationRules.render(context, buffer, options);
         await syncWhileState(stateRules, iterationRules, context);

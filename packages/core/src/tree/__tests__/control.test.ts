@@ -790,7 +790,52 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
-    expect(sourcePrepCalls).toBe(2);
+    expect(sourcePrepCalls).toBe(0);
+    expect(tickDecl.parent).toBe(loopRules);
+  });
+
+  it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    let calls = 0;
+    const tickDecl = decl({ name: 'tick', value: ref({ key: 'tick' }, { type: 'variable' }) });
+    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
+    tickDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([
+      vardecl({ name: 'target', value: any('tick') }),
+      vardecl({ name: interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'target' }, { type: 'variable' })]
+      }), value: call({
+        name: new JsFunction({
+          name: 'next-dynamic-tick',
+          fn: () => any(String(calls))
+        }),
+        args: list([])
+      }) }),
+      tickDecl
+    ]);
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: loopRules
+    });
+
+    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+    expect(css).toBeString(`
+      tick: 1;
+      tick: 2;
+    `);
+    expect(sourcePrepCalls).toBe(0);
     expect(tickDecl.parent).toBe(loopRules);
   });
 
