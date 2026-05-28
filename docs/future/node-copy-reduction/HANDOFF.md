@@ -193,14 +193,14 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   temporary `List`. `List` owns the shared syntax helper, so this is not a
   second list serializer. The raw audit is now `new-node: 302` /
   module-context `375`.
-- Latest pass: `OutputWriter.previewMaybe(...)` now exists as the required
-  awaitable primitive for a native Rules render walker. It preserves sync
-  return paths and only returns a Promise when the callback does. Direct body
-  at-rule render evaluates prelude into body state before evaluating the output
-  surface, so it does not re-evaluate or mutate the source prelude. Declaration
-  render carries contextual `!important` as render text instead of
-  materializing a synthetic flag node. The raw audit remains `new-node: 302` /
-  module-context `375`.
+- Latest pass: `OutputWriter.preview(...)` is now the required awaitable
+  primitive for a native Rules render walker. The name stays simple; overloads
+  preserve sync return paths and only return a Promise when the callback does.
+  Direct body at-rule render evaluates prelude into body state before
+  evaluating the output surface, so it does not re-evaluate or mutate the
+  source prelude. Declaration render carries contextual `!important` as render
+  text instead of materializing a synthetic flag node. The raw audit remains
+  `new-node: 302` / module-context `375`.
 
 ## Immediate Queue
 
@@ -224,7 +224,7 @@ family can be audited and reduced.
      first creating a compatible output `Rules` tree. Preserve synchronous
      returns whenever child render/eval stays synchronous; do not force
      Promise allocation just because the walker can await.
-   - Current blocker/proof seam: `OutputWriter.previewMaybe(...)` is now
+   - Current blocker/proof seam: `OutputWriter.preview(...)` is now
      available; the next pass should use it where child Rules preview/capture
      currently depends on synchronous `toTrimmedString(...)` snapshots.
    - Required proof: dynamic declarations, `$if`/`$for`/`$while`, nested

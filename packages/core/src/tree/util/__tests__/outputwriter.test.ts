@@ -145,11 +145,11 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('');
     });
 
-    it('previews maybe-async content without committing it', async () => {
+    it('previews awaitable content without committing it', async () => {
       const w = new OutputWriter();
 
       w.add('start');
-      const previewed = await w.previewMaybe(async () => {
+      const previewed = await w.preview(async () => {
         await Promise.resolve();
         w.add('middle');
       });
@@ -163,7 +163,7 @@ describe('OutputWriter', () => {
       const w = new OutputWriter();
 
       w.add('start');
-      const previewed = w.previewMaybe(() => {
+      const previewed = w.preview(() => {
         w.add('middle');
       });
       w.add('end');
@@ -172,10 +172,10 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('startend');
     });
 
-    it('uses maybe-async callback return values when the callback writes elsewhere', async () => {
+    it('uses awaitable callback return values when the callback writes elsewhere', async () => {
       const w = new OutputWriter();
 
-      const previewed = await w.previewMaybe(async () => 'returned');
+      const previewed = await w.preview(async () => 'returned');
 
       expect(previewed).toBe('returned');
       expect(w.toString()).toBe('');
