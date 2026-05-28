@@ -74,6 +74,7 @@ type AtRuleBodyEvalContextState = {
   frameCount: number;
   extendRootStackLength: number;
   writeEvaluatedPrelude: boolean;
+  writeOutputStateToNode: boolean;
 };
 
 type AtRuleBodyRegistrationState = {
@@ -140,7 +141,6 @@ function createAtRuleBodyFrameState(node: AtRule, context: Context): AtRuleBodyF
   if (context.bubbleRootAtRules && node.isRootOnly()) {
     const hasRulesetParent = context.frames.some(f => isNode(f, N.Ruleset));
     if (hasRulesetParent) {
-      node.hoistToRoot = true;
       setAtRuleBodyEvalOutput(node, { hoistToRoot: true });
       clearRulesetFrames = true;
     }
@@ -162,14 +162,18 @@ function activateAtRuleBodyFrameState(
 function createAtRuleBodyEvalContextState(
   node: AtRule,
   context: Context,
-  options: { writeEvaluatedPrelude?: boolean } = {}
+  options: {
+    writeEvaluatedPrelude?: boolean;
+    writeOutputStateToNode?: boolean;
+  } = {}
 ): AtRuleBodyEvalContextState {
   return {
     evalFrame: node,
     frameState: createAtRuleBodyFrameState(node, context),
     frameCount: context.frames.length,
     extendRootStackLength: context.extendRoots.extendRootStack.length,
-    writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true
+    writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true,
+    writeOutputStateToNode: options.writeOutputStateToNode ?? true
   };
 }
 
@@ -396,7 +400,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private evalBodyResult(
     context: Context,
-    options: { writeEvaluatedPrelude?: boolean } = {}
+    options: {
+      writeEvaluatedPrelude?: boolean;
+      writeOutputStateToNode?: boolean;
+    } = {}
   ): MaybePromise<AtRuleBodyEvalResult> {
     return pipe(
       () => this.evalBodyPreludeState(context),
@@ -406,7 +413,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           updateAtRuleBodyRuntimeState(evalFrame, { evaluatedPrelude });
         }
         const state = createAtRuleBodyEvalContextState(evalFrame, context, {
-          writeEvaluatedPrelude: options.writeEvaluatedPrelude
+          writeEvaluatedPrelude: options.writeEvaluatedPrelude,
+          writeOutputStateToNode: options.writeOutputStateToNode
         });
         const previousState = pendingAtRuleBodyEvalContextState.get(evalFrame);
         pendingAtRuleBodyEvalContextState.set(evalFrame, state);
@@ -453,7 +461,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
   private evalBodyState(context: Context): MaybePromise<AtRuleBodyRenderState> {
     return pipe(
-      () => this.evalBodyResult(context, { writeEvaluatedPrelude: false }),
+      () => this.evalBodyResult(context, {
+        writeEvaluatedPrelude: false,
+        writeOutputStateToNode: false
+      }),
       result => this.createBodyRenderState(result)
     );
   }
@@ -976,8 +987,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
     // Store frames snapshot for hoisting serialization
     if (context.opts.collapseNesting || node.hoistToRoot) {
-      node.frames = [...context.frames];
-      setAtRuleBodyEvalOutput(node, { frames: node.frames });
+      const frames = [...context.frames];
+      if (bodyEvalContextState.writeOutputStateToNode) {
+        node.frames = frames;
+      }
+      setAtRuleBodyEvalOutput(node, { frames });
     }
 
     return pipe(
@@ -1006,7 +1020,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         let { rules } = node.value;
         if (rules) {
           if (context.opts.collapseNesting && node.isNestable()) {
-            node.hoistToRoot = true;
+            if (bodyEvalContextState.writeOutputStateToNode) {
+              node.hoistToRoot = true;
+            }
             setAtRuleBodyEvalOutput(node, { hoistToRoot: true });
           }
           let restoreRulesetFrames = () => undefined;

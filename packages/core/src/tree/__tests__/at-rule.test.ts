@@ -498,19 +498,26 @@ describe('AtRule', () => {
       selector: el('.parent'),
       rules: rules([])
     });
-    context = new Context({ collapseNesting: true });
+    context = new Context({ bubbleRootAtRules: true });
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      prelude: seq([any('screen', { role: 'keyword' })]),
+      name: any('@keyframes', { role: 'atkeyword' }),
+      prelude: seq([any('spin', { role: 'keyword' })]),
       rules: rules([
-        decl({ name: 'color', value: any('red') })
+        ruleset({
+          selector: el('to'),
+          rules: rules([
+            decl({ name: 'opacity', value: dimension([1]) })
+          ])
+        })
       ])
     });
 
     expect(await Promise.resolve(node.render(context))).toBeString(`
-      @media screen {
-        color: red;
+      @keyframes spin {
+        to {
+          opacity: 1;
+        }
       }
     `);
     expect(node.hoistToRoot).toBeUndefined();
