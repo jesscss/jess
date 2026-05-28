@@ -162,260 +162,90 @@ eval-context count `29`, prepare-registration count `2`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
 
-## Completed Queue Pass
+## Completed Work Summary
 
-- Deep copy/clone frontiers are clean. The latest pass removed the remaining
-  `cloneChildrenWithReusableLeaves(...)` site from callable mixin output; tests
-  still prove repeated comments, leaky/non-leaky lookup, reference gating, and
-  source body parentage.
+- Deep copy/clone frontiers are clean. The clone-leaves frontier is zero; the
+  remaining work is reducing owned placement copies/state carriers.
 - Render/eval state seams now exist for `Rules`, `AtRule`, `Call`,
   `Declaration`, generated pseudo placement, import placement, and mixin output
   slots. These are transitional state carriers, not a second AST.
+- Removed/retired surfaces include public `preEval()`, the old
+  `preEvaluated` flag, direct public `Rules.resolve(...)` wrapper derivation,
+  dynamic call fallback surface eval, final at-rule body mutation, production
+  `.set()` helper use, broad clone-leaves helpers, and temporary append
+  placement state.
+- Direct render now uses native render paths for root/fragments, control
+  iterations, body at-rules, calls, declarations, and references where proven.
+  Public `resolve(...)` still materializes node results where that is the API
+  contract.
 - Declaration registration prep, body at-rule render/resolve, generated
-  ampersand selectors, and state-mutating loop iteration prep still carry real
-  ownership or public-result semantics. The queue below names the next splits;
-  do not delete those wrappers by pattern.
-- The old `preEval()` phase, the old `preEvaluated` flag, direct public
-  `Rules.resolve(...)` wrapper derivation, dynamic call fallback surface eval,
-  final at-rule body mutation, production `.set()` helper use, and broad
-  clone-leaves helpers are already done. Look in git history for details if
-  needed; do not re-expand this section with stale status prose.
-- Earlier pass: `Rules` now has separate source/render body emission entrypoints,
-  declaration registration normalization runs through
-  `DeclarationRegistrationState` instead of prep-time `.derive()`, and callable
-  mixin output helpers now describe owned placement surfaces rather than clones.
-  Body at-rule and ampersand generated-selector wrappers were re-audited and
-  still need the state splits below before deletion.
-- Earlier pass: direct `Declaration.render(...)` now evaluates through
-  `DeclarationRenderState` instead of materializing a prepared declaration
-  surface. Public `resolve(...)` still materializes a node result. The audit's
-  raw `new-node` count rose because this adds explicit state/fallback render
-  helpers; the hot-path `derive`, `copy-leaves`, `clone-leaves`,
-  `eval-context`, and `resolve-context` counts did not regress.
-- Earlier pass: declaration render-only empty merge fallback now reuses the
-  existing empty placeholder node instead of allocating a fresh `Nil`. This
-  drops the raw audit to `new-node: 303` / module-context `376`; no hot
-  eval/resolve/copy/clone count regressed.
-- Earlier pass: declaration render-only multi-item merge fallback now emits
-  list syntax from the existing merged items instead of constructing a
-  temporary `List`. `List` owns the shared syntax helper, so this is not a
-  second list serializer. The raw audit is now `new-node: 302` /
-  module-context `375`.
-- Earlier pass: `OutputWriter.preview(...)` is now the required awaitable
-  primitive for a native Rules render walker. The name stays simple; overloads
-  preserve sync return paths and only return a Promise when the callback does.
-  Direct body at-rule render evaluates prelude into body state before
-  evaluating the output surface, so it does not re-evaluate or mutate the
-  source prelude. Declaration render carries contextual `!important` as render
-  text instead of materializing a synthetic flag node. The raw audit remains
-  `new-node: 302` / module-context `375`.
-- Earlier pass: `_emitRenderRulesBody(...)` is now split from source body
-  serialization and walks children through native `render(...)` in render
-  mode. The walker remains sync when children are sync and becomes awaitable
-  only when a child render does. Source `toString()` / `toTrimmedString()`
-  still use the synchronous source serializer. Focused Rules/control/at-rule/
-  ruleset tests cover dynamic declarations, controls, nested containers,
-  fragment behavior, source parentage, and unchanged source serialization. The
-  raw audit remains `new-node: 302` / module-context `375`.
-- Earlier pass: direct body at-rule render now prints from `AtRuleBodyState`
-  fields (`evaluatedPrelude`, `evaluatedBody`, `hoistToRoot`, and `frames`)
-  instead of serializing the evaluated output at-rule object. Public
-  `resolve(...)` still returns the owned output at-rule. Focused at-rule/rules
-  tests cover dynamic body render, buffer render, source parentage, source
-  render-state restoration, and root/hoist behavior. The raw audit remains
-  `new-node: 302` / module-context `375`.
-- Latest pass: direct unevaluated `Rules.render(...)` no longer calls
-  `this.derive().eval(context)`. Document/root renders still eval the source
-  root when no root context exists, then restore the incoming render context
-  after serialization; fragments render from canonical source rules with
-  render-local context and restore that context afterward. The render walker
-  now captures returned native child strings when a child does not write into
-  the active writer, and `$while` state-mutating iteration render syncs live
-  slots before emitting the body. Focused rules/control/at-rule/ruleset/
-  reference/render-buffer tests are green. Latest audit: `new-node: 303`,
-  `derive: 30`, `with-surface: 41`, `copy-leaves: 31`.
-- Latest pass: `$while` render no longer prepares the whole iteration surface
-  for ordinary static-name variable mutations. It updates the loop
-  `ScopeFrame` live slots directly before body render, then streams the body
-  through `Rules.render(...)`. The focused control suite is green and the
-  render-buffer frontier remains at two native control iteration render sites.
-- Latest measurement pass used built JS artifacts after `@jesscss/plugin-js`
-  was rebuilt, with 10 warm iterations per fixture:
-  `functions.less` median 25.46ms, `import-reference.less` median 30.19ms,
-  `mixins-guards.less` median 31.00ms, `extend-chaining.less` median 20.12ms,
-  and `media.less` median 8.54ms. The next broad deletion should prefer mixin
-  guard/output or import-reference behavior over media formatting unless a
-  regression points elsewhere.
-- Latest queue pass added `pnpm run measure:less:hotpath` so real Less fixture
-  timing is repeatable. Its first checked run reported `functions.less`
-  median 25.72ms, `import-reference.less` median 30.76ms,
-  `mixins-guards.less` median 31.61ms, `extend-chaining.less` median 19.79ms,
-  and `media.less` median 8.90ms.
-- Latest queue pass narrowed `$while` mutation prep again: ordinary dynamic
-  variable names now update loop live slots directly once the name evaluates to
-  `Any`. Assignments with declaration semantics (`assign`, `setDefined`,
-  `throwIfDefined`) still fall back to registration prep.
-- Latest queue pass audited the at-rule and ampersand queue items. Body
-  at-rule render cannot simply eval the source at-rule without an owned body
-  surface because body registration prep can mutate the body `Rules` surface
-  and extend/layer registration keys. Ampersand append/template state still has
-  no second proven carrier-only fact beyond `hoistToRoot`; selector wrappers
-  currently carry real selector semantics.
-- Latest queue pass split body at-rule state naming so the direct-render side
-  carries an `evalFrame`, and public `resolve(...)` owns the returned-node
-  materialization boundary. It also made mixin parameter recursion signatures
-  lazy: ordinary parameter binding now keeps live-slot state without building a
-  `List` recursion key unless recursion/default-guard handling needs it.
-- Latest queue pass re-tested ruleset-as-mixin child ownership. Reusing static
-  ruleset body children breaks the complex parent-ampersand / nested array-path
-  ruleset mixin fixture, so those child copies remain semantic until a smaller
-  ordered placement state can carry that selector-parent context. Hot-path
-  timing after this pass: `functions.less` median 26.07ms,
-  `import-reference.less` median 31.08ms, `mixins-guards.less` median 31.69ms,
-  `extend-chaining.less` median 19.75ms, and `media.less` median 8.56ms.
-- Latest queue pass retired `AmpersandAppendPlacementState`; append/hoist output
-  now marks the selector directly because no second state fact was proven. Body
-  at-rule eval now routes prelude writes, evaluated body storage, and frame
-  restore through `AtRuleBodyEvalContextState`, leaving one named seam for the
-  next materialization split. Focused mixin tests re-confirmed parameter
-  containers and ruleset-as-mixin child copies are still semantic without a new
-  placement/slot model. Static audit stayed `new-node: 304`, `derive: 30`,
-  `with-surface: 41`, `copy-leaves: 31`. Hot-path timing: `functions.less`
-  median 24.79ms, `import-reference.less` median 32.81ms,
-  `mixins-guards.less` median 31.88ms, `extend-chaining.less` median 19.43ms,
-  and `media.less` median 8.27ms.
-- Latest queue pass split body at-rule render state from public resolve
-  materialization. `AtRuleBodyState` is now render-only and no longer carries
-  the private `evalFrame`; public `resolve(...)` consumes `AtRuleBodyEvalResult`
-  directly and returns the owned evaluated at-rule only at that boundary.
-  Focused `Reference` ownership tests re-confirmed that source-free scalar
-  leaves are reusable but value containers must still be copied before eval to
-  keep source values canonical. Static audit stayed `new-node: 304`,
-  `derive: 30`, `with-surface: 41`, `copy-leaves: 31`. Hot-path timing was
-  noisy/slower than the previous sample: `functions.less` median 26.86ms,
-  `import-reference.less` median 42.54ms, `mixins-guards.less` median 34.63ms,
-  `extend-chaining.less` median 20.28ms, and `media.less` median 8.58ms; do
-  not treat this pass as a runtime speed win.
-- Latest queue pass moved body at-rule evaluated prelude lookup into side
-  state. Direct render/resolve preload the evaluated prelude on a WeakMap
-  instead of assigning it into the temporary derived eval frame before body eval;
-  public `eval()` and `resolve(...)` still materialize the owned at-rule prelude
-  at their public result boundaries. `getHeaderString(...)` and layer-name
-  extraction read the active evaluated prelude side state. Static audit is now
-  `new-node: 305`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`; the
-  one-count `new-node` increase is a module-level WeakMap state carrier, not a
-  runtime AST node. Hot-path timing: `functions.less` median 26.26ms,
-  `import-reference.less` median 29.81ms, `mixins-guards.less` median 32.33ms,
-  `extend-chaining.less` median 19.26ms, and `media.less` median 7.98ms.
-- Latest queue pass moved body at-rule hoist/frame output facts into side
-  state and then collapsed the parallel at-rule body WeakMaps into one small
-  `AtRuleBodyRuntimeState`. Direct body render now installs evaluated prelude,
-  evaluated body, and hoist/frame facts on render-local side state instead of
-  mutating the source at-rule's `hoistToRoot` / `frames`; public `eval()` still
-  materializes the public result fields where the API expects them. Added a
-  regression proving direct body render leaves source hoist/frame fields
-  untouched. Static audit is now `new-node: 303`, `derive: 30`,
-  `with-surface: 41`, `copy-leaves: 31`; the module-level state carrier count
-  dropped back after map collapse. Hot-path timing: `functions.less` median
-  25.89ms, `import-reference.less` median 30.14ms, `mixins-guards.less` median
-  30.98ms, `extend-chaining.less` median 18.58ms, and `media.less` median
-  7.79ms.
-- Latest queue pass added the first real mixin binding-slot slice:
-  `BindingCell` can now prepare a value lazily, and mixin param bindings carry
-  `prepareValue: cloneBoundValue` instead of eagerly copying every positional,
-  named, or default value during candidate matching. A regression proves an
-  unused container argument is not detached/copied before lookup. Conservative
-  ownership remains for default values used in recursion signatures and for
-  `@arguments` aggregate construction. Ruleset-as-mixin child copies were
-  re-audited against the complex parent-ampersand / nested array-path fixture;
-  do not raw-delete `copyCallableRulesNode(...)` until a placement-state record
-  can carry selector parent context. Direct at-rule body render now also has a
-  regression proving evaluated preludes stay off the source value. Static audit
-  stayed `new-node: 303`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`.
-  Hot-path timing: `functions.less` median 24.55ms,
-  `import-reference.less` median 29.33ms, `mixins-guards.less` median 29.61ms,
-  `extend-chaining.less` median 18.97ms, and `media.less` median 8.76ms.
-- Latest queue pass extended lazy mixin binding slots through rest params and
-  `@arguments`: rest binding values and the `@arguments` aggregate now prepare
-  only on live-slot lookup, and regressions prove unused rest / `@arguments`
-  container args are not detached/copied during candidate matching. Recursion
-  signatures still materialize conservative aggregate nodes because call-stack
-  keys need stable value text. Named argument bindings now keep the named arg
-  itself as the scope anchor so lazy values like `@b: @var` resolve against the
-  caller scope when prepared. Ruleset-as-mixin child ownership, reference
-  result ownership, and at-rule public-result/runtime-state ownership were
-  re-audited against the focused suites and still carry semantic boundaries:
-  selector-parent placement, source-container canonicality, public
-  `resolve()` results, and render-local state restore. Static audit is now
-  `new-node: 305`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`; the
-  raw `new-node` increase is from explicit lazy aggregate builders, not a
-  clone/copy frontier regression. Hot-path timing: `functions.less` median
-  25.37ms, `import-reference.less` median 29.82ms,
-  `mixins-guards.less` median 32.04ms, `extend-chaining.less` median 18.89ms,
-  and `media.less` median 8.16ms.
-- Latest queue pass made mixin recursion signatures string-backed instead of
-  materializing `List` / rest aggregate nodes only for call-stack comparison.
-  `BindingCell` also supports prepare-only slots, so rest params and
-  `@arguments` do not need placeholder `Sequence` nodes before lookup. Focused
-  recursion, mixin, reference, control, at-rule, and ruleset tests stayed
-  green. The ruleset-as-mixin, reference result, and at-rule ownership audits
-  still found semantic ownership boundaries rather than safe deletion points:
-  selector-parent placement, source value canonicality, public `resolve()`
-  node results, and at-rule render-state restore remain real requirements.
-  Static audit is back to `new-node: 303`, `derive: 30`, `with-surface: 41`,
-  `copy-leaves: 31`, with module-context count `374`. Hot-path timing:
-  `functions.less` median 26.74ms, `import-reference.less` median 32.63ms,
-  `mixins-guards.less` median 32.09ms, `extend-chaining.less` median 19.45ms,
-  and `media.less` median 8.23ms.
-- Latest queue pass added ordered source-child segments to `MixinOutputSlot`
-  and proved ordinary mixin output carries source body order without cloning
-  the source `Rules` root. This is only the first slot shape: output still
-  needs owned child surfaces where selector-parent placement, lookup gates,
-  reference visibility, and repeated placement semantics require them.
-  At-rule body render state installation/restoration now goes through one
-  runtime-state boundary, while public `resolve(...)` materialization still
-  owns its returned at-rule nodes. Reference result, binding-slot fallback, and
-  dynamic-call audits did not find a safe deletion point: current copies still
-  protect source-container canonicality, empty-rest Less behavior, owned
-  metadata `rawArgs`, and public result ownership. Static audit stayed
-  `new-node: 303`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`,
-  module-context count `374`. Hot-path timing was a noisy slower sample:
-  `functions.less` median 29.36ms, `import-reference.less` median 37.32ms,
-  `mixins-guards.less` median 42.58ms, `extend-chaining.less` median 23.03ms,
-  and `media.less` median 11.54ms; do not claim this pass as a runtime speed
-  win.
-- Latest queue pass moved callable mixin output child copying onto the ordered
-  `MixinOutputSlot` segment helper, so one real construction path now reads
-  source-child order through the slot shape instead of directly walking
-  `sourceRules.value`. It also centralized dynamic JS function call-frame
-  setup/restoration for the plain, metadata, and optional-fallback paths while
-  preserving the owned metadata `rawArgs` surface. The callable child-family,
-  reference render, dynamic leaf at-rule, and prepare-only binding audits did
-  not find another safe deletion point: copied callable children still protect
-  repeated placement and selector-parent semantics, reference render still
-  shares public result ownership, leaf at-rule `resolve(...)` still owns public
-  result nodes, and empty rest bindings still preserve current Less behavior.
-  Static audit stayed `new-node: 303`, `derive: 30`, `with-surface: 41`,
-  `copy-leaves: 31`, module-context count `374`. Hot-path timing:
-  `functions.less` median 23.31ms, `import-reference.less` median 27.70ms,
-  `mixins-guards.less` median 31.88ms, `extend-chaining.less` median 18.57ms,
-  and `media.less` median 8.19ms.
-- Latest queue pass completed the next seven-item pass. It split callable
-  child copying into named comment, reusable-leaf, ampersand, and generic
-  construction paths; dynamic leaf at-rule render now returns explicit
-  `AtRuleLeafState`; and main `Call.evalFromState(...)` now runs inside the
-  shared call-frame helper instead of manually popping call stacks in each
-  branch. A targeted lookup experiment that searched mixin-output source
-  segments was rejected by focused nested-mixin tests: source segments preserve
-  order, but the owned output children still carry scope/frame semantics.
-  Reference render and prepare-only placeholder audits found no safe deletion
-  point: reference render still shares public result ownership, and empty rest /
-  `@arguments` placeholders preserve current Less behavior. Static audit stayed
-  `new-node: 303`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`,
-  module-context count `374`. Hot-path timing: `functions.less` median
-  24.65ms, `import-reference.less` median 27.89ms, `mixins-guards.less` median
-  33.76ms, `extend-chaining.less` median 19.58ms, and `media.less` median
-  8.13ms.
+  selectors, reference result ownership, ruleset-as-mixin children, and
+  state-mutating loop iteration prep still carry real ownership or public-result
+  semantics. Do not delete those wrappers by pattern.
+
+## Recent Pass History
+
+Keep this table short. Add the newest row at the top, and move old detail to git
+history or a dedicated perf log if we need a deeper trend.
+
+| Focus | Main result |
+| --- | --- |
+| Call frame / leaf at-rule state | `Call.evalFromState(...)` uses the shared call-frame helper; dynamic leaf at-rules render through `AtRuleLeafState`; callable child copying is split into named families. |
+| Mixin output slot child order | Callable mixin output child copying reads ordered `MixinOutputSlot` segments. Targeted lookup through source segments was rejected; owned output children still carry scope/frame semantics. |
+| Mixin output slot prototype | Added ordered source-child segments to `MixinOutputSlot`; output still needs owned placement children for selector parentage, lookup gates, and repeated placement. |
+| Binding slots and recursion signatures | Lazy params/rest/`@arguments`; string-backed recursion signatures removed temporary `List` / rest aggregate nodes used only for call-stack keys. |
+| At-rule body runtime state | Body prelude/body/hoist/frame facts moved into side state; direct render keeps source at-rule fields untouched. |
+| Rules/control direct render | Direct unevaluated `Rules.render(...)` stopped deriving wrapper roots; `$while` mutation render syncs live slots before body render. |
+
+## Metrics Snapshot
+
+Static audit is useful for regression detection, not proof of speed. Hot-path
+timing is noisy; compare multiple adjacent runs before calling a change faster
+or slower.
+
+Latest static audit:
+
+| `new-node` | `derive` | `with-surface` | `copy-leaves` | `clone-leaves` | module | eval | prepare | resolve |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 303 | 30 | 41 | 31 | 0 | 374 | 29 | 2 | 0 |
+
+Recent hot-path medians:
+
+| Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
+| --- | --- | --- | --- | --- | --- | --- |
+| Call frame / leaf at-rule state | 24.65ms | 27.89ms | 33.76ms | 19.58ms | 8.13ms | latest |
+| Mixin output slot child order | 23.31ms | 27.70ms | 31.88ms | 18.57ms | 8.19ms | best recent import/functions sample |
+| Mixin output slot prototype | 29.36ms | 37.32ms | 42.58ms | 23.03ms | 11.54ms | noisy slow sample; do not treat as regression alone |
+| Binding slots and recursion signatures | 26.74ms | 32.63ms | 32.09ms | 19.45ms | 8.23ms | string-backed signatures |
+| At-rule body runtime state | 25.89ms | 30.14ms | 30.98ms | 18.58ms | 7.79ms | good media/extend sample |
+| Rules/control direct render | 25.72ms | 30.76ms | 31.61ms | 19.79ms | 8.90ms | first scripted baseline |
+
+Measurement commands:
+
+- `pnpm run measure:less:hotpath` is read-only. It uses 30 measured iterations,
+  3 warmups, and prints median/mean/p75/p90/min/max plus relative standard
+  deviation.
+- `pnpm run measure:less:hotpath:record -- --note "short reason"` appends
+  structured fixture records to
+  `docs/future/node-copy-reduction/less-hotpath-history.jsonl` and compares the
+  current run against the latest saved record for each fixture.
+- Use `--json` or `--jsonl` for scripts, `--compare <file>` for an explicit
+  baseline file, and `--threshold 0.08` to control the noise band. Keep this
+  handoff as the readable summary, not the metrics database.
+
+## Durable Blockers
+
+- Body at-rule render cannot simply eval the source at-rule because body
+  registration prep can mutate the body `Rules` surface and extend/layer
+  registration keys.
+- Ruleset-as-mixin child copies protect complex parent ampersands and nested
+  array-path ruleset mixin calls until a smaller placement state carries that
+  selector-parent context.
+- Reference render still shares public result ownership; source-free scalar
+  leaves are reusable, but value containers must remain owned before eval to
+  keep source values canonical.
+- Empty rest / `@arguments` binding placeholders preserve current Less
+  behavior. Do not delete them unless the behavior is explicitly changed.
 
 ## Immediate Queue
 

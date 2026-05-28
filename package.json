@@ -70,6 +70,7 @@
     "verify:materialization-frontier": "node scripts/verify-materialization-frontier.mjs",
     "audit:node-creation": "node scripts/audit-node-creation-hotspots.mjs",
     "measure:less:hotpath": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs",
+    "measure:less:hotpath:record": "pnpm --filter @jesscss/plugin-js build && node scripts/measure-less-hotpath.mjs --save --compare-latest",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "release:alpha:check": "pnpm run verify:baseline && node scripts/release/validate-alpha-publish-set.mjs && node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
     "release:alpha:version": "node scripts/release/increment-alpha.mjs",
