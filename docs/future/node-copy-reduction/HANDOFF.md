@@ -160,8 +160,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 303`, `derive: 30`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `374`,
+Latest audit: `new-node: 304`, `derive: 30`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `375`,
 eval-context count `29`, prepare-registration count `2`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
@@ -266,6 +266,18 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   and extend/layer registration keys. Ampersand append/template state still has
   no second proven carrier-only fact beyond `hoistToRoot`; selector wrappers
   currently carry real selector semantics.
+- Latest queue pass split body at-rule state naming so the direct-render side
+  carries an `evalFrame`, and public `resolve(...)` owns the returned-node
+  materialization boundary. It also made mixin parameter recursion signatures
+  lazy: ordinary parameter binding now keeps live-slot state without building a
+  `List` recursion key unless recursion/default-guard handling needs it.
+- Latest queue pass re-tested ruleset-as-mixin child ownership. Reusing static
+  ruleset body children breaks the complex parent-ampersand / nested array-path
+  ruleset mixin fixture, so those child copies remain semantic until a smaller
+  ordered placement state can carry that selector-parent context. Hot-path
+  timing after this pass: `functions.less` median 26.07ms,
+  `import-reference.less` median 31.08ms, `mixins-guards.less` median 31.69ms,
+  `extend-chaining.less` median 19.75ms, and `media.less` median 8.56ms.
 
 ## Immediate Queue
 
@@ -281,18 +293,17 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Split body at-rule eval frame identity from output ownership.**
+1. **Replace body at-rule eval-frame node mutation with a frame-state helper.**
 
-   - Goal: body at-rule direct render still needs a frame node for
-     layer/extend/root-hoist registration, but that should not require a full
-     output at-rule shape when public `resolve(...)` is not asking for a node.
-     Find the smallest owned frame/body surface that avoids mutating source
-     `Rules` during body registration prep.
+   - Goal: the direct-render side now calls the owned body surface an
+     `evalFrame`, but `evalNode(...)` still mutates that frame's prelude/body
+     fields while evaluating. Move those mutations into a named frame-state
+     helper before attempting another node deletion.
    - Required proof: direct/buffer dynamic body render, async prelude
      evaluation, root-only frame clearing, nested media/mixins, source
      parentage, and unchanged public `resolve(...)`.
 
-2. **Narrow body at-rule `resolve(...)` materialization after the frame split.**
+2. **Narrow body at-rule `resolve(...)` materialization after frame-state split.**
 
    - Goal: construct an output at-rule in `resolve(...)` only when the public
      node result needs owned name/prelude/body fields; keep render-only state
@@ -300,48 +311,46 @@ family can be audited and reduced.
    - Required proof: static identity, dynamic prelude, body output, layer/root
      registration, import/reference interactions, and source parentage.
 
-3. **Target mixin parameter binding copies from the measured hot path.**
+3. **Target remaining mixin parameter binding copies by value shape.**
 
-   - Goal: `mixins-guards.less` is the hottest measured fixture in the current
-     sample. Audit `cloneBoundValue(...)` and callable param signature
-     construction, then remove copying only where frozen/source-free values or
-     immutable evaluated args make ownership unnecessary.
+   - Goal: recursion signatures are now lazy. Continue through
+     `cloneBoundValue(...)` by proving which non-scalar containers can be reused
+     because they are already evaluated/frozen and source-free, and which must
+     stay owned for repeated calls.
    - Required proof: guard scope, named args, default params, rest params,
      repeated mixin calls, leaky/non-leaky lookup, source parentage, focused
      perf rerun, and frontier scans.
 
-4. **Target mixin output wrapper child ownership from the measured hot path.**
+4. **Split ruleset-as-mixin child ownership by selector-parent requirement.**
 
-   - Goal: audit `createCallableRulesSurface(..., true)` for ruleset/mixin
-     calls and prove which child copies are semantic output ownership versus
-     carrier-only placement. Do not move direct comments into slots unless
-     ordered child segments are explicit.
+   - Goal: a blind static-body reuse breaks complex parent ampersands and
+     nested array-path ruleset mixin calls. Inventory which ruleset-as-mixin
+     bodies actually need selector-parent ownership and whether declaration-only
+     or selector-free bodies can safely avoid child copies.
    - Required proof: repeated mixin comments, nested rules, variable lookup,
      reference gates, targeted lookup, source parentage, focused perf rerun,
      and no clone frontier regression.
 
-5. **Audit the hot mutation-helper family by surface, not call site.**
+5. **Audit `copyWithReusableLeaves(...)` helper family by runtime surface.**
 
-   - Goal: choose one complete helper family surface (`inherit(...)`,
-     `derive*`, shallow wrappers, or reusable-leaf copies) in the current top
-     hotspot files and either remove the carrier-only cases or document the
+   - Goal: this pass narrowed one parameter-signature allocation but did not
+     reduce the static `copy-leaves` count. Pick the next complete
+     `copyWithReusableLeaves(...)` surface in `rules.ts`, `at-rule.ts`, or
+     `reference.ts` and either remove carrier-only copies or document the
      ownership boundary that keeps them semantic.
    - Required proof: focused parentage/visibility tests for the chosen surface,
      `audit:node-creation` before/after, and no clone/copy frontier regression.
 
-6. **Prove or retire the next ampersand append/template placement fact.**
+6. **Retire or replace `AmpersandAppendPlacementState`.**
 
-   - Goal: move only a tested carrier-only fact from generated append/template
-     selector wrappers onto `AmpersandAppendPlacementState` without weakening
-     extend matching or generated selector parentage. The latest audit did not
-     find a second safe carrier-only fact beyond `hoistToRoot`; source,
-     appendValue, and output currently describe the placement but do not replace
-     selector semantics.
+   - Goal: repeated audits have found no second carrier-only fact beyond
+     `hoistToRoot`. Either remove the state as unnecessary wrapper bookkeeping
+     or replace it with a smaller name that only describes root-hoist placement.
    - Required proof: appended ampersands, template replacements, selector
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.
 
-7. **Compare Less hot-path timing after the next mixin/at-rule deletion.**
+7. **Compare Less hot-path timing after the next real deletion.**
 
    - Goal: run `pnpm run measure:less:hotpath` after the next real deletion and
      compare the same five fixtures against the latest numbers above before

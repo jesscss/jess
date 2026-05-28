@@ -4080,7 +4080,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
     const resolvedParamBindings = new WeakMap<CallableEntry, {
       bindings: RuntimeVarBindingRecord[];
-      signature: List<Node> | undefined;
+      signatureNodes: Node[] | undefined;
     }>();
     let emptyOutputSourceRules: Rules | undefined;
     for (let i = 0; i < mixinLength; i++) {
@@ -4242,15 +4242,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
               signatureNodes[i] = restValue;
             }
           }
-          const signature = new List(
-            signatureNodes.filter((node): node is Node => Boolean(node)),
-            { sep: ';' }
-          );
           resolvedParamBindings.set(mixin, {
             bindings: [...bindingRecordsByIndex.entries()]
               .sort((a, b) => a[0] - b[0])
               .map(([, binding]) => binding),
-            signature
+            signatureNodes: signatureNodes.filter((node): node is Node => Boolean(node))
           });
           mixinCandidates.push(mixin);
         }
@@ -4477,11 +4473,11 @@ export class MixinCollection extends Node<MixinEntry[]> {
     const evaluateCandidateOutput = async (
       candidate: CallableEntry,
       rules: Rules,
-      params: List<Node> | undefined
+      getParamsSignature: () => List<Node> | undefined
     ): Promise<void> => {
       const currentCall = thisContext.callStack.at(-1);
       // to prevent infinite loops (e.g., .recursion { .recursion(); })
-      if (currentCall && thisContext.callMap.add(currentCall, params)) {
+      if (currentCall && thisContext.callMap.add(currentCall, getParamsSignature())) {
         // Recursive call detected - skip this candidate (don't add to outputRules)
         // This allows other candidates to still match
         return;
@@ -4631,7 +4627,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
       const resolvedBindingInfo = !isNode(candidate, N.Ruleset)
         ? resolvedParamBindings.get(candidate as CallableEntry)
         : undefined;
-      let params = resolvedBindingInfo?.signature;
+      let params: List<Node> | undefined;
+      const getParamsSignature = (): List<Node> | undefined => {
+        const signatureNodes = resolvedBindingInfo?.signatureNodes;
+        if (!signatureNodes) {
+          return undefined;
+        }
+        return (params ??= new List(signatureNodes, { sep: ';' }));
+      };
       const paramBindings = resolvedBindingInfo?.bindings ?? [];
       const callSiteRules = thisContext.rulesContext;
       const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
@@ -4822,7 +4825,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               pendingDefaultCandidates.push({
                 candidate: candidate as CallableEntry,
                 rules,
-                params,
+                params: getParamsSignature(),
                 group: defaultGroup
               });
             }
@@ -4849,7 +4852,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (guard && hasDefault) {
           continue;
         }
-        await evaluateCandidateOutput(candidate as CallableEntry, rules, params);
+        await evaluateCandidateOutput(candidate as CallableEntry, rules, getParamsSignature);
       } finally {
         restoreRulesContext();
       }
@@ -4890,7 +4893,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           evaluateCandidateOutput(
             pending.candidate,
             pending.rules,
-            pending.params
+            () => pending.params
           )
         );
       }

@@ -66,7 +66,7 @@ type AtRuleBodyRegistrationState = {
 
 type AtRuleBodyState = {
   source: AtRule;
-  output: AtRule;
+  evalFrame: AtRule;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   registration?: AtRuleBodyRegistrationState;
@@ -150,7 +150,7 @@ function isAtRuleValue(value: unknown): value is AtRuleValue {
 }
 
 function isAtRuleBodyState(value: unknown): value is AtRuleBodyState {
-  return Boolean(value && typeof value === 'object' && 'source' in value && 'output' in value);
+  return Boolean(value && typeof value === 'object' && 'source' in value && 'evalFrame' in value);
 }
 
 export const NESTABLE_AT_RULES = ['@media', '@supports', '@layer', '@container', '@scope'] as const;
@@ -274,24 +274,24 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return pipe(
       () => this.evalBodyPreludeState(context),
       (evaluatedPrelude) => {
-        const output = this.deriveAtRule({
+        const evalFrame = this.deriveAtRule({
           ...this.value,
           prelude: evaluatedPrelude ?? this.value.prelude
         });
-        const evaluated = output.eval(context);
+        const evaluated = evalFrame.eval(context);
         const toState = (node: AtRule | Nil): AtRuleBodyState => {
           if (node instanceof Nil) {
             return {
               source: this,
-              output,
+              evalFrame,
               evaluatedPrelude,
-              hoistToRoot: output.hoistToRoot,
-              frames: output.frames
+              hoistToRoot: evalFrame.hoistToRoot,
+              frames: evalFrame.frames
             };
           }
           return {
             source: this,
-            output: node,
+            evalFrame: node,
             evaluatedPrelude: node.value.prelude,
             evaluatedBody: node.value.rules,
             registration: atRuleBodyRegistrationState.get(node),
@@ -381,6 +381,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     node.hoistToRoot = this.hoistToRoot;
     node.frames = this.frames ? [...this.frames] : undefined;
     return node;
+  }
+
+  private resolveBodyState(state: AtRuleBodyState): AtRule {
+    return state.evalFrame;
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -992,7 +996,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
     return pipe(
       () => this.evalBodyState(context),
-      state => state.output
+      state => this.resolveBodyState(state)
     );
   }
 
