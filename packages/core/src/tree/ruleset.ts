@@ -110,6 +110,14 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     throw new TypeError('Expected ruleset selector copy');
   }
 
+  private ownRules(value: RulesetValue['rules']): RulesetValue['rules'] {
+    const owned = copyOwnedWithReusableLeaves(value);
+    if (owned instanceof Rules) {
+      return owned;
+    }
+    throw new TypeError('Expected ruleset rules copy');
+  }
+
   private attachSelectorBits(selector: RulesetValue['selector'], selectorBits: Context['selectorBits']): void {
     if (selector instanceof Nil) {
       return;
@@ -149,11 +157,15 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     }
   }
 
-  private deriveRuleset(value: RulesetValue, sourceValue: RulesetValue = this.value): Ruleset {
+  private deriveRuleset(
+    value: RulesetValue,
+    sourceValue: RulesetValue = this.value,
+    options: { ownRules?: boolean } = {}
+  ): Ruleset {
     const node = new Ruleset(
       {
         selector: value.selector === sourceValue.selector ? this.ownSelector(value.selector) : value.selector,
-        rules: value.rules,
+        rules: options.ownRules && value.rules === sourceValue.rules ? this.ownRules(value.rules) : value.rules,
         ...(value.guard !== undefined && { guard: value.guard }),
         ...(value.selectorBeforeExtend !== undefined && {
           selectorBeforeExtend: value.selectorBeforeExtend
@@ -603,7 +615,7 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       return this.registrationPrepared
         ? this.eval(context)
-        : this.evalPrepared(context);
+        : this.evalPrepared(context, { ownRules: true });
     };
     return pipe(
       evalForRender,
@@ -618,12 +630,14 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
-    return this.evalPrepared(context);
+    return this.evalPrepared(context, { ownRules: true });
   }
 
-  private evalPrepared(context: Context): MaybePromise<Node> {
+  private evalPrepared(context: Context, options: { ownRules?: boolean } = {}): MaybePromise<Node> {
     return pipe(
-      () => this.prepareRegistration(context),
+      () => this.registrationPrepared
+        ? this
+        : this._prepareRulesetRegistration(context, options),
       node => node.evalNode(context)
     );
   }
@@ -1058,9 +1072,12 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return this;
   }
 
-  private _prepareRulesetRegistration(context: Context): MaybePromise<Ruleset> {
+  private _prepareRulesetRegistration(
+    context: Context,
+    options: { ownRules?: boolean } = {}
+  ): MaybePromise<Ruleset> {
     this.attachSelectorBits(this.value.selector, context.selectorBits);
-    const node = this.deriveRuleset(this.value);
+    const node = this.deriveRuleset(this.value, this.value, options);
     node._selectorCacheOwner = this;
     node.registrationPrepared = true;
     const { selector } = node.value;

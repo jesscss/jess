@@ -144,7 +144,7 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
-  it('keeps source selector canonical during direct render', async () => {
+  it('keeps source selector and body parentage canonical during direct render', async () => {
     const root = rules([
       decl({ name: 'tone', value: any('red') })
     ]);
@@ -170,6 +170,8 @@ describe('Rule', () => {
     `);
 
     expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(body.value[0]?.parent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -226,7 +228,7 @@ describe('Rule', () => {
     expect(prepareCalls).toBe(0);
   });
 
-  it('renders nil-selector rulesets through the native body render path', async () => {
+  it('renders nil-selector rulesets through an owned body output surface', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -251,7 +253,8 @@ describe('Rule', () => {
     const buffer = createRenderBuffer('flat');
     await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
     expect(buffer.parts).toEqual(['color: red;\n']);
-    expect(bodyRenderCalls).toBe(2);
+    expect(bodyRenderCalls).toBe(0);
+    expect(body.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -412,7 +415,7 @@ describe('Rule', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('keeps source selector canonical while reusing body registration surface after resolve(context)', async () => {
+  it('keeps source selector and body canonical after resolve(context)', async () => {
     const selector = sellist([sel([el('.foo')])]);
     const body = rules([
       decl({ name: 'color', value: any('red') })
@@ -430,7 +433,8 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(resolved.value.rules).toBe(body);
+    expect(body.parent).toBe(node);
+    expect(resolved.value.rules).not.toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {
