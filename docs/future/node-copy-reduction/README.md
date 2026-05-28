@@ -149,6 +149,10 @@ later serializer can walk it.
   separated.
 - `AtRule.resolve(...)` returns static at-rules directly. Dynamic at-rules
   still derive before eval so prelude/body mutation does not touch the source.
+- `Declaration.render(...)` evaluates through declaration registration/value
+  state and writes declaration syntax directly. It does not materialize a
+  prepared declaration node for direct render; `resolve(...)` still returns a
+  public node result and may materialize one.
 - `Ruleset.render(...)` follows the same container-output rule for evaluated
   rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
   delegates to that body's native render path.

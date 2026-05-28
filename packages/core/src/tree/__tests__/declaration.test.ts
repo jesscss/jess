@@ -122,6 +122,32 @@ describe('Declaration', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('renders declaration output without materializing a prepared declaration surface', async () => {
+    const root = rules([
+      vardecl({ name: any('brand'), value: any('red') })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'brand' }, { type: 'variable' })
+    });
+    const originalWithParts = Reflect.get(node, 'withParts');
+    if (typeof originalWithParts !== 'function') {
+      throw new TypeError('Expected declaration withParts method');
+    }
+    let materializedSurfaces = 0;
+    Reflect.set(node, 'withParts', function countWithParts(this: unknown, ...args: unknown[]) {
+      materializedSurfaces++;
+      return Reflect.apply(originalWithParts, this, args);
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red');
+    expect(materializedSurfaces).toBe(0);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('renders nil declaration eval results through native node render', () => {
     const originalRender = Nil.prototype.render;
     let renderCalls = 0;

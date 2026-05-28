@@ -147,8 +147,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 302`, `derive: 31`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `375`,
+Latest audit: `new-node: 304`, `derive: 31`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `377`,
 eval-context count `29`, prepare-registration count `1`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
@@ -178,6 +178,12 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   mixin output helpers now describe owned placement surfaces rather than clones.
   Body at-rule and ampersand generated-selector wrappers were re-audited and
   still need the state splits below before deletion.
+- Latest pass: direct `Declaration.render(...)` now evaluates through
+  `DeclarationRenderState` instead of materializing a prepared declaration
+  surface. Public `resolve(...)` still materializes a node result. The audit's
+  raw `new-node` count rose because this adds explicit state/fallback render
+  helpers; the hot-path `derive`, `copy-leaves`, `clone-leaves`,
+  `eval-context`, and `resolve-context` counts did not regress.
 
 ## Immediate Queue
 
@@ -193,11 +199,12 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Make the render Rules body walker evaluate dynamic children directly.**
+1. **Make the render Rules body walker async/native.**
 
-   - Goal: teach the render body entrypoint to stream declarations, controls,
-     nested rulesets, and at-rules through native child `render(...)` calls
-     without first creating a compatible output `Rules` tree.
+   - Goal: split `_emitRenderRulesBody(...)` from the synchronous source
+     serializer so render body emission can await native child `render(...)`
+     calls for declarations, controls, nested rulesets, and at-rules without
+     first creating a compatible output `Rules` tree.
    - Required proof: dynamic declarations, `$if`/`$for`/`$while`, nested
      rulesets/at-rules, root/fragment separators, source parentage, and
      unchanged `toString()`.
@@ -210,36 +217,39 @@ family can be audited and reduced.
    - Required proof: charset/import root output, fragment render, buffer parity,
      registration prep, source parentage, and audit delta.
 
-3. **Stop materializing declarations for direct render after registration state.**
+3. **Delete declaration render-only fallback node creation where safe.**
 
-   - Goal: use `DeclarationRegistrationState` plus value state to render
-     declaration output without first building a prepared declaration node when
-     no public node result is required.
-   - Required proof: interpolated names, merge assignments, conditional
-     assignments, custom properties, important propagation, source parentage,
-     and audit delta.
+   - Goal: direct declaration render no longer materializes a prepared
+     declaration surface; now audit the remaining `new Nil()` / `new List()`
+     fallback render-only cases and delete or justify them without weakening
+     native `Nil.render(...)` behavior.
+   - Required proof: nil fallback render, merge assignments, custom
+     properties, important propagation, source parentage, and audit delta.
 
-4. **Move direct mixin-output comments into `MixinOutputSlot` emission.**
+4. **Design the next honest `MixinOutputSlot` child/state boundary.**
 
-   - Goal: reduce callable mixin-output placement copies by proving direct
-     comment children can be emitted from slot state instead of owned child
-     copies for each placement.
+   - Goal: direct comments cannot simply be moved into the slot as a loose list:
+     their order relative to evaluated declarations/rules matters. Inventory
+     source-order requirements and either move comments plus position metadata
+     into slot emission or document why the current owned child surface is still
+     the smallest model.
    - Required proof: repeated mixin output comments, leaky/non-leaky lookup,
      targeted lookup, reference gating, parentage, and no clone frontier
      regression.
 
-5. **Move at-rule body prelude/frame mutation into `AtRuleBodyState`.**
+5. **Move at-rule body prelude evaluation into `AtRuleBodyState`.**
 
-   - Goal: make body at-rule eval write evaluated prelude, hoist/frame facts,
-     and final body output into state first, leaving the output at-rule as a
-     public-result carrier only.
+   - Goal: split the prelude part of body at-rule eval into state first,
+     leaving body/root-hoist mutation on the existing output at-rule until the
+     next checkpoint proves the frame/body split.
    - Required proof: dynamic preludes, root-only frame clearing, nested
      media/mixins, layers, extend chaining, source parentage, and buffer render.
 
-6. **Render `AtRuleBodyState` from fields instead of `state.output`.**
+6. **Move at-rule frame/body output facts into `AtRuleBodyState`.**
 
-   - Goal: teach at-rule render to serialize the state fields directly so direct
-     render no longer depends on materialized output at-rule shape.
+   - Goal: after prelude state is split, carry hoist/root-frame facts and final
+     evaluated body output as state fields so direct render no longer depends
+     on materialized output at-rule shape.
    - Required proof: dynamic body render, root-only at-rules, import/reference
      interactions, nested extend roots, and source parentage.
 
@@ -255,7 +265,10 @@ family can be audited and reduced.
 
    - Goal: move only a tested carrier-only fact from generated append/template
      selector wrappers onto `AmpersandAppendPlacementState` without weakening
-     extend matching or generated selector parentage.
+     extend matching or generated selector parentage. The latest audit did not
+     find a second safe carrier-only fact beyond `hoistToRoot`; source,
+     appendValue, and output currently describe the placement but do not replace
+     selector semantics.
    - Required proof: appended ampersands, template replacements, selector
      lists, generated `:is(...)`, extend matching, direct/buffer render, and
      source parentage.

@@ -100,6 +100,15 @@ type DeclarationEvalState = {
   nil: boolean;
 };
 
+type DeclarationRenderState = {
+  source: Declaration;
+  name: DeclarationValue['name'];
+  value: Node;
+  important?: Any<'flag'>;
+  output?: Node;
+  nil: boolean;
+};
+
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: Node;
@@ -356,9 +365,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.type !== 'Declaration') {
+      return pipe(
+        () => this.evalPreparedState(context),
+        state => this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options)
+      );
+    }
     return pipe(
-      () => this.evalPreparedState(context),
-      state => this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options)
+      () => this.evalRenderState(context),
+      state => this.renderDeclarationRenderState(context, state, bufferOrOptions, options)
     );
   }
 
@@ -395,11 +410,152 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : out;
   }
 
+  private renderDeclarationRenderState(
+    context: Context,
+    state: DeclarationRenderState,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    if (state.nil) {
+      const output = state.output ?? state.value;
+      return isRenderBuffer(bufferOrOptions)
+        ? output.render(context, bufferOrOptions, options)
+        : output.render(context, bufferOrOptions);
+    }
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.declValueTrimmedString({
+      name: state.name,
+      value: state.value,
+      important: state.important
+    }, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
   override resolve(context: Context): MaybePromise<Node> {
     return pipe(
       () => this.evalPreparedState(context),
       state => state.output
     );
+  }
+
+  private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
+    return pipe(
+      () => this._prepareDeclarationRegistrationState(context),
+      state => this.evalRegistrationRenderState(context, state)
+    );
+  }
+
+  private evalRegistrationRenderState(
+    context: Context,
+    state: DeclarationRegistrationState
+  ): MaybePromise<DeclarationRenderState> {
+    if (this.hasFlag(F_STATIC)) {
+      return {
+        source: this,
+        name: state.name,
+        value: state.value,
+        important: state.important,
+        nil: false
+      };
+    }
+    const evaluate = (): MaybePromise<Node | Nil> => {
+      const isCustomProperty = state.name.valueOf().startsWith('--');
+      const previousInCustom = context.inCustom;
+      if (isCustomProperty) {
+        if (!shouldResolveCustomPropertyValue(state.value)) {
+          return state.value;
+        }
+        context.inCustom = true;
+      }
+      let maybeValue: MaybePromise<Node | Nil>;
+      try {
+        maybeValue = state.value.eval(context);
+      } finally {
+        if (!isThenable(maybeValue!)) {
+          context.inCustom = previousInCustom;
+        }
+      }
+      if (isThenable(maybeValue)) {
+        return Promise.resolve(maybeValue).finally(() => {
+          context.inCustom = previousInCustom;
+        });
+      }
+      return maybeValue;
+    };
+    const finish = (newValue: Node | Nil): DeclarationRenderState => {
+      if (newValue instanceof Nil) {
+        return {
+          source: this,
+          name: state.name,
+          value: newValue,
+          important: state.important,
+          output: newValue,
+          nil: true
+        };
+      }
+      let value = newValue instanceof Node ? newValue : state.value;
+      value = this.normalizeMergedLeadingPlaceholderForRender(state, value);
+      let important = state.important;
+      if (context.hasImportantSource && !important) {
+        important = any('!important', { role: 'flag' });
+      }
+      if (context.hasImportantSource) {
+        context.popImportantSource();
+      }
+      return {
+        source: this,
+        name: state.name,
+        value,
+        important,
+        nil: false
+      };
+    };
+    const maybeValue = evaluate();
+    return isThenable(maybeValue)
+      ? maybeValue.then(finish)
+      : finish(maybeValue);
+  }
+
+  private normalizeMergedLeadingPlaceholderForRender(
+    state: DeclarationRegistrationState,
+    value: Node
+  ): Node {
+    const normalizedAssign = state.normalizedFromAssign;
+    const isListMergedAssign =
+      normalizedAssign === AssignmentType.Add
+      || normalizedAssign === AssignmentType.MergeList;
+    if (!isListMergedAssign || !isNode(value, N.List)) {
+      return value;
+    }
+    const mergedItems: Node[] = [];
+    const collect = (child: Node): void => {
+      if (isNode(child, N.List)) {
+        for (const item of child.value) {
+          collect(item);
+        }
+        return;
+      }
+      const isEmptyPlaceholder = (
+        isNode(child, N.Nil)
+        || String(child.valueOf?.() ?? '') === ''
+      );
+      if (!isEmptyPlaceholder) {
+        mergedItems.push(child);
+      }
+    };
+    collect(value);
+    if (mergedItems.length === 0) {
+      return new Nil();
+    }
+    if (mergedItems.length === 1) {
+      return mergedItems[0]!;
+    }
+    return new List(mergedItems);
   }
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
@@ -519,6 +675,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             // Exclude only the current node to avoid self-reference.
             filter: n => (
               n !== outputNode
+              && n !== this
               && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
             )
           });
@@ -544,7 +701,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 type,
                 fallbackValue: new Nil(),
                 // Prevent self-referential reads while normalizing this node.
-                filter: n => n !== outputNode
+                filter: n => n !== outputNode && n !== this
               }),
               value
             ]));
