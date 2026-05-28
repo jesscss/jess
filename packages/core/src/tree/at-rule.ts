@@ -207,6 +207,24 @@ function updateAtRuleBodyRuntimeState(
   return next;
 }
 
+function runAtRuleBodyRuntimeState<T>(
+  node: AtRule,
+  state: AtRuleBodyRuntimeState,
+  work: () => T
+): T {
+  const priorRuntime = atRuleBodyRuntimeState.get(node);
+  try {
+    updateAtRuleBodyRuntimeState(node, state);
+    return work();
+  } finally {
+    if (priorRuntime) {
+      atRuleBodyRuntimeState.set(node, priorRuntime);
+    } else {
+      atRuleBodyRuntimeState.delete(node);
+    }
+  }
+}
+
 function setAtRuleBodyEvalPrelude(
   state: AtRuleBodyEvalContextState,
   prelude: Node
@@ -513,7 +531,6 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     const renderBodyState = (state: AtRuleBodyState): string => {
       const node = state.source;
       const priorPrelude = node.value.prelude;
-      const priorRuntime = atRuleBodyRuntimeState.get(node);
       try {
         const runtimeUpdate: AtRuleBodyRuntimeState = {};
         if (state.evaluatedPrelude) {
@@ -525,17 +542,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         if (state.output) {
           runtimeUpdate.output = state.output;
         }
-        if (Object.keys(runtimeUpdate).length > 0) {
-          updateAtRuleBodyRuntimeState(node, runtimeUpdate);
-        }
-        return renderEvaluatedAtRule(node);
+        return Object.keys(runtimeUpdate).length > 0
+          ? runAtRuleBodyRuntimeState(node, runtimeUpdate, () => renderEvaluatedAtRule(node))
+          : renderEvaluatedAtRule(node);
       } finally {
         node.value.prelude = priorPrelude;
-        if (priorRuntime) {
-          atRuleBodyRuntimeState.set(node, priorRuntime);
-        } else {
-          atRuleBodyRuntimeState.delete(node);
-        }
       }
     };
     return pipe(

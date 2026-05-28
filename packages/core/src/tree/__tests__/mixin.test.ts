@@ -1014,6 +1014,17 @@ describe('Mixin', () => {
       expect(result.sourceNode).toBe(mixinBody);
       expect(result.options.isMixinOutput).toBe(false);
       expect(result.options.referenceMode).toBe(false);
+      expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinBody);
+      expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
+      expect(result.options.mixinOutputSlot?.childSegments.map(segment => ({
+        kind: segment.kind,
+        source: segment.source,
+        index: segment.index
+      }))).toEqual(mixinBody.value.map((source, index) => ({
+        kind: 'source-child',
+        source,
+        index
+      })));
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);

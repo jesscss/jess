@@ -1,3 +1,4 @@
+import type { Node } from '../node.js';
 import type { Rules, RulesOptions } from '../rules.js';
 
 export type LookupVisibility = keyof NonNullable<RulesOptions['rulesVisibility']>;
@@ -15,9 +16,24 @@ export type RulesEntryVisibility = {
 export type MixinOutputSlot = {
   sourceRules: Rules;
   outputRules: Rules;
+  childSegments: readonly MixinOutputChildSegment[];
   rulesVisibility: Rules['options']['rulesVisibility'];
   isMixinOutput: boolean;
 };
+
+export type MixinOutputChildSegment = {
+  kind: 'source-child';
+  source: Node;
+  index: number;
+};
+
+function getMixinOutputChildSegments(sourceRules: Rules): MixinOutputChildSegment[] {
+  return sourceRules.value.map((source, index) => ({
+    kind: 'source-child',
+    source,
+    index
+  }));
+}
 
 export function getRulesEntryVisibility(
   entry: RulesEntryLike,
@@ -92,6 +108,7 @@ export function attachMixinOutputSlot(
   const slot: MixinOutputSlot = {
     sourceRules,
     outputRules,
+    childSegments: getMixinOutputChildSegments(sourceRules),
     rulesVisibility: outputRules.options.rulesVisibility,
     isMixinOutput
   };
