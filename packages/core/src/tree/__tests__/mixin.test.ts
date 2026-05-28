@@ -3,7 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
-import { getMixinOutputSourceChild, getMixinOutputSourceChildren } from '../util/mixin-output-slot.js';
+import { getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren } from '../util/mixin-output-slot.js';
 
 let context: Context;
 
@@ -1031,6 +1031,7 @@ describe('Mixin', () => {
       })));
       expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.value);
+      expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);
@@ -1049,6 +1050,7 @@ describe('Mixin', () => {
       expect(secondResult.value).not.toBe(result.value);
       expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
+      expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
       expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
         mixinBody.value.map(() => false)
       );

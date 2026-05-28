@@ -90,6 +90,29 @@ type AppendSelectorResult<T extends Selector = Selector> = {
   appended: boolean;
 };
 
+type AmpersandAppendPlacementState = {
+  source: Ampersand;
+  selector: Selector | Nil;
+  appendValue?: string;
+  hoistToRoot: boolean;
+  selectorBits: Context['selectorBits'];
+};
+
+function createAmpersandAppendPlacementState(
+  source: Ampersand,
+  selector: Selector | Nil,
+  context: Context,
+  appendValue?: string
+): AmpersandAppendPlacementState {
+  return {
+    source,
+    selector,
+    appendValue,
+    hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
+    selectorBits: context.selectorBits
+  };
+}
+
 function ownSelectorForAppend(selector: Selector): Selector {
   const owned = copyOwnedWithReusableLeaves(selector);
   if (!(owned instanceof Selector)) {
@@ -493,10 +516,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // the new top-level selector (marked hoistToRoot so composeSelector
       // won't re-prepend the parent). A SelectorList or ComplexSelector
       // result renders correctly on its own at the top level.
-      const result: Selector | Nil = appendValue !== undefined && !isNode(selector, N.Nil)
-        ? markAppendedAmpersandHoist(selector)
-        : selector;
-      if (appendValue !== undefined || this.hoistToRoot) {
+      const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
+      const result: Selector | Nil = placement.appendValue !== undefined && !isNode(placement.selector, N.Nil)
+        ? markAppendedAmpersandHoist(placement.selector)
+        : placement.selector;
+      if (placement.hoistToRoot) {
         result.hoistToRoot = true;
       }
       return result;

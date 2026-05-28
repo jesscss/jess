@@ -214,6 +214,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
   }
 
+  private ownRenderAssignmentInput(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
+  }
+
   private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
     if (!node) {
       return undefined;
@@ -693,7 +697,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (assign) {
       const normalizedAssign = assign;
       const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
-      const inputValue = state.renderOnly ? this.copyValueForDerived(value) : value;
+      const inputValue = state.renderOnly ? this.ownRenderAssignmentInput(value) : value;
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'Declaration' ? 'declaration' : 'variable';

@@ -1485,6 +1485,7 @@ function finalizeRuntimeVarBindingResult(
     }
     if (canReuseReferenceValue(evald)) {
       if (options.textOnly === true) {
+        context.popReference();
         return evald;
       }
       evald.frozen = true;

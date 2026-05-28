@@ -229,6 +229,61 @@ describe('reference', () => {
       expect(context.rulesContext).toBe(runtimeScope);
     });
 
+    it('renders runtime-binding scalar references without applying public result metadata', async () => {
+      const sourceValue = any('red');
+      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const sourceParent = sourceValue.parent;
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = Any.prototype.copy;
+      const originalInherit = sourceValue.inherit;
+      let scalarCopies = 0;
+      let sourceValueInherits = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      sourceValue.inherit = function inheritForCounting(
+        this: typeof sourceValue,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        sourceValueInherits++;
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const refNode = ref({ key: 'tone' }, { type: 'variable' });
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(scalarCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+        sourceValue.inherit = originalInherit;
+      }
+    });
+
     it('resolves a variable value without touching render state', async () => {
       const node = rules([
         vardecl({

@@ -71,6 +71,7 @@ type AtRuleBodyRuntimeState = {
 
 type AtRuleBodyEvalContextState = {
   evalFrame: AtRule;
+  evaluatedPrelude?: Node;
   frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
@@ -180,12 +181,14 @@ function createAtRuleBodyEvalContextState(
   node: AtRule,
   context: Context,
   options: {
+    evaluatedPrelude?: Node;
     writeEvaluatedPrelude?: boolean;
     writeOutputStateToNode?: boolean;
   } = {}
 ): AtRuleBodyEvalContextState {
   return {
     evalFrame: node,
+    evaluatedPrelude: options.evaluatedPrelude,
     frameState: createAtRuleBodyFrameState(node, context),
     frameCount: context.frames.length,
     extendRootStackLength: context.extendRoots.extendRootStack.length,
@@ -258,7 +261,7 @@ function setAtRuleBodyEvalPrelude(
   state: AtRuleBodyEvalContextState,
   prelude: Node
 ): void {
-  updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedPrelude: prelude });
+  state.evaluatedPrelude = prelude;
   if (state.writeEvaluatedPrelude) {
     state.evalFrame.value.prelude = prelude;
   }
@@ -304,7 +307,9 @@ function readAtRuleBodyEvalRecordResult(
   return {
     evalFrame: record.evalFrame,
     node,
-    evaluatedPrelude: runtime?.evaluatedPrelude ?? record.evaluatedPrelude,
+    evaluatedPrelude: runtime?.evaluatedPrelude
+      ?? record.contextState.evaluatedPrelude
+      ?? record.evaluatedPrelude,
     evaluatedBody: runtime?.evaluatedBody,
     output: runtime?.output
   };
@@ -470,14 +475,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
   ): AtRuleBodyEvalRecord {
     const evalFrame = this.deriveAtRule(this.value);
-    if (evaluatedPrelude) {
-      updateAtRuleBodyRuntimeState(evalFrame, { evaluatedPrelude });
-    }
     return {
       source: this,
       evalFrame,
       evaluatedPrelude,
       contextState: createAtRuleBodyEvalContextState(evalFrame, context, {
+        evaluatedPrelude,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
         writeOutputStateToNode: options.writeOutputStateToNode
       })
@@ -843,9 +846,13 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     }
   }
 
-  private _extractAndStoreLayerName(node: AtRule, context: Context): void {
+  private _extractAndStoreLayerName(
+    node: AtRule,
+    context: Context,
+    evaluatedPrelude?: Node
+  ): void {
     const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
-    const prelude = atRuleBodyRuntimeState.get(node)?.evaluatedPrelude ?? node.value.prelude;
+    const prelude = evaluatedPrelude ?? atRuleBodyRuntimeState.get(node)?.evaluatedPrelude ?? node.value.prelude;
     if (atRuleName === '@layer' && prelude) {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
       if (preludeStr) {
@@ -1067,7 +1074,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     return pipe(
       () => {
         // Evaluate prelude in the correct scope (mixin params, vars, etc.).
-        if (atRuleBodyRuntimeState.get(node)?.evaluatedPrelude) {
+        if (bodyEvalContextState.evaluatedPrelude) {
           return;
         }
         let { prelude } = node.value;
@@ -1107,7 +1114,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
           // This ensures parent layers are already on the stack when we look for them
-          this._extractAndStoreLayerName(node, context);
+          this._extractAndStoreLayerName(node, context, bodyEvalContextState.evaluatedPrelude);
 
           const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
             const { bodyToEval, parentExtendRoot, pushedExtendRoot } = prepState;

@@ -18,6 +18,7 @@ export type MixinOutputSlot = {
   outputRules: Rules;
   childSegments: readonly MixinOutputChildSegment[];
   sourceByOutput: ReadonlyMap<Node, Node>;
+  outputBySource: ReadonlyMap<Node, Node>;
   rulesVisibility: Rules['options']['rulesVisibility'];
   isMixinOutput: boolean;
 };
@@ -46,6 +47,13 @@ export function getMixinOutputSourceChild(
   outputChild: Node
 ): Node | undefined {
   return outputRules.options.mixinOutputSlot?.sourceByOutput.get(outputChild);
+}
+
+export function getMixinOutputChildForSource(
+  outputRules: Rules,
+  sourceChild: Node
+): Node | undefined {
+  return outputRules.options.mixinOutputSlot?.outputBySource.get(sourceChild);
 }
 
 export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undefined {
@@ -148,6 +156,11 @@ export function attachMixinOutputSlot(
       childSegments
         .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
         .map(segment => [segment.output, segment.source])
+    ),
+    outputBySource: new Map(
+      childSegments
+        .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
+        .map(segment => [segment.source, segment.output])
     ),
     rulesVisibility: outputRules.options.rulesVisibility,
     isMixinOutput
