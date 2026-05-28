@@ -4010,6 +4010,14 @@ export class MixinCollection extends Node<MixinEntry[]> {
       boundValue.frozen = true;
       return boundValue;
     }
+    function createRestBindingValue(args: Node[]): Sequence {
+      return new Sequence(args.map(restArg => cloneBoundValue(restArg)));
+    }
+    function createArgumentsBindingValue(args: Node[]): Sequence {
+      const value = new Sequence([]);
+      value.value.push(...args);
+      return value;
+    }
     function createDerivedRulesSurface(
       sourceRules: Rules,
       options?: {
@@ -4168,7 +4176,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
               value: argValue,
               prepareValue: cloneBoundValue,
               readonly: param.options.readonly,
-              sourceNode: param
+              sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
             });
             signatureNodes[paramIndex] = argValue;
           } else if (isNode(param, N.Any) && param.options.role === 'property') {
@@ -4176,19 +4184,20 @@ export class MixinCollection extends Node<MixinEntry[]> {
               name: param.valueOf(),
               value: argValue,
               prepareValue: cloneBoundValue,
-              sourceNode: param
+              sourceNode: isNode(arg, N.VarDeclaration) ? arg : param
             });
             signatureNodes[paramIndex] = argValue;
           } else if (param.type === 'Rest') {
             /** We assume that the rest args are values */
-            const rest = nodeArgs.slice(argPos).map(restArg => cloneBoundValue(restArg));
-            const restValue = new Sequence(rest);
+            const rest = nodeArgs.slice(argPos);
+            const signatureValue = createRestBindingValue(rest);
             const restName = param.value ? `${param.value}` : `rest${i}`;
             bindingRecordsByIndex.set(paramIndex, {
               name: restName,
-              value: restValue
+              value: signatureValue,
+              prepareValue: () => createRestBindingValue(rest)
             });
-            signatureNodes[paramIndex] = restValue;
+            signatureNodes[paramIndex] = signatureValue;
             /** Check a pattern-matching node */
           } else {
             signatureNodes[paramIndex] = argValue;
@@ -4234,14 +4243,17 @@ export class MixinCollection extends Node<MixinEntry[]> {
               signatureNodes[i] = signatureValue;
             } else if (param.type === 'Rest') {
               const restName = param.value ? `${param.value}` : `rest${i}`;
-              const restValue = thisContext.treeContext?.file
+              const signatureValue = thisContext.treeContext?.file
                 ? new Sequence([])
                 : new Any(restName, { role: 'property' });
               bindingRecordsByIndex.set(i, {
                 name: restName,
-                value: restValue
+                value: signatureValue,
+                prepareValue: thisContext.treeContext?.file
+                  ? () => new Sequence([])
+                  : undefined
               });
-              signatureNodes[i] = restValue;
+              signatureNodes[i] = signatureValue;
             }
           }
           resolvedParamBindings.set(mixin, {
@@ -4683,14 +4695,30 @@ export class MixinCollection extends Node<MixinEntry[]> {
             readonly: binding.readonly
           });
         }
-        // @arguments: build the Sequence first (mutable array filled below),
-        // then put it in the live-slot map so it's found via the frame chain.
+        // @arguments is prepared lazily so normal mixin calls do not force
+        // every param/rest container to become owned output before lookup.
         const shouldDefineArguments = Boolean(thisContext.treeContext?.file);
-        let argumentsArgs: Node[] | undefined;
         if (shouldDefineArguments) {
-          argumentsArgs = [];
           liveSlots.set('arguments', {
-            value: new Sequence(argumentsArgs),
+            value: new Sequence([]),
+            prepareValue: () => {
+              const paramValues = paramBindings.map((binding) => {
+                const liveSlot = liveSlots.get(binding.name);
+                return liveSlot ? getBindingCellValue(liveSlot) : binding.value;
+              });
+              const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
+              const args: Node[] = [];
+              for (const argNode of argumentNodes) {
+                // If a Rest param collected args into a Sequence, spread its items
+                // so @arguments reflects the actual argument count.
+                if (isNode(argNode, N.Sequence)) {
+                  args.push(...(argNode as { value: Node[] }).value);
+                } else {
+                  args.push(argNode);
+                }
+              }
+              return createArgumentsBindingValue(args);
+            },
             readonly: true
           });
         }
@@ -4711,26 +4739,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
             }
           } else {
             outerRules.scopeFrame = scopeOwner.scopeFrame;
-          }
-        }
-        // Populate @arguments after the frame is wired (the Sequence holds a
-        // reference to argumentsArgs, so pushes here are visible through the frame).
-        if (shouldDefineArguments && argumentsArgs) {
-          const paramValues = paramBindings.map((binding) => {
-            const liveSlot = liveSlots.get(binding.name);
-            return liveSlot ? getBindingCellValue(liveSlot) : binding.value;
-          });
-          const argumentNodes = (paramValues && paramValues.length > 0) ? paramValues : nodeArgs;
-          for (const argNode of argumentNodes) {
-            // If a Rest param collected args into a Sequence, spread its items
-            // so @arguments reflects the actual argument count
-            if (isNode(argNode, N.Sequence)) {
-              for (const item of (argNode as { value: Node[] }).value) {
-                argumentsArgs.push(item);
-              }
-            } else {
-              argumentsArgs.push(argNode);
-            }
           }
         }
       } else if (thisContext.leakyRules === true && parentFrame) {

@@ -2501,6 +2501,137 @@ describe('Mixin', () => {
       }
     });
 
+    it('does not prepare unused rest parameter containers before lookup', async () => {
+      const originalDetachTrivia = Node.prototype.detachTrivia;
+      let detachedArgContainers = 0;
+      Node.prototype.detachTrivia = function detachTriviaForCounting(
+        this: Node,
+        ...args: Parameters<typeof originalDetachTrivia>
+      ): ReturnType<typeof originalDetachTrivia> {
+        if (this.type === 'Sequence' && this.valueOf() === 'red 10px') {
+          detachedArgContainers++;
+        }
+        return originalDetachTrivia.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.unused-rest'),
+            params: list([
+              any('first', { role: 'property' }),
+              rest('rest')
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.unused-rest' }, { type: 'mixin' }),
+                args: list([any('0'), seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: blue;');
+        expect(detachedArgContainers).toBe(0);
+      } finally {
+        Node.prototype.detachTrivia = originalDetachTrivia;
+      }
+    });
+
+    it('does not prepare @arguments containers before @arguments lookup', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+      const originalDetachTrivia = Node.prototype.detachTrivia;
+      let detachedArgContainers = 0;
+      Node.prototype.detachTrivia = function detachTriviaForCounting(
+        this: Node,
+        ...args: Parameters<typeof originalDetachTrivia>
+      ): ReturnType<typeof originalDetachTrivia> {
+        if (this.type === 'Sequence' && this.valueOf() === 'red 10px') {
+          detachedArgContainers++;
+        }
+        return originalDetachTrivia.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.unused-arguments'),
+            params: list([
+              any('space', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.unused-arguments' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: blue;');
+        expect(detachedArgContainers).toBe(0);
+      } finally {
+        Node.prototype.detachTrivia = originalDetachTrivia;
+      }
+    });
+
+    it('evaluates named argument values in the caller scope when preparing lazy bindings', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+      const root = rules([
+        mixin({
+          name: any('.named'),
+          params: list([
+            vardecl({ name: 'a', value: any('1px') }, { paramVar: true }),
+            vardecl({ name: 'b', value: any('50%') }, { paramVar: true })
+          ]),
+          rules: rules([
+            decl({ name: 'height', value: ref({ key: 'b' }, { type: 'variable' }) }),
+            decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            vardecl({ name: 'var', value: any('20%') }),
+            call({
+              name: ref({ key: '.named' }, { type: 'mixin' }),
+              args: list([
+                vardecl({ name: 'b', value: ref({ key: 'var' }, { type: 'variable' }) }, { paramVar: true })
+              ])
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toContain('height: 20%;');
+      expect(css).toContain('args: 1px 20%;');
+    });
+
     it('frame live slots resolve mixin params via frame chain after runtimeVarBindings removal', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }

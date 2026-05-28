@@ -160,8 +160,8 @@ Current top files by static surface count:
 
 Current top surface kinds: `new` node construction, `with*` output surfaces,
 `derive*` / `.derive(...)` surfaces, and `copyWithReusableLeaves(...)`.
-Latest audit: `new-node: 304`, `derive: 30`, `with-surface: 41`,
-`copy-leaves: 31`, `clone-leaves: 0`, module-context count `375`,
+Latest audit: `new-node: 305`, `derive: 30`, `with-surface: 41`,
+`copy-leaves: 31`, `clone-leaves: 0`, module-context count `376`,
 eval-context count `29`, prepare-registration count `2`, resolve-context count
 `0`. The clone-leaves frontier is zero; remaining work is reducing owned
 placement copies/state carriers, not hiding deep clone behind another helper.
@@ -339,6 +339,24 @@ placement copies/state carriers, not hiding deep clone behind another helper.
   Hot-path timing: `functions.less` median 24.55ms,
   `import-reference.less` median 29.33ms, `mixins-guards.less` median 29.61ms,
   `extend-chaining.less` median 18.97ms, and `media.less` median 8.76ms.
+- Latest queue pass extended lazy mixin binding slots through rest params and
+  `@arguments`: rest binding values and the `@arguments` aggregate now prepare
+  only on live-slot lookup, and regressions prove unused rest / `@arguments`
+  container args are not detached/copied during candidate matching. Recursion
+  signatures still materialize conservative aggregate nodes because call-stack
+  keys need stable value text. Named argument bindings now keep the named arg
+  itself as the scope anchor so lazy values like `@b: @var` resolve against the
+  caller scope when prepared. Ruleset-as-mixin child ownership, reference
+  result ownership, and at-rule public-result/runtime-state ownership were
+  re-audited against the focused suites and still carry semantic boundaries:
+  selector-parent placement, source-container canonicality, public
+  `resolve()` results, and render-local state restore. Static audit is now
+  `new-node: 305`, `derive: 30`, `with-surface: 41`, `copy-leaves: 31`; the
+  raw `new-node` increase is from explicit lazy aggregate builders, not a
+  clone/copy frontier regression. Hot-path timing: `functions.less` median
+  25.37ms, `import-reference.less` median 29.82ms,
+  `mixins-guards.less` median 32.04ms, `extend-chaining.less` median 18.89ms,
+  and `media.less` median 8.16ms.
 
 ## Immediate Queue
 
@@ -354,17 +372,7 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Extend lazy mixin binding slots through rest / `@arguments` aggregates.**
-
-   - Goal: positional/named/default params now have a lazy prepare hook. Rest
-     params and `@arguments` still build aggregate `Sequence` containers
-     eagerly when needed. Replace those only with a slot model that preserves
-     repeated-call isolation and source parentage.
-   - Required proof: rest params, `@arguments`, repeated mixin calls,
-     leaky/non-leaky lookup, source parentage, focused perf rerun, and frontier
-     scans.
-
-2. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
+1. **Split ruleset-as-mixin child ownership with selector-parent placement state.**
 
    - Goal: a blind static-body reuse breaks complex parent ampersands and
      nested array-path ruleset mixin calls. Do not retry raw child reuse; design
@@ -374,7 +382,7 @@ family can be audited and reduced.
      reference gates, targeted lookup, source parentage, focused perf rerun,
      and no clone frontier regression.
 
-3. **Design a narrow `ReferenceResultState` before deleting container copies.**
+2. **Design a narrow `ReferenceResultState` before deleting container copies.**
 
    - Goal: focused tests prove current reference container copies protect source
      values during eval. Do not delete them by pattern; first design a result
@@ -384,7 +392,7 @@ family can be audited and reduced.
      source-free scalar leaves remain uncopied, rules-like references preserve
      shallow owned surfaces, and no clone/copy frontier regression.
 
-4. **Audit at-rule public-result ownership copies.**
+3. **Audit at-rule public-result ownership copies.**
 
    - Goal: `ownName(...)`, `ownNode(...)`, and `ownRules(...)` still protect
      public `resolve(...)` materialization. Audit them as a family and remove
@@ -393,15 +401,7 @@ family can be audited and reduced.
      nested at-rule parentage, root-hoist/layer registration, and
      `audit:node-creation`.
 
-5. **Compare Less hot-path timing after the next real deletion.**
-
-   - Goal: run `pnpm run measure:less:hotpath` after the next real deletion and
-     compare the same five fixtures against the latest numbers above before
-     claiming runtime progress.
-   - Required proof: command output, before/after numbers, chosen surface, and
-     why the change should affect real stylesheet eval/render.
-
-6. **Audit at-rule render-local prelude materialization.**
+4. **Audit at-rule render-local prelude materialization.**
 
    - Goal: direct body render now uses runtime state for evaluated preludes, but
      `setAtRuleBodyEvalPrelude(...)` still writes public `eval()` output into
@@ -410,7 +410,7 @@ family can be audited and reduced.
    - Required proof: async prelude eval, direct render, public `eval()`,
      public `resolve(...)`, layer-name lookup, and source prelude parentage.
 
-7. **Audit at-rule body runtime-state lifetime.**
+5. **Audit at-rule body runtime-state lifetime.**
 
    - Goal: `AtRuleBodyRuntimeState` is intentionally small. Check that entries
      are only used for evaluated/rendering at-rule bodies and do not become a
@@ -418,6 +418,24 @@ family can be audited and reduced.
    - Required proof: inventory of writers/readers, no stale render-local facts
      after direct render, unchanged collapse output, and updated queue/backlog
      if another state fact is proposed.
+
+6. **Narrow mixin recursion signature aggregate materialization.**
+
+   - Goal: rest/default parameter binding is now lazy, but recursion signatures
+     still materialize aggregate nodes to build stable call-stack keys. Audit
+     whether signature keys can use source/value text without owning param
+     containers.
+   - Required proof: recursive mixins, default params, rest params,
+     named/positional args, repeated calls, and no source parentage mutation.
+
+7. **Audit lazy binding aggregate constructor count.**
+
+   - Goal: the static audit rose to `new-node: 305` after lazy rest /
+     `@arguments` builders landed. Decide whether that is acceptable helper
+     surface or whether a non-node aggregate descriptor can keep lookup lazy
+     while lowering the raw constructor count.
+   - Required proof: `audit:node-creation`, focused mixin tests, and no
+     broad state object that acts like a second AST.
 
 ## Backlog
 
