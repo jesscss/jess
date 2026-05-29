@@ -115,11 +115,7 @@ export type FindOptions = DeclarationFindOptions & {
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
   searchedRules?: Set<Rules>;
-  /**
-   * Whether this lookup has an explicit target (e.g., #ns[@foo]).
-   * When true, Rules with isMixinOutput=true will be searchable.
-   * When false or undefined, mixin output Rules will be excluded.
-   */
+  /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
   hasTarget?: boolean;
 };
 

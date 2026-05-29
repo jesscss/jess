@@ -23,7 +23,7 @@ import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
-import { isMixinOutputRules } from './mixin-output-slot.js';
+import { blocksAmbientMixinOutputLookup } from './mixin-output-slot.js';
 
 type TriviaSide = 'before' | 'after';
 
@@ -525,7 +525,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
     );
     const fromGeneratedOutput = (n: any): boolean => sourceChainHas(n, current =>
-      current?.type === 'Rules' && isMixinOutputRules(current)
+      current?.type === 'Rules' && blocksAmbientMixinOutputLookup(current)
     );
     if (rulesToRender.length === 0) {
       return '';

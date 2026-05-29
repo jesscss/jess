@@ -35,9 +35,9 @@ import type { Mixin } from './mixin.js';
 import type { Ruleset } from './ruleset.js';
 import { withRulesContext } from './util/context.js';
 import {
-  canSearchMixinOutputEntry,
-  getRulesEntryVisibility,
-  isMixinOutputRules
+  blocksAmbientMixinOutputLookup,
+  canEnterMixinOutputForLookup,
+  getRulesEntryVisibility
 } from './util/mixin-output-slot.js';
 /**
  * The type is determined by syntax
@@ -329,7 +329,7 @@ function findVarDeclarationFast(
       if (visibility !== 'public' && visibility !== 'optional') {
         continue;
       }
-      if (!canSearchMixinOutputEntry(entry, options.hasTarget)) {
+      if (!canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: options.hasTarget })) {
         continue;
       }
       if (options.context.rulesContext === scope && entry.node.options?.forward) {
@@ -616,7 +616,7 @@ function shouldUseLocalReferenceLookup(args: {
   target: ReferenceValue['target'];
   targetRules: Rules;
 }): boolean {
-  return !args.target && isMixinOutputRules(args.targetRules);
+  return !args.target && blocksAmbientMixinOutputLookup(args.targetRules);
 }
 
 function getContextualReferenceLookupStart(args: {

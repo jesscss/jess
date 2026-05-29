@@ -185,15 +185,15 @@ truth, the immediate pop queue, and verification.
   facts can move out of selector wrappers.
 - A `MixinOutputSlot` type now exists as an explicit compatibility record on
   generated mixin-output `Rules` wrappers. Slot-aware helpers cover
-  `isMixinOutput` / visibility checks in `Rules`, `Reference`, serializer
-  gating, and registry child-search. Registry lookup keeps entry visibility,
-  node visibility, optional candidates, and targeted mixin-output access as
-  distinct helper concepts; do not collapse them back into one coalesced
-  visibility check.
+  mixin-output identity, ambient versus targeted lookup policy, visibility
+  checks in `Rules`, `Reference`, serializer gating, and registry
+  child-search. Registry lookup keeps entry visibility, node visibility,
+  optional candidates, and mixin-output lookup policy as distinct helper
+  concepts; do not collapse them back into one coalesced visibility check.
 - `MixinOutputSlot.childSegments` records the canonical source child and, when
   the ordered output position exists, the owned output child for that
-  placement. The slot also carries whether the wrapper requires targeted
-  lookup. Lookup still must not switch to source segments blindly; output
+  placement. The slot also carries whether ambient lookup may enter the
+  wrapper. Lookup still must not switch to source segments blindly; output
   children are the scope/frame-bearing surface.
 - The next `MixinOutputSlot` boundary was audited. Direct comment children
   cannot move into the slot as a loose side list because mixin output must

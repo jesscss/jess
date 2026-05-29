@@ -21,8 +21,7 @@ export type MixinOutputSlot = {
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   rulesVisibility: Rules['options']['rulesVisibility'];
-  isMixinOutput: boolean;
-  targetedLookupOnly: boolean;
+  ambientLookup: boolean;
 };
 
 export type MixinOutputChildSegment = {
@@ -128,30 +127,31 @@ export function isOptionalRulesEntry(
   return visibility.entry === 'optional' || visibility.node === 'optional';
 }
 
-export function isMixinOutputRules(rules: Rules): boolean {
-  return rules.options?.mixinOutputSlot?.isMixinOutput
-    ?? rules.options?.isMixinOutput === true;
-}
-
-export function canSearchMixinOutputRules(
-  rules: Rules,
-  hasTarget: boolean | undefined
-): boolean {
+export function blocksAmbientMixinOutputLookup(rules: Rules): boolean {
   const slot = rules.options?.mixinOutputSlot;
   if (slot) {
-    return !slot.targetedLookupOnly || hasTarget === true;
+    return slot.ambientLookup !== true;
   }
-  return rules.options?.isMixinOutput !== true || hasTarget === true;
+  return rules.options?.isMixinOutput === true;
 }
 
-export function canSearchMixinOutputEntry(
+export function canEnterMixinOutputForLookup(
   entry: RulesEntryLike,
-  hasTarget: boolean | undefined
+  lookup: {
+    type?: LookupVisibility;
+    hasTarget?: boolean;
+  }
 ): boolean {
-  if (!isMixinOutputRules(entry.node)) {
+  // Lookup type visibility is checked by canSearchRulesEntry() or the caller's
+  // isVisibleRulesEntry() guard. This helper only answers the mixin-output gate:
+  // may this lookup enter generated output ambiently, or does it need a target?
+  if (!entry.node.options?.mixinOutputSlot && entry.node.options?.isMixinOutput !== true) {
     return true;
   }
-  return canSearchMixinOutputRules(entry.node, hasTarget);
+  if (!blocksAmbientMixinOutputLookup(entry.node) || lookup.hasTarget === true) {
+    return true;
+  }
+  return false;
 }
 
 export function canSearchRulesEntry(
@@ -159,8 +159,8 @@ export function canSearchRulesEntry(
   type: LookupVisibility | undefined,
   hasTarget: boolean | undefined
 ): boolean {
-  if (isMixinOutputRules(entry.node)) {
-    return canSearchMixinOutputEntry(entry, hasTarget)
+  if (blocksAmbientMixinOutputLookup(entry.node)) {
+    return canEnterMixinOutputForLookup(entry, { type, hasTarget })
       && (type === undefined || isVisibleRulesEntry(entry, type));
   }
   return type !== undefined && isVisibleRulesEntry(entry, type);
@@ -169,7 +169,7 @@ export function canSearchRulesEntry(
 export function attachMixinOutputSlot(
   outputRules: Rules,
   sourceRules: Rules,
-  isMixinOutput: boolean
+  restrictAmbientLookup: boolean
 ): MixinOutputSlot {
   const childSegments = getMixinOutputChildSegments(sourceRules, outputRules);
   const slot: MixinOutputSlot = {
@@ -192,11 +192,12 @@ export function attachMixinOutputSlot(
         .map(segment => [segment.output, segment.index])
     ),
     rulesVisibility: outputRules.options.rulesVisibility,
-    isMixinOutput,
-    targetedLookupOnly: isMixinOutput
+    ambientLookup: !restrictAmbientLookup
   };
   validateMixinOutputSlot(slot);
   outputRules.options.mixinOutputSlot = slot;
-  outputRules.options.isMixinOutput = isMixinOutput;
+  // Legacy option used by older call sites as "restrict ambient lookup".
+  // Mixin-output identity is the presence of mixinOutputSlot.
+  outputRules.options.isMixinOutput = restrictAmbientLookup;
   return slot;
 }

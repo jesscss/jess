@@ -61,11 +61,11 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
-  canSearchMixinOutputEntry,
+  blocksAmbientMixinOutputLookup,
+  canEnterMixinOutputForLookup,
   getMixinOutputChildSegments,
   getMixinOutputSourceChild,
   getMixinOutputSourceIndex,
-  isMixinOutputRules,
   isVisibleRulesEntry
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
@@ -511,11 +511,7 @@ export type RulesOptions = {
    *    }
    */
   rulesVisibility?: Record<string, RulesVisibility>;
-  /**
-   * If true, this Rules node is output from a mixin call.
-   * References with a target (e.g., #ns[@foo]) have public access to all nodes in these Rules.
-   * References without a target (e.g., @foo) cannot access these Rules.
-   */
+  /** Legacy compatibility flag for mixin output that restricts ambient lookup. */
   isMixinOutput?: boolean;
   /** Current compatibility carrier for explicit generated mixin-output state. */
   mixinOutputSlot?: MixinOutputSlot;
@@ -858,7 +854,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
+        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -949,7 +945,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
+        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1045,7 +1041,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
+        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
@@ -1136,7 +1132,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
+        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
@@ -1230,7 +1226,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
+        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1322,7 +1318,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
+        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1457,7 +1453,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
     const DEFINITE_MISS = Symbol('definite-ruleset-namespace-miss');
     type RulesetNamespaceFastResult = MixinEntry[] | typeof DEFINITE_MISS | undefined;
     const selectorNeedsLegacyFallback = (ruleset: Ruleset): boolean => {
-      return isMixinOutputRules(ruleset.value.rules);
+      return blocksAmbientMixinOutputLookup(ruleset.value.rules);
     };
 
     const walk = (
@@ -4529,7 +4525,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Visibility should be preserved by Rules.eval - no need to set it explicitly here
         // The eval'd rules should already have their nodes registered
         // Ensure the registry is indexed before checking
-        // Mark output Rules as mixin output - accessible only when lookup has a target
+        // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(
           newRules,
           getRootSourceRules(getMixinEntryRules(candidate)),
@@ -4576,7 +4572,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Rules should have index from eval, but ensure it matches candidate for sorting
         rules.index = candidate.index;
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
-        // Mark output Rules as mixin output - accessible only when lookup has a target
+        // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup);
         rules.options.referenceMode = false;
         clearReferenceModeForMixinOutput(rules);
@@ -4608,7 +4604,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         if (thisContext.leakyRules === true && parentFrame) {
           unlocked.getScopeFrame().fallbackFrame = parentFrame;
         }
-        // Mark as mixin output; caller may override when leakyRules=true
+        // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup);
         unlocked.options.referenceMode = false;
         clearReferenceModeForMixinOutput(unlocked);
@@ -4947,7 +4943,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
     }
     if (outputRules.length === 1) {
       output = outputRules[0]!;
-      // Ensure single output rule is marked as mixin output
+      // Ensure single output rule carries the mixin-output slot.
       attachMixinOutputSlot(
         output,
         getRootSourceRules(output.sourceNode && isNode(output.sourceNode, N.Rules) ? output.sourceNode : output),
@@ -4957,8 +4953,8 @@ export class MixinCollection extends Node<MixinEntry[]> {
       clearReferenceModeForMixinOutput(output);
     } else {
       /**
-       * Wrap these in rules marked as mixin output - accessible only when lookup has a target.
-       * This prevents mixin output from being searched by untargeted lookups.
+       * Wrap these in rules marked as mixin output. The slot decides whether
+       * ambient lookups may enter it or whether only targeted lookups may.
        */
       if (!emptyOutputSourceRules) {
         throw new ReferenceError('Mixin output source surface was not established.');

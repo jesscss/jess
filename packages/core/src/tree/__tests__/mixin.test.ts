@@ -3,7 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
-import { canSearchMixinOutputRules, canSearchRulesEntry, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
+import { canEnterMixinOutputForLookup, canSearchRulesEntry, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
 
 let context: Context;
 
@@ -1016,8 +1016,8 @@ describe('Mixin', () => {
       expect(result.sourceNode).toBe(mixinBody);
       expect(result.options.isMixinOutput).toBe(false);
       expect(result.options.referenceMode).toBe(false);
-      expect(result.options.mixinOutputSlot?.targetedLookupOnly).toBe(false);
-      expect(canSearchMixinOutputRules(result, false)).toBe(true);
+      expect(result.options.mixinOutputSlot?.ambientLookup).toBe(true);
+      expect(canEnterMixinOutputForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
       expect(canSearchRulesEntry({ node: result }, 'Mixin', false)).toBe(true);
       expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinBody);
       expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
@@ -1054,7 +1054,7 @@ describe('Mixin', () => {
       }
       expect(secondResult).not.toBe(result);
       expect(secondResult.value).not.toBe(result.value);
-      expect(secondResult.options.mixinOutputSlot?.targetedLookupOnly).toBe(false);
+      expect(secondResult.options.mixinOutputSlot?.ambientLookup).toBe(true);
       expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
