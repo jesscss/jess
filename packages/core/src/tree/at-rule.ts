@@ -75,6 +75,7 @@ type AtRuleBodyEvalContextState = {
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
   layerName?: string;
+  registration?: AtRuleBodyRegistrationState;
   frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
@@ -285,6 +286,14 @@ function storeAtRuleBodyEvalRules(
   if (state.writeOutputStateToNode) {
     updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedBody: finalRules });
   }
+}
+
+function storeAtRuleBodyRegistration(
+  state: AtRuleBodyEvalContextState,
+  registration: AtRuleBodyRegistrationState
+): AtRuleBodyRegistrationState {
+  state.registration = registration;
+  return registration;
 }
 
 function hasCommentChild(value: unknown): boolean {
@@ -1140,6 +1149,12 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
             const { bodyToEval, parentExtendRoot, pushedExtendRoot } = prepState;
+            const registration = storeAtRuleBodyRegistration(bodyEvalContextState, {
+              bodyToEval,
+              finalRules: bodyToEval,
+              ...(parentExtendRoot !== undefined && { parentExtendRoot }),
+              ...(bodyEvalContextState.layerName !== undefined && { layerName: bodyEvalContextState.layerName })
+            });
             const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
             restoreRulesetFrames = activateAtRuleBodyEvalContextState(bodyEvalContextState, context);
             let evalOut: MaybePromise<Rules>;
@@ -1153,13 +1168,9 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               restoreRulesetFrames();
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
+              registration.finalRules = finalRules;
               if (pushedExtendRoot && node.isNestable()) {
-                this._registerEvaluatedNestableBody(node, context, {
-                  bodyToEval,
-                  finalRules,
-                  parentExtendRoot,
-                  layerName: bodyEvalContextState.layerName
-                });
+                this._registerEvaluatedNestableBody(node, context, registration);
               }
               return node;
             };

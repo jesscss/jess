@@ -19,6 +19,7 @@ export type MixinOutputSlot = {
   childSegments: readonly MixinOutputChildSegment[];
   sourceByOutput: ReadonlyMap<Node, Node>;
   outputBySource: ReadonlyMap<Node, Node>;
+  sourceIndexByOutput: ReadonlyMap<Node, number>;
   rulesVisibility: Rules['options']['rulesVisibility'];
   isMixinOutput: boolean;
 };
@@ -60,13 +61,7 @@ export function getMixinOutputSourceIndex(
   outputRules: Rules,
   outputChild: Node
 ): number | undefined {
-  const slot = outputRules.options.mixinOutputSlot;
-  const sourceChild = slot?.sourceByOutput.get(outputChild);
-  if (!slot || !sourceChild) {
-    return undefined;
-  }
-  const segment = slot.childSegments.find(item => item.source === sourceChild);
-  return segment?.index;
+  return outputRules.options.mixinOutputSlot?.sourceIndexByOutput.get(outputChild);
 }
 
 export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undefined {
@@ -174,6 +169,11 @@ export function attachMixinOutputSlot(
       childSegments
         .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
         .map(segment => [segment.source, segment.output])
+    ),
+    sourceIndexByOutput: new Map(
+      childSegments
+        .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
+        .map(segment => [segment.output, segment.index])
     ),
     rulesVisibility: outputRules.options.rulesVisibility,
     isMixinOutput

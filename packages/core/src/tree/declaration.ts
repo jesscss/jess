@@ -771,7 +771,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const inputValue = state.renderOnly ? this.ownRenderAssignmentInput(value) : value;
       /** Reference type */
       let type: 'declaration' | 'variable' =
-        this.type === 'Declaration' ? 'declaration' : 'variable';
+        this.type === 'VarDeclaration' ? 'variable' : 'declaration';
       let outputNode: Declaration | undefined;
       state.bindOutput = (node: Declaration) => {
         outputNode = node;

@@ -83,6 +83,10 @@ truth, the immediate pop queue, and verification.
   at-rules are hoisted in their sibling position: earlier root-only at-rules
   can emit before the containing ruleset body, and later root-only at-rules
   emit after already-rendered declarations.
+- At-rule body eval now stores the body-to-eval/final-rules registration
+  pairing on invocation context state before public output writes. This is a
+  staging step toward deleting the derived body frame, not a new render-state
+  model.
 - The remaining direct body-render at-rule isolation surface is still real:
   `evalBodyResult(...)` derives an eval frame because `evalBodyNode(...)`
   pushes/pops frames, prepares body registration, may attach extend/layer
@@ -118,6 +122,10 @@ truth, the immediate pop queue, and verification.
   inert output when every child is already a reusable leaf. Dynamic fallback
   containers, source-backed declaration/variable containers, and rules-like
   outputs still own result surfaces.
+- Source-free static fallback `List` containers can now render as text-only
+  output without applying public result metadata. Source-backed containers and
+  dynamic containers still own result surfaces. Declaration/runtime reusable
+  reference branches restore reference-stack state before returning.
 - Reference render still uses `evalNode(context)` and then native rendering of
   the resolved node for containers, declaration/runtime-binding values, and
   rules-like values. Scalar source-free fallback render now has a text-only
@@ -162,9 +170,9 @@ truth, the immediate pop queue, and verification.
 - Ampersand append/template evaluation now has a tiny
   `AmpersandAppendPlacementState` prototype. It currently carries only source,
   selected parent/output selector, append text, template-merge mode, hoist fact,
-  template parts, and selector bit library. It does not replace generated
-  selector output; it is a staging point for proving which generated facts can
-  move out of selector wrappers.
+  template parts, template replacement text, and selector bit library. It does
+  not replace generated selector output; it is a staging point for proving
+  which generated facts can move out of selector wrappers.
 - A `MixinOutputSlot` type now exists as an explicit compatibility record on
   generated mixin-output `Rules` wrappers. Slot-aware helpers cover
   `isMixinOutput` / visibility checks in `Rules`, `Reference`, serializer
@@ -313,13 +321,13 @@ trend.
 
 | # | Focus | Main result |
 | --- | --- | --- |
-| 1 | Layer state / reference stack / slot indexes | At-rule body eval carries layer-name registration state on invocation context. Rules-like reference preserve paths restore stack state. Declaration assignment state covers contextual important buffers. Mixin slots expose source-order indexes, ampersand state carries template parts, and guarded nested rulesets are documented as a real owned-body blocker. |
-| 2 | Body eval context / fallback cleanup / slot indexes | Body-at-rule eval keeps evaluated body/output facts on invocation context state before public output writes. Fallback reference render restores stack state, declaration render carries assignment item state without a temporary sequence for render, mixin output wrappers index children from slot source maps, and ampersand placement state owns template-merge mode. |
-| 3 | At-rule prelude state / runtime-binding scalar text / slot maps | Body-at-rule direct render carries evaluated preludes on eval context state instead of the runtime map. Runtime-binding scalar reference render skips public result metadata. Mixin slots map source-to-output directly. Ampersand append has a tiny placement state. No further safe source-direct ruleset body shape was found. |
-| 4 | At-rule eval record / scalar declaration text / static var body | Added the first explicit at-rule body eval record around the remaining derived frame. Reference render now text-only finalizes reusable declaration/variable scalar leaves. Mixin slot source-child collection uses the direct source map. Static rulesets source-render invisible variable children without prep/eval. |
-| 5 | Assignment render prep / scalar reference text / slot lookup | Declaration assignment render keeps authored values parented while normalizing `+:`, `&,:`, `&_:`, and `?:` for render. Scalar fallback reference render avoids public result metadata. Mixin output slots now index output-child-to-source lookup. |
-| 6 | Declaration render prep / mixin slot guard / queue audit | Declaration render prep uses read-only source-backed registration state instead of copying name/value/important parts. Mixin output slot attachment validates source segment order and output child ownership. |
-| 7 | At-rule result state / hoist-order proof / mixin mapping guard | At-rule body eval results carry evaluated body/output facts explicitly into render/resolve state. Hoist-active static body at-rules are proven to bypass source-direct ruleset render while preserving in-place sibling order. |
+| 1 | At-rule registration / reference containers / custom assignment | At-rule body eval records body-registration pairing on invocation context state. Source-free static fallback `List` containers render text-only, reusable reference branches restore stack state, custom property assignment stays raw, mixin slot source indexes use a direct map, ampersand state carries template replacements, and guarded ruleset pass/fail proofs define the owned-body blocker. |
+| 2 | Layer state / reference stack / slot indexes | At-rule body eval carries layer-name registration state on invocation context. Rules-like reference preserve paths restore stack state. Declaration assignment state covers contextual important buffers. Mixin slots expose source-order indexes, ampersand state carries template parts, and guarded nested rulesets are documented as a real owned-body blocker. |
+| 3 | Body eval context / fallback cleanup / slot indexes | Body-at-rule eval keeps evaluated body/output facts on invocation context state before public output writes. Fallback reference render restores stack state, declaration render carries assignment item state without a temporary sequence for render, mixin output wrappers index children from slot source maps, and ampersand placement state owns template-merge mode. |
+| 4 | At-rule prelude state / runtime-binding scalar text / slot maps | Body-at-rule direct render carries evaluated preludes on eval context state instead of the runtime map. Runtime-binding scalar reference render skips public result metadata. Mixin slots map source-to-output directly. Ampersand append has a tiny placement state. No further safe source-direct ruleset body shape was found. |
+| 5 | At-rule eval record / scalar declaration text / static var body | Added the first explicit at-rule body eval record around the remaining derived frame. Reference render now text-only finalizes reusable declaration/variable scalar leaves. Mixin slot source-child collection uses the direct source map. Static rulesets source-render invisible variable children without prep/eval. |
+| 6 | Assignment render prep / scalar reference text / slot lookup | Declaration assignment render keeps authored values parented while normalizing `+:`, `&,:`, `&_:`, and `?:` for render. Scalar fallback reference render avoids public result metadata. Mixin output slots now index output-child-to-source lookup. |
+| 7 | Declaration render prep / mixin slot guard / queue audit | Declaration render prep uses read-only source-backed registration state instead of copying name/value/important parts. Mixin output slot attachment validates source segment order and output child ownership. |
 
 ## Metrics Snapshot
 
@@ -337,13 +345,13 @@ Recent hot-path medians. `#1` is the latest pass.
 
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Layer state / reference stack / slot indexes | 18.43ms | 24.60ms | 28.17ms | 13.61ms | 6.33ms | saved row; functions and extend are outside the 8% threshold, other fixture deltas are positive but noisy |
-| 2 | Body eval context / fallback cleanup / slot indexes | 20.60ms | 25.77ms | 30.52ms | 14.84ms | 6.81ms | all medians improved versus prior saved row, but each delta is inside the script's noise band |
-| 3 | At-rule prelude state / runtime-binding scalar text / slot maps | 21.52ms | 27.03ms | 31.53ms | 15.20ms | 7.12ms | all medians improved versus prior saved row, but each delta is inside the script's noise band |
-| 4 | At-rule eval record / scalar declaration text / static var body | 22.44ms | 29.12ms | 31.99ms | 15.73ms | 7.68ms | structural pass; slower than prior sample for several fixtures and still noisy, no speedup claim |
-| 5 | Assignment render prep / scalar reference text / slot lookup | 19.62ms | 25.52ms | 29.38ms | 15.18ms | 6.98ms | faster sample but high noise on several fixtures; structural wins are narrower assignment/reference/slot surfaces |
-| 6 | Declaration render prep / mixin slot guard / queue audit | 22.01ms | 28.75ms | 34.57ms | 16.28ms | 8.05ms | source-backed declaration render copies removed; mixed/noisy timing, no broad speedup claim |
-| 7 | At-rule result state / hoist-order proof / mixin mapping guard | 21.81ms | 29.61ms | 34.87ms | 18.41ms | 9.65ms | proof/state split pass; noisy sample, no speedup claim |
+| 1 | At-rule registration / reference containers / custom assignment | 17.67ms | 23.03ms | 27.20ms | 13.86ms | 6.25ms | all deltas versus #2 are inside the script's noise band; structural wins are state/ownership proof, not claimed speedup |
+| 2 | Layer state / reference stack / slot indexes | 18.43ms | 24.60ms | 28.17ms | 13.61ms | 6.33ms | saved row; functions and extend are outside the 8% threshold, other fixture deltas are positive but noisy |
+| 3 | Body eval context / fallback cleanup / slot indexes | 20.60ms | 25.77ms | 30.52ms | 14.84ms | 6.81ms | all medians improved versus prior saved row, but each delta is inside the script's noise band |
+| 4 | At-rule prelude state / runtime-binding scalar text / slot maps | 21.52ms | 27.03ms | 31.53ms | 15.20ms | 7.12ms | all medians improved versus prior saved row, but each delta is inside the script's noise band |
+| 5 | At-rule eval record / scalar declaration text / static var body | 22.44ms | 29.12ms | 31.99ms | 15.73ms | 7.68ms | structural pass; slower than prior sample for several fixtures and still noisy, no speedup claim |
+| 6 | Assignment render prep / scalar reference text / slot lookup | 19.62ms | 25.52ms | 29.38ms | 15.18ms | 6.98ms | faster sample but high noise on several fixtures; structural wins are narrower assignment/reference/slot surfaces |
+| 7 | Declaration render prep / mixin slot guard / queue audit | 22.01ms | 28.75ms | 34.57ms | 16.28ms | 8.05ms | source-backed declaration render copies removed; mixed/noisy timing, no broad speedup claim |
 
 Measurement commands:
 
@@ -392,67 +400,61 @@ inventory proves a real semantic blocker; do not create timid items like
 "delete one helper call" when a whole `.set()` / `inherit()` / `derive*`
 family can be audited and reduced.
 
-1. **Shrink body at-rule layer/extend registration state again.**
+1. **Delete one body-at-rule derived-frame dependency.**
 
-   - Goal: layer name is now invocation-local. Move the next concrete
-     extend-root stack or body-registration fact out of the remaining derived
-     eval frame, or prove why the frame still owns it.
+   - Goal: move one remaining final body/prelude consumption path from the
+     derived eval frame into an invocation-local public-result adapter.
    - Required proof: nested `@layer`/`@media`, dynamic prelude, public
      `resolve(...)`, thrown/rejected cleanup, source body parentage, and no
      runtime-map scratch writes for the moved fact.
 
-2. **Audit reference container render for text/state-only finalization.**
+2. **Audit declaration reference containers beyond fallback lists.**
 
-   - Goal: scalar and stack paths are clean. Pick `List`/`Sequence` fallback or
-     declaration-reference containers and either render via explicit state or
-     document the ownership blocker.
+   - Goal: source-free fallback `List` containers are text-only. Pick
+     declaration-reference containers next and either render through explicit
+     state or document the exact ownership blocker.
    - Required proof: source container parentage, async live-slot restore,
      custom property values, public `resolve(...)` owned output, and no
      reference-stack leak.
 
-3. **Finish declaration custom/assignment render-state boundary.**
+3. **Move one generated selector output fact into placement state.**
 
-   - Goal: contextual important and comma assignment render are covered. Audit
-     custom property assignment/raw-value edges and move any remaining
-     render-only facts into declaration state without touching public
-     registration/resolve ownership.
-   - Required proof: custom values serialize as authored after `:`, `+:`,
-     `&,:`, `&_:`, `?:`, contextual important, source parentage, and buffer
-     parity.
-
-4. **Use mixin-output slot maps for one lookup/order path.**
-
-   - Goal: source-order indexes are available. Replace one production
-     source/order scan with slot helpers while keeping actual lookup on owned
-     output children.
-   - Required proof: targeted property lookup, targeted mixin lookup, nested
-     mixin scopes, comments, reference gates, and repeated placement.
-
-5. **Move ampersand append validation output into placement state.**
-
-   - Goal: placement state owns template parts. Move validated replacement text
-     or distributed selector-list item facts into state without replacing
-     generated selector output.
+   - Goal: use the ampersand append state to carry one more proven output fact
+     without replacing generated selector wrappers.
    - Required proof: complex parent ampersands, selector lists, append versus
      hoist behavior, invalid template errors, source parentage, and output
      parity.
 
-6. **Design the next ruleset owned-body side-state seam.**
+4. **Replace one mixin-output wrapper lookup gate with slot facts.**
 
-   - Goal: guarded nested rulesets are a proven blocker. Identify the smallest
-     body fact that can leave the owned surface first, likely guard result,
-     nil-selector output, or body-registration pairing.
-   - Required proof: guarded pass/fail, nested output, source body parentage,
+   - Goal: source indexes are direct. Move one visibility/order/reference gate
+     onto `MixinOutputSlot` while keeping actual lookup on owned output
+     children.
+   - Required proof: targeted property lookup, targeted mixin lookup, nested
+     mixin scopes, comments, reference gates, and repeated placement.
+
+5. **Audit `copyWithReusableLeaves(...)` in reference/declaration fallbacks.**
+
+   - Goal: reduce the fallback helper family as a surface, not one call site.
+     Delete safe calls and document the blockers for the rest.
+   - Required proof: inventory, focused parentage tests, static audit delta or
+     documented blocker, and public `resolve(...)` output ownership.
+
+6. **Prove or block nil-selector ruleset body state extraction.**
+
+   - Goal: guarded pass/fail blockers are covered. Test whether nil-selector
+     body output can move into side state before broader nested ruleset work.
+   - Required proof: nil selector output, nested output, source body parentage,
      fixture subset, and no source-direct render where registration/nesting is
      required.
 
-7. **Reduce one mutation-helper family where state already exists.**
+7. **Measure the next real copy/materialization reduction.**
 
-   - Goal: use the existing state records to remove a surface-sized group of
-     `.inherit(...)`, `derive*`, or wrapper uses. Do not count a single call
-     site unless the family audit proves a semantic blocker.
-   - Required proof: inventory, focused tests, static audit delta or blocker,
-     and handoff update.
+   - Goal: pick the next queue item with an expected static audit delta, run
+     before/after static and hot-path measurement, and record whether it was a
+     measurable win or only a structural cleanup.
+   - Required proof: `audit:node-creation`, focused tests, hot-path record, and
+     concise metrics update in this handoff.
 
 ## Backlog
 

@@ -1330,7 +1330,8 @@ function cloneReferenceResultNode(
 }
 
 function copyReferenceValue(node: Node): Node {
-  return copyWithReusableLeaves(node).inherit(node);
+  const copied = copyWithReusableLeaves(node);
+  return copied;
 }
 
 function canReuseReferenceValue(node: Node): boolean {
@@ -1359,7 +1360,10 @@ function evaluateFallbackValue(
   options: { textOnly?: boolean } = {}
 ): MaybePromise<Node> {
   if (canReuseFallbackValue(fallbackValue)) {
-    if (options.textOnly === true && canReuseReferenceValue(fallbackValue)) {
+    if (
+      options.textOnly === true
+      && (canReuseReferenceValue(fallbackValue) || canReuseSourceFreeFallbackContainer(fallbackValue))
+    ) {
       context.popReference();
       return fallbackValue;
     }
@@ -1496,6 +1500,7 @@ function finalizeRuntimeVarBindingResult(
         return evald;
       }
       evald.frozen = true;
+      context.popReference();
       return evald;
     }
     return cloneReferenceResultNode(referenceNode, evald);
@@ -1629,12 +1634,16 @@ function finalizeDeclarationReferenceResult(
       hasImportant: hasImportantDeclarationValue(declaration),
       context
     }),
-    evaluatedNode => finalizeEvaluatedDeclarationReference(
-      referenceNode,
-      evaluatedNode,
-      isMergedAssign,
-      options
-    )
+    (evaluatedNode) => {
+      const finalized = finalizeEvaluatedDeclarationReference(
+        referenceNode,
+        evaluatedNode,
+        isMergedAssign,
+        options
+      );
+      context.popReference();
+      return finalized;
+    }
   ));
 }
 

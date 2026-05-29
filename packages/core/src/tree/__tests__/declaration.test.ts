@@ -815,6 +815,27 @@ describe('Declaration', () => {
     expect(node.value.value.parent).toBe(node);
   });
 
+  it('keeps custom property assignment render state raw through buffers', async () => {
+    const root = rules([
+      decl({
+        name: any('--tokens'),
+        value: any('red')
+      }, { assign: '+:' })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const node = decl({
+      name: any('--tokens'),
+      value: any('blue')
+    }, { assign: '+:' });
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
+    expect(buffer.segments).toEqual(['--tokens:blue']);
+    expect(node.value.value.parent).toBe(node);
+  });
+
   it('renders contextual important flags without materializing a flag node', () => {
     const node = decl({
       name: any('color'),

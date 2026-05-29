@@ -554,6 +554,73 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-free fallback containers as text without applying public result metadata', async () => {
+      const fallback = list([any('red'), any('blue')]);
+      const fallbackParent = fallback.parent;
+      const originalInherit = fallback.inherit;
+      let inheritCalls = 0;
+      fallback.inherit = function inheritForCounting(
+        this: typeof fallback,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        inheritCalls++;
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red, blue');
+        expect(inheritCalls).toBe(0);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        fallback.inherit = originalInherit;
+      }
+    });
+
+    it('copies source-backed fallback containers without redundant inherit calls', async () => {
+      const fallback = list([ref('tone', { type: 'variable' })]);
+      const originalInherit = List.prototype.inherit;
+      let fallbackCopyInherits = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === fallback) {
+          fallbackCopyInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+      const root = rules([
+        vardecl({ name: 'tone', value: any('red') })
+      ]);
+      context.root = root;
+      context.rulesContext = root;
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(fallbackCopyInherits).toBe(1);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('restores reference stack after async fallback render', async () => {
       const fallback = new AsyncNativeRenderAny('red');
       const refNode = ref(

@@ -549,6 +549,46 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  it('keeps failed guarded rulesets off source-direct render while preserving source body parentage', async () => {
+    const selector = sellist([sel([el('.parent')])]);
+    const child = ruleset({
+      selector: sellist([sel([el('.child')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const body = rules([child]);
+    const node = ruleset({
+      selector,
+      guard: condition([bool(false)]),
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let sourceBodyPrepCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this === body) {
+        sourceBodyPrepCalls++;
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(sourceBodyPrepCalls).toBe(0);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(child.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('restores parent ruleset frame when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.saved'),

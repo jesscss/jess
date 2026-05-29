@@ -96,6 +96,7 @@ type AmpersandAppendPlacementState = {
   appendValue?: string;
   templateMerge: boolean;
   templateParts?: string[];
+  templateReplacementValues?: string[];
   hoistToRoot: boolean;
   selectorBits: Context['selectorBits'];
 };
@@ -485,8 +486,9 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
                 baseSelectors.push(baseSelector);
               }
             }
-            const merged = baseSelectors.map((item) => {
-              const value = item.toTrimmedString();
+            placement.templateReplacementValues = baseSelectors.map(item => item.toTrimmedString());
+            const merged = baseSelectors.map((item, index) => {
+              const value = placement.templateReplacementValues?.[index] ?? item.toTrimmedString();
               assertValidAmpersandTemplateJoin(appendValue, value);
               return new BasicSelector((placement.templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
             });
