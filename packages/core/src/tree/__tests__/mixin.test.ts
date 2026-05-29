@@ -1054,6 +1054,7 @@ describe('Mixin', () => {
       }
       expect(secondResult).not.toBe(result);
       expect(secondResult.value).not.toBe(result.value);
+      expect(secondResult.options.referenceMode).toBe(false);
       expect(secondResult.options.mixinOutputSlot?.ambientLookup).toBe(true);
       expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
       expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
@@ -1083,6 +1084,7 @@ describe('Mixin', () => {
       attachMixinOutputSlot(output, source, true);
       const entry = { node: output };
 
+      expect(output.options.referenceMode).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
       expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(false);

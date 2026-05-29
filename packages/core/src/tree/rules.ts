@@ -4060,8 +4060,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             VarDeclaration: 'public',
             Mixin: 'public'
           },
-          isMixinOutput: restrictMixinOutputLookup,
-          referenceMode: false
+          isMixinOutput: restrictMixinOutputLookup
         };
         attachMixinOutputSlot(output, sourceRules, restrictMixinOutputLookup);
       }
@@ -4512,7 +4511,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
           getRootSourceRules(getMixinEntryRules(candidate)),
           restrictMixinOutputLookup
         );
-        newRules.options.referenceMode = false;
         markMixinOutputSource(newRules, getRootSourceRules(getMixinEntryRules(candidate)));
         clearReferenceModeForMixinOutput(newRules);
         outputRules.push(newRules);
@@ -4555,7 +4553,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // Skip empty Rules (e.g., containing only invisible nodes like comments)
         // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup);
-        rules.options.referenceMode = false;
         clearReferenceModeForMixinOutput(rules);
         markMixinOutputSource(rules, sourceRules);
         outputRules.push(rules);
@@ -4587,7 +4584,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup);
-        unlocked.options.referenceMode = false;
         clearReferenceModeForMixinOutput(unlocked);
         markMixinOutputSource(unlocked, sourceRules);
         Reflect.set(unlocked, 'index', candidate.index);
@@ -4930,7 +4926,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         getRootSourceRules(output.sourceNode && isNode(output.sourceNode, N.Rules) ? output.sourceNode : output),
         restrictMixinOutputLookup
       );
-      output.options.referenceMode = false;
       clearReferenceModeForMixinOutput(output);
     } else {
       /**

@@ -664,6 +664,27 @@ describe('reference', () => {
       }
     });
 
+    it('does not redirect direct index sequence targets as mixin keys', async () => {
+      const targetValue = spaced([any('red'), any('blue')]);
+      const node = rules([
+        vardecl({
+          name: 'tone',
+          value: targetValue
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'tone' }, { type: 'variable' }),
+        key: quoted('missing')
+      }, {
+        type: 'index',
+        fallbackValue: any('fallback')
+      });
+
+      await expect(Promise.resolve(refNode.render(context))).resolves.toBe('fallback');
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('keeps referenced source value containers canonical after resolve(context)', async () => {
       const value = list([
         any('one'),

@@ -1194,8 +1194,23 @@ function resolveInitialReferenceTarget(
   return resolvedTarget;
 }
 
-function getRedirectReferenceTargetKey(resolvedTarget: unknown): string | undefined {
+function isDirectIndexContainerTarget(
+  referenceNode: Reference,
+  resolvedTarget: unknown
+): boolean {
+  return referenceNode.options.type === 'index'
+    && referenceNode.value.target !== undefined
+    && isNode(resolvedTarget, N.List | N.Sequence);
+}
+
+function getRedirectReferenceTargetKey(
+  referenceNode: Reference,
+  resolvedTarget: unknown
+): string | undefined {
   if (!(resolvedTarget instanceof Node)) {
+    return undefined;
+  }
+  if (isDirectIndexContainerTarget(referenceNode, resolvedTarget)) {
     return undefined;
   }
   if (
@@ -1218,7 +1233,7 @@ function resolveAmbiguousReferenceTarget(args: {
   context: Context;
 }): MaybePromise<unknown> {
   const { referenceNode, context, resolvedTarget } = args;
-  const targetKey = getRedirectReferenceTargetKey(resolvedTarget);
+  const targetKey = getRedirectReferenceTargetKey(referenceNode, resolvedTarget);
   if (targetKey !== undefined) {
     const refNode = new Reference(targetKey, { type: 'mixin-ruleset' });
     referenceNode.adopt(refNode);

@@ -199,6 +199,7 @@ export function attachMixinOutputSlot(
   };
   validateMixinOutputSlot(slot);
   outputRules.options.mixinOutputSlot = slot;
+  outputRules.options.referenceMode = false;
   // Legacy option used by older call sites as "restrict ambient lookup".
   // Mixin-output identity is the presence of mixinOutputSlot.
   outputRules.options.isMixinOutput = restrictAmbientLookup;
