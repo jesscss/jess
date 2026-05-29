@@ -132,7 +132,7 @@ export function blocksAmbientMixinOutputLookup(rules: Rules): boolean {
   if (slot) {
     return slot.ambientLookup !== true;
   }
-  return rules.options?.isMixinOutput === true;
+  return false;
 }
 
 export function canEnterMixinOutputForLookup(
@@ -145,7 +145,7 @@ export function canEnterMixinOutputForLookup(
   // Lookup type visibility is checked by canEnterRulesEntryForLookup() or the
   // caller's isVisibleRulesEntry() guard. This helper only answers the mixin-output gate:
   // may this lookup enter generated output ambiently, or does it need a target?
-  if (!entry.node.options?.mixinOutputSlot && entry.node.options?.isMixinOutput !== true) {
+  if (!entry.node.options?.mixinOutputSlot) {
     return true;
   }
   if (!blocksAmbientMixinOutputLookup(entry.node) || lookup.hasTarget === true) {
@@ -200,8 +200,5 @@ export function attachMixinOutputSlot(
   validateMixinOutputSlot(slot);
   outputRules.options.mixinOutputSlot = slot;
   outputRules.options.referenceMode = false;
-  // Legacy option used by older call sites as "restrict ambient lookup".
-  // Mixin-output identity is the presence of mixinOutputSlot.
-  outputRules.options.isMixinOutput = restrictAmbientLookup;
   return slot;
 }

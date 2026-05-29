@@ -8,6 +8,7 @@ import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
+import { PseudoSelector } from '../selector-pseudo.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -222,6 +223,31 @@ describe('PseudoSelector', () => {
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.render(context)).toBe(':is(.foo, .bar)');
+    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
+  });
+
+  it('keeps generated pseudo selector placement output owned when arg evaluation changes', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([sel([el('.foo'), co(' '), el('.bar')])])
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    pseudoNode.generated = true;
+    const sourceArg = pseudoNode.value.arg;
+    const resolved = await pseudoNode.resolve(context);
+
+    expect(resolved).toBeInstanceOf(PseudoSelector);
+    expect(resolved).not.toBe(pseudoNode);
+    expect(resolved.generated).toBe(true);
+    expect(resolved.render(context)).toBe(':is(.foo .bar)');
     expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });

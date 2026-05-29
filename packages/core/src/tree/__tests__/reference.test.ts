@@ -732,6 +732,38 @@ describe('reference', () => {
       expect(context.referenceStack).toBe(0);
     });
 
+    it('renders source-free direct index scalar hits without applying reference metadata', async () => {
+      const targetArray = new JsArray([any('one'), any('two')]);
+      const node = rules([
+        vardecl({ name: 'targetArray', value: targetArray })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'targetArray' }, { type: 'variable' }),
+        key: 1
+      }, { type: 'index' });
+      const originalInherit = Any.prototype.inherit;
+      let inheritedFromReference = 0;
+      Any.prototype.inherit = function inheritForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('two');
+        expect(inheritedFromReference).toBe(0);
+        expect(targetArray.value[1]?.parent).toBe(targetArray);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Any.prototype.inherit = originalInherit;
+      }
+    });
+
     it('keeps referenced source value containers canonical after resolve(context)', async () => {
       const value = list([
         any('one'),

@@ -76,7 +76,6 @@ type AtRuleBodyEvalContextState = {
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
   layerName?: string;
-  registration?: AtRuleBodyRegistrationState;
   frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
@@ -88,6 +87,7 @@ type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
+  registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
 
@@ -330,11 +330,11 @@ function storeAtRuleBodyEvalRules(
   }
 }
 
-function storeAtRuleBodyRegistration(
-  state: AtRuleBodyEvalContextState,
+function storeAtRuleBodyRecordRegistration(
+  record: AtRuleBodyEvalRecord,
   registration: AtRuleBodyRegistrationState
 ): AtRuleBodyRegistrationState {
-  state.registration = registration;
+  record.registration = registration;
   return registration;
 }
 
@@ -539,7 +539,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         const record = this.createBodyEvalRecord(context, evaluatedPrelude, options);
         let evaluated: MaybePromise<Node>;
         try {
-          evaluated = record.evalFrame.evalBodyNode(context, record.contextState);
+          evaluated = record.evalFrame.evalBodyNode(context, record);
         } catch (error) {
           throw error;
         }
@@ -1137,14 +1137,19 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<AtRule | Nil> {
-    return this.evalBodyNode(context, createAtRuleBodyEvalContextState(this, context));
+    return this.evalBodyNode(context, {
+      source: this,
+      evalFrame: this,
+      contextState: createAtRuleBodyEvalContextState(this, context)
+    });
   }
 
   private evalBodyNode(
     context: Context,
-    bodyEvalContextState: AtRuleBodyEvalContextState
+    bodyEvalRecord: AtRuleBodyEvalRecord
   ): MaybePromise<AtRule | Nil> {
     let node = this as AtRule;
+    const bodyEvalContextState = bodyEvalRecord.contextState;
     // @plugin is handled by the Less compatibility plugin during preparation.
     // If we reach eval and it's still visible, no plugin processed it.
     const atName = String(node.value?.name?.valueOf?.() ?? '');
@@ -1212,7 +1217,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
             const { bodyToEval, parentExtendRoot, pushedExtendRoot } = prepState;
-            const registration = storeAtRuleBodyRegistration(bodyEvalContextState, {
+            const registration = storeAtRuleBodyRecordRegistration(bodyEvalRecord, {
               bodyToEval,
               finalRules: bodyToEval,
               pushedExtendRoot,

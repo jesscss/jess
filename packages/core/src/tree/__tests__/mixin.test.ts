@@ -326,6 +326,42 @@ describe('Mixin', () => {
       }
     });
 
+    it('keeps ruleset-as-mixin placement children owned while reusing reusable leaves', async () => {
+      const sourceValue = any('red');
+      const sourceDecl = decl({ name: 'color', value: sourceValue });
+      const sourceBody = rules([sourceDecl]);
+      const sourceRuleset = ruleset({
+        selector: el('.my-mixin'),
+        rules: sourceBody
+      });
+      const callerRules = rules([]);
+      const root = rules([
+        sourceRuleset,
+        ruleset({
+          selector: el('.test'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
+      callerRules.adopt(mixinCall);
+      const result = await mixinCall.eval(context);
+
+      expect(result).toBeInstanceOf(RulesClass);
+      if (!(result instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      const outputDecl = result.value[0];
+      expect(outputDecl).not.toBe(sourceDecl);
+      expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
+      expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
+      expect(outputDecl?.parent).toBe(result);
+      expect(sourceDecl.parent).toBe(sourceBody);
+      expect(sourceValue.parent).toBe(sourceDecl);
+    });
+
     it('should call a mixin with parameters', async () => {
       // Create a mixin with a parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({
@@ -1014,7 +1050,6 @@ describe('Mixin', () => {
       expect(Reflect.has(result, 'sourceParent')).toBe(false);
       expect(result).not.toBe(mixinBody);
       expect(result.sourceNode).toBe(mixinBody);
-      expect(result.options.isMixinOutput).toBe(false);
       expect(result.options.referenceMode).toBe(false);
       expect(result.options.mixinOutputSlot?.ambientLookup).toBe(true);
       expect(canEnterMixinOutputForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);

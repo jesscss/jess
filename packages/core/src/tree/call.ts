@@ -170,7 +170,8 @@ export class Call extends Node<CallValue, CallOptions> {
     if (!contentNode) {
       return undefined;
     }
-    if (!contentNode.parent && contentNode.location.length === 0 && contentNode.hasFlag(F_STATIC)) {
+    if (contentNode.location.length === 0 && contentNode.hasFlag(F_STATIC)) {
+      contentNode.frozen = true;
       return contentNode;
     }
     return copyWithReusableLeaves(contentNode);

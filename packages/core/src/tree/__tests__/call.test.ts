@@ -1325,7 +1325,8 @@ describe('Call', () => {
       throw new Error('Expected call fallback output');
     }
     expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-    expect(resolved.value.contentNode).not.toBe(content);
+    expect(resolved.value.contentNode).toBe(content);
+    expect(content.frozen).toBe(true);
     expect(content.parent).toBe(rule);
   });
 

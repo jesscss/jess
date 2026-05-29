@@ -510,8 +510,6 @@ export type RulesOptions = {
    *    }
    */
   rulesVisibility?: Record<string, RulesVisibility>;
-  /** Legacy compatibility flag for mixin output that restricts ambient lookup. */
-  isMixinOutput?: boolean;
   /** Current compatibility carrier for explicit generated mixin-output state. */
   mixinOutputSlot?: MixinOutputSlot;
   /**
@@ -4059,8 +4057,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
             Declaration: 'public',
             VarDeclaration: 'public',
             Mixin: 'public'
-          },
-          isMixinOutput: restrictMixinOutputLookup
+          }
         };
         attachMixinOutputSlot(output, sourceRules, restrictMixinOutputLookup);
       }
