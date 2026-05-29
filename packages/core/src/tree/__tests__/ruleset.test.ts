@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -499,6 +499,52 @@ describe('Rule', () => {
     expect(buffer.parts).toEqual(['color: red;\n']);
     expect(bodyRenderCalls).toBe(0);
     expect(body.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps guarded nested rulesets on an owned body path while preserving source parentage', async () => {
+    const selector = sellist([sel([el('.parent')])]);
+    const child = ruleset({
+      selector: sellist([sel([el('.child')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const body = rules([child]);
+    const node = ruleset({
+      selector,
+      guard: condition([bool(true)]),
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let sourceBodyPrepCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this === body) {
+        sourceBodyPrepCalls++;
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .parent {
+          .child {
+            color: red;
+          }
+        }
+      `);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(sourceBodyPrepCalls).toBe(0);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(child.parent).toBe(body);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });

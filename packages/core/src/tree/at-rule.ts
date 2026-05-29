@@ -74,6 +74,7 @@ type AtRuleBodyEvalContextState = {
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   output?: AtRuleBodyOutputState;
+  layerName?: string;
   frameState: AtRuleBodyFrameState;
   frameCount: number;
   extendRootStackLength: number;
@@ -862,7 +863,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     node: AtRule,
     context: Context,
     evaluatedPrelude?: Node
-  ): void {
+  ): string | undefined {
     const atRuleName = node.value.name?.toTrimmedString?.() ?? node.value.name?.toString?.() ?? '';
     const prelude = evaluatedPrelude ?? atRuleBodyRuntimeState.get(node)?.evaluatedPrelude ?? node.value.prelude;
     if (atRuleName === '@layer' && prelude) {
@@ -889,8 +890,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         }
         const layerName = parentLayerName ? `${parentLayerName}.${preludeStr}` : preludeStr;
         context.extendRoots.setLayerName(node, layerName);
+        return layerName;
       }
     }
+    return undefined;
   }
 
   private _registerEvaluatedNestableBody(
@@ -899,7 +902,10 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     state: AtRuleBodyRegistrationState
   ): AtRuleBodyRegistrationState {
     context.extendRoots.popExtendRoot();
-    const layerName = context.extendRoots.takeLayerName(node);
+    const layerName = state.layerName ?? context.extendRoots.takeLayerName(node);
+    if (state.layerName) {
+      context.extendRoots.takeLayerName(node);
+    }
     const registration: AtRuleBodyRegistrationState = {
       ...state,
       layerName
@@ -1126,7 +1132,11 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
 
           // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
           // This ensures parent layers are already on the stack when we look for them
-          this._extractAndStoreLayerName(node, context, bodyEvalContextState.evaluatedPrelude);
+          bodyEvalContextState.layerName = this._extractAndStoreLayerName(
+            node,
+            context,
+            bodyEvalContextState.evaluatedPrelude
+          );
 
           const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
             const { bodyToEval, parentExtendRoot, pushedExtendRoot } = prepState;
@@ -1147,7 +1157,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
                 this._registerEvaluatedNestableBody(node, context, {
                   bodyToEval,
                   finalRules,
-                  parentExtendRoot
+                  parentExtendRoot,
+                  layerName: bodyEvalContextState.layerName
                 });
               }
               return node;

@@ -792,6 +792,29 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders assignment item state with contextual important through buffers', async () => {
+    const root = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    context.pushImportantSource();
+    const node = decl({
+      name: any('background-color'),
+      value: any('blue')
+    }, { assign: '+:' });
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
+    expect(buffer.segments).toEqual(['background-color: red, blue !important']);
+    expect(context.hasImportantSource).toBe(false);
+    expect(node.value.value.parent).toBe(node);
+  });
+
   it('renders contextual important flags without materializing a flag node', () => {
     const node = decl({
       name: any('color'),

@@ -458,6 +458,7 @@ describe('reference', () => {
         }
         expect(clonedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+        expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
       }

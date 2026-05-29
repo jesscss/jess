@@ -95,6 +95,7 @@ type AmpersandAppendPlacementState = {
   selector: Selector | Nil;
   appendValue?: string;
   templateMerge: boolean;
+  templateParts?: string[];
   hoistToRoot: boolean;
   selectorBits: Context['selectorBits'];
 };
@@ -110,6 +111,7 @@ function createAmpersandAppendPlacementState(
     selector,
     appendValue,
     templateMerge: appendValue?.includes('&') === true,
+    templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
     selectorBits: context.selectorBits
   };
@@ -486,7 +488,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             const merged = baseSelectors.map((item) => {
               const value = item.toTrimmedString();
               assertValidAmpersandTemplateJoin(appendValue, value);
-              return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
+              return new BasicSelector((placement.templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
             });
             if (merged.length === 1) {
               return merged[0]!;

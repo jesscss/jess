@@ -56,6 +56,19 @@ export function getMixinOutputChildForSource(
   return outputRules.options.mixinOutputSlot?.outputBySource.get(sourceChild);
 }
 
+export function getMixinOutputSourceIndex(
+  outputRules: Rules,
+  outputChild: Node
+): number | undefined {
+  const slot = outputRules.options.mixinOutputSlot;
+  const sourceChild = slot?.sourceByOutput.get(outputChild);
+  if (!slot || !sourceChild) {
+    return undefined;
+  }
+  const segment = slot.childSegments.find(item => item.source === sourceChild);
+  return segment?.index;
+}
+
 export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undefined {
   const slot = outputRules.options.mixinOutputSlot;
   if (!slot) {

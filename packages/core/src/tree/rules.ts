@@ -64,6 +64,7 @@ import {
   canSearchMixinOutputRules,
   getMixinOutputChildSegments,
   getMixinOutputSourceChild,
+  getMixinOutputSourceIndex,
   isMixinOutputRules,
   isVisibleRulesEntry
 } from './util/mixin-output-slot.js';
@@ -4976,8 +4977,15 @@ export class MixinCollection extends Node<MixinEntry[]> {
       let outputRuleIndex = 0;
       for (const rule of output.value) {
         const sourceChild = getMixinOutputSourceChild(output, rule) ?? rule;
+        const sourceIndex = getMixinOutputSourceIndex(output, rule);
         /** Set a sequential index for lookup sorting from slot source order. */
-        Reflect.set(rule, 'index', isIndexedRuleChild(sourceChild) ? outputRuleIndex++ : undefined);
+        Reflect.set(
+          rule,
+          'index',
+          isIndexedRuleChild(sourceChild)
+            ? sourceIndex ?? outputRuleIndex++
+            : undefined
+        );
       }
     }
 

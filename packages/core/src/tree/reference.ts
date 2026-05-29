@@ -1487,6 +1487,7 @@ function finalizeRuntimeVarBindingResult(
       && isNode(evald, N.Rules | N.Collection | N.Mixin | N.Ruleset)
     ) {
       evald.frozen = true;
+      context.popReference();
       return evald;
     }
     if (canReuseReferenceValue(evald)) {
@@ -1619,6 +1620,7 @@ function finalizeDeclarationReferenceResult(
     && isNode(declarationValue, N.Rules | N.Collection)
   ) {
     const preservedValue = preserveRulesLikeValue(declarationValue);
+    context.popReference();
     return preservedValue;
   }
   return withReferenceSearchScope(context, declaration, () => pipe(
