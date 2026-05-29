@@ -100,6 +100,7 @@ type AmpersandAppendPlacementState = {
   templateReplacementValues?: string[];
   hoistToRoot: boolean;
   result?: Selector | Nil;
+  resultText?: string;
   selectorBits: Context['selectorBits'];
 };
 
@@ -274,6 +275,7 @@ function finishAmpersandAppendPlacement(
 ): Selector | Nil {
   placement.selector = selector;
   placement.result = selector;
+  placement.resultText = selector.toTrimmedString();
   if (placement.hoistToRoot) {
     placement.result.hoistToRoot = true;
   }

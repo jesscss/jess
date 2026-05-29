@@ -93,6 +93,7 @@ type AtRuleBodyEvalRecord = {
 type AtRuleBodyRegistrationState = {
   bodyToEval: Rules;
   finalRules: Rules;
+  pushedExtendRoot: boolean;
   parentExtendRoot?: Rules;
   layerName?: string;
 };
@@ -1184,6 +1185,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             const registration = storeAtRuleBodyRegistration(bodyEvalContextState, {
               bodyToEval,
               finalRules: bodyToEval,
+              pushedExtendRoot,
               ...(parentExtendRoot !== undefined && { parentExtendRoot }),
               ...(bodyEvalContextState.layerName !== undefined && { layerName: bodyEvalContextState.layerName })
             });
@@ -1201,7 +1203,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
               storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
               registration.finalRules = finalRules;
-              if (pushedExtendRoot && node.isNestable()) {
+              if (registration.pushedExtendRoot && node.isNestable()) {
                 this._registerEvaluatedNestableBody(node, context, registration);
               }
               return node;

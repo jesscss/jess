@@ -35,7 +35,7 @@ import type { Mixin } from './mixin.js';
 import type { Ruleset } from './ruleset.js';
 import { withRulesContext } from './util/context.js';
 import {
-  canSearchMixinOutputRules,
+  canSearchMixinOutputEntry,
   getRulesEntryVisibility,
   isMixinOutputRules
 } from './util/mixin-output-slot.js';
@@ -329,7 +329,7 @@ function findVarDeclarationFast(
       if (visibility !== 'public' && visibility !== 'optional') {
         continue;
       }
-      if (!canSearchMixinOutputRules(entry.node, options.hasTarget)) {
+      if (!canSearchMixinOutputEntry(entry, options.hasTarget)) {
         continue;
       }
       if (options.context.rulesContext === scope && entry.node.options?.forward) {
@@ -1498,11 +1498,11 @@ function finalizeRuntimeVarBindingResult(
       context.popReference();
       return evald;
     }
+    if (options.textOnly === true && canReuseTextOnlyReferenceValue(evald)) {
+      context.popReference();
+      return evald;
+    }
     if (canReuseReferenceValue(evald)) {
-      if (options.textOnly === true) {
-        context.popReference();
-        return evald;
-      }
       evald.frozen = true;
       context.popReference();
       return evald;
@@ -1759,7 +1759,7 @@ function evaluateReferenceValueNode(
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
     }
-    if (options.reuseSourceFreeLeaves === true && canReuseReferenceValue(declValue)) {
+    if (options.reuseSourceFreeLeaves === true && canReuseTextOnlyReferenceValue(declValue)) {
       return declValue;
     }
     if (options.reuseSourceFreeLeaves === true) {

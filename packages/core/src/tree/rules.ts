@@ -61,7 +61,7 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
-  canSearchMixinOutputRules,
+  canSearchMixinOutputEntry,
   getMixinOutputChildSegments,
   getMixinOutputSourceChild,
   getMixinOutputSourceIndex,
@@ -858,7 +858,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputRules(entry.node, options?.hasTarget)) {
+        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -949,7 +949,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputRules(entry.node, options?.hasTarget)) {
+        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1045,7 +1045,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputRules(entry.node, options?.hasTarget)) {
+        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
           continue;
         }
         if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
@@ -1136,7 +1136,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputRules(entry.node, options?.hasTarget)) {
+        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
           continue;
         }
         if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
@@ -1230,7 +1230,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputRules(entry.node, options?.hasTarget)) {
+        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1322,7 +1322,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
         if (!isVisibleRulesEntry(entry, 'Mixin')) {
           continue;
         }
-        if (!canSearchMixinOutputRules(entry.node, options?.hasTarget)) {
+        if (!canSearchMixinOutputEntry(entry, options?.hasTarget)) {
           continue;
         }
         if (entry.node.options?.forward) {

@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -984,6 +984,43 @@ describe('Declaration', () => {
       expect(srcValueCopies).toBe(0);
     } finally {
       Node.prototype.copy = originalCopy;
+    }
+  });
+
+  it('renders source-free assignment list inputs without copying the input container', async () => {
+    const sourceValue = list([any('blue'), any('green')]);
+    const node = rules([
+      decl({
+        name: any('src'),
+        value: any('red')
+      }),
+      decl({
+        name: any('src'),
+        value: sourceValue
+      }, { assign: AssignmentType.Add })
+    ]);
+    const sourceParent = sourceValue.parent;
+    const originalCopy = List.prototype.copy;
+    let sourceListCopies = 0;
+    List.prototype.copy = function copyForCounting(
+      this: List,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this === sourceValue) {
+        sourceListCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      expect(await renderNodeToString(node, context)).toBeString(`
+        src: red;
+        src: red, blue, green;
+      `);
+      expect(sourceListCopies).toBe(0);
+      expect(sourceValue.parent).toBe(sourceParent);
+    } finally {
+      List.prototype.copy = originalCopy;
     }
   });
 
