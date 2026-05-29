@@ -35,6 +35,7 @@ export type RulesetMixinPlacementRecord = {
   sourceRules: Rules;
   outputRules: Rules;
   childSegments: readonly MixinOutputChildSegment[];
+  sourceIndexByOutput: ReadonlyMap<Node, number>;
 };
 
 function createRulesetMixinPlacementRecord(
@@ -42,10 +43,16 @@ function createRulesetMixinPlacementRecord(
   outputRules: Rules,
   childSegments = getMixinOutputChildSegments(sourceRules, outputRules)
 ): RulesetMixinPlacementRecord {
+  const sourceIndexByOutput = new Map(
+    childSegments
+      .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
+      .map(segment => [segment.output, segment.index])
+  );
   return {
     sourceRules,
     outputRules,
-    childSegments
+    childSegments,
+    sourceIndexByOutput
   };
 }
 
@@ -82,6 +89,13 @@ export function getMixinOutputSourceIndex(
   return outputRules.options.mixinOutputSlot?.sourceIndexByOutput.get(outputChild);
 }
 
+export function getRulesetMixinPlacementSourceIndex(
+  outputRules: Rules,
+  outputChild: Node
+): number | undefined {
+  return outputRules.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(outputChild);
+}
+
 export function getMixinOutputSourceChildren(outputRules: Rules): Node[] | undefined {
   const slot = outputRules.options.mixinOutputSlot;
   if (!slot) {
@@ -115,6 +129,15 @@ export function markMixinOutputSource(
   sourceRules: Rules
 ): void {
   outputRules.sourceNode = sourceRules.sourceNode ?? sourceRules;
+}
+
+export function assignMixinOutputFallbackFrame(
+  outputRules: Rules,
+  fallbackFrame: Rules['scopeFrame'] | undefined
+): void {
+  if (fallbackFrame) {
+    outputRules.getScopeFrame().fallbackFrame = fallbackFrame;
+  }
 }
 
 function validateMixinOutputSlot(slot: MixinOutputSlot): void {

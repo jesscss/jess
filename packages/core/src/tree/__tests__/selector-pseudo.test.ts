@@ -274,4 +274,30 @@ describe('PseudoSelector', () => {
     expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(resolved.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
+
+  it('keeps nested generated pseudo placement text narrow without replacing selector metadata', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([sel([pseudo({
+          name: ':unknown',
+          arg: compound([el('.foo'), el('.bar')])
+        })])])
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const pseudoNode = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    pseudoNode.generated = true;
+    const sourceArg = pseudoNode.value.arg;
+    const resolved = await pseudoNode.resolve(context);
+
+    expect(resolved).toBeInstanceOf(PseudoSelector);
+    expect(resolved.render(context)).toBe(':unknown(.foo.bar)');
+    expect(sourceArg?.parent).toBe(pseudoNode);
+    expect(resolved.keySet.equals(context.selectorBits.getBitset([':unknown', '.foo', '.bar']))).toBe(true);
+  });
 });

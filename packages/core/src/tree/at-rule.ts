@@ -86,6 +86,7 @@ type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
   frameState: AtRuleBodyFrameState;
+  preparedBody?: AtRuleBodyEvalPrepState;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
   layerName?: string;
@@ -340,6 +341,31 @@ function storeAtRuleBodyRecordRegistration(
 ): AtRuleBodyRegistrationState {
   record.registration = registration;
   return registration;
+}
+
+function storeAtRuleBodyRecordPrepState(
+  record: AtRuleBodyEvalRecord,
+  preparedBody: AtRuleBodyEvalPrepState
+): AtRuleBodyEvalPrepState {
+  record.preparedBody = preparedBody;
+  return preparedBody;
+}
+
+function createAtRuleBodyRecordRegistration(
+  record: AtRuleBodyEvalRecord
+): AtRuleBodyRegistrationState {
+  const preparedBody = record.preparedBody;
+  if (!preparedBody) {
+    throw new TypeError('Expected prepared at-rule body before registration');
+  }
+  const { bodyToEval, parentExtendRoot, pushedExtendRoot } = preparedBody;
+  return storeAtRuleBodyRecordRegistration(record, {
+    bodyToEval,
+    finalRules: bodyToEval,
+    pushedExtendRoot,
+    ...(parentExtendRoot !== undefined && { parentExtendRoot }),
+    ...(record.layerName !== undefined && { layerName: record.layerName })
+  });
 }
 
 function storeAtRuleBodyRecordLayerName(
@@ -1238,14 +1264,8 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           );
 
           const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
-            const { bodyToEval, parentExtendRoot, pushedExtendRoot } = prepState;
-            const registration = storeAtRuleBodyRecordRegistration(bodyEvalRecord, {
-              bodyToEval,
-              finalRules: bodyToEval,
-              pushedExtendRoot,
-              ...(parentExtendRoot !== undefined && { parentExtendRoot }),
-              ...(bodyEvalRecord.layerName !== undefined && { layerName: bodyEvalRecord.layerName })
-            });
+            const { bodyToEval } = storeAtRuleBodyRecordPrepState(bodyEvalRecord, prepState);
+            const registration = createAtRuleBodyRecordRegistration(bodyEvalRecord);
             const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
             restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(bodyEvalRecord, context);
             let evalOut: MaybePromise<Rules>;

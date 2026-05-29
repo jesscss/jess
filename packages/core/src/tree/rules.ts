@@ -61,6 +61,7 @@ import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
+  assignMixinOutputFallbackFrame,
   assignMixinOutputRuleIndexes,
   blocksAmbientMixinOutputLookup,
   canEnterRulesEntryForLookup,
@@ -4550,7 +4551,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
         // leakyRules is enabled.
         candidate.parent!.adopt(unlocked);
         if (thisContext.leakyRules === true && parentFrame) {
-          unlocked.getScopeFrame().fallbackFrame = parentFrame;
+          assignMixinOutputFallbackFrame(unlocked, parentFrame);
         }
         // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup);
@@ -4703,7 +4704,7 @@ export class MixinCollection extends Node<MixinEntry[]> {
           }
         }
       } else if (thisContext.leakyRules === true && parentFrame) {
-        rules.getScopeFrame().fallbackFrame = parentFrame;
+        assignMixinOutputFallbackFrame(rules, parentFrame);
       }
 
       /** Now we can evaluate our guards, if any */

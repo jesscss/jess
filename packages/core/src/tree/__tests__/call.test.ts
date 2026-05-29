@@ -1309,6 +1309,15 @@ describe('Call', () => {
   });
 
   it('keeps source fallback call content canonical when optional function evaluation falls back', async () => {
+    const originalCopy = Sequence.prototype.copy;
+    let sequenceCopies = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
     const content = seq([any('raw'), any('content')]);
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -1316,18 +1325,23 @@ describe('Call', () => {
       contentNode: content
     }, { silentFail: true });
 
-    const rendered = await Promise.resolve(rule.render(context));
-    const resolved = await rule.resolve(context);
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+      const resolved = await rule.resolve(context);
 
-    expect(rendered).toBe('missing-fn(red): raw content');
-    expect(isNode(resolved, N.Call)).toBe(true);
-    if (!isNode(resolved, N.Call)) {
-      throw new Error('Expected call fallback output');
+      expect(rendered).toBe('missing-fn(red): raw content');
+      expect(isNode(resolved, N.Call)).toBe(true);
+      if (!isNode(resolved, N.Call)) {
+        throw new Error('Expected call fallback output');
+      }
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+      expect(resolved.value.contentNode).toBe(content);
+      expect(sequenceCopies).toBe(0);
+      expect(content.frozen).toBe(true);
+      expect(content.parent).toBe(rule);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
     }
-    expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
-    expect(resolved.value.contentNode).toBe(content);
-    expect(content.frozen).toBe(true);
-    expect(content.parent).toBe(rule);
   });
 
   it('owns source-backed fallback call content when optional function evaluation falls back', async () => {

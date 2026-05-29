@@ -3,7 +3,16 @@ import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
-import { attachMixinOutputSlot, canEnterMixinOutputForLookup, canEnterRulesEntryForLookup, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
+import {
+  attachMixinOutputSlot,
+  canEnterMixinOutputForLookup,
+  canEnterRulesEntryForLookup,
+  getMixinOutputChildForSource,
+  getMixinOutputSourceChild,
+  getMixinOutputSourceChildren,
+  getMixinOutputSourceIndex,
+  getRulesetMixinPlacementSourceIndex
+} from '../util/mixin-output-slot.js';
 
 let context: Context;
 
@@ -404,6 +413,8 @@ describe('Mixin', () => {
       expect(sourceBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.value);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.value);
+      expect(result.value.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
+      expect(result.value.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
       expect(result.value[0]).not.toBe(sourceComment);
       expect(result.value[1]).not.toBe(sourceNested);
       expect(sourceComment.parent).toBe(sourceBody);
@@ -1121,6 +1132,7 @@ describe('Mixin', () => {
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
       expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
       expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(result.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
@@ -1145,6 +1157,7 @@ describe('Mixin', () => {
       expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
       expect(secondResult.value.map(child => secondResult.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
       expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
+      expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(secondResult.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
       expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
         mixinBody.value.map(() => false)

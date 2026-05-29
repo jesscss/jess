@@ -777,40 +777,63 @@ describe('reference', () => {
     });
 
     it('renders source-free direct index container hits without applying reference metadata', async () => {
+      const arrayList = list([any('alpha'), any('beta')]);
+      const objectSequence = spaced([any('one'), any('two')]);
+      const targetArray = new JsArray([arrayList]);
       const targetObject = new JsObject({
-        tones: list([any('one'), any('two')])
+        tones: objectSequence
       });
       const node = rules([
+        vardecl({ name: 'targetArray', value: targetArray }),
         vardecl({ name: 'targetObject', value: targetObject })
       ]);
       setRulesContext(await node.eval(context));
-      const refNode = ref({
+      const arrayRefNode = ref({
+        target: ref({ key: 'targetArray' }, { type: 'variable' }),
+        key: 0
+      }, { type: 'index' });
+      const objectRefNode = ref({
         target: ref({ key: 'targetObject' }, { type: 'variable' }),
         key: quoted('tones')
       }, { type: 'index' });
-      const sourceList = targetObject.value.tones;
-      if (!(sourceList instanceof List)) {
-        throw new Error('Expected source list');
+      const sourceList = targetArray.value[0];
+      if (!(sourceList instanceof List) || !(objectSequence instanceof Sequence)) {
+        throw new Error('Expected source containers');
       }
-      const originalInherit = List.prototype.inherit;
-      let inheritedFromReference = 0;
+      const originalListInherit = List.prototype.inherit;
+      const originalSequenceInherit = Sequence.prototype.inherit;
+      let listInheritedFromReference = 0;
+      let sequenceInheritedFromReference = 0;
       List.prototype.inherit = function inheritForCounting(
         this: List<Node>,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        if (args[0] === refNode) {
-          inheritedFromReference++;
+        ...args: Parameters<typeof originalListInherit>
+      ): ReturnType<typeof originalListInherit> {
+        if (args[0] === arrayRefNode || args[0] === objectRefNode) {
+          listInheritedFromReference++;
         }
-        return originalInherit.apply(this, args);
+        return originalListInherit.apply(this, args);
+      };
+      Sequence.prototype.inherit = function inheritForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalSequenceInherit>
+      ): ReturnType<typeof originalSequenceInherit> {
+        if (args[0] === arrayRefNode || args[0] === objectRefNode) {
+          sequenceInheritedFromReference++;
+        }
+        return originalSequenceInherit.apply(this, args);
       };
 
       try {
-        expect(await Promise.resolve(refNode.render(context))).toBe('one, two');
-        expect(inheritedFromReference).toBe(0);
-        expect(sourceList.parent).toBe(targetObject);
+        expect(await Promise.resolve(arrayRefNode.render(context))).toBe('alpha, beta');
+        expect(await Promise.resolve(objectRefNode.render(context))).toBe('one two');
+        expect(listInheritedFromReference).toBe(0);
+        expect(sequenceInheritedFromReference).toBe(0);
+        expect(sourceList.parent).toBe(targetArray);
+        expect(objectSequence.parent).toBe(targetObject);
         expect(context.referenceStack).toBe(0);
       } finally {
-        List.prototype.inherit = originalInherit;
+        List.prototype.inherit = originalListInherit;
+        Sequence.prototype.inherit = originalSequenceInherit;
       }
     });
 
