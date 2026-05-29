@@ -275,6 +275,7 @@ export function attachMixinOutputSlot(
         : {})
   };
   validateMixinOutputSlot(slot);
+  markMixinOutputSource(outputRules, sourceRules);
   outputRules.options.mixinOutputSlot = slot;
   outputRules.options.referenceMode = false;
   return slot;

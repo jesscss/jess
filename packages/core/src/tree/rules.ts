@@ -65,8 +65,7 @@ import {
   assignMixinOutputRuleIndexes,
   blocksAmbientMixinOutputLookup,
   canEnterRulesEntryForLookup,
-  getMixinOutputChildSegments,
-  markMixinOutputSource
+  getMixinOutputChildSegments
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import type { CallSignature } from './util/recursion-helper.js';
@@ -4482,7 +4481,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
           getRootSourceRules(getMixinEntryRules(candidate)),
           restrictMixinOutputLookup
         );
-        markMixinOutputSource(newRules, getRootSourceRules(getMixinEntryRules(candidate)));
         outputRules.push(newRules);
       } catch (error) {
         // If recursion was detected (ReferenceError), skip this candidate
@@ -4525,7 +4523,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         attachMixinOutputSlot(rules, sourceRules, restrictMixinOutputLookup, {
           rulesetPlacement: true
         });
-        markMixinOutputSource(rules, sourceRules);
         outputRules.push(rules);
         continue;
       }
@@ -4555,7 +4552,6 @@ export class MixinCollection extends Node<MixinEntry[]> {
         }
         // Mark generated mixin output with lookup policy from leakyRules.
         attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup);
-        markMixinOutputSource(unlocked, sourceRules);
         Reflect.set(unlocked, 'index', candidate.index);
         // Evaluate immediately while the call-site parent chain is intact.
         // Variables in the enclosing scope (e.g. @hover-background declared before the

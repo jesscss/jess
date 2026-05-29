@@ -44,13 +44,17 @@ When information is volatile, point to the canonical source instead of restating
 ## Performance Direction
 
 Performance work in this repo is primarily about runtime architecture, not micro-style changes.
+Optimize for fastest real-world Less evaluation/render first and lowest memory
+second. Fewer objects are useful only when they improve speed, memory, or the
+canonical-tree runtime model.
 
 When working in the evaluation engine, optimize for:
 
 - one canonical source tree
 - lazy per-placement runtime state
 - sparse shadow or patch state
-- reduced object creation during eval
+- reduced object creation during eval when it improves speed, memory, or
+  source-tree ownership
 
 Avoid treating these as acceptable end states:
 
@@ -59,7 +63,10 @@ Avoid treating these as acceptable end states:
 - helper or wrapper growth that does not map to the target runtime model
 - local green slices presented as architectural completion
 
-If two approaches both pass tests, prefer the one that better reduces object creation and moves the runtime toward the canonical-tree model.
+If two approaches both pass tests, prefer the one with better measured or
+well-supported runtime speed. Use memory pressure as the next tiebreaker, and
+use object-count reduction only as a proxy when it supports those goals and
+moves the runtime toward the canonical-tree model.
 
 ## Node Copy Reduction Surfaces
 

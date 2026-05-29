@@ -8,6 +8,8 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
+const NEGATIVE_ONE = new Dimension({ number: -1 });
+
 export class Negative extends Node<Node> {
   private renderNegativeSyntax(options?: PrintOptions): string {
     options = getPrintOptions(options);
@@ -46,7 +48,7 @@ export class Negative extends Node<Node> {
         if (!value.operate) {
           throw new TypeError(`Cannot operate on ${value.type}`);
         }
-        return value.operate(new Dimension({ number: -1 }), '*', context);
+        return value.operate(NEGATIVE_ONE, '*', context);
       }, { rethrow: true })
     );
   }

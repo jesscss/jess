@@ -78,10 +78,6 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     );
   }
 
-  static getBool(node: Node, negated: boolean): Bool {
-    return new Bool(Condition.getBoolValue(node, negated));
-  }
-
   static getBoolValue(node: ConditionResultValue, negated: boolean): boolean {
     const value = typeof node === 'boolean'
       ? node

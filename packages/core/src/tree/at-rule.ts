@@ -1241,74 +1241,53 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           if (context.opts.collapseNesting && node.isNestable()) {
             setAtRuleBodyEvalOutput(bodyEvalContextState, { hoistToRoot: true });
           }
-          let restoreRulesetFrames = () => undefined;
-          const restoreBodyEvalContext = () => {
-            restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
-          };
-          // Push to frames before evaluating rules so we can use context.frames to find parent layers
-          // This allows nested layers to find their parent layer names
-          // NOTE: We do NOT pop here - the frame must remain accessible during rules evaluation
-          // The frame will be popped at the end of evalNode
-          pushAtRuleBodyEvalContextState(context, bodyEvalContextState);
-          context.frames.push(node);
-
-          // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
-          // This ensures parent layers are already on the stack when we look for them
-          storeAtRuleBodyRecordLayerName(
-            bodyEvalRecord,
-            this._extractAndStoreLayerName(
-              node,
-              context,
-              bodyEvalContextState.evaluatedPrelude
-            )
-          );
-
-          const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
-            const { bodyToEval } = storeAtRuleBodyRecordPrepState(bodyEvalRecord, prepState);
-            const registration = createAtRuleBodyRecordRegistration(bodyEvalRecord);
-            const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
-            restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(bodyEvalRecord, context);
-            let evalOut: MaybePromise<Rules>;
-            try {
-              evalOut = bodyToEval.eval(context);
-            } catch (error) {
-              restoreBodyEvalContext();
-              throw error;
-            }
-            const finishEval = (r: Rules): AtRule => {
-              restoreRulesetFrames();
-              const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-              storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
-              registration.finalRules = finalRules;
-              if (registration.pushedExtendRoot && node.isNestable()) {
-                this._registerEvaluatedNestableBody(node, context, registration);
-              }
-              return node;
-            };
-            if (isThenable(evalOut)) {
-              return (evalOut as Promise<Rules>).then(finishEval, (error) => {
-                restoreBodyEvalContext();
+          return this.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {
+            const finishPreparedBody = (prepState: AtRuleBodyEvalPrepState): MaybePromise<AtRule> => {
+              const { bodyToEval } = storeAtRuleBodyRecordPrepState(bodyEvalRecord, prepState);
+              const registration = createAtRuleBodyRecordRegistration(bodyEvalRecord);
+              const onlyRuleSetChild = isNode(bodyToEval.value[0], N.Ruleset);
+              const restoreRulesetFrames = activateAtRuleBodyEvalRecordFrameState(bodyEvalRecord, context);
+              let evalOut: MaybePromise<Rules>;
+              try {
+                evalOut = bodyToEval.eval(context);
+              } catch (error) {
+                restoreRulesetFrames();
                 throw error;
-              });
-            }
-            return finishEval(evalOut as Rules);
-          };
+              }
+              const finishEval = (r: Rules): AtRule => {
+                restoreRulesetFrames();
+                const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
+                storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
+                registration.finalRules = finalRules;
+                if (registration.pushedExtendRoot && node.isNestable()) {
+                  this._registerEvaluatedNestableBody(node, context, registration);
+                }
+                return node;
+              };
+              if (isThenable(evalOut)) {
+                return (evalOut as Promise<Rules>).then(finishEval, (error) => {
+                  restoreRulesetFrames();
+                  throw error;
+                });
+              }
+              return finishEval(evalOut as Rules);
+            };
 
-          const preparedBody = this._prepareNestableBodyForEval(node, rules, context, restoreBodyEvalContext);
-          if (isThenable(preparedBody)) {
-            return preparedBody.then(finishPreparedBody, (error) => {
-              restoreBodyEvalContext();
-              throw error;
-            });
-          }
-          return finishPreparedBody(preparedBody);
+            const preparedBody = this._prepareNestableBodyForEval(
+              node,
+              rules,
+              context,
+              restoreBodyEvalContext
+            );
+            if (isThenable(preparedBody)) {
+              return preparedBody.then(finishPreparedBody);
+            }
+            return finishPreparedBody(preparedBody);
+          });
         }
         return node;
       },
       () => {
-        // Pop the frame that was kept on the stack during rules evaluation so children could access it.
-        popAtRuleBodyEvalContextState(context, bodyEvalContextState);
-        context.frames.pop();
         let rules = node.getRenderRules();
         if (rules && rules.visibleRules().length === 0) {
           node.removeFlag(F_VISIBLE);
@@ -1316,6 +1295,53 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
         return node;
       }
     ) as MaybePromise<AtRule>;
+  }
+
+  private runBodyEvalInvocation<T>(
+    context: Context,
+    bodyEvalRecord: AtRuleBodyEvalRecord,
+    node: AtRule,
+    run: (restoreBodyEvalContext: () => void) => MaybePromise<T>
+  ): MaybePromise<T> {
+    const bodyEvalContextState = bodyEvalRecord.contextState;
+    let restored = false;
+    const restore = () => {
+      if (restored) {
+        return;
+      }
+      restored = true;
+      restoreAtRuleBodyEvalRecord(bodyEvalRecord, context);
+    };
+    pushAtRuleBodyEvalContextState(context, bodyEvalContextState);
+    context.frames.push(node);
+    storeAtRuleBodyRecordLayerName(
+      bodyEvalRecord,
+      this._extractAndStoreLayerName(
+        node,
+        context,
+        bodyEvalContextState.evaluatedPrelude
+      )
+    );
+    try {
+      const out = run(restore);
+      if (isThenable(out)) {
+        return (out as Promise<T>).then(
+          (value) => {
+            restore();
+            return value;
+          },
+          (error) => {
+            restore();
+            throw error;
+          }
+        );
+      }
+      restore();
+      return out;
+    } catch (error) {
+      restore();
+      throw error;
+    }
   }
 
   override resolve(context: Context): MaybePromise<Node> {

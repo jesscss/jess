@@ -634,20 +634,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     } catch (e) {
       // Tag path-resolution errors so the eval-queue retry policy can
       // distinguish "path interpolation not ready" (cheap, worth retrying)
-      // from "content evaluation failed" (expensive clone, not worth retrying).
+      // from "import content evaluation failed" (expensive and not worth retrying).
       markPathResolutionError(e);
       throw e;
     }
   }
 
   /**
-   * @note
-   * When imports are evaluated, they should be deeply cloned. The reason is that
-   * they can be used in multiple places, and can be evaluated differently
-   * each time, so they are more like a function call.
-   *
-   * @todo
-   * How do extends work then?
+   * Import evaluation reuses the canonical source/evaluated rules whenever the
+   * placement does not need different semantics. Placement-local behavior
+   * belongs on a derived rules surface or explicit runtime state, not in a
+   * routine deep clone of the imported body.
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;

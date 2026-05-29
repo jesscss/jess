@@ -16,6 +16,9 @@ Older per-file completion logs live in
   output test is not enough if the path still builds a broad output tree,
   clones routine subtrees, or creates wrapper surfaces that are not required by
   scope, lookup, placement, or user-code mutation semantics.
+- Treat memory reduction as second to speed. Object-count reduction is a proxy,
+  not the goal: keep or add an object when it makes the hot path faster or
+  prevents broader allocation, copying, or lookup work.
 - Prefer lazy per-placement runtime state over routine copied or cloned trees.
 - Do not treat `copy()` / `clone()` as the future evaluation model.
 - Do not treat mutation helpers such as `inherit(...)`, `set(...)`, or derived

@@ -31,6 +31,16 @@ type DurationUnit = 's' | 'ms';
 type AngleUnit = 'rad' | 'deg' | 'grad' | 'turn';
 type ConversionUnit = LengthUnit | DurationUnit | AngleUnit;
 type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>;
+const enum ConversionGroup {
+  Length = 0,
+  Duration = 1,
+  Angle = 2
+}
+const UNIT_TO_GROUP: ReadonlyMap<string, ConversionGroup> = new Map<ConversionUnit, ConversionGroup>(
+  (LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]) as UnitMapEntries)
+    .concat(DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]) as UnitMapEntries)
+    .concat(ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]) as UnitMapEntries)
+);
 
 export interface Dimension extends Node<DimensionValue> {
   eval(context: Context): Dimension;
@@ -45,17 +55,8 @@ export class Dimension extends Node<DimensionValue> {
     this.addFlag(F_STATIC);
   }
 
-  private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
-    let unitToGroup = this._unitToGroup;
-    if (!unitToGroup) {
-      const lengthEntries: UnitMapEntries = LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]);
-      const durationEntries: UnitMapEntries = DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]);
-      const angleEntries: UnitMapEntries = ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]);
-      const entries = lengthEntries.concat(durationEntries).concat(angleEntries);
-      this._unitToGroup = unitToGroup = new Map(entries);
-    }
-    return unitToGroup;
+    return UNIT_TO_GROUP;
   }
 
   private isConversionUnit(unit: string): unit is ConversionUnit {
@@ -335,12 +336,6 @@ export class Dimension extends Node<DimensionValue> {
   //     `})`
   //   , this.location)
   // }
-}
-
-const enum ConversionGroup {
-  Length = 0,
-  Duration = 1,
-  Angle = 2
 }
 
 const conversions: Record<ConversionGroup, Partial<Record<ConversionUnit, number>>> = {
