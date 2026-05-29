@@ -1338,7 +1338,7 @@ function canReuseReferenceValue(node: Node): boolean {
   return canReuseLeaf(node);
 }
 
-function canReuseSourceFreeFallbackContainer(node: Node): boolean {
+function canReuseSourceFreeTextContainer(node: Node): boolean {
   if (!isNode(node, N.List)) {
     return false;
   }
@@ -1348,9 +1348,13 @@ function canReuseSourceFreeFallbackContainer(node: Node): boolean {
   return node.value.every(child => child instanceof Node && canReuseLeaf(child));
 }
 
+function canReuseTextOnlyReferenceValue(node: Node): boolean {
+  return canReuseReferenceValue(node) || canReuseSourceFreeTextContainer(node);
+}
+
 function canReuseFallbackValue(node: Node): boolean {
   return node.hasFlag(F_STATIC)
-    && (canReuseReferenceValue(node) || canReuseSourceFreeFallbackContainer(node));
+    && canReuseTextOnlyReferenceValue(node);
 }
 
 function evaluateFallbackValue(
@@ -1362,7 +1366,7 @@ function evaluateFallbackValue(
   if (canReuseFallbackValue(fallbackValue)) {
     if (
       options.textOnly === true
-      && (canReuseReferenceValue(fallbackValue) || canReuseSourceFreeFallbackContainer(fallbackValue))
+      && canReuseTextOnlyReferenceValue(fallbackValue)
     ) {
       context.popReference();
       return fallbackValue;
@@ -1615,7 +1619,7 @@ function finalizeDeclarationReferenceResult(
     options.textOnly === true
     && !hasImportantDeclarationValue(declaration)
     && !isMergedAssign
-    && canReuseReferenceValue(declarationValue)
+    && canReuseTextOnlyReferenceValue(declarationValue)
   ) {
     context.popReference();
     return declarationValue;

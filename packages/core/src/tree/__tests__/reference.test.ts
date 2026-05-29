@@ -394,6 +394,55 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-free declaration reference containers as text without public result metadata', async () => {
+      const sourceValue = list([any('red'), any('blue')]);
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const buffer = createRenderBuffer('segmented');
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let sourceValueCopies = 0;
+      let sourceValueInherits = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          sourceValueCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          sourceValueInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red, blue');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red, blue');
+        expect(buffer.segments).toEqual(['red, blue']);
+        expect(sourceValueCopies).toBe(0);
+        expect(sourceValueInherits).toBe(0);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('keeps referenced source value containers canonical after resolve(context)', async () => {
       const value = list([
         any('one'),

@@ -22,6 +22,7 @@ export type MixinOutputSlot = {
   sourceIndexByOutput: ReadonlyMap<Node, number>;
   rulesVisibility: Rules['options']['rulesVisibility'];
   isMixinOutput: boolean;
+  targetedLookupOnly: boolean;
 };
 
 export type MixinOutputChildSegment = {
@@ -136,7 +137,11 @@ export function canSearchMixinOutputRules(
   rules: Rules,
   hasTarget: boolean | undefined
 ): boolean {
-  return !isMixinOutputRules(rules) || hasTarget === true;
+  const slot = rules.options?.mixinOutputSlot;
+  if (slot) {
+    return !slot.targetedLookupOnly || hasTarget === true;
+  }
+  return rules.options?.isMixinOutput !== true || hasTarget === true;
 }
 
 export function canSearchRulesEntry(
@@ -176,7 +181,8 @@ export function attachMixinOutputSlot(
         .map(segment => [segment.output, segment.index])
     ),
     rulesVisibility: outputRules.options.rulesVisibility,
-    isMixinOutput
+    isMixinOutput,
+    targetedLookupOnly: isMixinOutput
   };
   validateMixinOutputSlot(slot);
   outputRules.options.mixinOutputSlot = slot;

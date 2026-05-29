@@ -329,11 +329,11 @@ function readAtRuleBodyEvalRecordResult(
   return {
     evalFrame: record.evalFrame,
     node,
-    evaluatedPrelude: runtime?.evaluatedPrelude
-      ?? record.contextState.evaluatedPrelude
+    evaluatedPrelude: record.contextState.evaluatedPrelude
+      ?? runtime?.evaluatedPrelude
       ?? record.evaluatedPrelude,
-    evaluatedBody: runtime?.evaluatedBody ?? record.contextState.evaluatedBody,
-    output: runtime?.output ?? record.contextState.output
+    evaluatedBody: record.contextState.evaluatedBody ?? runtime?.evaluatedBody,
+    output: record.contextState.output ?? runtime?.output
   };
 }
 
