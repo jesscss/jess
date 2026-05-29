@@ -87,6 +87,7 @@ type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
   evaluatedPrelude?: Node;
+  evaluatedBody?: Rules;
   registration?: AtRuleBodyRegistrationState;
   contextState: AtRuleBodyEvalContextState;
 };
@@ -320,10 +321,12 @@ function setAtRuleBodyEvalPrelude(
   }
 }
 
-function storeAtRuleBodyEvalRules(
-  state: AtRuleBodyEvalContextState,
+function storeAtRuleBodyEvalRecordRules(
+  record: AtRuleBodyEvalRecord,
   finalRules: Rules
 ): void {
+  const state = record.contextState;
+  record.evaluatedBody = finalRules;
   state.evaluatedBody = finalRules;
   if (state.writeRuntimeState) {
     updateAtRuleBodyRuntimeState(state.evalFrame, { evaluatedBody: finalRules });
@@ -374,7 +377,9 @@ function readAtRuleBodyEvalRecordResult(
     evaluatedPrelude: record.contextState.evaluatedPrelude
       ?? runtime?.evaluatedPrelude
       ?? record.evaluatedPrelude,
-    evaluatedBody: record.contextState.evaluatedBody ?? runtime?.evaluatedBody,
+    evaluatedBody: record.evaluatedBody
+      ?? record.contextState.evaluatedBody
+      ?? runtime?.evaluatedBody,
     output: record.contextState.output ?? runtime?.output
   };
 }
@@ -1236,7 +1241,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
             const finishEval = (r: Rules): AtRule => {
               restoreRulesetFrames();
               const finalRules = onlyRuleSetChild && isNode(r.value[0], N.Rules) ? r.value[0] : r;
-              storeAtRuleBodyEvalRules(bodyEvalContextState, finalRules);
+              storeAtRuleBodyEvalRecordRules(bodyEvalRecord, finalRules);
               registration.finalRules = finalRules;
               if (registration.pushedExtendRoot && node.isNestable()) {
                 this._registerEvaluatedNestableBody(node, context, registration);

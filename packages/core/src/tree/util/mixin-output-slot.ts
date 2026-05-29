@@ -20,7 +20,6 @@ export type MixinOutputSlot = {
   sourceByOutput: ReadonlyMap<Node, Node>;
   outputBySource: ReadonlyMap<Node, Node>;
   sourceIndexByOutput: ReadonlyMap<Node, number>;
-  rulesVisibility: Rules['options']['rulesVisibility'];
   ambientLookup: boolean;
 };
 
@@ -194,7 +193,6 @@ export function attachMixinOutputSlot(
         .filter((segment): segment is MixinOutputChildSegment & { output: Node } => segment.output !== undefined)
         .map(segment => [segment.output, segment.index])
     ),
-    rulesVisibility: outputRules.options.rulesVisibility,
     ambientLookup: !restrictAmbientLookup
   };
   validateMixinOutputSlot(slot);

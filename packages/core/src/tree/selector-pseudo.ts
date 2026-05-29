@@ -223,7 +223,14 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           this.treeContext
         ).inherit(this);
         node.generated = this.generated;
-        if (this.generated && isNode(currentArg, N.SelectorList)) {
+        if (
+          this.generated
+          && (
+            isNode(currentArg, N.SelectorList)
+            || isNode(evaluatedArg, N.SelectorList)
+            || (evaluatedArg !== currentArg && isNode(evaluatedArg, N.Selector))
+          )
+        ) {
           generatedPseudoOmitWrapper.set(node, true);
         }
         attachSelectorBitLibrary(node, context.selectorBits);

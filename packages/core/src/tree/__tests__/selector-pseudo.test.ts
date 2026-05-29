@@ -247,7 +247,7 @@ describe('PseudoSelector', () => {
     expect(resolved).toBeInstanceOf(PseudoSelector);
     expect(resolved).not.toBe(pseudoNode);
     expect(resolved.generated).toBe(true);
-    expect(resolved.render(context)).toBe(':is(.foo .bar)');
+    expect(resolved.render(context)).toBe('.foo .bar');
     expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector-list)');
   });

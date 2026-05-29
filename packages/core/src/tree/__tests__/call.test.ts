@@ -1330,6 +1330,29 @@ describe('Call', () => {
     expect(content.parent).toBe(rule);
   });
 
+  it('owns source-backed fallback call content when optional function evaluation falls back', async () => {
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      [10, 1, 11, 20, 1, 21]
+    );
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(true);
+    if (!isNode(resolved, N.Call)) {
+      throw new Error('Expected call fallback output');
+    }
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+    expect(resolved.value.contentNode).not.toBe(content);
+    expect(content.parent).toBe(rule);
+  });
+
   it('derives optional JS failure call output without shallow-cloning the source call', async () => {
     const root = rules([]);
     root.register('function', new JsFunction({

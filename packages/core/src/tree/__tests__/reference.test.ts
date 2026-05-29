@@ -764,6 +764,44 @@ describe('reference', () => {
       }
     });
 
+    it('renders source-free direct index container hits without applying reference metadata', async () => {
+      const targetObject = new JsObject({
+        tones: list([any('one'), any('two')])
+      });
+      const node = rules([
+        vardecl({ name: 'targetObject', value: targetObject })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({
+        target: ref({ key: 'targetObject' }, { type: 'variable' }),
+        key: quoted('tones')
+      }, { type: 'index' });
+      const sourceList = targetObject.value.tones;
+      if (!(sourceList instanceof List)) {
+        throw new Error('Expected source list');
+      }
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List<Node>,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('one, two');
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceList.parent).toBe(targetObject);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('keeps referenced source value containers canonical after resolve(context)', async () => {
       const value = list([
         any('one'),
