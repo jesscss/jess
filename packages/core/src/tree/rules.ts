@@ -62,11 +62,10 @@ import type { Func } from './function.js';
 import {
   attachMixinOutputSlot,
   blocksAmbientMixinOutputLookup,
-  canEnterMixinOutputForLookup,
+  canEnterRulesEntryForLookup,
   getMixinOutputChildSegments,
   getMixinOutputSourceChild,
-  getMixinOutputSourceIndex,
-  isVisibleRulesEntry
+  getMixinOutputSourceIndex
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
 import type { CallSignature } from './util/recursion-helper.js';
@@ -851,10 +850,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
-        if (!isVisibleRulesEntry(entry, 'Mixin')) {
-          continue;
-        }
-        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -942,10 +938,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
-        if (!isVisibleRulesEntry(entry, 'Mixin')) {
-          continue;
-        }
-        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1038,10 +1031,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
-        if (!isVisibleRulesEntry(entry, 'Mixin')) {
-          continue;
-        }
-        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
@@ -1129,10 +1119,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
-        if (!isVisibleRulesEntry(entry, 'Mixin')) {
-          continue;
-        }
-        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (options?.context?.rulesContext === scope && entry.node.options?.forward) {
@@ -1223,10 +1210,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
-        if (!isVisibleRulesEntry(entry, 'Mixin')) {
-          continue;
-        }
-        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {
@@ -1315,10 +1299,7 @@ export class Rules extends Node<Node[], RulesOptions & NodeOptions> {
 
       for (let i = childEntries.length - 1; i >= 0; i--) {
         const entry = childEntries[i]!;
-        if (!isVisibleRulesEntry(entry, 'Mixin')) {
-          continue;
-        }
-        if (!canEnterMixinOutputForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
+        if (!canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: options?.hasTarget })) {
           continue;
         }
         if (entry.node.options?.forward) {

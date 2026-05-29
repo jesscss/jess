@@ -15,7 +15,7 @@ import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet } from './bitset.js';
 import {
-  canSearchRulesEntry,
+  canEnterRulesEntryForLookup,
   isOptionalRulesEntry,
   isPublicRulesEntry
 } from './mixin-output-slot.js';
@@ -184,7 +184,10 @@ export abstract class Registry<
        * and before the start position (if relevant)
        */
       rulesSet = rulesSet.filter((n) => {
-        const isVisible = canSearchRulesEntry(n, filterType, options?.hasTarget);
+        const isVisible = canEnterRulesEntryForLookup(n, {
+          type: filterType,
+          hasTarget: options?.hasTarget
+        });
         /**
          * Sass `@forward`:
          * Forwarded Rules should not be visible to lookups within the current stylesheet scope

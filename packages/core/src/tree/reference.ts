@@ -1466,7 +1466,7 @@ function finalizeDirectNodeReferenceResult(
   options: { textOnly?: boolean } = {}
 ): Node {
   context.popReference();
-  if (options.textOnly === true && canReuseReferenceValue(result)) {
+  if (options.textOnly === true && canReuseTextOnlyReferenceValue(result)) {
     return result;
   }
   if (

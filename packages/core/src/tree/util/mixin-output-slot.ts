@@ -142,8 +142,8 @@ export function canEnterMixinOutputForLookup(
     hasTarget?: boolean;
   }
 ): boolean {
-  // Lookup type visibility is checked by canSearchRulesEntry() or the caller's
-  // isVisibleRulesEntry() guard. This helper only answers the mixin-output gate:
+  // Lookup type visibility is checked by canEnterRulesEntryForLookup() or the
+  // caller's isVisibleRulesEntry() guard. This helper only answers the mixin-output gate:
   // may this lookup enter generated output ambiently, or does it need a target?
   if (!entry.node.options?.mixinOutputSlot && entry.node.options?.isMixinOutput !== true) {
     return true;
@@ -154,11 +154,14 @@ export function canEnterMixinOutputForLookup(
   return false;
 }
 
-export function canSearchRulesEntry(
+export function canEnterRulesEntryForLookup(
   entry: RulesEntryLike,
-  type: LookupVisibility | undefined,
-  hasTarget: boolean | undefined
+  lookup: {
+    type?: LookupVisibility;
+    hasTarget?: boolean;
+  }
 ): boolean {
+  const { type, hasTarget } = lookup;
   if (blocksAmbientMixinOutputLookup(entry.node)) {
     return canEnterMixinOutputForLookup(entry, { type, hasTarget })
       && (type === undefined || isVisibleRulesEntry(entry, type));

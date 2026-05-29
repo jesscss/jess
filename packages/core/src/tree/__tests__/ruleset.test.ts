@@ -492,15 +492,29 @@ describe('Rule', () => {
     node.resolve = () => {
       throw new Error('Ruleset nil-selector render should evaluate natively');
     };
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let prepareCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
 
-    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
-    const buffer = createRenderBuffer('flat');
-    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
-    expect(buffer.parts).toEqual(['color: red;\n']);
-    expect(bodyRenderCalls).toBe(0);
-    expect(body.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
-    expect(node.registrationPrepared).toBe(false);
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+      const buffer = createRenderBuffer('flat');
+      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
+      expect(buffer.parts).toEqual(['color: red;\n']);
+      expect(bodyRenderCalls).toBe(0);
+      expect(prepareCalls).toBe(0);
+      expect(body.parent).toBe(node);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
   });
 
   it('keeps nested nil-selector rulesets on the owned body path', async () => {

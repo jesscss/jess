@@ -3,7 +3,7 @@ import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
-import { canEnterMixinOutputForLookup, canSearchRulesEntry, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
+import { canEnterMixinOutputForLookup, canEnterRulesEntryForLookup, getMixinOutputChildForSource, getMixinOutputSourceChild, getMixinOutputSourceChildren, getMixinOutputSourceIndex } from '../util/mixin-output-slot.js';
 
 let context: Context;
 
@@ -1018,7 +1018,7 @@ describe('Mixin', () => {
       expect(result.options.referenceMode).toBe(false);
       expect(result.options.mixinOutputSlot?.ambientLookup).toBe(true);
       expect(canEnterMixinOutputForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
-      expect(canSearchRulesEntry({ node: result }, 'Mixin', false)).toBe(true);
+      expect(canEnterRulesEntryForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
       expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinBody);
       expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
       expect(result.options.mixinOutputSlot?.childSegments.map(segment => ({

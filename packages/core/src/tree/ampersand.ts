@@ -100,6 +100,8 @@ type AmpersandAppendPlacementState = {
   templateReplacementValues?: string[];
   hoistToRoot: boolean;
   result?: Selector | Nil;
+  resultItemTexts?: string[];
+  resultItemCount?: number;
   resultText?: string;
   selectorBits: Context['selectorBits'];
 };
@@ -275,7 +277,19 @@ function finishAmpersandAppendPlacement(
 ): Selector | Nil {
   placement.selector = selector;
   placement.result = selector;
-  placement.resultText = selector.toTrimmedString();
+  if (isNode(selector, N.SelectorList)) {
+    placement.resultItemTexts = selector.value.map(item => item.toTrimmedString());
+    placement.resultItemCount = placement.resultItemTexts.length;
+  } else if (!isNode(selector, N.Nil)) {
+    placement.resultItemTexts = [selector.toTrimmedString()];
+    placement.resultItemCount = 1;
+  } else {
+    placement.resultItemTexts = [];
+    placement.resultItemCount = 0;
+  }
+  placement.resultText = placement.resultItemTexts.length === 1
+    ? placement.resultItemTexts[0]
+    : selector.toTrimmedString();
   if (placement.hoistToRoot) {
     placement.result.hoistToRoot = true;
   }

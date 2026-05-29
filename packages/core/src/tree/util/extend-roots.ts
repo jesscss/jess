@@ -1,6 +1,5 @@
 import type { Context } from '../../context.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
-import type { AtRule } from '../at-rule.js';
 import { ComplexSelector } from '../selector-complex.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -43,10 +42,6 @@ function isRulesValue(value: unknown): value is Rules {
 
 function isRulesetValue(value: unknown): value is Ruleset {
   return isNode(value, N.Ruleset);
-}
-
-function isAtRuleValue(value: unknown): value is AtRule {
-  return isNode(value, N.AtRule);
 }
 
 function selectorOrUndefined(value: Selector | Nil | undefined): Selector | undefined {
@@ -347,7 +342,6 @@ export class ExtendRootRegistry {
   private isCompose = new WeakMap<Rules, boolean>();
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
-  private layerNames = new WeakMap<AtRule, string>();
   private allRoots = new Set<Rules>();
 
   root?: Rules;
@@ -489,36 +483,6 @@ export class ExtendRootRegistry {
     return false;
   }
 
-  setLayerName(atRule: AtRule, layerName: string): void {
-    for (const key of getAtRuleLayerKeys(atRule)) {
-      this.layerNames.set(key, layerName);
-    }
-  }
-
-  getLayerName(atRule: AtRule): string | undefined {
-    for (const key of getAtRuleLayerKeys(atRule)) {
-      const layerName = this.layerNames.get(key);
-      if (layerName) {
-        return layerName;
-      }
-    }
-    return undefined;
-  }
-
-  takeLayerName(atRule: AtRule): string | undefined {
-    const keys = getAtRuleLayerKeys(atRule);
-    let layer: string | undefined;
-    for (const key of keys) {
-      layer ??= this.layerNames.get(key);
-    }
-    if (layer) {
-      for (const key of keys) {
-        this.layerNames.delete(key);
-      }
-    }
-    return layer;
-  }
-
   getAllRoots(): Set<Rules> {
     return new Set(this.allRoots);
   }
@@ -529,14 +493,6 @@ export class ExtendRootRegistry {
 }
 
 const rulesetsByRoot = new Map<Rules, Set<Ruleset>>();
-
-function getAtRuleLayerKeys(atRule: AtRule): AtRule[] {
-  const sourceAtRule: unknown = atRule.sourceNode;
-  if (!isAtRuleValue(sourceAtRule) || sourceAtRule === atRule) {
-    return [atRule];
-  }
-  return [atRule, sourceAtRule];
-}
 
 export function registerRulesetWithRoot(root: Rules, ruleset: Ruleset): void {
   if (!root || !ruleset) {

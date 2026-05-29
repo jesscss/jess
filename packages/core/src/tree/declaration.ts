@@ -153,6 +153,16 @@ const unwrapAtomicCustomValue = (node: Node): Node => {
   return node;
 };
 
+const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
+  if (!isNode(node, N.Sequence | N.List)) {
+    return false;
+  }
+  if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
+    return false;
+  }
+  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+};
+
 type LessFunctionFallbackCall = Call & {
   value: Call['value'] & {
     name: Reference;
@@ -220,7 +230,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private ownRenderAssignmentInput(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : this.copyValueForDerived(node);
+    return canReuseLeaf(node) || canReuseSourceFreeAssignmentInput(node)
+      ? reuseLeaf(node)
+      : this.copyValueForDerived(node);
   }
 
   private ownMergedAssignmentOutputItem(node: Node): Node {

@@ -134,6 +134,36 @@ type AtRuleBodyPublicResultState = {
 };
 
 const atRuleBodyRuntimeState = new WeakMap<AtRule, AtRuleBodyRuntimeState>();
+const activeAtRuleBodyEvalContextStates = new WeakMap<Context, AtRuleBodyEvalContextState[]>();
+
+function pushAtRuleBodyEvalContextState(
+  context: Context,
+  state: AtRuleBodyEvalContextState
+): void {
+  let stack = activeAtRuleBodyEvalContextStates.get(context);
+  if (!stack) {
+    stack = [];
+    activeAtRuleBodyEvalContextStates.set(context, stack);
+  }
+  stack.push(state);
+}
+
+function popAtRuleBodyEvalContextState(
+  context: Context,
+  state: AtRuleBodyEvalContextState
+): void {
+  const stack = activeAtRuleBodyEvalContextStates.get(context);
+  if (!stack) {
+    return;
+  }
+  const index = stack.lastIndexOf(state);
+  if (index >= 0) {
+    stack.splice(index, 1);
+  }
+  if (stack.length === 0) {
+    activeAtRuleBodyEvalContextStates.delete(context);
+  }
+}
 
 function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']): Context['rulesContext'] {
   let cursor = rulesContext;
@@ -220,6 +250,7 @@ function restoreAtRuleBodyEvalContextState(
   state: AtRuleBodyEvalContextState,
   context: Context
 ): void {
+  popAtRuleBodyEvalContextState(context, state);
   context.frames.length = state.frameCount;
   state.frameState.restoreRulesetFrames();
   while (context.extendRoots.extendRootStack.length > state.extendRootStackLength) {
@@ -912,26 +943,29 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       const preludeStr = String(prelude.valueOf?.() ?? prelude.toTrimmedString?.() ?? prelude.toString?.() ?? '');
       if (preludeStr) {
         let parentLayerName: string | undefined;
-        for (let i = context.frames.length - 2; i >= 0; i--) {
-          const frame = context.frames[i]!;
-          const frameContainsNode = Boolean(
-            isNode(frame, N.AtRule)
-            && frame.value.rules?.value?.some(child =>
-              child === node
-              || child === node.sourceNode
-              || child.sourceNode === node
-              || child.sourceNode === node.sourceNode
-            )
-          );
-          if (isNode(frame, N.AtRule) && frame.value.name?.toTrimmedString?.() === '@layer' && frameContainsNode) {
-            parentLayerName = context.extendRoots.getLayerName(frame);
-            if (parentLayerName) {
+        const activeBodyStates = activeAtRuleBodyEvalContextStates.get(context);
+        if (activeBodyStates) {
+          for (let i = activeBodyStates.length - 1; i >= 0; i--) {
+            const state = activeBodyStates[i]!;
+            const frame = state.evalFrame;
+            if (frame === node || frame.value.name?.toTrimmedString?.() !== '@layer') {
+              continue;
+            }
+            const frameContainsNode = Boolean(
+              frame.value.rules?.value?.some(child =>
+                child === node
+                || child === node.sourceNode
+                || child.sourceNode === node
+                || child.sourceNode === node.sourceNode
+              )
+            );
+            if (frameContainsNode && state.layerName) {
+              parentLayerName = state.layerName;
               break;
             }
           }
         }
         const layerName = parentLayerName ? `${parentLayerName}.${preludeStr}` : preludeStr;
-        context.extendRoots.setLayerName(node, layerName);
         return layerName;
       }
     }
@@ -944,10 +978,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
     state: AtRuleBodyRegistrationState
   ): AtRuleBodyRegistrationState {
     context.extendRoots.popExtendRoot();
-    const layerName = state.layerName ?? context.extendRoots.takeLayerName(node);
-    if (state.layerName) {
-      context.extendRoots.takeLayerName(node);
-    }
+    const layerName = state.layerName;
     const registration: AtRuleBodyRegistrationState = {
       ...state,
       layerName
@@ -1170,6 +1201,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
           // This allows nested layers to find their parent layer names
           // NOTE: We do NOT pop here - the frame must remain accessible during rules evaluation
           // The frame will be popped at the end of evalNode
+          pushAtRuleBodyEvalContextState(context, bodyEvalContextState);
           context.frames.push(node);
 
           // Extract and store layer name AFTER pushing to frames but BEFORE evaluating rules
@@ -1230,6 +1262,7 @@ export class AtRule extends Node<AtRuleValue, AtRuleOptions> {
       },
       () => {
         // Pop the frame that was kept on the stack during rules evaluation so children could access it.
+        popAtRuleBodyEvalContextState(context, bodyEvalContextState);
         context.frames.pop();
         let rules = node.getRenderRules();
         if (rules && rules.visibleRules().length === 0) {

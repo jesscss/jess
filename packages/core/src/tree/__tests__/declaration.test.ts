@@ -1024,6 +1024,42 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders source-free assignment sequence inputs without copying the input container', async () => {
+    const sourceValue = spaced([any('blue'), any('green')]);
+    const node = rules([
+      decl({
+        name: any('src'),
+        value: any('red')
+      }, { assign: AssignmentType.MergeSequence }),
+      decl({
+        name: any('src'),
+        value: sourceValue
+      }, { assign: AssignmentType.MergeSequence })
+    ]);
+    const sourceParent = sourceValue.parent;
+    const originalCopy = Sequence.prototype.copy;
+    let sourceSequenceCopies = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this === sourceValue) {
+        sourceSequenceCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      expect(await renderNodeToString(node, context)).toBeString(`
+        src: red blue green;
+      `);
+      expect(sourceSequenceCopies).toBe(0);
+      expect(sourceValue.parent).toBe(sourceParent);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
+    }
+  });
+
   it('preserves authored multiline declaration values with a minimum continuation indent', async () => {
     const node = rules([
       decl({ name: any('background'), value: any('the,\n              great,\n              wall') }),

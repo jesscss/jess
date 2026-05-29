@@ -619,6 +619,14 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
     return rules.value.every(rule => this.canSourceRenderStaticRule(rule, context));
   }
 
+  private evalNilSelectorBodyForRender(context: Context): MaybePromise<Rules | Nil> {
+    const ownedBody = copyOwnedWithReusableLeaves(this.value.rules);
+    if (!(ownedBody instanceof Rules)) {
+      throw new TypeError('Expected nil-selector render body copy to remain Rules');
+    }
+    return ownedBody.eval(context);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
@@ -648,6 +656,13 @@ export class Ruleset extends Node<RulesetValue, RulesetOptions> {
       }
       if (this.canRenderSourceDirectly(context)) {
         return this;
+      }
+      if (
+        this.value.selector instanceof Nil
+        && !this.value.guard
+        && !this.registrationPrepared
+      ) {
+        return this.evalNilSelectorBodyForRender(context);
       }
       return this.registrationPrepared
         ? this.eval(context)
