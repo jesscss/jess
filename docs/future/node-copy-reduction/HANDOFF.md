@@ -344,8 +344,10 @@ trend.
 ## Metrics Snapshot
 
 Static audit is useful for regression detection, not proof of speed. Hot-path
-timing is noisy; compare multiple adjacent runs before calling a change faster
-or slower.
+timing rows are descriptive samples, not verdicts. Do not call a change faster
+or slower from one row, especially when relative standard deviation is high;
+look for repeated adjacent runs with the same direction before treating a
+performance change as real.
 
 Latest static audit:
 
@@ -358,7 +360,7 @@ Recent hot-path medians. `#1` is the latest pass.
 | # | Pass | `functions` | `import-ref` | `mixins-guards` | `extend` | `media` | Note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Public adapter / reference leak / placement cleanup | 20.95ms | 27.39ms | 33.16ms | 15.68ms | 8.86ms | recorded after a read-only repeat; functions/import noise-better, extend faster, media slower, RSD high; no speed claim |
-| 2 | State-first at-rule/reference/slot pass | 21.64ms | 28.66ms | 32.23ms | 18.99ms | 7.65ms | previous broadly slower sample did not repeat cleanly; treat as noise/context until more adjacent runs agree |
+| 2 | State-first at-rule/reference/slot pass | 21.64ms | 28.66ms | 32.23ms | 18.99ms | 7.65ms | descriptive sample only; later adjacent runs moved mixed directions, so this row is not evidence of a regression |
 | 3 | At-rule registration / reference containers / custom assignment | 17.67ms | 23.03ms | 27.20ms | 13.86ms | 6.25ms | all deltas versus #4 are inside the script's noise band; structural wins are state/ownership proof, not claimed speedup |
 | 4 | Layer state / reference stack / slot indexes | 18.43ms | 24.60ms | 28.17ms | 13.61ms | 6.33ms | saved row; functions and extend are outside the 8% threshold, other fixture deltas are positive but noisy |
 | 5 | Body eval context / fallback cleanup / slot indexes | 20.60ms | 25.77ms | 30.52ms | 14.84ms | 6.81ms | all medians improved versus prior saved row, but each delta is inside the script's noise band |
@@ -467,7 +469,8 @@ family can be audited and reduced.
 7. **Run a follow-up hot-path measurement only after another code change.**
 
    - Goal: the last two samples disagree on direction and have noisy RSD.
-     Avoid metric churn until there is another structural change or measurement
+     Avoid interpreting any single row as regression or improvement, and avoid
+     metric churn until there is another structural change or measurement
      method change.
    - Required proof: read-only run first, record only with a code/method
      reason, compare against the two latest rows, and update this table
